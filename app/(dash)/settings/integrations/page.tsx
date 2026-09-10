@@ -231,7 +231,7 @@ export default async function IntegrationsPage(
             ? `${troubleCount} need attention · ${workingCount} of ${initial.length} confirmed working`
             : `${workingCount} of ${initial.length} confirmed working`
         }
-        explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, and a key that passed a test is not the same as one doing its job, so each one shows both."
+        explanation="Connect services, check their status, and fix connection problems."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 
@@ -310,8 +310,8 @@ export default async function IntegrationsPage(
                     <p className="text-sm font-medium text-foreground">Job queue backend</p>
                     <p className="mt-0.5 text-xs text-slate-600">
                       {status.queue === "bullmq"
-                        ? "BullMQ (Redis-backed). REDIS_URL is set."
-                        : "pg-boss (Postgres-backed). Set REDIS_URL in the environment to switch to BullMQ."}
+                        ? "Background work uses the Redis queue."
+                        : "Background work uses the database queue. Check Automation Health if work stops."}
                     </p>
                   </div>
                   <span className="badge bg-accent/10 font-mono text-accent">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ABORT_REASONS,
@@ -52,6 +52,7 @@ export function PursuitControls({
   canControl: boolean;
 }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [flow, setFlow] = useState<"none" | "abort" | "restart">("none");
   const [reason, setReason] = useState<AbortReason>("strategic");
   const [note, setNote] = useState("");
@@ -60,24 +61,31 @@ export function PursuitControls({
   const [error, setError] = useState<string | null>(null);
 
   async function act(action: "pause" | "resume" | "abort" | "restart") {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/opportunities/${opportunityId}/pursuit`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(
-        action === "abort" ? { action, reason, note } : { action }
-      ),
-    });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(data.error ?? "That could not be recorded.");
-      return;
+    try {
+      const res = await fetch(`/api/opportunities/${opportunityId}/pursuit`, {
+        method: "POST",
+        signal: AbortSignal.timeout(20_000),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "abort" ? { action, reason, note } : { action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "That change could not be recorded. Try again.");
+        return;
+      }
+      setFlow("none");
+      setTyped("");
+      router.refresh();
+    } catch {
+      setError("The change was not confirmed. Refresh this record to check its status before trying again.");
+    } finally {
+      pending.current = false;
+      setBusy(false);
     }
-    setFlow("none");
-    setTyped("");
-    router.refresh();
   }
 
   if (!canControl) return null;
@@ -189,7 +197,7 @@ export function PursuitControls({
           </span>
         </label>
 
-        {error && <p className="mt-2 text-sm text-risk">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-sm text-risk">{error}</p>}
 
         <div className="mt-4 flex flex-wrap gap-3">
           <button
@@ -231,7 +239,7 @@ export function PursuitControls({
             <li key={line}>{line}</li>
           ))}
         </ul>
-        {error && <p className="mt-2 text-sm text-risk">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-sm text-risk">{error}</p>}
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
@@ -301,7 +309,7 @@ export function PursuitControls({
           Restart pursuit
         </button>
       )}
-      {error && <p className="text-xs text-risk">{error}</p>}
+      {error && <p role="alert" className="text-xs text-risk">{error}</p>}
     </div>
   );
 }

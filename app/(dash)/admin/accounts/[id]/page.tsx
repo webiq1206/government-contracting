@@ -155,7 +155,7 @@ export default async function AdminAccountPage(props: { params: Promise<{ id: st
                   <Count label="Submitted" n={usage.submitted} />
                   <Count label="Contracts" n={usage.contracts} />
                   <Count label="Subcontractors" n={usage.subcontractors} />
-                  <Count label="Outreach sent" n={usage.outreachSent} />
+                  <Count label="Outbound messages" n={usage.outreachSent} />
                   <Count label="Replies in" n={usage.repliesIn} />
                 </dl>
                 <div>

@@ -530,6 +530,7 @@ export default async function WorkbenchPage(
       ) : (
         <>
           <QueueKeys
+            documentNavigation={Boolean(peekView)}
             prevHref={prevHref}
             nextHref={nextHref}
             closeHref={peekView ? peekHref(null) : base}
@@ -744,6 +745,7 @@ export default async function WorkbenchPage(
             */}
           {peekView && (
             <QuickViewDrawer
+              documentNavigation
               view={peekView}
               closeHref={peekHref(null)}
               actions={peekActions}

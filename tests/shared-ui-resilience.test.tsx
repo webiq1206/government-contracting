@@ -25,7 +25,8 @@ describe("shared mobile overlays", () => {
     for (const file of files) {
       const source = readFileSync(file, "utf8");
       expect(
-        source.includes("mobile-tab-clearance") ||
+        source.includes("dialog.showModal()") ||
+          source.includes("mobile-tab-clearance") ||
           source.includes("drawer-footer") ||
           source.includes("bottom-[calc(4rem+env(safe-area-inset-bottom))]")
       ).toBe(true);
@@ -48,7 +49,7 @@ describe("shared mobile overlays", () => {
     expect(readFileSync("components/confirm-dialog.tsx", "utf8")).toContain(
       "document.activeElement"
     );
-    expect(html).toContain("max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))]");
+    expect(html).toContain("max-h-[calc(100dvh-2rem)]");
     expect(html).toContain("overflow-y-auto");
   });
 
@@ -174,8 +175,8 @@ describe("rendered accessibility sweep coverage", () => {
   it("keeps dense card controls usable by touch through tablet widths", () => {
     const contact = readFileSync("components/contact-quick-edit.tsx", "utf8");
     expect(contact).toContain("tap inline-flex h-8 w-8");
-    expect(contact).toContain("lg:absolute");
-    expect(contact).not.toContain("sm:absolute");
+    expect(contact).toContain("<ConfirmDialog");
+    expect(contact).toContain("busy={saving}");
 
     const menu = readFileSync("components/pipeline-card-menu.tsx", "utf8");
     expect(menu).toContain("tap flex h-8 w-8");

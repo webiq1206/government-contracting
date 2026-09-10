@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useKeyboardViewport } from "./use-keyboard-viewport";
 import {
   groupResults,
   highlight,
@@ -114,6 +115,8 @@ function rememberSearch(q: string, storageScope: string) {
 
 export function CommandPalette({ storageScope }: { storageScope: string }) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const keyboard = useKeyboardViewport();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Result[]>([]);
@@ -158,6 +161,8 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
   useEffect(() => {
     if (!open) return;
     openerRef.current = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    dialog?.showModal();
     setQ("");
     setResults([]);
     setActive(0);
@@ -166,6 +171,7 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
     setRecentRecords(readRecentRecords(storageScope));
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => {
+      dialog?.close();
       window.clearTimeout(timer);
       openerRef.current?.focus?.();
     };
@@ -184,6 +190,13 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
     const request = requestRef.current + 1;
     requestRef.current = request;
     const controller = new AbortController();
+    const deadline = setTimeout(() => {
+      controller.abort();
+      if (request === requestRef.current) {
+        setSearchError("Search took too long. Check your connection and try again.");
+        setSearching(false);
+      }
+    }, 20_000);
     setSearching(true);
     setSearchError(null);
     setResults([]);
@@ -216,11 +229,13 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
           "Search could not reach the server. Your records are unchanged. Check the connection and try again."
         );
       } finally {
+        clearTimeout(deadline);
         if (request === requestRef.current) setSearching(false);
       }
     }, 250);
     return () => {
       clearTimeout(t);
+      clearTimeout(deadline);
       controller.abort();
     };
   }, [q, open, searchAttempt]);
@@ -267,19 +282,21 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/55 p-4 pt-[12vh]"
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      aria-modal="true"
+      onCancel={event => { event.preventDefault(); setOpen(false); }}
+      style={keyboard ? { top: keyboard.top, height: keyboard.height, paddingTop: 8, bottom: "auto" } : undefined}
+      className="fixed inset-0 z-[90] m-0 flex h-full max-h-none w-full max-w-none items-start justify-center border-0 bg-transparent p-4 pt-[8dvh] text-foreground backdrop:bg-black/55"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
       <div
         ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
         onKeyDown={onDialogKeyDown}
-        className="w-full max-w-lg overflow-hidden rounded-md border border-foreground/50 bg-surface text-foreground shadow-2xl dark:border-white/35"
+        className="flex max-h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-md border border-foreground/50 bg-surface text-foreground shadow-2xl dark:border-white/35"
       >
         <h2 id={titleId} className="sr-only">
           Search everything
@@ -297,6 +314,8 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
                 e.preventDefault();
                 setActive((a) => Math.max(a - 1, 0));
               } else if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
                 if (flat[active]) go(flat[active], q);
                 else if (q.trim().length >= 2 && !searchError) {
                   // Nothing highlighted, so Enter means "show me everything".
@@ -313,7 +332,7 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
             aria-controls={resultsId}
             aria-activedescendant={flat[active] ? `${resultsId}-option-${active}` : undefined}
             placeholder="Search opportunities, subs, contracts, messages, documents…"
-            className="min-h-11 min-w-0 flex-1 bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500"
+            className="min-h-11 min-w-0 flex-1 bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500 coarse:text-base"
           />
           <button
             type="button"
@@ -482,7 +501,7 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
           ))}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ruleConflicts, type AutomationRules } from "@/lib/domain/intake";
 import { formatHour } from "@/lib/domain/call-queue";
@@ -36,6 +36,7 @@ export function AutomationRulesForm({
   readOnly?: boolean;
 }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [showRules, setShowRules] = useState(false);
   useEffect(() => { if (window.location.hash) setShowRules(true); }, []);
   const [form, setForm] = useState<AutomationRules>(initial);
@@ -117,11 +118,14 @@ export function AutomationRulesForm({
   }, [form, dirty, readOnly]);
 
   async function save(confirmImpacts = false) {
+    if (pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/automation/rules", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, confirm_impacts: confirmImpacts }),
       });
@@ -158,6 +162,7 @@ export function AutomationRulesForm({
         "The save could not be confirmed because the server could not be reached. Refresh this page before trying again."
       );
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -289,7 +294,7 @@ export function AutomationRulesForm({
             Saved at {savedAt}. Applied everywhere immediately.
           </span>
         )}
-        {error && <span className="text-xs text-risk">{error}</span>}
+        {error && <span role="alert" className="text-xs text-risk">{error}</span>}
       </div>
     </div>
   );

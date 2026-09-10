@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ContactQuickEdit } from "@/components/contact-quick-edit";
+import { can } from "@/lib/domain/roles";
 import { CERTIFICATIONS } from "@/lib/domain/sub-capability";
 import { DEFAULT_RATE_EVIDENCE } from "@/lib/data";
 import { subDatabase, subDatabaseCount, SUB_SORTS } from "@/lib/data";
@@ -418,9 +420,11 @@ export default async function SubsPage(
                 * reason.
                 */}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <Link href={withPeek(s.id)} className="btn-ghost inline-flex text-xs">
+                <a href={withPeek(s.id)} className="btn-ghost inline-flex text-xs">
                   Quick look
-                </Link>
+                </a>
+                {can(viewer?.orgRole, "manage_subs") && <ContactQuickEdit subId={s.id} companyName={s.company_name}
+                  email={s.email} phone={s.phone} website={s.website} ownerName={s.owner_name} />}
                 {/*
                   The same controls the table's rows carry. This list is what
                   a phone actually gets: the table beside it is hidden below
@@ -500,6 +504,7 @@ export default async function SubsPage(
 
       {peeked && (
         <QuickViewDrawer
+      documentNavigation
           view={peeked.view}
           closeHref={withoutPeek()}
           /*
@@ -527,6 +532,7 @@ export default async function SubsPage(
         * the product.
         */}
       <QueueKeys
+        documentNavigation
         prevHref={peekNav.prevId ? withPeek(peekNav.prevId) : null}
         nextHref={peekNav.nextId ? withPeek(peekNav.nextId) : null}
         closeHref={peekId ? withoutPeek() : null}

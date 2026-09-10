@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   EMPTY_W9,
   LLC_TAX_CLASSES,
@@ -410,14 +410,19 @@ function Field({
   autoComplete?: string;
   inputMode?: "numeric" | "text";
 }) {
+  const id = useId();
   return (
-    <label className="block">
-      <span className="label mb-1 block">
+    <label htmlFor={id} className="block">
+      <span id={`${id}-label`} className="label mb-1 block">
         {label}
         {optional && <span className="ml-1 font-normal text-slate-500">optional</span>}
       </span>
-      {hint && <span className="mb-1 block text-xs leading-relaxed text-slate-500">{hint}</span>}
+      {hint && <span id={`${id}-hint`} className="mb-1 block text-xs leading-relaxed text-slate-500">{hint}</span>}
       <input
+        id={id}
+        aria-labelledby={`${id}-label`}
+        aria-describedby={[hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined}
+        aria-invalid={Boolean(error)}
         className="input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -425,7 +430,7 @@ function Field({
         autoComplete={autoComplete}
         inputMode={inputMode}
       />
-      {error && <p className="mt-1 text-xs text-risk">{error}</p>}
+      {error && <p id={`${id}-error`} className="mt-1 text-xs text-risk">{error}</p>}
     </label>
   );
 }

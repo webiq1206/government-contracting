@@ -1,12 +1,13 @@
 "use client";
 
 import { createPortal } from "react-dom";
+import { useKeyboardViewport } from "./use-keyboard-viewport";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 /**
  * The confirmation this product uses instead of `window.confirm`.
  *
- * The native dialog is tempting and wrong for three separate reasons.
+ * The blocking window.confirm prompt has three limitations.
  *
  * It cannot say what the action costs. `window.confirm` takes one string, so a
  * question that needs a count, a list of what is kept, or a warning about what
@@ -56,7 +57,9 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const panel = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDialogElement>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const keyboard = useKeyboardViewport();
   const opener = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const bodyId = useId();
@@ -71,19 +74,26 @@ export function ConfirmDialog({
    */
   useEffect(() => {
     if (!open) return;
+    const dialog = panel.current;
+    if (!dialog) return;
     opener.current = document.activeElement as HTMLElement | null;
-    const first = panel.current?.querySelector<HTMLElement>(
-      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
-    );
-    (first ?? panel.current)?.focus();
+    dialog.showModal();
+    // An input is useful for a reason prompt. Otherwise focus the safe exit.
+    const field = dialog.querySelector<HTMLElement>("input:not([disabled]),textarea:not([disabled]),select:not([disabled])");
+    (field ?? cancelButton.current ?? dialog).focus({ preventScroll: true });
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      opener.current?.focus?.();
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+      if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
     };
   }, [open]);
 
   const trap = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
         if (!busy) onCancel();
         return;
@@ -111,8 +121,18 @@ export function ConfirmDialog({
   if (!open) return null;
 
   const dialog = (
-    <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
+    <dialog
+      ref={panel}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={body ? bodyId : undefined}
+      aria-busy={busy || undefined}
+      onKeyDown={trap}
+      onCancel={event => { event.preventDefault(); event.stopPropagation(); if (!busy) onCancel(); }}
+      style={keyboard ? { top: keyboard.top, height: keyboard.height, bottom: "auto" } : undefined}
+      className="fixed inset-0 z-[90] m-0 flex h-full max-h-none w-full max-w-none items-end justify-center border-0 bg-transparent p-0 text-foreground backdrop:bg-black/40 lg:items-center lg:p-6"
       // A click on the backdrop cancels, which is what people expect and what
       // Escape does. It never confirms.
       onMouseDown={(e) => {
@@ -120,14 +140,8 @@ export function ConfirmDialog({
       }}
     >
       <div
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={body ? bodyId : undefined}
-        onKeyDown={trap}
-        className="mobile-tab-clearance max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] w-full max-w-lg overflow-y-auto rounded-t-lg border border-border bg-surface p-5 shadow-lg lg:max-h-[calc(100dvh-3rem)] lg:rounded-lg"
+        style={keyboard ? { maxHeight: keyboard.height - 16 } : undefined}
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-t-xl border border-border bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-lg lg:max-h-[calc(100dvh-3rem)] lg:rounded-xl"
       >
         <h2 id={titleId} className="font-display text-xl font-normal text-foreground">
           {title}
@@ -146,13 +160,14 @@ export function ConfirmDialog({
           >
             {busy ? "Working" : confirmLabel}
           </button>
-          <button type="button" className="btn-ghost" onClick={onCancel} disabled={busy}>
+          <button ref={cancelButton} type="button" className="btn-ghost" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
+  // Native top-layer isolation works even over another modal record drawer.
   // Escape clipping and stacking contexts, including an open navigation menu.
   return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }

@@ -106,13 +106,12 @@ export function WorkQueue({
               */}
               <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                 {peekHrefFor && (
-                  <Link
+                  <a
                     href={peekHrefFor(item)}
-                    scroll={false}
                     className="tap shrink-0 text-xs text-slate-500 underline-offset-2 hover:text-accent"
                   >
                     Quick look
-                  </Link>
+                  </a>
                 )}
                 <RowActionsForItem
                   item={item}

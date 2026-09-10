@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { refreshPage } from "./refresh-page";
 
 export interface RecordMilestone {
   id: string;
@@ -106,17 +106,20 @@ export function ContractRecordSections({
   coordination: RecordCoordination[];
   canEdit: boolean;
 }) {
-  const router = useRouter();
+  const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ bad: boolean; text: string } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   async function post(body: Record<string, unknown>) {
+    if (pending.current) return false;
+    pending.current = true;
     setBusy(true);
     setMessage(null);
     try {
       const res = await fetch(`/api/contracts/${contractId}/record`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -127,12 +130,13 @@ export function ContractRecordSections({
       }
       setMessage({ bad: false, text: data.message ?? "Saved." });
       setOpen(null);
-      router.refresh();
+      refreshPage();
       return true;
     } catch {
-      setMessage({ bad: true, text: "Could not reach the server. Nothing was saved." });
+      setMessage({ bad: true, text: "The save was not confirmed. Check the record before trying again. Your entries are still here." });
       return false;
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -145,7 +149,7 @@ export function ContractRecordSections({
       <Section
         id="milestones"
         title="Milestones and deliverables"
-        blurb="What is due, when, and what the agency was actually given. This was rendered from a column nothing could write to, so it was always empty."
+        blurb="Track deadlines, deliverables, and what the agency has received."
         action={canEdit ? { label: "Add one", key: "milestone", open, setOpen } : null}
         count={milestones.length}
       >
@@ -318,7 +322,7 @@ export function ContractRecordSections({
       <Section
         id="issues"
         title="Issues"
-        blurb="Things that went wrong and what was done about them. The card could only ever name five problems, all worked out from dates."
+        blurb="Track problems, their impact, and how they were resolved."
         action={canEdit ? { label: "Raise one", key: "issue", open, setOpen } : null}
         count={openIssues.length}
       >
@@ -361,7 +365,7 @@ export function ContractRecordSections({
       <Section
         id="coordination"
         title="Coordination log"
-        blurb="Dated contacts showing this company ran the work rather than passing it through. On a set-aside that is the evidence, and the column meant to hold it could not be written."
+        blurb="Record discussions, decisions, and follow-ups with the people delivering this work."
         action={canEdit ? { label: "Log a contact", key: "coordination", open, setOpen } : null}
         count={coordination.length}
       >
@@ -470,7 +474,7 @@ function Buttons({
       <button type="button" className="btn" disabled={busy || disabled} onClick={onSave}>
         {busy ? "Saving…" : label}
       </button>
-      <button type="button" className="btn-ghost" onClick={onCancel}>
+      <button type="button" className="btn-ghost" disabled={busy} onClick={onCancel}>
         Cancel
       </button>
     </div>

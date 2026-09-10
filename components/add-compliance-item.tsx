@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { refreshPage } from "./refresh-page";
+import { UnsavedGuard } from "./unsaved-guard";
 
 /** Preset categories. Values match the Compliance Monitor's category keys where
  *  they overlap, so a manual item folds into the same group as tracked ones. */
@@ -21,7 +22,7 @@ const CATEGORIES: { value: string; label: string }[] = [
  * the countdown and alerts.
  */
 export function AddComplianceItem() {
-  const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0].value);
@@ -34,11 +35,14 @@ export function AddComplianceItem() {
       setError("Give it a name.");
       return;
     }
+    if (requestPending.current) return;
+    requestPending.current = true;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/compliance", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label, category, due_at: dueAt }),
       });
@@ -50,10 +54,11 @@ export function AddComplianceItem() {
       setLabel("");
       setDueAt("");
       setOpen(false);
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+      refreshPage();
+    } catch {
+      setError("The save was not confirmed. Check the list before trying again. Your entries are still here.");
     } finally {
+      requestPending.current = false;
       setSaving(false);
     }
   }
@@ -68,6 +73,7 @@ export function AddComplianceItem() {
 
   return (
     <div className="card space-y-3">
+      <UnsavedGuard when={label.trim() !== "" || dueAt !== ""} />
       <p className="eyebrow">Track your own item</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block sm:col-span-1">
@@ -81,7 +87,7 @@ export function AddComplianceItem() {
         </label>
         <label className="block">
           <span className="label mb-1 block">Category</span>
-          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <select aria-label="Category" className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
@@ -99,12 +105,13 @@ export function AddComplianceItem() {
           />
         </label>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary text-sm" onClick={save} disabled={saving}>
           {saving ? "Adding…" : "Add item"}
         </button>
         <button
           className="btn-ghost text-sm"
+          disabled={saving}
           onClick={() => {
             setOpen(false);
             setError(null);
@@ -112,7 +119,7 @@ export function AddComplianceItem() {
         >
           Cancel
         </button>
-        {error && <span className="text-xs text-risk">{error}</span>}
+        {error && <span role="alert" className="text-xs text-risk">{error}</span>}
       </div>
     </div>
   );

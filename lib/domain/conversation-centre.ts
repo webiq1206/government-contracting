@@ -21,6 +21,7 @@ import {
 
 export type ConversationState =
   | "needs_reply"
+  | "draft"
   | "delivery_failed"
   | "overdue"
   | "awaiting_them"
@@ -29,6 +30,7 @@ export type ConversationState =
 
 export const CONVERSATION_STATE_LABEL: Record<ConversationState, string> = {
   needs_reply: "Needs your reply",
+  draft: "Draft, not sent",
   delivery_failed: "Did not arrive",
   overdue: "Follow-up overdue",
   awaiting_them: "Waiting on them",
@@ -41,6 +43,7 @@ export const CONVERSATION_FILTERS = [
   "all",
   "unread",
   "needs_reply",
+  "draft",
   "delivery_failed",
   "overdue",
   "awaiting_them",
@@ -53,6 +56,7 @@ export const CONVERSATION_FILTER_LABEL: Record<ConversationFilter, string> = {
   all: "Everything",
   unread: "Unread",
   needs_reply: "Needs your reply",
+  draft: "Drafts",
   delivery_failed: "Did not arrive",
   overdue: "Follow-up overdue",
   awaiting_them: "Waiting on them",
@@ -248,6 +252,14 @@ export function verdict(f: ConversationFacts, now = new Date()): ConversationVer
       nextAction: "Reply.",
     };
   }
+  if (f.lastOutboundState === "draft") {
+    return {
+      state: "draft",
+      failedState: null,
+      reason: "The latest message is a draft and has not been sent.",
+      nextAction: "Review the draft before sending it.",
+    };
+  }
   if (overdue) {
     return {
       state: "overdue",
@@ -361,6 +373,8 @@ export function matchesFilter(c: ConversationSummary, f: ConversationFilter): bo
       return c.unreadCount > 0;
     case "needs_reply":
       return c.state === "needs_reply";
+    case "draft":
+      return c.state === "draft";
     case "delivery_failed":
       return c.state === "delivery_failed";
     case "overdue":
@@ -375,7 +389,7 @@ export function matchesFilter(c: ConversationSummary, f: ConversationFilter): bo
 }
 
 export interface Deliverability {
-  /** Outbound messages the numbers below are computed over. */
+  /** Attempted outbound messages, including failed attempts but excluding drafts. */
   sent: number;
   /** Null when nothing has been sent: a rate over zero messages is not 0%. */
   deliveryRate: number | null;
@@ -397,7 +411,7 @@ export interface Deliverability {
  * notices cannot make outreach look like it is working.
  */
 export function deliverability(messages: CentreMessage[]): Deliverability {
-  const outbound = messages.filter((m) => m.direction === "outbound");
+  const outbound = messages.filter((m) => m.direction === "outbound" && m.state !== "draft");
   const sent = outbound.length;
   if (sent === 0) {
     return {
@@ -410,7 +424,7 @@ export function deliverability(messages: CentreMessage[]): Deliverability {
     };
   }
 
-  const arrived = outbound.filter((m) => !isFailure(m.state)).length;
+  const arrived = outbound.filter((m) => ["delivered", "opened", "clicked", "replied"].includes(m.state)).length;
   const bounced = outbound.filter((m) => m.state === "bounced").length;
   const blocked = outbound.filter((m) => m.state === "blocked").length;
   const failed = outbound.filter((m) => m.state === "failed").length;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/data-table";
+import { can } from "@/lib/domain/roles";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { Subcontractor } from "@/lib/types";
@@ -136,7 +137,7 @@ export function SubsTable({
       hint: "Whether outreach can actually reach this firm.",
       render: (s) => (
         <span className="whitespace-nowrap">
-          <ContactQuickEdit
+          {can(role, "manage_subs") && <ContactQuickEdit
             subId={s.id}
             companyName={s.company_name}
             email={s.email}
@@ -144,7 +145,7 @@ export function SubsTable({
             website={s.website}
             ownerName={s.owner_name}
             className="mr-1 align-middle"
-          />
+          />}
           {s.email && s.email_verified ? (
             <span className="badge bg-pursue/15 text-pursue" title={s.email}>
               Verified
@@ -282,13 +283,13 @@ export function SubsTable({
       header: "",
       render: (s) => (
         <span className="flex items-center justify-end gap-2">
-          <Link
+          <a
             href={`${peekBase}peek=${s.id}`}
-            scroll={false}
+
             className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
           >
             Quick look
-          </Link>
+          </a>
           <RowActions
             actions={subcontractorRowActions(
               {
@@ -427,7 +428,11 @@ function SubCard({
           <p className="mt-0.5 text-xs text-muted-foreground">
             {[trades, area].filter(Boolean).join(" \u00b7 ") || "Nothing on file about where they work"}
           </p>
-          <span className={`badge mt-1.5 inline-block ${SUB_STATE_TONE[v.state]}`}>{v.label}</span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className={`badge ${SUB_STATE_TONE[v.state]}`}>{v.label}</span>
+            {can(role, "manage_subs") && <ContactQuickEdit subId={row.id} companyName={row.company_name}
+              email={row.email} phone={row.phone} website={row.website} ownerName={row.owner_name} />}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">{v.detail}</p>
         </div>
       </div>
@@ -458,13 +463,13 @@ function SubCard({
             {row.email ? "Email unverified" : "No email"}
           </span>
         )}
-        <Link
+        <a
           href={`${peekBase}peek=${row.id}`}
-          scroll={false}
+
           className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent"
         >
           Quick look
-        </Link>
+        </a>
         {/*
           Everything the bar has no room for. On a phone the menu opens as a
           sheet, so the choices are full-width taps rather than a dropdown

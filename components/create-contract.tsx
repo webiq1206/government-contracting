@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UnsavedGuard } from "./unsaved-guard";
+import { ConfirmDialog } from "./confirm-dialog";
 
 /**
  * Record a contract by hand.
@@ -13,6 +15,7 @@ import { useRouter } from "next/navigation";
  */
 export function CreateContract() {
   const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,11 +25,14 @@ export function CreateContract() {
   const [end, setEnd] = useState("");
 
   async function save() {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/contracts", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contract_number: number,
@@ -40,24 +46,32 @@ export function CreateContract() {
         setError(data.error ?? "That did not save.");
         return;
       }
+      setNumber(""); setAward(""); setStart(""); setEnd("");
+      setOpen(false);
       router.push(`/contracts/${data.id}`);
     } catch {
-      setError("Could not reach the server. Nothing was saved.");
+      setError("The save was not confirmed. Check your contracts before trying again. Your entries are still here.");
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
 
-  if (!open) {
-    return (
+  return (
+    <>
+      <UnsavedGuard when={number.trim() !== "" || award !== "" || start !== "" || end !== ""} />
       <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(true)}>
         Record one by hand
       </button>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-md border border-border bg-surface-raised p-3 text-left">
+      <ConfirmDialog
+        open={open}
+        title="Record a contract"
+        confirmLabel="Record it"
+        busy={busy}
+        confirmDisabled={!number.trim()}
+        onConfirm={() => void save()}
+        onCancel={() => setOpen(false)}
+        body={<div className="space-y-3 text-left">
       <p className="text-xs text-muted-foreground">
         For work already under contract that this account did not bid here. It is marked as
         entered by hand, and shows no expected profit, because there is no bid behind it to
@@ -85,15 +99,9 @@ export function CreateContract() {
             onChange={(e) => setEnd(e.target.value)} />
         </label>
       </div>
-      {error && <p role="status" className="text-xs text-risk">{error}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" disabled={busy || !number.trim()} onClick={() => void save()}>
-          {busy ? "Saving…" : "Record it"}
-        </button>
-        <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
+      {error && <p role="alert" className="text-xs text-risk">{error}</p>}
+        </div>}
+      />
+    </>
   );
 }

@@ -134,7 +134,7 @@ export default async function RecapPage(
     <>
       <PageFrame
         title="Daily Recap"
-        explanation="Everything that happened on one day, in the order it matters: what needs you, what broke, what moved, and what is due next."
+        explanation="Review what happened, what needs attention, and what is due next."
         breadcrumbs={[{ label: "Performance", href: "/analytics" }]}
         status={
           recap.urgentCount > 0
@@ -188,6 +188,7 @@ export default async function RecapPage(
 
       {peekedOpp && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedOpp.view}
           closeHref={peekHref(null)}
           actions={opportunityRowActions(peekedOpp.actionFacts, { role: user.orgRole })}
@@ -196,6 +197,7 @@ export default async function RecapPage(
       )}
       {peekedSub && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedSub.view}
           closeHref={peekHref(null)}
           actions={subcontractorRowActions(peekedSub.actionFacts, { role: user.orgRole })}

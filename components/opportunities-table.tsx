@@ -205,13 +205,13 @@ export function OpportunitiesTable({
       header: "",
       render: (o) => (
         <span className="flex items-center justify-end gap-2">
-          <Link
+          <a
             href={`${peekBase}peek=${o.id}`}
-            scroll={false}
+
             className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
           >
             Quick look
-          </Link>
+          </a>
           {/*
             The same actions the board's cards carry. A table is where
             somebody works through twenty records in a sitting, which is
@@ -318,13 +318,13 @@ function OpportunityTableCard({
         ) : null}
       </Link>
       <div className="flex divide-x divide-border border-t border-border">
-        <Link
+        <a
           href={`${peekBase}peek=${o.id}`}
-          scroll={false}
+
           className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent"
         >
           Quick look
-        </Link>
+        </a>
         <span className="flex min-h-11 items-center justify-center px-3">
           <RowActions
             actions={opportunityRowActions(

@@ -1,3 +1,4 @@
+import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 function walk(dir) {return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):e.name==='page.tsx'?[join(dir,e.name)]:[]);}
 const routes=walk('app').map(file=>({file,route:'/'+file.split('/').slice(1,-1).filter(s=>!s.startsWith('(')).join('/')})).filter(x=>!x.route.startsWith('/theme-qa'));
 function resolve(route) {
-  return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]','invalid-audit-token');
+  return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]',ids.vendorToken);
 }
 const browser=await chromium.launch();
 const results=[];
@@ -20,7 +21,7 @@ function checkpoint() {
  writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
 }
 try {
- for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]]) {
+ for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]].filter(([name]) => !process.env.AUDIT_DEVICE || process.env.AUDIT_DEVICE === name)) {
   try {
   const ctx=await browser.newContext({viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'});
   // Provider traffic is never part of this local UI regression.
@@ -77,6 +78,24 @@ try {
       });
       if(scrolled) {record.bottomScreenshot=name.replace('.png','-bottom.png');await p.screenshot({path:join(out,record.bottomScreenshot)});}
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
+      record.scrollFrames=await captureScrollFrames(p,out,name.replace('.png',''));
+      record.disclosures=[];
+      // Open secondary controls before inspecting their layout and tab contents.
+      // Native summaries only; this never presses a save, send or run control.
+      for(let disclosure=0;disclosure<await p.locator('details > summary').count();disclosure++) {
+        assert(disclosure<150,'Unexpected disclosure count; inspect this page manually');
+        const summary=p.locator('details > summary').nth(disclosure);
+        if(!(await summary.isVisible())) continue;
+        if(!(await summary.evaluate(el=>el.parentElement.open))) {
+          record.disclosures.push(await summary.innerText());
+          await summary.click();
+        }
+      }
+      if(record.disclosures.length) {
+        record.expandedScreenshot=name.replace('.png','-expanded.png');
+        await p.screenshot({path:join(out,record.expandedScreenshot),fullPage:true});
+        record.expandedScrollFrames=await captureScrollFrames(p,out,name.replace('.png','-expanded'));
+      }
       record.tabs=[];
       const tablists=p.getByRole('tablist');
       for(let group=0;group<await tablists.count();group++) {
@@ -89,9 +108,11 @@ try {
           assert.equal(await control.getAttribute('aria-selected'),'true','Selected tab must identify itself');
           const screenshot=name.replace('.png',`-tabs-${group}-${tab}.png`);
           await p.screenshot({path:join(out,screenshot)});
-          record.tabs.push({group,label:labels[tab],screenshot,status:'tab opened'});
+          const scrollFrames=await captureScrollFrames(p,out,screenshot.replace('.png',''));
+          record.tabs.push({group,label:labels[tab],screenshot,scrollFrames,status:'tab opened'});
         }
       }
+      record.overflow=record.overflow||await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
       record.status=record.http>=500||errors.length||record.overflow?'needs review':'render captured';
       if(!publicPage&&record.finalPath==='/login') record.status='authentication failed';
       if(record.status!=='render captured') failures.push(record);
@@ -308,6 +329,8 @@ try {
   await page.getByRole('button',{name:'Run now',exact:true}).first().click();
   const runConfirmation=page.getByRole('dialog',{name:/^Run .+ now\?$/});
   await runConfirmation.getByText('This starts an additional run and may use paid API credits.',{exact:false}).waitFor();
+  assert(await runConfirmation.evaluate(el => el.matches(':modal')),'Confirmation uses native modal isolation');
+  assert(await runConfirmation.getByRole('button',{name:'Cancel',exact:true}).evaluate(el => document.activeElement === el),'Focus starts on Cancel');
   await runConfirmation.getByRole('button',{name:'Cancel',exact:true}).click();
   assert.equal(manualRequests,0,'Cancel must not enqueue or spend API credits');
   page.removeListener('request',noManualRun);
@@ -360,6 +383,8 @@ try {
   await page.getByRole('button',{name:'Refresh usage',exact:true}).click();
   await page.getByRole('region',{name:'Account spending controls'}).waitFor();
   results.push({device,role:'owner',route:'/settings/api-usage',status:'budget save, pause/resume and outage recovery checked'});
+  await auditWorkflows({page,device,ids,base,out,results,failures,checkpoint});
+  await auditRoles({browser,device,width,height,base,out,results,failures,checkpoint});
   await ctx.close();
   const viewer=await browser.newContext({viewport:{width,height},isMobile:device!=="desktop",hasTouch:device!=="desktop"});
   await viewer.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
@@ -457,6 +482,32 @@ try {
   await v.waitForURL('**/#workflow');
   await v.locator('#workflow').waitFor();
   results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to workflow checked'});
+  if(device!=='desktop') {
+    for(const route of ['/', '/privacy']) {
+      await v.goto(base+route,{waitUntil:'networkidle'});
+      const trigger=v.getByRole('button',{name:'Open navigation',exact:true});
+      await trigger.click();
+      const menu=v.getByRole('dialog',{name:'Explore Brost Co',exact:true});
+      await menu.waitFor();
+      assert(await menu.evaluate(el=>el.matches(':modal')),'Public menu must isolate the page');
+      const close=menu.getByRole('button',{name:'Close navigation',exact:true});
+      assert(await close.evaluate(el=>document.activeElement===el));
+      await v.keyboard.press('Shift+Tab');
+      assert(await menu.getByRole('link',{name:'Start free trial',exact:true}).evaluate(el=>document.activeElement===el),'Keyboard focus stays inside the menu');
+      await v.screenshot({path:join(out,`${device}-public-menu-${route==='/'?'home':'privacy'}.png`)});
+      await v.keyboard.press('Escape');
+      await menu.waitFor({state:'hidden'});
+      assert(await trigger.evaluate(el=>document.activeElement===el));
+      await trigger.click();
+      await menu.getByRole('link',{name:'Pricing',exact:true}).click();
+      await v.waitForURL('**/#pricing');
+      await v.locator('#pricing').waitFor();
+      await menu.waitFor({state:'hidden'});
+      await v.goBack({waitUntil:'networkidle'});
+      assert.equal(new URL(v.url()).pathname,route);
+      results.push({device,role:'visitor',route,status:'public menu, focus isolation, Escape, pricing link and Back checked'});
+    }
+  }
   await viewer.close();
   checkpoint();
   } catch(error) {

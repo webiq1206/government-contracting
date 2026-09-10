@@ -69,6 +69,20 @@ d("compliance history (integration)", () => {
     await query(`delete from organizations where id = $1`, [org.id]).catch(() => {});
   });
 
+  it("creates a manual item using the current database vocabulary without claiming completion", async () => {
+    const { POST: create } = await import("../app/api/compliance/route");
+    const res = await create(new Request("http://x/api/compliance", {
+      method: "POST",
+      body: JSON.stringify({ label: "Insurance renewal", category: "insurance", due_at: "2027-01-15" }),
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const row = await queryOne<{ org_id: string; status: string; source: string; label: string }>(
+      "select org_id, status, source, label from compliance_items where id = $1", [body.id]
+    );
+    expect(row).toEqual({ org_id: org.id, status: "incomplete", source: "operator", label: "Insurance renewal" });
+  });
+
   it("records what changed, in the words it will be read in", async () => {
     const res = await edit({ due_at_override: "2027-06-30", notes: "Renewed with a new carrier" });
     expect(res.status).toBe(200);

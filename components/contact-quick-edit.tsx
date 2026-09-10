@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "./confirm-dialog";
 
 /**
  * A tiny "✎" button + popover form that lets the operator correct a sub's
@@ -38,12 +39,11 @@ export function ContactQuickEdit({
   }) => void;
 }) {
   const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLSpanElement>(null);
-  const titleId = useId();
   const [form, setForm] = useState({
     email: email ?? "",
     phone: phone ?? "",
@@ -56,6 +56,8 @@ export function ContactQuickEdit({
   }
 
   async function save() {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -67,6 +69,7 @@ export function ContactQuickEdit({
       if (ownerName !== undefined) body.owner_name = form.owner_name;
       const res = await fetch(`/api/subs/${subId}`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -86,9 +89,10 @@ export function ContactQuickEdit({
       router.refresh();
     } catch {
       setError(
-        "Could not reach the server. Contact changes were not saved. Check your connection and try again."
+        "The save was not confirmed. Reopen the record to check it before trying again. Your entries are still here."
       );
     } finally {
+      requestPending.current = false;
       setSaving(false);
     }
   }
@@ -124,58 +128,15 @@ export function ContactQuickEdit({
       >
         ✎
       </button>
-      {open && (
-        <>
-          {/* click-away backdrop */}
-          <span
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              setError(null);
-              triggerRef.current?.focus();
-            }}
-          />
-          <span
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 block max-h-[70vh] overflow-y-auto rounded-lg border border-foreground/50 bg-surface p-4 text-left text-foreground shadow-lg dark:border-white/35 lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-6 lg:max-h-none lg:w-72 lg:p-3"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              // Escape closes this popover only — don't let it bubble to the
-              // call workspace's global Escape (which closes the slide-over).
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setOpen(false);
-                setError(null);
-                triggerRef.current?.focus();
-                return;
-              }
-              if (e.key === "Tab") {
-                const focusable = Array.from(
-                  panelRef.current?.querySelectorAll<HTMLElement>(
-                    "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
-                  ) ?? []
-                ).filter((item) => item.getClientRects().length > 0);
-                const first = focusable[0];
-                const last = focusable[focusable.length - 1];
-                if (first && last && e.shiftKey && document.activeElement === first) {
-                  e.preventDefault();
-                  last.focus();
-                } else if (first && last && !e.shiftKey && document.activeElement === last) {
-                  e.preventDefault();
-                  first.focus();
-                }
-              }
-            }}
-          >
-            <span id={titleId} className="mb-2 block text-xs font-semibold text-slate-900">
-              Edit contact: {companyName}
-            </span>
-            <span className="block space-y-2">
-              <QF label="Email" type="email" autoFocus value={form.email} onChange={(v) => set("email", v)} placeholder="name@company.com" />
+      <ConfirmDialog
+        open={open}
+        title={`Edit contact: ${companyName}`}
+        confirmLabel="Save"
+        busy={saving}
+        onConfirm={() => void save()}
+        onCancel={() => { setOpen(false); setError(null); }}
+        body={<div className="space-y-3">
+              <QF label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} placeholder="name@company.com" />
               <QF label="Phone" type="tel" value={form.phone} onChange={(v) => set("phone", v)} placeholder="(916) 555-0100" />
               {website !== undefined && (
                 <QF label="Website" value={form.website} onChange={(v) => set("website", v)} placeholder="https://" />
@@ -183,32 +144,10 @@ export function ContactQuickEdit({
               {ownerName !== undefined && (
                 <QF label="Contact name" value={form.owner_name} onChange={(v) => set("owner_name", v)} />
               )}
-            </span>
-            <span className="mt-3 flex items-center gap-2">
-              <button type="button" className="btn-primary text-xs" onClick={save} disabled={saving}>
-                {saving ? "Saving..." : "Save"}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost text-xs"
-                onClick={() => {
-                  setOpen(false);
-                  setError(null);
-                  triggerRef.current?.focus();
-                }}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-            </span>
-            {error && (
-              <span className="mt-2 block text-xs text-risk" role="alert">
-                {error}
-              </span>
-            )}
-          </span>
-        </>
-      )}
+
+          {error && <p className="text-xs text-risk" role="alert">{error}</p>}
+        </div>}
+      />
     </span>
   );
 }
@@ -240,7 +179,7 @@ function QF({
         // Keep typing from triggering page/card shortcuts, but let Escape
         // bubble to the popover's dialog handler so it closes the popover.
         onKeyDown={(e) => {
-          if (e.key !== "Escape") e.stopPropagation();
+          if (e.key !== "Escape" && e.key !== "Tab") e.stopPropagation();
         }}
         className="input py-1 text-sm"
       />

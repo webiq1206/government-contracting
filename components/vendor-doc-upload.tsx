@@ -90,7 +90,7 @@ export function VendorDocUpload({
 
       {isInsurance && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="label mb-1 block">
                 Policy expires <span className="font-normal text-risk">required</span>
@@ -114,7 +114,7 @@ export function VendorDocUpload({
               />
             </label>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-3">
             <Text label="Carrier" value={carrier} onChange={setCarrier} placeholder="Travelers" />
             <Text label="Policy number" value={policyNumber} onChange={setPolicyNumber} />
             <Text

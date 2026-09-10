@@ -60,7 +60,7 @@ export function PageHeader({
       <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
         {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
         <div className="flex items-start gap-2">
-          <h1 className="min-w-0 font-display text-lg font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
+          <h1 className="min-w-0 break-words font-sans text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
             {title}
           </h1>
           {help && <HelpPopover help={help} />}

@@ -111,13 +111,12 @@ export function OpportunityList({
           */}
           <div className="flex items-center justify-end gap-2 px-4 pb-2">
             {peekHrefFor && (
-              <Link
+              <a
                 href={peekHrefFor(o)}
-                scroll={false}
                 className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
               >
                 Quick look
-              </Link>
+              </a>
             )}
             <RowActions
               actions={opportunityRowActions(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SessionView } from "@/lib/domain/session-device";
 
 /**
@@ -14,7 +14,7 @@ import type { SessionView } from "@/lib/domain/session-device";
 function Message({ tone, children }: { tone: "ok" | "bad"; children: React.ReactNode }) {
   return (
     <p
-      role="status"
+      role={tone === "ok" ? "status" : "alert"}
       className={`mt-2 text-sm leading-relaxed ${tone === "ok" ? "text-pursue" : "text-risk"}`}
     >
       {children}
@@ -50,6 +50,7 @@ export function TimeZoneForm({
   choices: { value: string; label: string }[];
 }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [zone, setZone] = useState(initial);
   const [off, setOff] = useState(optedOut);
   const [busy, setBusy] = useState(false);
@@ -62,12 +63,14 @@ export function TimeZoneForm({
     : [{ value: zone, label: zone }, ...choices];
 
   async function save(next: { timezone?: string; optedOut?: boolean }) {
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/account/recap-preferences", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(next),
       });
@@ -79,8 +82,9 @@ export function TimeZoneForm({
       setMsg({ tone: "ok", text: "Saved." });
       router.refresh();
     } catch {
-      setMsg({ tone: "bad", text: "Could not reach the server." });
+      setMsg({ tone: "bad", text: "The change was not confirmed. Check your account before trying again." });
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -151,18 +155,21 @@ export function TimeZoneForm({
 
 export function DisplayNameForm({ initial }: { initial: string }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [name, setName] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/account/name", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
@@ -177,8 +184,9 @@ export function DisplayNameForm({ initial }: { initial: string }) {
       // reload.
       router.refresh();
     } catch {
-      setMsg({ tone: "bad", text: "Could not reach the server." });
+      setMsg({ tone: "bad", text: "The change was not confirmed. Check your account before trying again." });
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -212,15 +220,18 @@ export function PasswordForm() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const router = useRouter();
+  const pending = useRef(false);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/account/password", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword: current, newPassword: next }),
       });
@@ -244,8 +255,9 @@ export function PasswordForm() {
       setNext("");
       router.refresh();
     } catch {
-      setMsg({ tone: "bad", text: "Could not reach the server." });
+      setMsg({ tone: "bad", text: "The change was not confirmed. Check your account before trying again." });
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -297,17 +309,20 @@ export function PasswordForm() {
 
 export function SessionList({ sessions, summary }: { sessions: SessionView[]; summary: string }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const others = sessions.filter((s) => !s.current).length;
 
   async function post(body: Record<string, unknown>, key: string) {
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(key);
     setMsg(null);
     try {
       const res = await fetch("/api/account/sessions", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -326,8 +341,9 @@ export function SessionList({ sessions, summary }: { sessions: SessionView[]; su
       });
       router.refresh();
     } catch {
-      setMsg({ tone: "bad", text: "Could not reach the server." });
+      setMsg({ tone: "bad", text: "The change was not confirmed. Check your account before trying again." });
     } finally {
+      pending.current = false;
       setBusy(null);
     }
   }

@@ -153,8 +153,8 @@ describe("rows whose actions are links", () => {
       expect(actions).toBeGreaterThan(-1);
       // The nearest tag boundary before the controls closes a link rather
       // than opening one.
-      const closedBefore = src.lastIndexOf("</Link>", actions);
-      const openedBefore = src.lastIndexOf("<Link", actions);
+      const closedBefore = Math.max(src.lastIndexOf("</Link>", actions), src.lastIndexOf("</a>", actions));
+      const openedBefore = Math.max(src.lastIndexOf("<Link", actions), src.lastIndexOf("<a ", actions), src.lastIndexOf("<a\n", actions));
       expect(closedBefore).toBeGreaterThan(openedBefore);
     }
   });

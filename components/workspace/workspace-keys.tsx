@@ -30,7 +30,9 @@ export function QueueKeys({
   nextHref,
   /** Where Esc goes. The list without a selection, normally. */
   closeHref,
+  documentNavigation = false,
 }: {
+  documentNavigation?: boolean;
   prevHref?: string | null;
   nextHref?: string | null;
   closeHref?: string | null;
@@ -39,22 +41,23 @@ export function QueueKeys({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!shouldRunPlainKey(e, e.target as HTMLElement | null)) return;
+      const navigate = (href: string) => documentNavigation ? window.location.assign(href) : router.push(href);
+      if (e.defaultPrevented || !shouldRunPlainKey(e, e.target as HTMLElement | null)) return;
       const k = e.key;
       if ((k === "j" || k === "J" || k === "ArrowDown") && nextHref) {
         e.preventDefault();
-        router.push(nextHref);
+        navigate(nextHref);
       } else if ((k === "k" || k === "K" || k === "ArrowUp") && prevHref) {
         e.preventDefault();
-        router.push(prevHref);
+        navigate(prevHref);
       } else if (k === "Escape" && closeHref) {
         e.preventDefault();
-        router.push(closeHref);
+        navigate(closeHref);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, prevHref, nextHref, closeHref]);
+  }, [router, prevHref, nextHref, closeHref, documentNavigation]);
 
   return null;
 }
