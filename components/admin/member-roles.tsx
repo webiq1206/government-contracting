@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { AdminAccountMember } from "@/lib/admin/accounts";
@@ -23,16 +23,20 @@ export function MemberRoles({
   members: AdminAccountMember[];
 }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [transferTo, setTransferTo] = useState<AdminAccountMember | null>(null);
 
   async function post(key: string, body: Record<string, unknown>) {
+    if (pending.current) return false;
+    pending.current = true;
     setBusy(key);
     setNote(null);
     try {
       const res = await fetch(`/api/admin/accounts/${orgId}`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -48,6 +52,7 @@ export function MemberRoles({
       setNote({ ok: false, text: "Could not reach the server." });
       return false;
     } finally {
+      pending.current = false;
       setBusy(null);
     }
   }
@@ -70,11 +75,11 @@ export function MemberRoles({
       <ul className="divide-y divide-border/60 panel-inset text-sm">
         {members.map((m) => (
           <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">{m.email}</span>
-              {m.name && <span className="ml-2 text-muted-foreground">{m.name}</span>}
+            <span className="min-w-0 basis-full break-words sm:min-w-[12rem] sm:flex-1 sm:basis-auto">
+              <span className="block font-medium">{m.email}</span>
+              {m.name && <span className="block text-muted-foreground">{m.name}</span>}
               {m.aliases.length > 0 && (
-                <span className="ml-2 text-xs text-muted-foreground">
+                <span className="block text-xs text-muted-foreground">
                   also signs in as {m.aliases.join(", ")}
                 </span>
               )}

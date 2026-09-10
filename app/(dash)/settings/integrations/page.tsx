@@ -310,8 +310,8 @@ export default async function IntegrationsPage(
                     <p className="text-sm font-medium text-foreground">Job queue backend</p>
                     <p className="mt-0.5 text-xs text-slate-600">
                       {status.queue === "bullmq"
-                        ? "BullMQ (Redis-backed). REDIS_URL is set."
-                        : "pg-boss (Postgres-backed). Set REDIS_URL in the environment to switch to BullMQ."}
+                        ? "Background work uses the Redis queue."
+                        : "Background work uses the database queue. Check Automation Health if work stops."}
                     </p>
                   </div>
                   <span className="badge bg-accent/10 font-mono text-accent">

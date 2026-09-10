@@ -720,14 +720,14 @@ export async function workRemovedMetrics(from: Date | null, to: Date | null): Pr
     ),
     metric(
       "auto_outreach",
-      "Outreach emails assembled and sent",
+      "Outbound message records",
       "count",
       n(r?.outreach_sent),
-      "No outreach went out in this period.",
+      "No outbound message records were created in this period.",
       {
-        formula: "Outbound messages on the communications record.",
+        formula: "Outbound communication records created during the selected period.",
         sources: ["Communications"],
-        inclusion: `Each carried the scope, requirements and documents for its trade. ${n(r?.followups)} of them were follow-ups nobody had to remember to send.`,
+        inclusion: `Includes drafts and send attempts; this total does not establish delivery. ${n(r?.followups)} records are follow-ups. Check Communications for their status.`,
       }
     ),
     metric(

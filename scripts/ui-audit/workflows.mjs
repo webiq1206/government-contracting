@@ -146,9 +146,10 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button', { name: 'Add item', exact: true }).click();
     const created = await response;
     assert(created.ok(), `Save failed (${created.status()}): ${await created.text()}`);
-    await page.getByText(name, { exact: true }).waitFor();
+    const savedItem = page.getByText(new RegExp(`^${name}\\s*yours$`));
+    await savedItem.waitFor();
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByText(name, { exact: true }).waitFor();
+    await savedItem.waitFor();
   });
   await check('/contracts', 'contract-create-failure-retry', async () => {
     await page.getByRole('button', { name: 'Record one by hand', exact: true }).click();

@@ -3,17 +3,41 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check(`/admin/accounts/${ids.org}`, 'member-controls-layout-failure-and-transfer-cancel', async () => {
+    await page.getByRole('tab', { name: /^People \(/ }).click();
+    const role = page.getByLabel('Role for ui-member@example.test', { exact: true });
+    const email = page.getByText('ui-member@example.test', { exact: true });
+    const a = await email.boundingBox(); const b = await role.boundingBox();
+    assert(a && b && (a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y), 'Member identity and role controls must not overlap');
+    const endpoint = `**/api/admin/accounts/${ids.org}`;
+    await page.route(endpoint, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The role could not be changed.' }) }));
+    try {
+      await role.selectOption('viewer');
+      await page.getByRole('alert').filter({ hasText: 'The role could not be changed.' }).waitFor();
+      assert.equal(await role.inputValue(), 'member');
+      await page.screenshot({ path: join(out, `${device}-member-role-recovery.png`) });
+    } finally { await page.unroute(endpoint); }
+    await page.locator('li').filter({ has: role }).getByRole('button', { name: 'Make owner', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Hand this account to ui-member@example.test', exact: true });
+    await dialog.waitFor();
+    assert(await dialog.getByRole('button', { name: 'Cancel', exact: true }).evaluate(el => document.activeElement === el));
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await role.inputValue(), 'member');
+  });
   await check('/admin/billing', 'billing-pagination-search-details-and-back', async () => {
     const cards = page.locator('[data-billing-account]').filter({ visible: true });
     assert.equal(await cards.count(), 20, 'Billing loads a manageable page of accounts');
     await page.getByRole('navigation', { name: 'Billing pages', exact: true }).getByRole('link', { name: 'Next page', exact: true }).click();
     await page.waitForURL('**/admin/billing?page=2');
+    await cards.first().waitFor();
     assert.equal(await cards.count(), 20);
     await page.goBack({ waitUntil: 'networkidle' });
     await page.getByLabel('Find an account', { exact: true }).fill('Interface Audit Workspace');
     await page.getByLabel('Subscription status', { exact: true }).selectOption('active');
     await page.getByRole('button', { name: 'Search billing', exact: true }).click();
     await page.waitForURL(url => url.searchParams.get('q') === 'Interface Audit Workspace');
+    await cards.first().waitFor();
     assert.equal(await cards.count(), 1);
     if (device !== 'desktop') {
       await cards.getByText('Billing details', { exact: true }).click();
@@ -50,12 +74,13 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await page.getByRole('heading', { name: 'Call Queue', exact: true }).waitFor();
     // No dialing, scope acknowledgement, call outcome or follow-up is submitted.
   });
-  for (const route of ['/pipeline', '/subs', '/communications']) {
-    await check(route, `${route.slice(1)}-quick-view-and-history`, async () => {
+  for (const route of ['/pipeline', '/pipeline?view=list', '/pipeline?view=stages', '/pipeline?view=table', '/subs', '/communications']) {
+    const viewName = route.slice(1).replace(/[?=]/g, '-');
+    await check(route, `${viewName}-quick-view-and-history`, async () => {
       await page.getByRole('link', { name: 'Quick look', exact: true }).filter({ visible: true }).first().click();
       const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
       await drawer.waitFor();
-      await page.screenshot({ path: join(out, `${device}-${route.slice(1)}-quick-view.png`) });
+      await page.screenshot({ path: join(out, `${device}-${viewName}-quick-view.png`) });
       await drawer.getByRole('link', { name: 'Close details', exact: true }).click();
       await drawer.waitFor({ state: 'hidden' });
       await page.goBack({ waitUntil: 'networkidle' });

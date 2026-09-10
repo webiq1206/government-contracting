@@ -212,7 +212,7 @@ export default async function AdminBillingPage({ searchParams }: {
           {(q || selectedStatus) && <a href="/admin/billing" className="btn-ghost">Clear filters</a>}
         </form>
         <p role="status" className="text-sm text-muted-foreground">
-          {filtered.length ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)} of ${filtered.length} accounts` : "No accounts match these filters."}
+          {filtered.length ? `Showing ${(page - 1) * pageSize + 1} to ${Math.min(page * pageSize, filtered.length)} of ${filtered.length} accounts` : "No accounts match these filters."}
         </p>
 
         {visibleRows.length === 0 ? (
