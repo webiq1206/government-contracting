@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne } from "@/lib/db";
+import { queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
   const row = await queryOne<{ id: string }>(
     `insert into compliance_items (org_id, category, label, source, due_at, status, last_checked_at)
-     values ($4, $1, $2, 'operator', $3, 'ok', now())
+     values ($4, $1, $2, 'operator', $3, 'incomplete', now())
      returning id`,
     [category, label, dueAt, orgId]
   );

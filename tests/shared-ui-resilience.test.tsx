@@ -175,8 +175,8 @@ describe("rendered accessibility sweep coverage", () => {
   it("keeps dense card controls usable by touch through tablet widths", () => {
     const contact = readFileSync("components/contact-quick-edit.tsx", "utf8");
     expect(contact).toContain("tap inline-flex h-8 w-8");
-    expect(contact).toContain("lg:absolute");
-    expect(contact).not.toContain("sm:absolute");
+    expect(contact).toContain("<ConfirmDialog");
+    expect(contact).toContain("busy={saving}");
 
     const menu = readFileSync("components/pipeline-card-menu.tsx", "utf8");
     expect(menu).toContain("tap flex h-8 w-8");

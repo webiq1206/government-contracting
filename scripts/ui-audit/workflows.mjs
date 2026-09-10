@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { auditExtendedWorkflows } from './extended-workflows.mjs';
 import { join } from 'node:path';
 
 /** Tests against disposable records only. No worker or provider credentials. */
@@ -143,7 +144,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     } finally { await page.unroute('**/api/compliance'); }
     const response = page.waitForResponse(r => r.url() === base + '/api/compliance' && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Add item', exact: true }).click();
-    assert((await response).ok());
+    const created = await response;
+    assert(created.ok(), `Save failed (${created.status()}): ${await created.text()}`);
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByText(name, { exact: true }).waitFor();
   });
@@ -211,6 +213,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await input.press('Enter');
     await page.getByRole('heading', { name: 'Facility maintenance and electrical upgrades', exact: true }).waitFor();
   });
+  await auditExtendedWorkflows({ page, device, ids, base, out, check });
 }
 
 export async function auditRoles({ browser, device, width, height, base, out, results, failures, checkpoint }) {

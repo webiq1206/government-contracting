@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UnsavedGuard } from "./unsaved-guard";
 import {
   RECAP_SECTION_BLURBS,
   RECAP_SECTION_KEYS,
@@ -82,6 +83,7 @@ export function RecapSettingsForm({
   mailReady: boolean;
 }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [form, setForm] = useState<RecapSettings>(initial);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -95,12 +97,15 @@ export function RecapSettingsForm({
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
 
   async function save() {
+    if (pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
       const res = await fetch("/api/recap/settings", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
@@ -109,6 +114,7 @@ export function RecapSettingsForm({
         setError(data.error ?? "That did not save.");
         return;
       }
+      if (!data.settings || typeof data.settings !== "object") throw new Error("Missing saved settings");
       setForm(data.settings);
       setSavedAt(new Date().toLocaleTimeString());
       if (typeof data.warning === "string" && data.warning) {
@@ -121,6 +127,7 @@ export function RecapSettingsForm({
         "The settings could not reach the server, so the save was not confirmed. Check your connection and try again."
       );
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -132,6 +139,7 @@ export function RecapSettingsForm({
     try {
       const res = await fetch("/api/recap/test", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
@@ -214,6 +222,7 @@ export function RecapSettingsForm({
 
   return (
     <fieldset disabled={readOnly} className="contents">
+      <UnsavedGuard when={dirty && !readOnly} />
       <div className="lg:flex lg:items-start lg:gap-5">
         {/*
           * The rail.

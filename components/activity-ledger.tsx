@@ -109,15 +109,8 @@ export function ActivityLedger() {
     if (persistViews(next)) setViewName("");
   };
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
-      <details className="rounded-lg border border-border bg-surface px-4 py-2">
-        <summary className="cursor-pointer text-sm font-medium">How to read this ledger</summary>
-        <div className="pb-2 text-sm text-muted-foreground">
-          <p className="mt-2">Follow messages, bids, replies, documents and automation. Open a record to see what happened. Times use your device’s timezone; date filters use UTC.</p>
-          <p className="mt-2">Historical snapshots show the latest saved state when this ledger was introduced. They do not reconstruct earlier changes. Sent means handed to the email provider; delivered requires delivery evidence.</p>
-        </div>
-      </details>
-      <details className="card"><summary className="cursor-pointer font-semibold">Quick views</summary><div className="mt-3 flex flex-wrap gap-2" aria-label="Quick views">
+    <div className="mx-auto max-w-7xl space-y-3">
+      <details><summary className="cursor-pointer text-sm font-medium">Quick views</summary><div className="mt-3 flex flex-wrap gap-2" aria-label="Quick views">
         {[
           ["All activity", {}],
           ["Needs attention", { attention: "1" }],
@@ -140,9 +133,10 @@ export function ActivityLedger() {
         onSubmit={(e) => e.preventDefault()}
       >
         <label className="text-sm sm:col-span-2">
-          Search messages, subjects, recipients or opportunities
+          <span aria-hidden="true">Search activity</span>
           <input
             className="input mt-1 w-full"
+            aria-label="Search messages, subjects, recipients or opportunities"
             placeholder="Company, email, bid or phrase…"
             value={filters.q || ""}
             onChange={(e) => change("q", e.target.value)}
@@ -499,6 +493,13 @@ export function ActivityLedger() {
           )}
         </>
       )}
+      <details className="rounded-lg border border-border bg-surface px-4 py-2">
+        <summary className="cursor-pointer text-sm font-medium">How to read this ledger</summary>
+        <div className="pb-2 text-sm text-muted-foreground">
+          <p className="mt-2">Follow messages, bids, replies, documents and automation. Open a record to see what happened. Times use your device’s timezone; date filters use UTC.</p>
+          <p className="mt-2">Historical snapshots show the latest saved state when this ledger was introduced. They do not reconstruct earlier changes. Sent means handed to the email provider; delivered requires delivery evidence.</p>
+        </div>
+      </details>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ALL_KPI_METRICS, getMetric } from "@/lib/domain/kpi";
@@ -12,6 +12,7 @@ import { ALL_KPI_METRICS, getMetric } from "@/lib/domain/kpi";
  */
 export function KpiManager() {
   const router = useRouter();
+  const pending = useRef(false);
   const [open, setOpen] = useState(false);
   const [metric, setMetric] = useState(ALL_KPI_METRICS[0].id);
   const [label, setLabel] = useState("");
@@ -23,6 +24,8 @@ export function KpiManager() {
   const def = getMetric(metric);
 
   async function save() {
+    if (pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -31,6 +34,7 @@ export function KpiManager() {
       if (def?.usesMinScore) params.minScore = Number(minScore);
       const res = await fetch("/api/kpis", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ metric, label, params }),
       });
@@ -42,9 +46,10 @@ export function KpiManager() {
       setLabel("");
       setOpen(false);
       router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      setError("The save was not confirmed. Check your metrics before trying again. Your entries are still here.");
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -114,10 +119,10 @@ export function KpiManager() {
         <button className="btn-primary text-sm" onClick={save} disabled={saving}>
           {saving ? "Adding…" : "Add KPI"}
         </button>
-        <button className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+        <button className="btn-ghost text-sm" disabled={saving} onClick={() => setOpen(false)}>
           Cancel
         </button>
-        {error && <span className="text-xs text-risk">{error}</span>}
+        {error && <span role="alert" className="text-xs text-risk">{error}</span>}
       </div>
     </div>
   );
@@ -126,15 +131,24 @@ export function KpiManager() {
 /** Delete control shown on each custom KPI card. */
 export function KpiDeleteButton({ id }: { id: string }) {
   const router = useRouter();
+  const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   async function remove() {
-    setAsking(false);
+    if (pending.current) return;
+    pending.current = true;
+    setError(null);
     setBusy(true);
     try {
-      await fetch(`/api/kpis/${id}`, { method: "DELETE" });
+      const response = await fetch(`/api/kpis/${id}`, { method: "DELETE", signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) { setError("The KPI could not be removed. Try again."); return; }
+      setAsking(false);
       router.refresh();
+    } catch {
+      setError("Removal was not confirmed. Check your metrics before trying again.");
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -143,7 +157,7 @@ export function KpiDeleteButton({ id }: { id: string }) {
       <ConfirmDialog
         open={asking}
         title="Remove this KPI?"
-        body="The metric stops being tracked. The underlying data is untouched."
+        body={<><p>The metric stops being tracked. The underlying data is untouched.</p>{error && <p role="alert" className="mt-2 text-risk">{error}</p>}</>}
         confirmLabel="Remove it"
         danger
         busy={busy}
