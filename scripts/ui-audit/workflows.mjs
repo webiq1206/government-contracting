@@ -150,6 +150,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await savedItem.waitFor();
     await page.reload({ waitUntil: 'networkidle' });
     await savedItem.waitFor();
+    const guide = page.getByText('How compliance checks work', { exact: true });
+    const statusGuide = page.getByText('Status guide', { exact: true });
+    assert.equal(await guide.evaluate(el => el.parentElement.open), false);
+    await guide.click();
+    await statusGuide.press('Enter');
+    assert.equal(await guide.evaluate(el => el.parentElement.open), true);
+    assert.equal(await statusGuide.evaluate(el => el.parentElement.open), true);
+    await page.screenshot({ path: join(out, `${device}-compliance-guides-open.png`) });
+    await guide.click();
+    await statusGuide.press('Enter');
     const card = page.locator('.card').filter({ has: savedItem }).last();
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     const editor = page.locator('.card').filter({ has: page.getByLabel('Notes', { exact: true }) });
@@ -280,6 +290,11 @@ export async function auditRoles({ browser, device, width, height, base, out, re
         if (route === '/compliance' && role === 'viewer') {
           assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
           assert.equal(await page.getByRole('button', { name: /^(Edit|Delete|Add file)$/ }).count(), 0);
+          const title = page.getByText(`Insurance the contract requires (AUDIT-MANUAL-${device})`, { exact: true });
+          const bounds = await title.boundingBox();
+          assert(bounds && bounds.width >= 180, 'An undated compliance item must leave enough room to read its title');
+          await title.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: join(out, `${device}-compliance-undated-card.png`) });
         }
         const screenshot = `${device}-${role}-${route.replaceAll('/', '_')}.png`;
         await page.screenshot({ path: join(out, screenshot) });

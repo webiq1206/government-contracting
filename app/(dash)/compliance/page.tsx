@@ -214,7 +214,7 @@ function buildCard(row: Row, documents: ComplianceDocView[]): ComplianceCardData
 
   const countdownText =
     days == null
-      ? "No expiry date, so there is nothing to count down"
+      ? "No expiry date"
       : days < 0
         ? `${Math.abs(days)}d overdue`
         : days === 0

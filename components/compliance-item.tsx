@@ -705,8 +705,8 @@ export function ComplianceItemCard({
 
   return (
     <div className={`card ${highlight ? "border-risk/50 bg-risk/5" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 grow basis-48">
           <p className="text-sm font-medium text-slate-900">
             {item.label}
             {item.manual && (
@@ -735,9 +735,9 @@ export function ComplianceItemCard({
             />
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex min-w-0 max-w-full flex-col items-start gap-1">
           <span className={`badge ${badgeClass(item.color)}`}>{item.statusLabel}</span>
-          <span className={`num text-xs ${countdownClass(item.color)}`}>
+          <span className={`num break-words text-xs ${countdownClass(item.color)}`}>
             {item.countdownText}
           </span>
         </div>
