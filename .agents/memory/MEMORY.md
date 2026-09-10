@@ -18,5 +18,6 @@
 - [Scheduled digest sends](scheduled-digest-sends.md) — resolve local send times by round-trip, not by guessing an offset; stamp the provider handoff before the call; never count a capped list.
 - [Row-level actions](row-level-actions.md) — match the endpoint's capability and payload, or the button lies; controls sit beside the row anchor, never inside it.
 - [Worker liveness](worker-liveness.md) — a job log cannot tell "gone" from "idle" from "stuck starting"; a phase-carrying heartbeat can.
+- [Release schema ordering](release-schema-ordering.md) — publishing does not migrate; the boot gate then 500s the whole site, and a bare migrate run hits the dev DB.
 - [Migration ledger baseline](migration-ledger-baseline.md) — a ledger row whose file was deleted blocks the NOT NULL hardening, so the release never applies; runtime ignores it.
 - [Secret fallback splits ciphertext](secret-fallback-split.md) — a key resolved via fallback encrypts rows under two secrets; decrypt under all held, rekey onto the primary.
