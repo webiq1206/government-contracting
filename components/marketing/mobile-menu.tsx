@@ -35,6 +35,17 @@ export function MarketingMobileMenu({ signupHref, loginHref, onLanding = false, 
       <span aria-hidden="true">☰</span>
     </button>
     {open && createPortal(<dialog ref={dialog} aria-labelledby={titleId} aria-modal="true"
+      onKeyDown={event => {
+        if (event.key !== "Tab") return;
+        const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button, a[href]"));
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first?.focus();
+        }
+      }}
       onCancel={event => { event.preventDefault(); setOpen(false); }}
       onClick={event => { if (event.target === event.currentTarget) setOpen(false); }}
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-ink/50 p-3 text-foreground backdrop:bg-black/30">

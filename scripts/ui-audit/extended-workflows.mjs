@@ -3,6 +3,30 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check('/admin/billing', 'billing-pagination-search-details-and-back', async () => {
+    const cards = page.locator('[data-billing-account]').filter({ visible: true });
+    assert.equal(await cards.count(), 20, 'Billing loads a manageable page of accounts');
+    await page.getByRole('navigation', { name: 'Billing pages', exact: true }).getByRole('link', { name: 'Next page', exact: true }).click();
+    await page.waitForURL('**/admin/billing?page=2');
+    assert.equal(await cards.count(), 20);
+    await page.goBack({ waitUntil: 'networkidle' });
+    await page.getByLabel('Find an account', { exact: true }).fill('Interface Audit Workspace');
+    await page.getByLabel('Subscription status', { exact: true }).selectOption('active');
+    await page.getByRole('button', { name: 'Search billing', exact: true }).click();
+    await page.waitForURL(url => url.searchParams.get('q') === 'Interface Audit Workspace');
+    assert.equal(await cards.count(), 1);
+    if (device !== 'desktop') {
+      await cards.getByText('Billing details', { exact: true }).click();
+      await cards.getByText('Discount', { exact: true }).waitFor();
+      await cards.getByText('Next attempt', { exact: true }).waitFor();
+    }
+    await page.screenshot({ path: join(out, `${device}-billing-filtered.png`) });
+    await cards.getByRole('link', { name: 'Interface Audit Workspace', exact: true }).click();
+    await page.waitForURL(`**/admin/accounts/${ids.org}`);
+    await page.goBack({ waitUntil: 'networkidle' });
+    assert.equal(await page.getByLabel('Find an account', { exact: true }).inputValue(), 'Interface Audit Workspace');
+    assert.equal(await cards.count(), 1);
+  });
   await check('/communications', 'draft-status-and-delivery-evidence', async () => {
     await page.getByText('Draft, not sent', { exact: true }).waitFor();
     if (device === 'desktop') {
@@ -72,6 +96,29 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     assert(await email.evaluate(el => document.activeElement === el));
     await email.fill(`electrical-${device}@example.test`);
     await dialog.getByLabel('Phone', { exact: true }).fill('2085550100');
+    if (device !== 'desktop') {
+      // Exercise the viewport event path; this is not a physical keyboard test.
+      await page.evaluate(() => {
+        Object.defineProperty(visualViewport, 'height', { configurable: true, get: () => 320 });
+        visualViewport.dispatchEvent(new Event('resize'));
+      });
+      try {
+        await page.waitForFunction(() => document.querySelector('[data-keyboard-open="true"]'));
+        const field = await dialog.getByLabel('Phone', { exact: true }).boundingBox();
+        assert(field && field.y >= 0 && field.y + field.height <= 320, 'Focused field stays above the simulated keyboard');
+        const save = dialog.getByRole('button', { name: 'Save', exact: true });
+        await save.scrollIntoViewIfNeeded();
+        const bounds = await save.boundingBox();
+        assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 320, 'Save can be reached above the simulated keyboard');
+        await page.screenshot({ path: join(out, `${device}-contact-keyboard-viewport.png`) });
+      } finally {
+        await page.evaluate(() => {
+          delete visualViewport.height;
+          visualViewport.dispatchEvent(new Event('resize'));
+        });
+      }
+      await page.waitForFunction(() => !document.querySelector('[data-keyboard-open="true"]'));
+    }
     await page.route(`**/api/subs/${ids.sub}`, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Contact changes were not saved.' }) }));
     try {
       await dialog.getByRole('button', { name: 'Save', exact: true }).click();
@@ -169,6 +216,7 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     } finally { await page.unroute('**/api/kpis/*'); }
     await dialog.getByRole('button', { name: 'Remove it', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
+    await page.getByText(label, { exact: true }).waitFor({ state: 'hidden' });
     await page.reload({ waitUntil: 'networkidle' });
     assert.equal(await page.getByText(label, { exact: true }).count(), 0);
   });

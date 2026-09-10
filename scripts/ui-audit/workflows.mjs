@@ -146,6 +146,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button', { name: 'Add item', exact: true }).click();
     const created = await response;
     assert(created.ok(), `Save failed (${created.status()}): ${await created.text()}`);
+    await page.getByText(name, { exact: true }).waitFor();
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByText(name, { exact: true }).waitFor();
   });
@@ -186,10 +187,12 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('heading', { name: /Sample Electrical Services, we need/ }).waitFor();
     await page.getByRole('button', { name: 'Fill in and sign', exact: true }).click();
     await page.getByLabel('Mailing address', { exact: true }).waitFor();
+    await page.screenshot({ path: join(out, `${device}-vendor-form-open.png`), fullPage: true });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.getByRole('button', { name: 'Fill in and sign', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Upload certificate', exact: true }).first().click();
     assert.equal(await page.locator('input[type=file]').count(), 1);
+    await page.screenshot({ path: join(out, `${device}-vendor-upload-open.png`), fullPage: true });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.equal(await page.locator('input[type=file]').count(), 0);
     // Form display only. No certification, signature, upload or message.

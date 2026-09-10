@@ -44,7 +44,9 @@ function discountLabel(r: {
  * reason to open this page is almost always a payment that failed rather than
  * a subscription that is quietly working.
  */
-export default async function AdminBillingPage() {
+export default async function AdminBillingPage({ searchParams }: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
   const auth = await requirePlatformAdmin();
   // Anyone signed in but not an admin gets a 404: naming the page would tell
   // them it exists and is worth attacking.
@@ -52,6 +54,24 @@ export default async function AdminBillingPage() {
 
   const [rows, pulse] = await Promise.all([adminBillingRows(), webhookPulse()]);
   const s = summarise(rows);
+  const params = await searchParams;
+  const q = typeof params.q === "string" ? params.q.trim().slice(0, 200) : "";
+  const status = typeof params.status === "string" ? params.status : "";
+  const statuses = Array.from(new Set(rows.map(row => row.subscription_status))).sort();
+  const selectedStatus = statuses.includes(status) ? status : "";
+  const filtered = rows.filter(row => (!selectedStatus || row.subscription_status === selectedStatus) &&
+    (!q || `${row.org_name} ${row.owner_email ?? ""}`.toLowerCase().includes(q.toLowerCase())));
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const page = Math.min(totalPages, Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1));
+  const visibleRows = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const pageHref = (next: number) => {
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
+    if (selectedStatus) query.set("status", selectedStatus);
+    query.set("page", String(next));
+    return `/admin/billing?${query}`;
+  };
   /*
    * The two things the audit asks to be at the top of this page.
    *
@@ -103,6 +123,10 @@ export default async function AdminBillingPage() {
                 ? "One account where access and billing disagree"
                 : `${conflicts.length} accounts where access and billing disagree`}
             </h2>
+            <p className="text-sm text-muted-foreground">Review these accounts before changing access or billing.</p>
+            <details className="rounded-md border border-border bg-surface p-3">
+              <summary className="cursor-pointer text-sm font-medium">Review billing warnings ({conflicts.length})</summary>
+              <div className="mt-3 space-y-2">
             {conflicts.map((c) => (
               <article
                 key={`${c.orgId}:${c.kind}`}
@@ -136,8 +160,11 @@ export default async function AdminBillingPage() {
                   </span>
                   {c.action}
                 </p>
+                <a href={`/admin/accounts/${c.orgId}`} className="btn-ghost mt-3 inline-flex text-xs">Open account</a>
               </article>
             ))}
+              </div>
+            </details>
           </section>
         )}
 
@@ -169,16 +196,35 @@ export default async function AdminBillingPage() {
           ))}
         </div>
 
-        {rows.length === 0 ? (
+        <form action="/admin/billing" method="get" className="card grid items-end gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
+          <label className="min-w-0 flex-1">
+            <span className="label mb-1 block">Find an account</span>
+            <input className="input" type="search" name="q" defaultValue={q} placeholder="Company or owner email" />
+          </label>
+          <label>
+            <span className="label mb-1 block">Subscription status</span>
+            <select className="input" name="status" defaultValue={selectedStatus}>
+              <option value="">All statuses</option>
+              {statuses.map(value => <option key={value} value={value}>{value.replace(/_/g, " ")}</option>)}
+            </select>
+          </label>
+          <button className="btn-primary" type="submit">Search billing</button>
+          {(q || selectedStatus) && <a href="/admin/billing" className="btn-ghost">Clear filters</a>}
+        </form>
+        <p role="status" className="text-sm text-muted-foreground">
+          {filtered.length ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)} of ${filtered.length} accounts` : "No accounts match these filters."}
+        </p>
+
+        {visibleRows.length === 0 ? (
           <p className="card py-6 text-center text-sm text-slate-600">
-            No organizations yet.
+            {rows.length ? "Try another company name, email, or subscription status." : "No organizations yet."}
           </p>
         ) : (
           <>
             <ul className="space-y-2 lg:hidden">
-              {rows.map((r) => (
-                <li key={r.org_id} className="card p-3">
-                  <p className="font-medium text-foreground">{r.org_name}</p>
+              {visibleRows.map((r) => (
+                <li key={r.org_id} data-billing-account className="card p-3">
+                  <a href={`/admin/accounts/${r.org_id}`} className="tap font-medium text-foreground underline-offset-2 hover:underline">{r.org_name}</a>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {r.owner_email ?? "no owner on file"}
                   </p>
@@ -194,6 +240,22 @@ export default async function AdminBillingPage() {
                     {r.plan_key} · {r.billing_interval === "year" ? "annual" : "monthly"}
                     {r.price_locked ? " · rate locked" : ""}
                   </p>
+                  <details className="mt-3 border-t border-border pt-2">
+                    <summary className="cursor-pointer text-sm font-medium">Billing details</summary>
+                    <dl className="mt-2 space-y-2 text-sm">
+                      {[
+                        ["Discount", discountLabel(r)],
+                        ["Trial ends", r.trial_ends_at ? shortDate(r.trial_ends_at) : "No trial"],
+                        ["Renews", r.current_period_end ? shortDate(r.current_period_end) : "Not scheduled"],
+                        ["Last payment", r.last_payment_status?.replace(/_/g, " ") ?? "Not recorded"],
+                        ["Payment date", r.last_payment_at ? shortDate(r.last_payment_at) : "Not recorded"],
+                        ["Next attempt", r.next_payment_attempt_at ? shortDate(r.next_payment_attempt_at) : "None scheduled"],
+                      ].map(([label, value]) => <div key={label} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                        <dt className="text-muted-foreground">{label}</dt><dd className="break-words">{value}</dd>
+                      </div>)}
+                      {r.last_payment_error && <div><dt className="text-muted-foreground">Payment issue</dt><dd className="break-words text-risk">{r.last_payment_error}</dd></div>}
+                    </dl>
+                  </details>
                   {r.cancel_at_period_end ? (
                     <p className="mt-1 text-xs text-review">Cancels at period end</p>
                   ) : null}
@@ -216,10 +278,10 @@ export default async function AdminBillingPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.org_id} className="border-t border-border align-top">
+                {visibleRows.map((r) => (
+                  <tr key={r.org_id} data-billing-account className="border-t border-border align-top">
                     <td className="py-2 pr-3">
-                      <span className="block font-medium text-foreground">{r.org_name}</span>
+                      <a href={`/admin/accounts/${r.org_id}`} className="block font-medium text-foreground underline-offset-2 hover:underline">{r.org_name}</a>
                       <span className="num block text-xs text-slate-500">
                         {r.owner_email ?? "no owner on file"}
                       </span>
@@ -299,6 +361,11 @@ export default async function AdminBillingPage() {
           </>
         )}
 
+        {totalPages > 1 && <nav aria-label="Billing pages" className="flex flex-wrap items-center justify-between gap-3">
+          {page > 1 ? <a href={pageHref(page - 1)} className="btn-ghost">Previous page</a> : <span />}
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          {page < totalPages && <a href={pageHref(page + 1)} className="btn-ghost">Next page</a>}
+        </nav>}
         <p className="text-xs leading-relaxed text-slate-500">
           Read from this application&apos;s own records, which the Stripe webhook keeps
           current. The panels at the top say when an event last arrived and which accounts
