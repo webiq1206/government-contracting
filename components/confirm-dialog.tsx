@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 /**
@@ -72,9 +73,9 @@ export function ConfirmDialog({
     if (!open) return;
     opener.current = document.activeElement as HTMLElement | null;
     const first = panel.current?.querySelector<HTMLElement>(
-      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
     );
-    first?.focus();
+    (first ?? panel.current)?.focus();
     return () => {
       opener.current?.focus?.();
     };
@@ -84,16 +85,16 @@ export function ConfirmDialog({
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onCancel();
+        if (!busy) onCancel();
         return;
       }
       if (e.key !== "Tab") return;
       const focusable = Array.from(
         panel.current?.querySelectorAll<HTMLElement>(
-          "button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex='-1'])"
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
         ) ?? []
-      );
-      if (focusable.length === 0) return;
+      ).filter(item => item.getClientRects().length > 0);
+      if (focusable.length === 0) { e.preventDefault(); panel.current?.focus(); return; }
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
       if (e.shiftKey && document.activeElement === first) {
@@ -104,22 +105,23 @@ export function ConfirmDialog({
         first.focus();
       }
     },
-    [onCancel]
+    [onCancel, busy]
   );
 
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
+      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
       // A click on the backdrop cancels, which is what people expect and what
       // Escape does. It never confirms.
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
+        if (!busy && e.target === e.currentTarget) onCancel();
       }}
     >
       <div
         ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -151,6 +153,8 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+  // Escape clipping and stacking contexts, including an open navigation menu.
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }
 
 /**

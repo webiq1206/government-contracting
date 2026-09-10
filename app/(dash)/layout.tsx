@@ -1,7 +1,8 @@
+import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { Nav } from "@/components/nav";
+import { StreamedNavigation } from "@/components/streamed-navigation";
 import { Suspense } from "react";
 import { CommandPalette } from "@/components/command-palette";
 import { GuideWizard } from "@/components/guide-wizard";
@@ -36,19 +37,21 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   // panel, it is the 402 that every mutating route returns independently.
 
   return (
-    <ToastProvider>
+    <ToastProvider><MenuIsolationProvider>
       {/* fixed inset-0: pin the shell to the visual viewport so the document
           cannot rubber-band past the mobile tab bar. Pages scroll inside main. */}
       <div
         data-app-shell
         className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
       >
-        <Suspense fallback={<Nav email={user.email} reviewCount={0} callCount={0}
-          automationHeadline="Checking automation" automationDetail="Live status is still loading. You can use the navigation now."
-          isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)} />}>
-          <DashboardNav user={user} />
+        <Suspense fallback={null}>
+        <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
+          automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
+          isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
+          <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
+        </StreamedNavigation>
         </Suspense>
-        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <ShellMain className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner
               adminEmail={user.impersonatedBy}
@@ -58,7 +61,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
-        </main>
+        </ShellMain>
       </div>
       {access === "none" && <TrialExpiredModal />}
       <CommandPalette storageScope={user.organizationId} />
@@ -68,6 +71,6 @@ export default async function DashLayout({ children }: { children: React.ReactNo
       <Suspense fallback={<MobileTabBar reviewCount={0} callCount={0} />}>
         <DashboardTabs user={user} />
       </Suspense>
-    </ToastProvider>
+    </MenuIsolationProvider></ToastProvider>
   );
 }

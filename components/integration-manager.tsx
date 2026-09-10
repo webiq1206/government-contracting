@@ -3,13 +3,16 @@
 /**
  * The Integrations manager. Every credential the platform uses can be viewed
  * (masked), added, replaced, tested, and removed right here, no config files,
- * no database access. "Test" runs a real API call before anything is saved.
+ * no database access. Testing is explicit because provider checks may cost credits.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { actionError } from "@/lib/client/action-request";
+import { integrationRequest, connectionFailure } from "@/lib/client/integration-request";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
+  integrationState,
   stateTone,
   INTEGRATION_STATE_LABEL,
   INTEGRATION_STATE_MEANING,
@@ -83,12 +86,6 @@ type RemoveKeyResult =
   | { ok: true; integrations: IntegrationRow[] }
   | { ok: false; message: string };
 
-function responseError(data: unknown): string | null {
-  if (!data || typeof data !== "object" || !("error" in data)) return null;
-  const error = (data as { error?: unknown }).error;
-  return typeof error === "string" && error.trim() ? error.trim() : null;
-}
-
 /**
  * A removal is applied to local state only after the API explicitly confirms
  * it and returns the replacement list. An interrupted response is ambiguous:
@@ -100,40 +97,27 @@ export async function removeIntegrationKeyRequest(
   request: ClientFetch = fetch
 ): Promise<RemoveKeyResult> {
   let response: Response;
+  let data: unknown;
   try {
-    response = await request("/api/integrations", {
+    const result = await integrationRequest("/api/integrations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remove: [env] }),
-    });
+    }, request);
+    response = result.response;
+    data = result.data;
   } catch {
     return {
       ok: false,
       message:
-        "The removal could not be confirmed because the server could not be reached. The current value remains shown; refresh this page before trying again.",
+        "The removal could not be confirmed because the response was interrupted or could not be read. The current value remains shown; refresh this page before trying again.",
     };
-  }
-
-  let data: unknown = null;
-  let readable = true;
-  try {
-    data = await response.json();
-  } catch {
-    readable = false;
   }
 
   if (!response.ok) {
     return {
       ok: false,
-      message: `${responseError(data) ?? `The saved value could not be removed (server returned HTTP ${response.status}).`} The current value remains shown; try again.`,
-    };
-  }
-
-  if (!readable) {
-    return {
-      ok: false,
-      message:
-        "The server returned an unreadable response, so the removal could not be confirmed. The current value remains shown; refresh this page before trying again.",
+      message: `${actionError(response.status)} The current value remains shown; refresh this page before trying again.`,
     };
   }
 
@@ -156,10 +140,11 @@ export async function removeIntegrationKeyRequest(
   };
 }
 
-export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
+export function IntegrationManager({ initial, editable = false }: { initial: IntegrationRow[]; editable?: boolean }) {
   const router = useRouter();
   const [items, setItems] = useState<IntegrationRow[]>(initial);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const inFlight = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [removing, setRemoving] = useState<{ def: IntegrationRow; env: string } | null>(null);
@@ -176,27 +161,46 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   };
 
   async function test(def: IntegrationRow) {
+    if (!editable || inFlight.current) return;
+    inFlight.current = true;
     setBusy(`test:${def.id}`);
-    setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Testing…" } }));
+    setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Checking the connection…" } }));
     try {
-      const res = await fetch("/api/integrations/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const { response, data } = await integrationRequest("/api/integrations/test", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ integration: def.id, values: draftsFor(def) }),
       });
-      const data = await res.json();
-      setResults((r) => ({
-        ...r,
-        [def.id]: res.ok ? data : { ok: false, message: data.error ?? "Test failed." },
-      }));
-    } catch (e) {
-      setResults((r) => ({ ...r, [def.id]: { ok: false, message: (e as Error).message } }));
+      const ok = response.ok && data?.ok === true;
+      setResults((r) => ({ ...r, [def.id]: {
+        ok,
+        message: ok ? "The connection check passed. Unsaved changes still need to be saved."
+          : !response.ok ? actionError(response.status) : connectionFailure(data?.message),
+      } }));
+      if (response.ok) router.refresh();
+    } catch {
+      setResults((r) => ({ ...r, [def.id]: { ok: false, message: "The connection check could not finish. Work using this service is still unverified. Wait a moment, then choose Test connection again." } }));
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   }
 
+  // Mutation responses include all integrations, while each tab contains only
+  // its own cards. Keep that scope and rebuild status from returned facts.
+  function applyUpdatedRows(updated: IntegrationRow[]) {
+    setItems(current => current.map(row => {
+      const next = updated.find(item => item.id === row.id);
+      if (!next) return row;
+      const verdict = integrationState({ configured: next.configured, lastError: next.last_error,
+        lastValidatedAt: next.last_tested_at ?? next.last_validated_at,
+        lastSuccessAt: next.last_success_at,
+        connectionLive: next.id === "gmail" ? next.gmailConnected : undefined });
+      return { ...row, ...next, state: verdict.state, stateReason: verdict.reason, stateAction: verdict.nextAction };
+    }));
+  }
+
   async function save(def: IntegrationRow) {
+    if (!editable || inFlight.current) return;
     const values = draftsFor(def);
     if (Object.keys(values).length === 0) {
       setResults((r) => ({
@@ -205,39 +209,41 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
       }));
       return;
     }
+    inFlight.current = true;
     setBusy(`save:${def.id}`);
     try {
-      const res = await fetch("/api/integrations", {
+      const { response: res, data } = await integrationRequest("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ values }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setResults((r) => ({ ...r, [def.id]: { ok: false, message: data.error ?? "Save failed." } }));
+      if (!res.ok || data?.ok !== true || !Array.isArray(data.integrations)) {
+        setResults((r) => ({ ...r, [def.id]: { ok: false, message: actionError(res.status) } }));
         return;
       }
-      setItems(data.integrations);
+      applyUpdatedRows(data.integrations as IntegrationRow[]);
       setDrafts((d) => {
         const next = { ...d };
-        for (const k of Object.keys(values)) delete next[k];
+        for (const k of Object.keys(values)) if (next[k]?.trim() === values[k]) delete next[k];
         return next;
       });
       setResults((r) => ({
         ...r,
-        [def.id]: { ok: true, message: "Saved. The platform is using the new value now." },
+        [def.id]: { ok: true, message: def.testable ? "Saved. Choose Test connection to check whether the service accepts these details." : "Saved. Complete any remaining connection setup below." },
       }));
       router.refresh();
-      // Immediately verify what was saved so status reflects reality.
-      if (def.testable) void test({ ...def, fields: def.fields });
-    } catch (e) {
-      setResults((r) => ({ ...r, [def.id]: { ok: false, message: (e as Error).message } }));
+      // A provider test may cost credits. Saving never starts one implicitly.
+    } catch {
+      setResults((r) => ({ ...r, [def.id]: { ok: false, message: "The save could not be confirmed. Your entries are still here. Refresh status to check what was saved before trying again." } }));
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   }
 
   async function removeKey(def: IntegrationRow, env: string) {
+    if (!editable || inFlight.current) return;
+    inFlight.current = true;
     setRemoving(null);
     setBusy(`remove:${def.id}`);
     try {
@@ -249,10 +255,11 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
         }));
         return;
       }
-      setItems(result.integrations);
+      applyUpdatedRows(result.integrations);
       setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Removed." } }));
       router.refresh();
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   }
@@ -306,7 +313,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
 
             {/* Why it is in that state, and the one thing to do about it. */}
             <p className="text-xs text-slate-600">{def.stateReason}</p>
-            {def.stateAction && (
+            {editable && def.stateAction && (
               <p className="text-xs text-foreground">
                 <span className="font-medium">Next: </span>
                 {def.stateAction}
@@ -318,7 +325,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
             {/* Not always a failed test any more: this also carries a service
                 that refused real work, where "Last check failed" would have
                 read as a stale test result rather than as live breakage. */}
-            {def.last_error && <p className="text-xs text-risk">Not working: {def.last_error}</p>}
+            {def.last_error && <p className="text-xs text-risk">{connectionFailure(def.last_error)}</p>}
             {/*
               Two facts, not one. The page used to print a single "last
               verified" written only by the Test button, while telling the
@@ -344,7 +351,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               </p>
             )}
             {def.quota_note && (
-              <p className="text-xs text-review">Provider says: {def.quota_note}</p>
+              <p className="text-xs text-review">{connectionFailure(def.quota_note)}</p>
             )}
             {def.expires_at && (
               <p className="text-xs text-review">
@@ -352,7 +359,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               </p>
             )}
 
-            {def.guide && !platformManaged && (
+            {editable && def.guide && !platformManaged && (
               <details className="group rounded-md border border-accent/30 bg-accent-soft/60 open:pb-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-accent-strong [&::-webkit-details-marker]:hidden">
                   <span>How do I get this?</span>
@@ -425,7 +432,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                       <span className="badge bg-muted text-muted-foreground">
                         {f.source === "ui" ? "saved here" : f.source === "platform" ? "Platform API: usage added to your bill" : "from environment"}
                       </span>
-                      {f.source === "ui" && (
+                      {editable && f.source === "ui" && (
                         <button
                           type="button"
                           className="inline-flex coarse:min-h-11 items-center text-risk hover:underline"
@@ -438,7 +445,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     </span>
                   )}
                 </div>
-                <input
+                {editable && <input
                   id={`integration-${f.env}`}
                   className="input mt-1"
                   type={f.secret ? "password" : "text"}
@@ -456,12 +463,12 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                   }
                   value={drafts[f.env] ?? ""}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.env]: e.target.value }))}
-                />
+                />}
               </div>
               )
             )}
 
-            {def.id === "gmail" &&
+            {editable && def.id === "gmail" &&
               (oauthReady ? (
                 <a href="/api/integrations/gmail/connect" className="btn-ghost w-fit text-xs">
                   {def.gmailConnected ? "Reconnect Gmail" : "Connect Gmail →"}
@@ -488,18 +495,20 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               ))}
 
             {result && (
-              <p
+              <div
                 role={result.ok ? "status" : "alert"}
                 className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}
               >
-                {result.message}
-              </p>
+                <p>{result.message}</p>
+                {!result.ok && <button type="button" className="btn-ghost mt-2 text-xs" disabled={busy != null}
+                  onClick={() => router.refresh()}>Refresh status</button>}
+              </div>
             )}
 
             <div className="mt-auto flex flex-col items-stretch gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-500">{def.where}</p>
               <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
-                {def.testable && (
+                {editable && def.testable && (
                   <button
                     type="button"
                     className="btn-ghost text-xs"
@@ -509,7 +518,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     {busy === `test:${def.id}` ? "Testing…" : "Test connection"}
                   </button>
                 )}
-                {visibleFields.length > 0 && (
+                {editable && visibleFields.length > 0 && (
                   <button
                     type="button"
                     className="btn-primary text-xs"

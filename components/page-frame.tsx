@@ -40,7 +40,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
           const last = i === items.length - 1;
           return (
             <li key={`${c.label}-${i}`} className="flex min-w-0 items-center gap-1">
-              {c.href && !last ? (
+              {c.href ? (
                 <Link
                   href={c.href}
                   className="truncate underline-offset-2 hover:text-foreground hover:underline"

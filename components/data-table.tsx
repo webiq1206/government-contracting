@@ -130,6 +130,10 @@ export function DataTable<T extends { id: string }>({
   const href = (over: Parameters<typeof buildHref>[1]) =>
     buildHref(pathname, { filters, sort, page: paging.page, perPage: paging.perPage, ...over });
 
+  // Query changes must load the resulting server page. A prefetched client
+  // transition can remain on the old rows after Next or a sort is selected.
+  // Plain anchors retain normal new-tab and keyboard behavior.
+
   const pad = density === "compact" ? "px-3 py-1.5" : "px-3 py-3";
   const selectedIds = selection ? [...selection.selected] : [];
   const pageIds = rows.map((r) => r.id);
@@ -140,6 +144,25 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div className="relative">
+      {card && columns.some(column => column.sortable) && (
+        <label className="mb-3 flex items-center gap-3 text-sm lg:hidden">
+          Sort by
+          <select className="input min-h-11 min-w-0 flex-1"
+            value={sort.key ? `${sort.direction === "desc" ? "-" : ""}${sort.key}` : ""}
+            onChange={event => {
+              const value = event.target.value;
+              const key = value.replace(/^-/, "");
+              if (value && !columns.some(column => column.sortable && column.key === key)) return;
+              window.location.assign(href({ page: 1, sort: { key: key || null, direction: value.startsWith("-") ? "desc" : "asc" } }));
+            }}>
+            <option value="">Default order</option>
+            {columns.filter(column => column.sortable).flatMap(column => [
+              <option key={column.key} value={column.key}>{column.header}, ascending</option>,
+              <option key={`-${column.key}`} value={`-${column.key}`}>{column.header}, descending</option>,
+            ])}
+          </select>
+        </label>
+      )}
       {/* Column + density controls. Deliberately above the table's own scroll
           container so they stay reachable on a wide table. */}
       {/*
@@ -248,7 +271,7 @@ export function DataTable<T extends { id: string }>({
                     className={`th ${pad} ${c.numeric ? "text-right" : "text-left"}`}
                   >
                     {c.sortable ? (
-                      <Link
+                      <a
                         href={href({ sort: nextSort(sort, c.key), page: 1 })}
                         /* A sort control, not a word: 13px of link text in a
                            header row is unhittable on a phone, and sorting is
@@ -260,7 +283,7 @@ export function DataTable<T extends { id: string }>({
                       >
                         {c.header}
                         {arrow}
-                      </Link>
+                      </a>
                     ) : (
                       c.header
                     )}
@@ -317,11 +340,11 @@ export function DataTable<T extends { id: string }>({
           <span className="tabular-nums">{total}</span>
         </span>
 
-        <span className="flex items-center gap-3">
+        <span className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1">
             Per page
             {PER_PAGE_CHOICES.map((n) => (
-              <Link
+              <a
                 key={n}
                 href={href({ perPage: n, page: 1 })}
                 className={`inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center rounded px-1.5 py-0.5 transition-colors ${
@@ -329,19 +352,19 @@ export function DataTable<T extends { id: string }>({
                 }`}
               >
                 {n}
-              </Link>
+              </a>
             ))}
           </span>
 
           {paging.totalPages > 1 && (
             <span className="flex items-center gap-2">
               {paging.page > 1 ? (
-                <Link
+                <a
                   href={href({ page: paging.page - 1 })}
                   className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center hover:text-foreground"
                 >
                   ← Prev
-                </Link>
+                </a>
               ) : (
                 <span className="opacity-40">← Prev</span>
               )}
@@ -349,12 +372,12 @@ export function DataTable<T extends { id: string }>({
                 {paging.page} / {paging.totalPages}
               </span>
               {paging.page < paging.totalPages ? (
-                <Link
+                <a
                   href={href({ page: paging.page + 1 })}
                   className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center hover:text-foreground"
                 >
                   Next →
-                </Link>
+                </a>
               ) : (
                 <span className="opacity-40">Next →</span>
               )}

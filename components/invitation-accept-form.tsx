@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { actionError } from "@/lib/client/action-request";
 
 /**
  * The invited person's first screen.
@@ -12,18 +12,21 @@ import { useRouter } from "next/navigation";
  * what they typed or hand the terms to somebody else.
  */
 export function InvitationAcceptForm({ token, email }: { token: string; email: string }) {
-  const router = useRouter();
+  const submitting = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError(null);
     setPending(true);
     const fd = new FormData(e.currentTarget);
     try {
       const res = await fetch("/api/invitations/accept", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
@@ -37,15 +40,16 @@ export function InvitationAcceptForm({ token, email }: { token: string; email: s
         redirect?: string;
       };
       if (!res.ok) {
-        setError(data.error || "Could not set up your account.");
+        setError(actionError(res.status, data.error));
         setPending(false);
         return;
       }
-      router.push(data.redirect || "/today");
-      router.refresh();
+      window.location.replace(data.redirect === "/today" ? data.redirect : "/today");
     } catch {
-      setError("Network error. Try again.");
+      setError("Account setup could not be confirmed. Your details are still here. Try signing in before creating the account again.");
       setPending(false);
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -99,7 +103,7 @@ export function InvitationAcceptForm({ token, email }: { token: string; email: s
         />
         <p className="mt-1 text-xs text-muted-foreground">At least 10 characters.</p>
       </div>
-      {error && <p className="text-sm text-risk">{error}</p>}
+      {error && <p role="alert" className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={pending}>
         {pending ? "Setting up your account..." : "Create my account"}
       </button>

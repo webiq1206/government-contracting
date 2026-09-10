@@ -1,12 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { requestSignIn } from "@/lib/client/sign-in";
 
 export function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,8 +19,9 @@ export function LoginForm() {
     setError("");
     const result = await requestSignIn(email, password);
     if (result.ok) {
-      router.push("/today");
-      router.refresh();
+      // Start a fresh authenticated document. Refreshing the old route while
+      // pushing the new one can leave the sign-in form waiting indefinitely.
+      window.location.replace("/today");
     } else {
       setError(result.error);
       submitting.current = false;

@@ -143,7 +143,7 @@ async function payloadOrgId(
  * comment above it and tested on its own.
  */
 export function shouldQueueRetry(result: AgentResult): boolean {
-  return !result.ok && !result.permanent;
+  return !result.ok && !result.permanent && !result.spendingHeld;
 }
 
 /**
@@ -691,7 +691,9 @@ export async function runAgent(
     );
   } catch (err) {
     const message = failureMessage(err);
-    const result: AgentResult = { ok: false, summary: message };
+    const spendingHeld = err instanceof Error && err.name === "ApiUsageBlockedError";
+    const result: AgentResult = { ok: false, summary: message,
+      ...(spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) };
     await inOrg(() =>
       logAgent({
         agent: def.name,

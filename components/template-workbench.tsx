@@ -35,7 +35,9 @@ export interface TemplateEntry {
 export function TemplateWorkbench({
   entries,
   followupHours,
+  editable = false,
 }: {
+  editable?: boolean;
   entries: TemplateEntry[];
   followupHours: number;
 }) {
@@ -134,7 +136,7 @@ export function TemplateWorkbench({
             key={e.template.slug}
             hidden={e.template.slug !== openSlug}
           >
-            <EmailTemplateEditor
+            {editable ? <EmailTemplateEditor
               template={e.template}
               metrics={e.metrics}
               followupHours={followupHours}
@@ -143,7 +145,17 @@ export function TemplateWorkbench({
                 setDrafts((prev) => ({ ...prev, [slug]: d !== null }));
                 router.refresh();
               }}
-            />
+            /> : <article className="card space-y-3" aria-label="Read-only email template">
+              <h2 className="font-semibold">{humanSlug(e.template.slug)}</h2>
+              <p className="text-sm text-muted-foreground">Published wording · version {e.template.version}</p>
+              <p className="font-medium">{e.template.subject}</p>
+              <p className="whitespace-pre-wrap break-words text-sm">{e.template.body}</p>
+              {e.draft && <details className="border-t border-border pt-2">
+                <summary className="cursor-pointer text-sm font-medium">View unpublished draft</summary>
+                <p className="mt-2 font-medium">{e.draft.subject}</p>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm">{e.draft.body}</p>
+              </details>}
+            </article>}
           </div>
         ))}
       </div>

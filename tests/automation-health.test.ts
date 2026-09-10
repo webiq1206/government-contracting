@@ -48,8 +48,21 @@ describe("classifyFailure", () => {
     expect(classifyFailure("Anthropic returned a server error (HTTP 529)")).toBe("provider_unavailable");
   });
 
+  it("keeps Google quota 403 and old reconnect advice out of auth incidents", () => {
+    expect(classifyFailure("Gmail 403: Quota exceeded for quota metric Total Query Cost, Units per minute per user. Reconnect Gmail."))
+      .toBe("provider_rate_limit");
+    expect(classifyFailure("Gmail 403: insufficient authentication scopes"))
+      .toBe("integration_auth");
+  });
+
   it("reads a mailbox needing reconnection as an integration problem", () => {
     expect(classifyFailure("invalid_grant: token expired, reconnect gmail")).toBe("integration_auth");
+  });
+
+  it("does not infer a queue outage from legacy ambiguous admission logs", () => {
+    expect(classifyFailure("Could not re-queue analysis (the queue refused the job because automation became paused)"))
+      .toBe("unknown");
+    expect(classifyFailure("pg-boss queue connection refused")).toBe("queue_unreachable");
   });
 
   it("does not guess when there is nothing to read", () => {

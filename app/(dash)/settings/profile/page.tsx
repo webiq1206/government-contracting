@@ -1,4 +1,4 @@
-import { getActiveProfile } from "@/lib/ai/companyProfile";
+import { getActiveProfile, withProfileDefaults } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
 import { scoreHistogram } from "@/lib/data";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
@@ -37,41 +37,25 @@ export default async function ProfilePage() {
   // them rather than letting them fill in a form that will be refused.
   const viewer = await currentUser();
 
-  const profile = await getActiveProfile({ fresh: true });
-  const json: CompanyProfileJson | null = profile?.profile_json ?? null;
-
-  // The SAM key can live in UI-managed integration settings rather than the
-  // environment, so hydrate before asking whether import is available.
-  await hydrateIntegrationEnv();
-  const samConnected = (await orgIntegrationStatus()).sam;
-
-  // Scores per bucket, so the threshold control can preview its own effect
-  // without a request per keystroke and without any opportunity leaving here.
-  const histogram = await scoreHistogram();
-  /*
-   * Tolerant. A history that cannot load is a missing tab, not a Company
-   * Profile page that will not open: the editor below is the thing somebody
-   * came here for.
-   */
+  const canEditProfile = Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "manage_profile"));
   let historyUnavailable = false;
-  const history = await profileHistory().catch(() => {
-    historyUnavailable = true;
-    return [];
-  });
-
-  // Scoped to the caller's org: unfiltered, this listed every tenant's
-  // pending proposals, including their rationale text. The approve route was
-  // already org-scoped, so the buttons 404'd on foreign rows, which made the
-  // leak look like a bug ("approve does nothing") instead of what it was.
-  const orgId = await tryResolveTenantOrgId();
-  const proposed = await query<ProposedWeightRow>(
-    `select id, version, rationale, proposed_at
-       from scoring_weights
-      where approved_at is null and proposed_by = 'learning-loop'
-        and org_id = $1
-      order by proposed_at desc`,
-    [orgId]
-  );
+  // These reads do not depend on each other. A settings visit should not pay
+  // a separate round trip for every tab before the company editor can appear.
+  const [profile, samConnected, histogram, history, proposed] = await Promise.all([
+    getActiveProfile({ fresh: true }),
+    hydrateIntegrationEnv().then(async () => (await orgIntegrationStatus()).sam),
+    scoreHistogram(),
+    profileHistory().catch(() => { historyUnavailable = true; return []; }),
+    tryResolveTenantOrgId().then(orgId => query<ProposedWeightRow>(
+      `select id, version, rationale, proposed_at
+         from scoring_weights
+        where approved_at is null and proposed_by = 'learning-loop'
+          and org_id = $1
+        order by proposed_at desc`,
+      [orgId]
+    )),
+  ]);
+  const json: CompanyProfileJson | null = profile?.profile_json ?? null;
 
   const approvalsPanel =
     proposed.length > 0 ? (
@@ -95,7 +79,7 @@ export default async function ProfilePage() {
                   <p className="mt-1 text-xs text-slate-600">{w.rationale}</p>
                 )}
               </div>
-              <div className="flex shrink-0 gap-2">
+              <fieldset disabled={!(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "manage_rules"))} className="flex shrink-0 gap-2">
                 <ActionButton
                   endpoint={`/api/scoring-weights/${w.id}/approve`}
                   body={{ action: "approve" }}
@@ -110,7 +94,7 @@ export default async function ProfilePage() {
                 >
                   Reject
                 </ActionButton>
-              </div>
+              </fieldset>
             </div>
           ))}
         </div>
@@ -157,8 +141,9 @@ export default async function ProfilePage() {
           <div className="scroll-thin flex-1 overflow-y-auto p-5">
             <EmptyState
               title="No active company profile"
-              description="Nothing is saved for this company yet. Fill in the company details and save them so scoring has something to match against."
+              description={canEditProfile ? "Add your company details below. Matching and bid preparation need this information before they can work correctly." : "An account owner or administrator needs to add the company details before matching and bid preparation can work correctly."}
             />
+            {canEditProfile && <ProfileEditor json={withProfileDefaults({ legal_name: "", email: "", small_business: false })} />}
           </div>
         ) : (
           <EditorialTabs
@@ -187,11 +172,13 @@ export default async function ProfilePage() {
                       to fix it.
                     */}
                     <ProfileCompletenessPanel json={json} />
+                    <fieldset disabled={!canEditProfile} className="min-w-0 space-y-6">
                     <SamProfileImport
                       samConnected={samConnected}
                       profile={json as unknown as Record<string, unknown>}
                     />
                     <ProfileEditor json={json} />
+                    </fieldset>
                   </div>
                 ),
               },
@@ -200,12 +187,14 @@ export default async function ProfilePage() {
                 label: "Scoring",
                 content: (
                   <div className="space-y-6 px-5 py-6 sm:px-6" id="scoring">
+                    <fieldset disabled={!canEditProfile} className="min-w-0">
                     <AutomationSettings
                       pursueScore={json.decision_thresholds.pursue_min_score}
                       reviewFloor={json.decision_thresholds.review_min_score}
                       blockPrimeOnly={json.decision_thresholds.block_prime_only ?? false}
                       histogram={histogram}
                     />
+                    </fieldset>
                     <p className="text-xs text-muted-foreground">
                       Pipeline deadline colors and archive retention live under Settings → Rules.
                     </p>
@@ -229,7 +218,7 @@ export default async function ProfilePage() {
                     </p>
                     <ProfileHistory
                       versions={history}
-                      canRestore={can(viewer?.orgRole, "manage_profile")}
+                      canRestore={canEditProfile}
                     />
                   </div>
                 ),

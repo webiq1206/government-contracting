@@ -27,8 +27,10 @@ export function AdminAccountPeek({
   account,
   closeHref,
   nav,
+  navigate,
 }: {
   account: AdminAccountRow;
+  navigate?: (href: string) => void;
   closeHref: string;
   nav?: {
     prevHref: string | null;
@@ -45,6 +47,7 @@ export function AdminAccountPeek({
 
   return (
     <DetailDrawer
+      navigate={navigate}
       title={account.name}
       subtitle={account.owner_email ?? "No owner on this account"}
       closeHref={closeHref}
@@ -57,7 +60,7 @@ export function AdminAccountPeek({
             Everything about this account
           </Link>
           {nav?.nextHref && (
-            <Link href={nav.nextHref} className="btn-primary ml-auto text-xs">
+            <Link href={nav.nextHref} prefetch={navigate ? false : null} className="btn-primary ml-auto text-xs">
               Next account
             </Link>
           )}

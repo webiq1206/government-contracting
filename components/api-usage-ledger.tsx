@@ -2,6 +2,8 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { requestAction } from "@/lib/client/action-request";
 type Row = Record<string, any>;
 const resultLabel: Record<string,string> = {success:"Completed",pending:"Waiting for result",failed:"Needs attention"};
 const billingLabel: Record<string,string> = {review:"Cost not confirmed",unbilled:"Not yet billed",pending:"Invoice prepared",billed:"Billed",paid:"Paid",credited:"Credited",refunded:"Refunded",not_billable:"No BrostCo charge"};
@@ -15,7 +17,7 @@ const money = (n: unknown) =>
           currency: "USD",
           maximumFractionDigits: 6,
         }).format(Number(n));
-const field = "rounded border border-border bg-white px-3 py-2 text-sm min-w-0";
+const field = "rounded border border-border bg-surface text-foreground px-3 py-2 text-sm min-w-0 coarse:min-h-11 coarse:text-base";
 export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
   const endpoint = admin ? "/api/admin/api-usage" : "/api/api-usage";
   const [filters, setFilters] = useState<Record<string, string>>({
@@ -27,6 +29,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
   const [moreFilters, setMoreFilters] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null),
     [message, setMessage] = useState("");
   const saving = useRef(false);
@@ -39,21 +42,25 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
   ).toString();
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
+    const timeout = setTimeout(() => controller.abort(), 20_000);
     setBusy(true);
     setError("");
     fetch(`${endpoint}?${query}`, { signal: controller.signal })
       .then(async (response) => {
+        setNeedsSignIn(response.status === 401);
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error);
+        if (!response.ok) throw new Error("Usage unavailable");
         setData(result);
       })
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+      .catch(() => {
+        if (!cancelled) setError("Your latest usage could not be loaded. The amounts shown may be out of date. Check your connection, then refresh usage.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
+        clearTimeout(timeout);
+        if (!cancelled) setBusy(false);
       });
-    return () => controller.abort();
+    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
   }, [endpoint, query, version]);
   function filter(key: string, value: string) {
     setFilters((f) => ({
@@ -69,14 +76,14 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(endpoint, {
+      const response = await requestAction(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(20000),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) { setError(response.error); return; }
+      const result = response.data;
       setMessage(
         result.invoiceId
           ? `Draft invoice ${result.invoiceId} is ready. Review and collect it in Reconciliation and billing below.`
@@ -84,8 +91,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       );
       setVersion((v) => v + 1);
       setSelected(null);
-    } catch (e) {
-      setError((e as Error).name === "TimeoutError" ? "The save could not be confirmed. Reload this page to check your settings before trying again." : (e as Error).message);
+    } catch {
+      setError("The save could not be confirmed. Refresh usage to check your settings before trying again.");
     } finally {
       saving.current = false;
       setBusy(false);
@@ -111,7 +118,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             {data.automaticBilling
               ? "Confirmed usage is collected automatically after your subscription billing period."
               : "Automatic usage collection is off. Confirmed usage may be invoiced separately."}{" "}
-            <Link className="underline" href="/settings/billing">
+            <Link className="inline-flex coarse:min-h-11 items-center underline" href="/settings/billing">
               View invoices and payment details
             </Link>
           </p>
@@ -130,12 +137,13 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       )}
       {error && (
         <div role="alert" className="card border-risk text-risk">
-          {error}{" "}
+          {needsSignIn ? "Your sign-in has expired, so current usage is unavailable. Sign in again to continue." : error}{" "}
+          {needsSignIn && <Link href="/login" className="inline-flex coarse:min-h-11 items-center underline">Sign in again</Link>}
           <button
             onClick={() => setVersion((v) => v + 1)}
-            className="underline"
+            className="inline-flex coarse:min-h-11 items-center underline"
           >
-            Retry
+            Refresh usage
           </button>
         </div>
       )}
@@ -151,8 +159,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           <option value="month">This month</option><option value="today">Today</option><option value="week">Past 7 days</option>
           {!["month","today","week"].includes(filters.period) && <option value={filters.period}>{filters.period === "billing" ? "Billing period" : "Custom dates"}</option>}
         </select></label>
-        <button type="button" className="text-sm underline" aria-expanded={moreFilters} onClick={()=>setMoreFilters(!moreFilters)}>{moreFilters ? "Hide filters" : "More filters"}</button>
-        {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
+        <button type="button" className="inline-flex coarse:min-h-11 items-center text-sm underline" aria-expanded={moreFilters} onClick={()=>setMoreFilters(!moreFilters)}>{moreFilters ? "Hide filters" : "More filters"}</button>
+        {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="inline-flex coarse:min-h-11 items-center text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
       </div>
       {moreFilters && <form
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"
@@ -393,7 +401,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                 <p key={i} className="mt-2 text-sm">
                   {r.provider}: {r.detail} ({r.calls}).{" "}
                   <button
-                    className="underline"
+                    className="inline-flex coarse:min-h-11 items-center underline"
                     onClick={() => filter("provider", r.provider)}
                   >
                     View usage
@@ -416,7 +424,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   />
                 ))}
               </div>
-              <Link href="/settings/integrations" className="text-sm underline">
+              <Link href="/settings/integrations" className="inline-flex coarse:min-h-11 items-center text-sm underline">
                 Manage text messaging and other connected services
               </Link>
             </details>
@@ -446,7 +454,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                       <td className="p-2">
                         {admin ? (
                           <button
-                            className="underline"
+                            className="inline-flex coarse:min-h-11 items-center underline"
                             onClick={() => filter("tenant", r.org_id)}
                           >
                             {r.tenant ?? "Unassigned"}
@@ -524,7 +532,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                         </td>
                         <td className="p-2">
                           <button
-                            className="underline"
+                            className="inline-flex coarse:min-h-11 items-center underline"
                             onClick={() => setSelected(r)}
                           >
                             View
@@ -760,7 +768,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           className="w-[calc(100%-2rem)] max-w-xl rounded-xl p-0 backdrop:bg-black/50"
           onCancel={() => setSelected(null)}
         >
-          <div className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-xl bg-surface text-foreground p-6 shadow-xl">
             <button
               autoFocus
               className="float-right underline"
@@ -807,7 +815,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
               </p>
             ))}
             </details>
-            {selected.outcome === "failed" && <p className="my-3 text-sm">This request did not finish, so its task may still be waiting. <Link href="/agents" className="underline">Review automation status</Link></p>}
+            {selected.outcome === "failed" && <p className="my-3 text-sm">This request did not finish, so its task may still be waiting. <Link href="/agents" className="inline-flex coarse:min-h-11 items-center underline">Review automation status</Link></p>}
             {admin && selected.error_code && (
               <p role="alert" className="mt-3 text-risk">
                 {selected.error_code}
@@ -940,7 +948,7 @@ function ProviderSetting({
             ? "Your own API is configured"
             : "Not connected"}
       </p>
-      <button type="button" disabled={!editable} className="text-sm underline" onClick={()=>setEditing(!editing)}>{editing ? "Cancel" : p.active === "none" || p.active === "needs_attention" ? "Set up connection" : "Change connection"}</button>
+      <button type="button" disabled={!editable} className="inline-flex coarse:min-h-11 items-center text-sm underline" onClick={()=>setEditing(!editing)}>{editing ? "Cancel" : p.active === "none" || p.active === "needs_attention" ? "Set up connection" : "Change connection"}</button>
       {editing && editable && <>
       <select
         aria-label={`${p.provider} API source`}
@@ -1013,8 +1021,19 @@ function LimitSettings({
   save: (v: Row) => Promise<void>;
   busy: boolean;
 }) {
+  const [removing, setRemoving] = useState<Row | null>(null);
   return (
     <section className="card space-y-3">
+      <ConfirmDialog open={removing !== null} title="Remove this spending safeguard?"
+        body={`This removes the selected dollar limit, daily request limit, pause, and requirement to use the tenant's own connection for ${removing?.tenant ?? "the entire platform"} (${!removing?.provider || removing.provider === "*" ? "all providers" : removing.provider}). Paid work may resume. Other account and platform safeguards still apply.`}
+        confirmLabel="Remove safeguard" danger busy={busy} onCancel={() => setRemoving(null)}
+        onConfirm={async () => {
+          if (!removing) return;
+          await save({ action: "limit", orgId: removing.org_id, provider: removing.provider,
+            feature: removing.feature, amount: null, dailyRequests: null,
+            warning: removing.warning_percent, paused: false, requireTenant: false });
+          setRemoving(null);
+        }} />
       <h2 className="font-semibold">API safeguards</h2>
       <p className="text-sm">
         Pause a service, require tenant-owned credentials, or set a hard dollar
@@ -1126,19 +1145,10 @@ function LimitSettings({
           {l.paused ? "Paused. " : ""}
           {l.require_tenant_key ? "Tenant API required." : ""}
           <button
-            className="ml-2 underline"
-            onClick={() =>
-              void save({
-                action: "limit",
-                orgId: l.org_id,
-                provider: l.provider,
-                feature: l.feature,
-                amount: null,
-                warning: l.warning_percent,
-                paused: false,
-                requireTenant: false,
-              })
-            }
+            className="ml-2 inline-flex coarse:min-h-11 items-center underline"
+            type="button"
+            disabled={busy}
+            onClick={() => setRemoving(l)}
           >
             Remove restrictions
           </button>

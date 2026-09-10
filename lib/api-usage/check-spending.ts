@@ -21,3 +21,16 @@ export async function checkRecentSpending(orgId: string) {
     await beginUsage(identity,item.provider,item.service,item.feature,{dryRun:true,complex:item.provider==="Anthropic"&&item.service!==config.claude.model});
   }
 }
+
+/** Stop expensive preparation when this exact model is already blocked.
+ * This is only a preflight: metered() still atomically admits the real call.
+ */
+export async function checkClaudeSpending(orgId: string, model: string, feature: string) {
+  const value = await orgApiKey("ANTHROPIC_API_KEY", orgId);
+  if (!value) throw new ApiUsageBlockedError("AI is not connected. Analysis is waiting. Open Settings, Integrations to complete setup.");
+  const identity = await requestIdentity("ANTHROPIC_API_KEY", value, orgId);
+  await beginUsage(identity, "Anthropic", model, feature, {
+    dryRun: true,
+    complex: model !== config.claude.model,
+  });
+}

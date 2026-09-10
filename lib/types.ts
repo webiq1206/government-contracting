@@ -647,6 +647,9 @@ export interface AgentResult {
    * unset so the retry still happens.
    */
   permanent?: boolean;
+  /** Spending protection is waiting for a settings change or allowance reset.
+   * Keep the failed run visible; scheduled recovery checks admission before replay. */
+  spendingHeld?: boolean;
   reasoning?: string;
   data?: Record<string, unknown>;
   enqueued?: {

@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { requestAction } from "@/lib/client/action-request";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 import { useRouter } from "next/navigation";
 import {
   thresholdImpact,
@@ -32,28 +34,33 @@ export function AutomationSettings({
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const submitting = useRef(false);
 
   async function save() {
+    if (submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     setMsg(null);
     setErr(null);
-    const res = await fetch("/api/profile/automation", {
+    try {
+    const res = await requestAction("/api/profile/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
         pursue_min_score: score,
         review_min_score: review,
         block_prime_only: block,
       }),
     });
-    const data = await res.json().catch(() => ({}));
     if (res.ok) {
+      const data = res.data;
       setMsg(`Saved (profile v${data.version}). Auto-pursue at ${data.pursue_min_score}+.`);
       router.refresh();
     } else {
-      setErr(data.error ?? "Could not save.");
+      setErr(res.error);
     }
-    setSaving(false);
+    } finally { submitting.current = false; setSaving(false); }
   }
 
   const dirty = score !== pursueScore || review !== reviewFloor || block !== blockPrimeOnly;
@@ -85,7 +92,8 @@ export function AutomationSettings({
   );
 
   return (
-    <div className="card">
+    <div className="card" onChangeCapture={() => setMsg(null)}>
+      <UnsavedGuard when={dirty && !msg} message="Your scoring settings have unsaved changes. Leave without saving?" />
       <p className="eyebrow">Automation</p>
       <h2 className="mt-1 font-display text-xl font-semibold text-foreground">Auto-pursue</h2>
       <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">
@@ -201,12 +209,12 @@ export function AutomationSettings({
         </div>
       )}
 
-      <div className="mt-5 flex items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <button className="btn-primary" onClick={save} disabled={saving || !dirty || blocking}>
           {saving ? "Saving…" : "Save automation"}
         </button>
-        {msg && <span className="text-sm text-accent">{msg}</span>}
-        {err && <span className="text-sm text-risk">{err}</span>}
+        {msg && <span role="status" className="text-sm text-accent">{msg}</span>}
+        {err && <span role="alert" className="text-sm text-risk">{err}</span>}
       </div>
     </div>
   );

@@ -61,7 +61,7 @@ export default async function RecapSettingsPage() {
   ]);
 
   const receiving = new Set(recipients.map((r) => r.userId));
-  const editable = can(user.orgRole, "manage_rules");
+  const editable = !user.impersonatedBy && can(user.orgRole, "manage_rules");
 
   return (
     <>

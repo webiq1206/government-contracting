@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/roles";
 import { PendingLink as Link } from "@/components/pending-link";
 import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
 import { readPipelinePulse } from "@/lib/pipeline-pulse";
@@ -857,7 +858,7 @@ export default async function TodayPage(
 
           <div className="mt-4 flex gap-10 lg:mt-8">
             <div className="min-w-0 flex-1 space-y-6 lg:space-y-10">
-              <AutomationPausedBanner state={automation} />
+              <AutomationPausedBanner state={automation} editable={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))} />
 
               {!automation.paused && <PipelinePulse findings={pulse} compact />}
 

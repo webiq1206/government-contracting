@@ -307,8 +307,8 @@ export function buildPlatformRecap(
   ];
 
   const sections: RecapSection[] = [
-    section("urgent", "urgent", urgent, [], "No account is broken this morning."),
-    section("problems", "problem", problems, [], "Every integration is connected."),
+    section("urgent", "urgent", urgent, [], "No urgent account problems were recorded in this recap."),
+    section("problems", "problem", problems, [], "No integration failures were recorded. Connections that have not been used or tested are still unverified."),
     section("review", "normal", review, [], "No account has gone quiet."),
     section("totals", "normal", [], totals, "Nothing was recorded."),
   ];

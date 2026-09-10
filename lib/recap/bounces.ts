@@ -16,6 +16,7 @@ import { gmail } from "../integrations/gmail";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { looksLikeBounce, parseBounce } from "../domain/email-delivery";
 import { markBounced, recentDeliveryTo } from "./delivery";
+import { loadBounceCursor, saveBounceCursor, restartBouncePage } from "./bounce-cursor";
 
 export interface BounceSweepResult {
   scanned: number;
@@ -31,7 +32,7 @@ export interface BounceSweepResult {
 }
 
 /** Keep a pathological mailbox backlog from monopolising the worker forever. */
-const MAX_BOUNCE_BATCHES = 10;
+const MAX_BOUNCE_BATCHES = 1;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -45,12 +46,13 @@ function errorMessage(error: unknown): string {
  * again to the same state) and a gap is not.
  */
 export async function sweepRecapBounces(lookbackMinutes = 180): Promise<BounceSweepResult> {
-  const since = Math.floor((Date.now() - lookbackMinutes * 60_000) / 1000);
+  const cursor = await loadBounceCursor(lookbackMinutes);
+  const since = Number(cursor.after_sec);
   let scanned = 0;
   let matched = 0;
   let unmatched = 0;
   let failed = 0;
-  let pageToken: string | undefined;
+  let pageToken: string | undefined = cursor.page_token ?? undefined;
   const errors: string[] = [];
 
   for (let batch = 0; batch < MAX_BOUNCE_BATCHES; batch += 1) {
@@ -73,6 +75,9 @@ export async function sweepRecapBounces(lookbackMinutes = 180): Promise<BounceSw
       };
     }
     if (res.error) {
+      if (cursor.page_token && /(?:invalid|expired).*page.?token|page.?token.*(?:invalid|expired)/i.test(res.error)) {
+        await restartBouncePage(cursor);
+      }
       errors.push(`The platform inbox could not be read: ${res.error}`);
       return {
         scanned,
@@ -144,6 +149,8 @@ export async function sweepRecapBounces(lookbackMinutes = 180): Promise<BounceSw
     }
 
     if (!res.truncated) {
+      // A failed history write must replay this page, even if other rows saved.
+      if (failed === 0) await saveBounceCursor(cursor);
       return {
         scanned,
         matched,
@@ -167,15 +174,13 @@ export async function sweepRecapBounces(lookbackMinutes = 180): Promise<BounceSw
     pageToken = res.nextPageToken;
   }
 
-  errors.push(
-    `The bounce scan stopped after ${MAX_BOUNCE_BATCHES} batches so it would not block other automation; more mailbox history remains.`
-  );
+  if (failed === 0) await saveBounceCursor(cursor, pageToken);
   return {
     scanned,
     matched,
     unmatched,
     failed,
     truncated: true,
-    error: errors.join(" ").slice(0, 1000),
+    error: errors.length ? errors.join(" ").slice(0, 1000) : null,
   };
 }

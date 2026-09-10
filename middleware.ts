@@ -89,6 +89,11 @@ export function middleware(req: NextRequest) {
 
   const session = req.cookies.get("brostco_session")?.value;
   if (!session) {
+    // Fetch callers need an authentication failure, not a followed redirect
+    // whose login HTML looks like a successful action response.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Your sign-in has expired. Sign in again to continue." }, { status: 401 });
+    }
     const login = new URL("/login", req.url);
     login.searchParams.set("next", pathname);
     return NextResponse.redirect(login);

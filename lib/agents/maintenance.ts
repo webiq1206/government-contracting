@@ -1508,7 +1508,7 @@ export const stalledPipelineSweep: AgentDefinition = {
               enqueue(agent, { opportunityId: o.id, trigger: "rescue" })
             );
             if (!queuedId) {
-              throw new Error("the queue refused the job because automation became paused");
+              throw new Error("the retry was not admitted; a pause, stopped pursuit, or unavailable record version may be preventing it");
             }
             queued = true;
           } catch (e) {
@@ -1731,6 +1731,30 @@ export const scoringRecoverySweep: AgentDefinition = {
     }
     let scoringQueued = 0;
     let queueFailures = 0;
+    let deferred = 0;
+    // One dry-run admission per account/model, not hundreds of doomed jobs.
+    // A later scheduled sweep rechecks current limits; operator recovery uses
+    // the same gate, so budgets are never removed to make a retry succeed.
+    const admissions = new Map<string, Promise<boolean>>();
+    function canRecover(orgId: string, model: string, feature: string): Promise<boolean> {
+      const key = `${orgId}:${model}`;
+      const existing = admissions.get(key);
+      if (existing) return existing;
+      const check = runWithOrg(orgId, async () => {
+        try {
+          const { checkClaudeSpending } = await import("../api-usage/check-spending");
+          await checkClaudeSpending(orgId, model, feature);
+          return true;
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "ApiUsageBlockedError") throw error;
+          await logAgent({ agent: "scoring-recovery-sweep", action: "spending-held", level: "warn", status: "skipped",
+            message: `${feature} is waiting for API allowance. The next recovery sweep will check again. ${error.message}` });
+          return false;
+        }
+      });
+      admissions.set(key, check);
+      return check;
+    }
     for (const o of unscored) {
       try {
         const queuedId = await runWithOrg(o.orgId, () =>
@@ -1741,7 +1765,10 @@ export const scoringRecoverySweep: AgentDefinition = {
           )
         );
         if (!queuedId) {
-          throw new Error("the queue refused the job because automation became paused");
+          // A singleton duplicate or a safety guard returns null. Neither
+          // establishes a queue outage; only an actual enqueue error does.
+          deferred++;
+          continue;
         }
         scoringQueued++;
       } catch (err) {
@@ -1790,6 +1817,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     let analysisQueued = 0;
     for (const o of unbriefed) {
       try {
+        if (!(await canRecover(o.orgId, config.claude.modelSmart, "solicitation-analyst"))) { deferred++; continue; }
         const queuedId = await runWithOrg(o.orgId, () =>
           enqueue(
             "solicitation-analyst",
@@ -1798,7 +1826,10 @@ export const scoringRecoverySweep: AgentDefinition = {
           )
         );
         if (!queuedId) {
-          throw new Error("the queue refused the job because automation became paused");
+          // A singleton duplicate or a safety guard returns null. Neither
+          // establishes a queue outage; only an actual enqueue error does.
+          deferred++;
+          continue;
         }
         analysisQueued++;
       } catch (err) {
@@ -1837,6 +1868,7 @@ export const scoringRecoverySweep: AgentDefinition = {
         `re-queued analysis for ${analysisQueued} opportunit${analysisQueued === 1 ? "y" : "ies"} missing a brief`
       );
     }
+    if (deferred > 0) parts.push(`${deferred} recovery jobs were already queued or deferred by a safety check; the next sweep will check them again`);
     if (queueFailures > 0) {
       parts.push(
         `${queueFailures} recovery job${queueFailures === 1 ? "" : "s"} could not be queued and remain incomplete`
@@ -1845,7 +1877,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     return {
       ok: queueFailures === 0,
       summary: parts.length > 0 ? `${parts.join("; ")}.` : "Nothing to recover.",
-      data: { scoringQueued, analysisQueued, queueFailures },
+      data: { scoringQueued, analysisQueued, queueFailures, deferred },
       humanActionRequired: queueFailures > 0,
     };
   },
@@ -2548,7 +2580,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // disconnected. Discard only that opaque token, never the time cursor,
       // so the next successful run restarts the same range and idempotently
       // walks back to the unprocessed page.
-      if (cursor.page_token) {
+      if (cursor.page_token && /(?:invalid|expired).*page.?token|page.?token.*(?:invalid|expired)/i.test(error)) {
         await query(
           `update integration_tokens
               set data = coalesce(data, '{}'::jsonb)
@@ -2567,7 +2599,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         action: "poll-failed",
         level: "error",
         status: "error",
-        message: `Could not read the inbox for replies: ${error}. If this repeats, the Google connection needs to be reconnected in Settings, then Integrations.`,
+        message: `Could not read the inbox for replies: ${error}. Reply polling will try again; see Automation Health for the cause and next step.`,
       });
       return { ok: false, summary: `Inbox poll failed: ${error}` };
     }
@@ -3039,6 +3071,12 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
      * that arrived while a large backlog was being drained are picked up by
      * the next run.
      */
+    if (processingFailures > 0) {
+      await logAgent({ agent: "reply-poll", action: "capture-incomplete", level: "error", status: "error",
+        message: "Some inbox delivery records could not be saved. Captured replies were kept and the same mailbox page will be retried." });
+      return { ok: false, summary: `${matched} matched; ${processingFailures} delivery records need another attempt. Mailbox progress was preserved.`,
+        enqueued, humanActionRequired: true };
+    }
     if (truncated) {
       if (!nextPageToken) {
         await logAgent({

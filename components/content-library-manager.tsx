@@ -35,7 +35,7 @@ type FilterId = "all" | ContentCategory;
  * here; the Bid Builder and Sources Sought Responder automatically pull the
  * best-matching ones into their drafts, so there is nothing to do at bid time.
  */
-export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }) {
+export function ContentLibraryManager({ items, editable = false }: { items: ContentLibraryItem[]; editable?: boolean }) {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterId>("all");
   const [form, setForm] = useState<FormState | null>(null);
@@ -77,6 +77,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
       : CATEGORY_META[filter].hint;
 
   function startNew() {
+    if (!editable) return;
     setError(null);
     setForm({
       ...EMPTY_FORM,
@@ -84,6 +85,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
     });
   }
   function startEdit(item: ContentLibraryItem) {
+    if (!editable) return;
     setError(null);
     setForm({
       id: item.id,
@@ -95,6 +97,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   }
 
   async function save() {
+    if (!editable) return;
     if (!form) return;
     setError(null);
     setBusyId("form");
@@ -128,6 +131,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   }
 
   async function toggleActive(item: ContentLibraryItem) {
+    if (!editable) return;
     setBusyId(item.id);
     try {
       await fetch(`/api/content/${item.id}`, {
@@ -142,6 +146,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   }
 
   async function remove(item: ContentLibraryItem) {
+    if (!editable) return;
     setDeleting(null);
     setBusyId(item.id);
     try {
@@ -173,9 +178,9 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
       />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          {activeHint}
+          {editable ? activeHint : "Review the approved paragraphs available for proposals. Choose a category to narrow the list."}
         </p>
-        {!form && (
+        {editable && !form && (
           <button className="btn-primary shrink-0" onClick={startNew}>
             + Add snippet
           </button>
@@ -294,7 +299,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
       {/* List */}
       {visible.length === 0 ? (
         <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
-          {items.length === 0
+          {!editable ? "No snippets match this view. Choose another category, or ask an account owner to add the wording you need." : items.length === 0
             ? "No snippets yet. Add one when you have language you reuse on bids. Brost Co will pull matching snippets into drafts automatically."
             : "No snippets in this type yet. Switch to All, or add a new snippet for this type."}
         </div>
@@ -319,7 +324,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                       <span className="badge bg-muted text-muted-foreground">disabled</span>
                     )}
                   </div>
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.body}</p>
+                  <p className={`mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground ${editable ? "line-clamp-2" : ""}`}>{item.body}</p>
                   {item.tags.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {item.tags.map((t) => (
@@ -333,7 +338,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                     Updated {shortDate(item.updated_at)}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                {editable && <div className="flex shrink-0 items-center gap-2">
                   <button
                     className="btn-ghost text-xs"
                     onClick={() => toggleActive(item)}
@@ -356,7 +361,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                   >
                     Delete
                   </button>
-                </div>
+                </div>}
               </div>
             </li>
           ))}

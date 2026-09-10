@@ -139,8 +139,11 @@ describe("operator pages keep the names and chrome they already have", () => {
 
   it("keeps the desktop sidebar on subscribed billing pages", () => {
     const layout = readFileSync("app/(account)/layout.tsx", "utf8");
-    expect(layout).toContain("<Nav");
-    expect(layout).toContain("todayCount={counts.today}");
+    expect(layout).toContain("<StreamedNavigation");
+    expect(layout).toContain("<DashboardNav user={user}");
+    expect(layout).toContain("<DashboardTabs user={user}");
+    expect(readFileSync("components/streamed-navigation.tsx", "utf8")).toContain("<Nav");
+    expect(readFileSync("components/dashboard-shell.tsx", "utf8")).toContain("todayCount={counts.today}");
   });
 
   it("does not load file storage just to open the Feedback page", () => {

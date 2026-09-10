@@ -18,6 +18,8 @@
  * Pure: the caller gathers the facts, this decides what they mean.
  */
 
+import { classifyFailure } from "./automation-health";
+
 export type PulseSeverity = "down" | "warn";
 
 export interface PulseFinding {
@@ -352,20 +354,23 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
   // still exists, and it stays dead until a human reconnects.
   const g = input.gmail;
   if (g.status === "revoked" || (g.connected && g.status === "error")) {
+    const throttled = g.status !== "revoked" && classifyFailure(g.lastError) === "provider_rate_limit";
+    const needsSignIn = g.status === "revoked" || classifyFailure(g.lastError) === "integration_auth";
     findings.push({
       key: "gmail_broken",
-      severity: "down",
-      title:
-        g.status === "revoked"
+      severity: throttled ? "warn" : "down",
+      title: throttled
+        ? "Google has temporarily limited inbox activity."
+        : needsSignIn
           ? "Google has disconnected the outreach inbox, so emails cannot send."
-          : "The outreach inbox is failing, emails may not be sending.",
-      detail: `${
-        g.status === "revoked"
-          ? "The Google sign-in for the connected inbox was revoked or expired. Every outreach and follow-up email is being held as a draft until it is reconnected."
-          : "Recent sends through the connected inbox failed."
-      }${g.lastError ? ` Last error: ${g.lastError.slice(0, 160)}` : ""}`,
-      href: "/settings/integrations",
-      cta: "Reconnect Google Inbox",
+          : "The outreach inbox needs attention.",
+      detail: throttled
+        ? "Reading replies or sending email may be delayed. Scheduled polling will try again. Check Automation Health if the delay continues; reconnecting will not increase Google's limit."
+        : needsSignIn
+          ? "Google sign-in expired or was revoked. Email work is waiting. Reconnect the inbox to continue."
+          : "The last inbox operation failed, so some email work may be delayed. Review its status to see the next step.",
+      href: throttled ? "/agents" : "/settings/integrations",
+      cta: throttled ? "Check inbox progress" : needsSignIn ? "Reconnect Google Inbox" : "Review inbox status",
     });
   }
 

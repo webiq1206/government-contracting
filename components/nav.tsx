@@ -2,11 +2,13 @@
 
 import { PendingLink as Link } from "@/components/pending-link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMenuIsolation } from "./menu-isolation";
 import { ThemeWordmark } from "./theme-wordmark";
 import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
 import { CloseIcon, MenuIcon } from "./tab-icons";
+import { NAVIGATION_SECTIONS, navigationMatches, type NavigationItem as Item, type NavigationSection as Section } from "@/lib/navigation";
 import type { AutomationState } from "@/lib/domain/automation-health";
 
 /**
@@ -51,150 +53,6 @@ import type { AutomationState } from "@/lib/domain/automation-health";
  * needs at 900px exactly as much as at 390.
  */
 
-interface Item {
-  href: string;
-  label: string;
-  hint?: string;
-  badge?: "review" | "calls";
-}
-
-interface Section {
-  key: string;
-  label: string;
-  items: Item[];
-  /** Platform-owner tools, hidden from customers entirely. */
-  adminOnly?: boolean;
-}
-
-/**
- * The sections, in the order a working day tends to move through them.
- *
- * Names describe the job rather than the software: "Delivery" is what happens
- * after you win, "Performance" is how it went. A contractor should be able to
- * find a page from the noun in their head.
- */
-const SECTIONS: Section[] = [
-  {
-    key: "work",
-    label: "Work",
-    items: [
-      { href: "/activity", label: "Activity Ledger", hint: "Every recorded action, message and result" },
-      { href: "/today", label: "Today", hint: "Everything that needs you" },
-      {
-        href: "/workbench",
-        label: "Workbench",
-        hint: "Work the whole queue on one screen",
-      },
-      { href: "/pipeline", label: "Opportunities", hint: "Every opportunity, by whose turn it is" },
-      { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
-      { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },
-    ],
-  },
-  {
-    key: "relationships",
-    label: "Relationships",
-    items: [
-      { href: "/subs", label: "Subcontractors" },
-      { href: "/communications", label: "Communications" },
-    ],
-  },
-  {
-    key: "delivery",
-    label: "Delivery",
-    items: [
-      { href: "/contracts", label: "Contracts" },
-      { href: "/compliance", label: "Compliance" },
-    ],
-  },
-  {
-    key: "performance",
-    label: "Performance",
-    items: [
-      {
-        href: "/recap",
-        label: "Daily Recap",
-        hint: "What happened yesterday, urgent things first",
-      },
-      { href: "/analytics", label: "Analytics" },
-      { href: "/agents", label: "Automation Health", hint: "Whether the automation is working, and what is stopping it" },
-    ],
-  },
-  {
-    key: "help",
-    label: "Help",
-    // Guide Me is a panel rather than a page -- it opens over whatever you are
-    // looking at, because its whole value is knowing where you are. Listing it
-    // as a destination here would be a link that navigates nowhere.
-    items: [
-      { href: "/how-it-works", label: "Knowledge Center" },
-      // Every role can reach this, including the read-only ones. Somebody
-      // looking at a figure that does not add up is the person who should be
-      // able to say so, and there was previously nowhere to say it.
-      {
-        href: "/feedback",
-        label: "Feedback",
-        hint: "Something broken, a number that reads wrong, or a thing this should do",
-      },
-    ],
-  },
-  {
-    key: "settings",
-    label: "Settings",
-    items: [
-      { href: "/settings/profile", label: "Company" },
-      { href: "/settings/rules", label: "Rules" },
-      { href: "/settings/content", label: "Content" },
-      { href: "/settings/integrations", label: "Integrations" },
-      { href: "/settings/api-usage", label: "API Usage" },
-      { href: "/settings/billing", label: "Billing" },
-      { href: "/settings/recap", label: "Daily Recap" },
-      // Which alerts reach this account by email and which live only in the
-      // product. Worth its own entry because the answer is surprising.
-      { href: "/settings/notifications", label: "Notifications" },
-      /*
-       * Last in the section and named for the person rather than the company,
-       * because everything above it is organization-wide and this one is not.
-       * It is also the only place to change your own password without
-       * declaring you have lost it.
-       */
-      { href: "/settings/account", label: "Your account" },
-    ],
-  },
-  {
-    key: "platform",
-    label: "Platform Admin",
-    adminOnly: true,
-    items: [
-      { href: "/admin/accounts", label: "Accounts" },
-      { href: "/admin/invitations", label: "Invitations" },
-      { href: "/admin/billing", label: "Customer Billing" },
-      { href: "/admin/api-usage", label: "API Usage" },
-      // Its own entry rather than fifteen rows at the foot of Accounts. The
-      // record of what we did to somebody's account is a different question
-      // from which account is in trouble, and it is the one somebody comes
-      // looking for months later.
-      { href: "/admin/audit", label: "Audit Log" },
-      // Platform-wide, as against the per-account Automation Health under
-      // Delivery. An outage affecting every customer used to be findable only
-      // by opening accounts one at a time until a pattern appeared.
-      { href: "/admin/health", label: "System Health" },
-      { href: "/admin/recap", label: "Platform Recap" },
-    ],
-  },
-  {
-    key: "optional",
-    label: "Optional Tools",
-    /*
-     * Site Authority tracks OUR marketing domain's backlinks. It is
-     * meaningless to a contractor and a window onto our own business, so it
-     * stays admin-only and in its own group rather than sitting among the
-     * pages a customer works in.
-     */
-    adminOnly: true,
-    items: [{ href: "/authority", label: "Site Authority" }],
-  },
-];
-
 /**
  * How each state looks. Deliberately five entries rather than a healthy/not
  * pair: "paused" and "not set up" are not faults and must not wear the fault
@@ -218,6 +76,40 @@ const CHIP_GLYPH: Record<AutomationState, string> = {
   not_configured: "\u25CB",
 };
 
+function NavigationRow({ item, compact = false, active, badge, onNavigate }: { item: Item; compact?: boolean; active: boolean; badge: number; onNavigate: () => void }) {
+    return (
+      <Link
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        onClick={onNavigate}
+        className={`flex coarse:min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors ${
+          compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
+        } ${
+          active
+            ? "bg-gold/15 font-medium text-gold-text"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        }`}
+      >
+        <span className="flex min-w-0 items-baseline gap-2.5">
+          <span className="min-w-0">
+            <span className={compact ? "" : "block text-sm"}>{item.label}</span>
+            {!compact && item.hint && (
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                {item.hint}
+              </span>
+            )}
+          </span>
+        </span>
+        {badge > 0 && (
+          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-ink">
+            {badge}
+          </span>
+        )}
+      </Link>
+    );
+  }
+
+
 export function Nav({
   email,
   reviewCount,
@@ -227,6 +119,7 @@ export function Nav({
   automationDetail,
   automationPaused,
   isPlatformAdmin = false,
+  canPauseAutomation = false,
 }: {
   email: string;
   reviewCount: number;
@@ -247,10 +140,13 @@ export function Nav({
   automationPaused?: boolean;
   /** Whether to show the platform-owner tools group. */
   isPlatformAdmin?: boolean;
+  canPauseAutomation?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const panelRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
+  const { setOpen: isolateBackground } = useMenuIsolation();
   /**
    * Which groups the operator has explicitly toggled. A group is open when
    * they opened it, or when it holds the page they are on -- so arriving at
@@ -259,6 +155,8 @@ export function Nav({
    */
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
+  const [ready, setReady] = useState(false);
+  const previousPath = useRef(pathname);
   const [localPaused, setLocalPaused] = useState(automationPaused);
   const [togglingAutomation, setTogglingAutomation] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -274,27 +172,47 @@ export function Nav({
     const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobile(mq.matches);
     sync();
+    setReady(true);
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
-    setOpen(false);
+    if (previousPath.current !== pathname) setOpen(false);
+    previousPath.current = pathname;
   }, [pathname]);
 
   useEffect(() => {
-    if (!open) return;
+    isolateBackground(open && isMobile);
+    return () => isolateBackground(false);
+  }, [open, isMobile, isolateBackground]);
+
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const panel = panelRef.current;
+    const opener = document.activeElement as HTMLElement | null;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>(
+      "button:not([disabled]), a[href], input:not([disabled]), [tabindex='0']"
+    ) ?? []).filter(node => node.getClientRects().length > 0);
+    (focusable()[0] ?? panel)?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0], last = items[items.length - 1];
+      if (!first || !last) { e.preventDefault(); panel?.focus(); return; }
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [open]);
+  }, [open, isMobile]);
 
   async function logout() {
     if (loggingOut) return;
@@ -313,8 +231,7 @@ export function Nav({
       // a full-screen overlay, and leaving it mounted over the login page is
       // how a half-finished sign-out looks like a broken app.
       setOpen(false);
-      router.push("/login");
-      router.refresh();
+      window.location.replace("/login");
     } catch {
       setLogoutError("Could not sign out. Check your connection and try again.");
     } finally {
@@ -389,14 +306,14 @@ export function Nav({
         ? "No agents, emails, or jobs will run"
         : "Open Automation Health to check whether work is running"));
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
-  const sections = SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
+  const isActive = (href: string) => navigationMatches(pathname, href);
+  const sections = NAVIGATION_SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
   const sectionHasActive = (sec: Section) => sec.items.some((i) => isActive(i.href));
   const sectionBadgeTotal = (sec: Section) =>
     sec.items.reduce((n, i) => n + (i.badge ? counts[i.badge] : 0), 0);
   // Work is where a day starts, so it opens without being asked.
   const isSectionOpen = (sec: Section) =>
-    openSections[sec.key] ?? (sec.key === "work" || sectionHasActive(sec));
+    sectionHasActive(sec) || (openSections[sec.key] ?? sec.key === "work");
   const initials =
     email
       .split("@")[0]
@@ -407,39 +324,6 @@ export function Nav({
       .join("")
       .slice(0, 2) || "BC";
 
-  function Row({ item, compact = false }: { item: Item; compact?: boolean }) {
-    const active = isActive(item.href);
-    const badge = item.badge ? counts[item.badge] : 0;
-    return (
-      <Link
-        href={item.href}
-        onClick={() => setOpen(false)}
-        className={`flex coarse:min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors ${
-          compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
-        } ${
-          active
-            ? "bg-gold/15 font-medium text-gold-text"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        }`}
-      >
-        <span className="flex min-w-0 items-baseline gap-2.5">
-          <span className="min-w-0">
-            <span className={compact ? "" : "block text-sm"}>{item.label}</span>
-            {!compact && item.hint && (
-              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                {item.hint}
-              </span>
-            )}
-          </span>
-        </span>
-        {badge > 0 && (
-          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-ink">
-            {badge}
-          </span>
-        )}
-      </Link>
-    );
-  }
 
   return (
     <>
@@ -465,7 +349,7 @@ export function Nav({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         />
 
-        {localPaused && (
+        {localPaused && canPauseAutomation && (
           <button
             type="button"
             onClick={handleToggleAutomation}
@@ -483,6 +367,7 @@ export function Nav({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
+          disabled={!ready}
           aria-expanded={open}
         >
           {open ? <CloseIcon /> : <MenuIcon />}
@@ -490,12 +375,15 @@ export function Nav({
       </div>
 
       <nav
+        ref={panelRef}
+        tabIndex={-1}
+        inert={isMobile && !open ? true : undefined}
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
         className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-background transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 lg:border-r lg:transition-none ${
           open
-            ? "translate-x-0"
-            : "pointer-events-none -translate-x-full lg:pointer-events-auto"
+            ? "visible translate-x-0"
+            : "invisible pointer-events-none -translate-x-full lg:visible lg:pointer-events-auto"
         }`}
       >
         <div className="hidden shrink-0 px-5 py-6 lg:block">
@@ -550,7 +438,7 @@ export function Nav({
               <p className="text-sm font-medium text-foreground">{mobileHeadline}</p>
               <p className="text-[11px] text-muted-foreground">{mobileDetail}</p>
             </div>
-            <button
+            {canPauseAutomation && <button
               type="button"
               onClick={handleToggleAutomation}
               disabled={togglingAutomation || automationPaused === undefined}
@@ -559,7 +447,7 @@ export function Nav({
               }`}
             >
               {togglingAutomation ? "…" : localPaused ? "Resume" : "Pause"}
-            </button>
+            </button>}
           </div>
           {automationError && (
             <p role="alert" className="mt-2 text-sm text-risk">
@@ -627,7 +515,7 @@ export function Nav({
                   <ul className="mb-1 space-y-0.5">
                     {sec.items.map((item) => (
                       <li key={item.href}>
-                        <Row item={item} compact={sec.key !== "work"} />
+                        <NavigationRow item={item} compact={sec.key !== "work"} active={isActive(item.href)} badge={item.badge ? counts[item.badge] : 0} onNavigate={() => setOpen(false)} />
                       </li>
                     ))}
                   </ul>

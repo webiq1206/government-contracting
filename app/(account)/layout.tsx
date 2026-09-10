@@ -1,3 +1,6 @@
+import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
+import { StreamedNavigation } from "@/components/streamed-navigation";
+import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
@@ -5,20 +8,11 @@ import { Suspense } from "react";
 import { ToastProvider } from "@/components/toaster";
 import { GuideWizard } from "@/components/guide-wizard";
 import { Wordmark } from "@/components/wordmark";
-import { MobileTabBar } from "@/components/mobile-tab-bar";
-import { Nav } from "@/components/nav";
 import { CommandPalette } from "@/components/command-palette";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
-import { TrialBanner } from "@/components/trial-banner";
 import { PaymentFailedBanner } from "@/components/payment-failed-banner";
-import { entitlementOf, hasAccess, accessLevel, trialDaysLeft } from "@/lib/billing/entitlements";
-import { getAutomationState } from "@/lib/app-settings";
-import { queueCounts } from "@/lib/data";
-import { automationHealth } from "@/lib/automation-status";
-import { inboxNeedsReplyCount } from "@/lib/conversations";
-import { allQuotaStates } from "@/lib/billing/trial-limits";
+import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
 import { isPlatformAdmin } from "@/lib/platform-admin";
-import { ShellDataWarning } from "@/components/shell-data-warning";
 import { SessionLoadFailure } from "@/components/session-load-failure";
 
 /**
@@ -57,11 +51,10 @@ export default async function AccountLayout({
   // checkout" would be wrong.
   const entitlement = entitlementOf(user);
   const subscribed = hasAccess(entitlement);
-  const access = accessLevel(entitlement);
 
   if (!subscribed) {
     return (
-      <ToastProvider>
+      <ToastProvider><MenuIsolationProvider>
         <div className="flex min-h-dvh flex-col bg-background text-foreground">
           <header className="flex shrink-0 items-center justify-between border-b border-border bg-background px-5 py-3">
             <Link href="/" className="inline-flex items-center" aria-label="Brost Co">
@@ -87,75 +80,40 @@ export default async function AccountLayout({
         <Suspense fallback={null}>
           <GuideWizard />
         </Suspense>
-      </ToastProvider>
+      </MenuIsolationProvider></ToastProvider>
     );
   }
 
-  const shellWarnings: string[] = [];
-  const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
-    queueCounts().catch(() => {
-      shellWarnings.push("Navigation task counts are unknown, not zero.");
-      return { review: 0, callQueue: 0, today: 0 };
-    }),
-    automationHealth().catch(() => {
-      shellWarnings.push("Automation health is unavailable.");
-      return null;
-    }),
-    getAutomationState().catch(() => {
-      shellWarnings.push("The account pause-switch state is unavailable.");
-      return { paused: false, changed_at: null, changed_by: null };
-    }),
-    access === "trial" ? allQuotaStates(user.organizationId).catch(() => {
-      shellWarnings.push("Trial usage meters are unavailable.");
-      return [];
-    }) : [],
-    inboxNeedsReplyCount().catch(() => {
-      shellWarnings.push("The inbox badge is unknown, not zero.");
-      return 0;
-    }),
-  ]);
-
   return (
-    <ToastProvider>
+    <ToastProvider><MenuIsolationProvider>
       <div
         data-app-shell
         className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
       >
-        <Nav
-          email={user.email}
-          reviewCount={counts.review}
-          callCount={counts.callQueue}
-          automationState={health?.state}
-          automationHeadline={health?.headline}
-          automationDetail={health?.detail}
-          automationPaused={automation.paused}
-          isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)}
-        />
-        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <Suspense fallback={null}>
+        <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
+          automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
+          isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
+          <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
+        </StreamedNavigation>
+        </Suspense>
+        <ShellMain className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner
               adminEmail={user.impersonatedBy}
               viewingEmail={user.email}
             />
           )}
-          {access === "trial" && (
-            <TrialBanner daysLeft={trialDaysLeft(entitlement)} quotas={quotas} />
-          )}
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
-          <ShellDataWarning items={shellWarnings} />
+          <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
-        </main>
+        </ShellMain>
       </div>
       <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>
-      <MobileTabBar
-        reviewCount={counts.review}
-        callCount={counts.callQueue}
-        todayCount={counts.today}
-        inboxCount={inboxWaiting}
-      />
-    </ToastProvider>
+      <Suspense fallback={null}><DashboardTabs user={user} /></Suspense>
+    </MenuIsolationProvider></ToastProvider>
   );
 }

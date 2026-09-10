@@ -1,6 +1,7 @@
+import { can } from "@/lib/domain/roles";
 import { requestCache as cache } from "@/lib/request-cache";
 import type { SessionUser } from "@/lib/auth";
-import { Nav } from "@/components/nav";
+import { NavigationUpdate } from "@/components/streamed-navigation";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { getAutomationState } from "@/lib/app-settings";
 import { queueCounts } from "@/lib/data";
@@ -50,10 +51,11 @@ const loadShellData = cache(async (user: SessionUser) => {
 
 export async function DashboardNav({ user }: { user: SessionUser }) {
   const { counts, health, automation } = await loadShellData(user);
-  return <Nav email={user.email} reviewCount={counts.review} callCount={counts.callQueue}
-    automationState={health?.state} automationHeadline={health?.headline ?? "Automation status unavailable"}
-    automationDetail={health?.detail} automationPaused={automation?.paused}
-    isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)} />;
+  return <NavigationUpdate data={{ email: user.email, reviewCount: counts.review, callCount: counts.callQueue,
+    automationState: health?.state, automationHeadline: health?.headline ?? "Automation status unavailable",
+    automationDetail: health?.detail, automationPaused: automation?.paused,
+    canPauseAutomation: !user.impersonatedBy && can(user.orgRole, "pause_automation"),
+    isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }} />;
 }
 
 export async function DashboardNotices({ user }: { user: SessionUser }) {
