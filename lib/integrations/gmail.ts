@@ -11,6 +11,8 @@
  * founding tenant only. Degrades gracefully when not configured.
  */
 import { google } from "googleapis";
+import { reserveGmailQuota } from "./gmail-quota";
+import { decodeGmailRemainder, encodeGmailRemainder } from "./gmail-cursor";
 import { config } from "../config";
 import { queryOne, query } from "../db";
 import { tryResolveTenantOrgId } from "../tenant";
@@ -662,6 +664,7 @@ export const gmail = {
 
     let list: GmailSendAsList;
     try {
+      await reserveGmailQuota(org, 1);
       const res = await client.users.settings.sendAs.list({ userId: "me" });
       const options = (res.data.sendAs ?? [])
         .filter((s) => {
@@ -787,6 +790,7 @@ export const gmail = {
     // account is OAuth'd. Declared outside the try so a refusal can name it.
     const from = params.from ?? config.gmail.sender ?? "me";
     try {
+      await reserveGmailQuota(org!, 120);
       const raw = buildGmailRawMessage(params, from);
       const res = await client.users.messages.send({
         userId: "me",
@@ -874,6 +878,7 @@ export const gmail = {
     const client = await gmailClient(orgId);
     if (!client) return empty;
     try {
+      await reserveGmailQuota((await resolveOrg(orgId))!, 40);
       const res = await client.users.threads.get({
         userId: "me",
         id: threadId,
@@ -923,6 +928,7 @@ export const gmail = {
     const client = await gmailClient(orgId);
     if (!client) return null;
     try {
+      await reserveGmailQuota((await resolveOrg(orgId))!, 20);
       const res = await client.users.messages.attachments.get({
         userId: "me",
         messageId,
@@ -963,6 +969,8 @@ export const gmail = {
     truncated?: boolean;
     /** Continue the same bounded mailbox walk on the next scheduled run. */
     nextPageToken?: string;
+    /** Completed messages are usable, but an interrupted page needs another pass. */
+    partialError?: string;
     replies: GmailInboundMessage[];
   }> {
     const client = await gmailClient(orgId);
@@ -997,23 +1005,26 @@ export const gmail = {
        * worker in this loop forever -- and when the ceiling IS hit, say so,
        * because a silent truncation here is indistinguishable from silence.
        */
-      let pageToken: string | undefined = options.pageToken;
-      let truncated = false;
-      do {
+      const org = (await resolveOrg(orgId))!;
+      const remainder = decodeGmailRemainder(options.pageToken);
+      let ids: string[];
+      let next: string | undefined;
+      if (remainder) {
+        ids = remainder.ids;
+        next = remainder.next;
+      } else {
+        await reserveGmailQuota(org, 5);
         const list = await client.users.messages.list({
-          userId: "me",
-          q,
-          maxResults: 100,
-          ...(pageToken ? { pageToken } : {}),
+          userId: "me", q, maxResults: REPLY_FETCH_CAP,
+          ...(options.pageToken ? { pageToken: options.pageToken } : {}),
         });
-        for (const m of list.data.messages ?? []) {
-          // format:"full" so we get the real body (price extraction needs more
-          // than the ~200-char snippet).
-          const msg = await client.users.messages.get({
-            userId: "me",
-            id: m.id!,
-            format: "full",
-          });
+        ids = (list.data.messages ?? []).flatMap((m) => m.id ? [m.id] : []);
+        next = list.data.nextPageToken ?? undefined;
+      }
+      if (ids.length) await reserveGmailQuota(org, ids.length * 20);
+      for (let index = 0; index < ids.length; index += 1) {
+        try {
+          const msg = await client.users.messages.get({ userId: "me", id: ids[index], format: "full" });
           const header = (name: string) =>
             msg.data.payload?.headers?.find(
               (h) => (h.name ?? "").toLowerCase() === name
@@ -1045,20 +1056,22 @@ export const gmail = {
             body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),
             attachments: collectAttachments(msg.data.payload as GmailPart),
           });
+        } catch (err) {
+          // Deleted between listing and reading: there is no reply left to capture.
+          if ((err as { response?: { status?: number }; code?: number }).response?.status === 404 ||
+              (err as { code?: number }).code === 404) continue;
+          const message = (err as Error).message || "Gmail poll failed";
+          await markConnectionError(org, message);
+          if (!replies.length) return { replies: [], error: message };
+          return { replies, truncated: true,
+            nextPageToken: encodeGmailRemainder({ ids: ids.slice(index), next }), partialError: message };
         }
-        pageToken = list.data.nextPageToken ?? undefined;
-        if (replies.length >= REPLY_FETCH_CAP) {
-          truncated = Boolean(pageToken);
-          break;
-        }
-      } while (pageToken);
-
-      // Reported separately from `error`: the caller must still PROCESS the
-      // messages it did get. Folding this into `error` would have skipped
-      // them, turning a partial read into a total loss.
-      return truncated
-        ? { replies, truncated: true, nextPageToken: pageToken }
-        : { replies };
+      }
+      // A successful read supersedes an old temporary quota error, but cannot
+      // clear revoked authentication or an unrelated sending failure.
+      await query(`update integration_tokens set status='connected',last_error=null,updated_at=now()
+        where provider='gmail' and org_id=$1 and status='error' and last_error ~* '(quota|rate.?limit)'`, [org]);
+      return next ? { replies, truncated: true, nextPageToken: next } : { replies };
     } catch (err) {
       const message = (err as { message?: string }).message ?? "Gmail poll failed";
       // Record the failure on the connection the same way a failed SEND does,

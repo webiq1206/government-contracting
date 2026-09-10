@@ -1732,6 +1732,29 @@ export const scoringRecoverySweep: AgentDefinition = {
     let scoringQueued = 0;
     let queueFailures = 0;
     let deferred = 0;
+    // One dry-run admission per account/model, not hundreds of doomed jobs.
+    // A later scheduled sweep rechecks current limits; operator recovery uses
+    // the same gate, so budgets are never removed to make a retry succeed.
+    const admissions = new Map<string, Promise<boolean>>();
+    function canRecover(orgId: string, model: string, feature: string): Promise<boolean> {
+      const key = `${orgId}:${model}`;
+      const existing = admissions.get(key);
+      if (existing) return existing;
+      const check = runWithOrg(orgId, async () => {
+        try {
+          const { checkClaudeSpending } = await import("../api-usage/check-spending");
+          await checkClaudeSpending(orgId, model, feature);
+          return true;
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "ApiUsageBlockedError") throw error;
+          await logAgent({ agent: "scoring-recovery-sweep", action: "spending-held", level: "warn", status: "skipped",
+            message: `${feature} is waiting for API allowance. The next recovery sweep will check again. ${error.message}` });
+          return false;
+        }
+      });
+      admissions.set(key, check);
+      return check;
+    }
     for (const o of unscored) {
       try {
         const queuedId = await runWithOrg(o.orgId, () =>
@@ -1794,6 +1817,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     let analysisQueued = 0;
     for (const o of unbriefed) {
       try {
+        if (!(await canRecover(o.orgId, config.claude.modelSmart, "solicitation-analyst"))) { deferred++; continue; }
         const queuedId = await runWithOrg(o.orgId, () =>
           enqueue(
             "solicitation-analyst",
@@ -3047,6 +3071,12 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
      * that arrived while a large backlog was being drained are picked up by
      * the next run.
      */
+    if (processingFailures > 0) {
+      await logAgent({ agent: "reply-poll", action: "capture-incomplete", level: "error", status: "error",
+        message: "Some inbox delivery records could not be saved. Captured replies were kept and the same mailbox page will be retried." });
+      return { ok: false, summary: `${matched} matched; ${processingFailures} delivery records need another attempt. Mailbox progress was preserved.`,
+        enqueued, humanActionRequired: true };
+    }
     if (truncated) {
       if (!nextPageToken) {
         await logAgent({

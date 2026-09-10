@@ -13,6 +13,9 @@ import { TRIAL_DAYS } from "../billing/catalog";
 import { recordRequiredAdminAction } from "./audit";
 import { storage, type StorageBackend } from "../integrations/storage";
 import { isPlatformAdmin } from "../platform-admin";
+import { parsePaging, type FilterValues, type SortState } from "../domain/table-view";
+
+export const ACCOUNT_SORT_KEYS = ["name", "owner_email", "access", "subscription_status", "plan_key", "member_count", "created_at", "last_active_at"];
 
 export interface AdminAccountRow {
   id: string;
@@ -134,6 +137,90 @@ export async function adminAccountRows(): Promise<AdminAccountRow[]> {
   return rows
     .map(withAccess)
     .sort((a, b) => rank(a) - rank(b) || b.created_at.localeCompare(a.created_at));
+}
+
+/** Filter, count and page in one database snapshot. Only the visible accounts
+ * receive the full detail projection and cross the database connection. */
+export async function adminAccountPage(
+  filters: FilterValues,
+  sort: SortState,
+  params: Record<string, string | string[] | undefined>,
+) {
+  const values: unknown[] = [];
+  const bind = (value: unknown) => { values.push(value); return `$${values.length}`; };
+  const kind = filters.kind ?? "customer";
+  const kindClause = kind === "all" ? "true" : `f.classification = ${bind(kind)}`;
+  const clauses = [kindClause];
+  if (filters.q) clauses.push(`position(lower(${bind(filters.q)}) in lower(f.name || ' ' || coalesce(f.owner_email,''))) > 0`);
+  if (filters.access) clauses.push(`f.access = ${bind(filters.access)}`);
+  if (filters.billing === "comped") clauses.push("f.billing_exempt");
+  if (filters.billing === "paying") clauses.push("not f.billing_exempt and nullif(f.subscription_status,'') is not null");
+  if (filters.billing === "none") clauses.push("nullif(f.subscription_status,'') is null");
+  if (filters.suspended === "1") clauses.push("f.suspended_at is not null");
+  if (filters.noowner === "1") clauses.push("nullif(f.owner_email,'') is null");
+  if (filters.trial === "1") clauses.push("f.access = 'trial'");
+  if (filters.plan === "none") clauses.push("coalesce(nullif(f.plan_key,''),'none') = 'none'");
+  else if (filters.plan) clauses.push(`f.plan_key = ${bind(filters.plan)}`);
+  if (filters.signup && ["7", "30", "90"].includes(filters.signup)) clauses.push(`f.created_at >= now() - ${bind(Number(filters.signup))}::int * interval '1 day'`);
+  if (filters.activity === "never") clauses.push("f.last_active_at is null");
+  if (filters.activity === "dormant") clauses.push("f.last_active_at <= now() - interval '30 days'");
+  if (filters.activity === "quiet") clauses.push("f.last_active_at > now() - interval '30 days' and f.last_active_at <= now() - interval '7 days'");
+  if (filters.activity === "active") clauses.push("f.last_active_at > now() - interval '7 days'");
+  const key = sort.key && ACCOUNT_SORT_KEYS.includes(sort.key) ? sort.key : null;
+  const direction = sort.direction === "desc" ? "desc" : "asc";
+  const order = key
+    ? `f.${key} ${direction} ${key === "last_active_at" && direction === "asc" ? "nulls first" : "nulls last"}, f.id`
+    : "case when f.suspended_at is not null then 0 when f.access='none' then 1 when f.access='trial' then 2 else 3 end, f.created_at desc, f.id";
+  const requested = parsePaging(params, Number.MAX_SAFE_INTEGER);
+  const per = bind(requested.perPage);
+  const page = bind(requested.page);
+  const data = await queryOne<{
+    total: number; customers: number; locked_out: number; comped: number;
+    suspended: number; never_used: number; hidden: number; rows: AdminAccountRow[];
+  }>(`with member_activity as (
+      select m.org_id, count(distinct m.user_id)::int as member_count,
+             max(s.created_at) as last_active_at
+        from organization_members m
+        left join sessions s on s.user_id=m.user_id and s.impersonator_user_id is null
+       group by m.org_id
+    ), facts as materialized (
+      select o.id, o.name, o.classification, o.billing_exempt, o.suspended_at,
+             o.subscription_status, o.plan_key, o.created_at, owner.email as owner_email,
+             coalesce(a.member_count,0) as member_count, a.last_active_at,
+             case when o.suspended_at is not null then 'none'
+                  when o.billing_exempt or o.subscription_status in ('active','trialing','past_due') then 'full'
+                  when o.subscription_status='trial' and o.trial_ends_at > now() then 'trial'
+                  else 'none' end as access
+        from organizations o
+        left join member_activity a on a.org_id=o.id
+        left join lateral (
+          select u.email from organization_members m join users u on u.id=m.user_id
+           where m.org_id=o.id and m.role='owner' order by m.created_at, m.user_id limit 1
+        ) owner on true
+    ), matched as materialized (
+      select f.* from facts f where ${clauses.join(" and ")}
+    ), counts as (
+      select (select count(*)::int from matched) as total,
+             count(*) filter(where classification='customer')::int as customers,
+             count(*) filter(where classification='customer' and access='none')::int as locked_out,
+             count(*) filter(where classification='customer' and billing_exempt)::int as comped,
+             count(*) filter(where classification='customer' and suspended_at is not null)::int as suspended,
+             count(*) filter(where classification='customer' and last_active_at is null)::int as never_used,
+             count(*) filter(where not (${kindClause}))::int as hidden
+        from facts f
+    ), page as materialized (
+      select f.id, f.access, row_number() over(order by ${order}) as position
+        from matched f order by ${order}
+       limit ${per}::int
+       offset (least(${page}::bigint, greatest(1, ceil((select total from counts)::numeric / ${per}::int)::bigint))-1)*${per}::int
+    ), details as (
+      ${ACCOUNT_SELECT}
+      join page p on p.id=o.id
+    )
+    select counts.*, coalesce((select jsonb_agg(to_jsonb(d) || jsonb_build_object('access',p.access) order by p.position)
+      from details d join page p on p.id=d.id),'[]'::jsonb) as rows from counts`, values);
+  if (!data) throw new Error("Account list could not be loaded. Try again.");
+  return { ...data, paging: parsePaging(params, data.total) };
 }
 
 export async function adminAccount(orgId: string): Promise<AdminAccountRow | null> {

@@ -15,6 +15,10 @@ try {
   const opp=await queryOne<{id:string}>(`insert into opportunities(org_id,source,source_id,title,agency,stage,status,score,tier,deadline,human_action_required) values($1,'manual','ui-audit','Facility maintenance and electrical upgrades','Audit Agency','review','open',62,'review',now()+interval '10 days',true) returning id`,[org!.id]);
   const sub=await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,trade_categories,state,city) values($1,'Sample Electrical Services',array['Electrical'],'ID','Boise') returning id`,[org!.id]);
   const contract=await queryOne<{id:string}>(`insert into contracts(org_id,opportunity_id,contract_number,award_amount,status) values($1,$2,'AUDIT-001',25000,'active') returning id`,[org!.id,opp!.id]);
+  await query(`insert into organizations(name,slug,subscription_status,classification)
+    select 'Pagination Audit '||lpad(n::text,3,'0'),'pagination-audit-'||n,'active','test' from generate_series(1,57) n`);
+  await query(`insert into communications(org_id,channel,direction,subject,body,recipient_email,delivery_state)
+    values($1,'email','outbound','Ledger Audit Draft','Synthetic wording for the ledger regression.','fixture@example.test','draft')`, [org!.id]);
   writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,sub:sub!.id,contract:contract!.id}));
 } finally { await closePool(); }
 

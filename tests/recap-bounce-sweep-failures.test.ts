@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchReplies = vi.fn();
 const recentDeliveryTo = vi.fn();
 const markBounced = vi.fn();
+const saveCursor = vi.fn();
 
 const message = {
   threadId: "thread-1",
@@ -35,11 +36,13 @@ const delivery = {
 async function loadSweep() {
   vi.resetModules();
   vi.doMock("@/lib/integrations/gmail", () => ({ gmail: { fetchReplies } }));
+  vi.doMock("@/lib/recap/bounce-cursor", () => ({ loadBounceCursor: async () => ({ after_sec: 12345, scan_started_sec: 12400, page_token: null }), saveBounceCursor: saveCursor, restartBouncePage: vi.fn() }));
   vi.doMock("@/lib/recap/delivery", () => ({ recentDeliveryTo, markBounced }));
   return import("@/lib/recap/bounces");
 }
 
 beforeEach(() => {
+  saveCursor.mockReset();
   fetchReplies.mockReset();
   recentDeliveryTo.mockReset();
   markBounced.mockReset();
@@ -51,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.doUnmock("@/lib/integrations/gmail");
   vi.doUnmock("@/lib/recap/delivery");
+  vi.doUnmock("@/lib/recap/bounce-cursor");
   vi.resetModules();
 });
 
@@ -117,7 +121,7 @@ describe("recap bounce reconciliation", () => {
     expect(markBounced).not.toHaveBeenCalled();
   });
 
-  it("continues a truncated Gmail scan instead of dropping the older page", async () => {
+  it("saves a truncated scan for the next run instead of making an immediate quota burst", async () => {
     fetchReplies
       .mockResolvedValueOnce({ replies: [message], truncated: true, nextPageToken: "page-2" })
       .mockResolvedValueOnce({ replies: [] });
@@ -125,9 +129,9 @@ describe("recap bounce reconciliation", () => {
 
     const result = await sweepRecapBounces();
 
-    expect(fetchReplies).toHaveBeenCalledTimes(2);
-    expect(fetchReplies.mock.calls[1]?.[2]).toEqual({ pageToken: "page-2" });
-    expect(result).toMatchObject({ scanned: 1, matched: 1, truncated: false, error: null });
+    expect(fetchReplies).toHaveBeenCalledTimes(1);
+    expect(saveCursor).toHaveBeenCalledWith(expect.objectContaining({ after_sec: 12345 }), "page-2");
+    expect(result).toMatchObject({ scanned: 1, matched: 1, truncated: true, error: null });
   });
 
   it("recognises an already-recorded bounce during an overlapping scan", async () => {

@@ -53,6 +53,13 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("keeps budget holds visible without asking the queue to retry immediately", async () => {
+    mocks.handler.mockRejectedValueOnce(Object.assign(new Error("API_BUDGET: monthly limit reached"), { name: "ApiUsageBlockedError" }));
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, spendingHeld: true, humanActionRequired: true });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(result.permanent).toBeUndefined();
+  });
   it("does not begin canonical work when the durable run insert throws", async () => {
     mocks.queryOne.mockRejectedValueOnce(new Error("job_runs is unavailable"));
 

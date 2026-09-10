@@ -159,6 +159,40 @@ try {
     failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.stack ?? error.message)});checkpoint();
   }
   // Repeat the formerly stuck query navigation with cold browser caches.
+  try {
+    await page.goto(base+'/admin/accounts?kind=test&q=Pagination+Audit&per=25&sort=name',{waitUntil:'networkidle'});
+    await page.getByRole('link',{name:'Pagination Audit 001',exact:true}).first().waitFor();
+    await page.getByRole('link',{name:'Next →',exact:true}).click();
+    await page.getByRole('link',{name:'Pagination Audit 026',exact:true}).first().waitFor();
+    assert.equal(await page.getByRole('link',{name:'Pagination Audit 001',exact:true}).count(),0);
+    if(device!=='desktop') {
+      await page.getByLabel('Sort by',{exact:true}).selectOption('-name');
+    } else {
+      await page.getByRole('columnheader').getByRole('link',{name:/^Account/}).click();
+    }
+    await page.getByRole('link',{name:'Pagination Audit 057',exact:true}).first().waitFor();
+    assert(!await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),'Pagination must fit narrow screens');
+    await page.screenshot({path:join(out,device+'-account-pagination.png')});
+    results.push({device,route:'/admin/accounts',status:'57-account pagination, sort reset and viewport fit checked',screenshot:device+'-account-pagination.png'});
+  } catch(error) {
+    failures.push({device,route:'/admin/accounts',status:'pagination or sorting failed',error:String(error.stack??error.message)});checkpoint();
+  }
+  try {
+    await page.goto(base+'/activity',{waitUntil:'networkidle'});
+    const search=page.getByRole('textbox',{name:'Search messages, subjects, recipients or opportunities'});
+    await search.fill('Ledger Audit Draft');
+    await page.getByRole('heading',{name:'Email draft: Ledger Audit Draft',exact:true}).first().waitFor();
+    await page.getByText('More filters',{exact:true}).click();
+    await page.getByLabel('Status',{exact:true}).selectOption('failed');
+    await page.getByRole('heading',{name:'No matching activity',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Clear filters',exact:true}).click();
+    await page.getByRole('heading',{name:'Email draft: Ledger Audit Draft',exact:true}).first().waitFor();
+    assert.equal(await search.inputValue(),'');
+    await page.screenshot({path:join(out,device+'-activity-filters.png')});
+    results.push({device,route:'/activity',status:'draft history search, status filtering, empty state and clear checked',screenshot:device+'-activity-filters.png'});
+  } catch(error) {
+    failures.push({device,route:'/activity',status:'ledger filtering failed',error:String(error.stack??error.message)});checkpoint();
+  }
   // Each context keeps only this disposable owner's session, not client data.
   try {
     const session=await ctx.storageState();

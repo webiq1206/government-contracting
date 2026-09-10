@@ -11,6 +11,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { describeSendFailure } from "../lib/integrations/gmail-send-failure";
 
+vi.mock("../lib/integrations/gmail-quota", () => ({ reserveGmailQuota: async () => undefined }));
+
 const ORG = "11111111-2222-4333-8444-555555555555";
 
 /** What Google would return for a mailbox with one verified alias. */

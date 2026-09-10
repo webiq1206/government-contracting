@@ -140,6 +140,25 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div className="relative">
+      {card && columns.some(column => column.sortable) && (
+        <label className="mb-3 flex items-center gap-3 text-sm lg:hidden">
+          Sort by
+          <select className="input min-h-11 min-w-0 flex-1"
+            value={sort.key ? `${sort.direction === "desc" ? "-" : ""}${sort.key}` : ""}
+            onChange={event => {
+              const value = event.target.value;
+              const key = value.replace(/^-/, "");
+              if (value && !columns.some(column => column.sortable && column.key === key)) return;
+              window.location.assign(href({ page: 1, sort: { key: key || null, direction: value.startsWith("-") ? "desc" : "asc" } }));
+            }}>
+            <option value="">Default order</option>
+            {columns.filter(column => column.sortable).flatMap(column => [
+              <option key={column.key} value={column.key}>{column.header}, ascending</option>,
+              <option key={`-${column.key}`} value={`-${column.key}`}>{column.header}, descending</option>,
+            ])}
+          </select>
+        </label>
+      )}
       {/* Column + density controls. Deliberately above the table's own scroll
           container so they stay reachable on a wide table. */}
       {/*
@@ -317,7 +336,7 @@ export function DataTable<T extends { id: string }>({
           <span className="tabular-nums">{total}</span>
         </span>
 
-        <span className="flex items-center gap-3">
+        <span className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1">
             Per page
             {PER_PAGE_CHOICES.map((n) => (

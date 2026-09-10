@@ -2,6 +2,26 @@
 
 Status: in progress. PR #128 is not a complete production audit sign-off.
 
+## September 10 continuation
+
+Recovered branch `fix/app-navigation-audit` at `3d8a531`. Its final CI run 34410531947 and UI audit run 34410531883 both passed after the earlier session ended. The earlier pending statements below are chronological history, not the current check status.
+
+Changes in this continuation:
+
+- Account search, filters, sorting, counts and pagination now run in one database snapshot. Only the visible page receives the full detail projection and is sent to the browser. Headline totals remain customer-only and independent of filters.
+- Shared card lists expose sorting on phones and tablets. Pagination wraps when both page size and multiple-page navigation are present.
+- Gmail reservations share a persistent quota window across workers and organizations connected to the same mailbox. Sends, message reads, thread reads, attachments and sender-address lookups reserve their documented quota cost before calling the provider. The conservative fixed-minute cap leaves headroom for a rolling-minute provider limit. OAuth connection setup and outside applications are not governed by this limiter.
+- A read interrupted partway through a Gmail page returns completed messages plus a continuation containing the remaining message IDs. Deleted messages do not block the rest of the page. Successful scans clear previous temporary quota errors without clearing revoked access or unrelated sending failures.
+- Recap bounce scans process one batch per invocation and save their time range and page token durably. Failed history writes preserve the current page. Compare-and-set cursor writes prevent concurrent runs from overwriting newer progress.
+- Spending holds remain visible failed runs but do not trigger immediate queue retries. Scheduled analysis recovery checks allowance once per account/model before adding jobs. Free rule-based scoring remains available. Existing budget limits and billing acceptance remain authoritative.
+- The reply poll retains its cursor when delivery records cannot be saved.
+
+Local verification: 4,438 tests passed and 734 native-database tests skipped in the no-database job. Focused database tests exercised every migration through 117 in disposable PostgreSQL/WASM, account pagination and entitlement filters, shared-mailbox reservations, and saved scan progress. Type checking and changed-file lint passed. The final remote database and expanded responsive checks must still be verified before release.
+
+Read-only production evidence: the existing owner session works. Today and Automation Health rendered; Automation Health showed 6,919 waiting jobs, 182 affected opportunities, and 52,492 runs over 24 hours. Its old labels still call a Gmail quota error a reconnect problem and recovery deferrals a queue outage. These observations do not prove that the new branch is deployed or that its recovery has completed. No live settings, provider tests, messages, invoices or production database writes were performed in this continuation.
+
+Release: apply all migrations through `117_mailbox_work_limits.sql` using the migration-owner release workflow before starting the updated web and worker processes. Migration 116 supplies the pending pricing/default setup; 117 supplies durable mailbox limits and scan positions. A Git merge alone does not perform those operations.
+
 ## Changes on the audit branch
 
 - One navigation map drives the sidebar, mobile destinations, More, and Settings. Current destinations remain discoverable, and subscribed account pages use the same shell.
@@ -92,10 +112,10 @@ These are narrow checks in disposable data, not full-page sign-off.
 
 ## Still required
 
-- Resolve the remaining client navigation stall: Clear filters receives a server response but does not commit the new screen. Shared-shell hydration and account quick views passed the latest repeated runs. Do not merge unexplained failures.
+- Verify the latest branch checks after this continuation. The previous Clear-filter stall is resolved and passed runs 21 and 22.
 - Finish checking tab contents, lower-page controls, search/filter/sort combinations, read-only roles, and recovery workflows on every affected route.
-- Verify real production admin/tenant sessions, integration authentication, webhook delivery, queue processing, job retries/idempotency, and actual account blockers. The live browser-control service currently fails before a session can be created (daemon readiness timeout); this does not establish that brostco.com is down.
-- Profile production-sized data and network conditions. Synthetic local TTFB is not evidence of a production speed improvement. The admin accounts list still loads all account rows before in-memory filtering/paging and needs a database-side pagination review.
+- Verify real production admin/tenant sessions, integration authentication, webhook delivery, queue processing, job retries/idempotency, and actual account blockers. Owner browser access is working. Actual integration delivery and post-release queue recovery still need verification.
+- Profile production-sized data and network conditions. Synthetic local TTFB is not evidence of a production speed improvement. Account-list database pagination is implemented in this continuation; a measured production speed improvement still requires the release.
 - Verify valid invitation, reset-password, vendor-upload, checkout, and subscription workflows. Invalid-link and signed-out renders are not successful workflow tests.
 - Test physical mobile keyboards, Safari, slow networks, large datasets, integration outages, concurrent processes, and interrupted actions. No production purchases or outgoing messages were performed.
 
