@@ -6,8 +6,9 @@ vi.mock("googleapis", () => ({ google: {
   auth: { OAuth2: class { setCredentials() {} } },
   gmail: () => ({ users: { messages: { list: mocks.list, get: mocks.get } } }),
 } }));
-vi.mock("../lib/integrations/gmail-quota", () => ({ reserveGmailQuota: vi.fn(async () => undefined) }));
+vi.mock("../lib/integrations/gmail-quota", () => ({ reserveGmailQuota: vi.fn(async (_org: string, units: number) => units) }));
 import { gmail } from "../lib/integrations/gmail";
+import { reserveGmailQuota } from "../lib/integrations/gmail-quota";
 describe("bounded Gmail reply reads", () => {
   beforeEach(() => { vi.resetAllMocks(); mocks.get.mockImplementation(async ({ id }) => ({ data: { id, payload: {} } })); });
   it("returns a complete bounded page and a continuation without spending quota on the next page", async () => {
@@ -40,6 +41,17 @@ describe("bounded Gmail reply reads", () => {
       return { data: { id, payload: {} } };
     });
     expect((await gmail.fetchReplies(12345, "tenant-a")).replies.map(r => r.messageId)).toEqual(["kept"]);
+  });
+  it("uses a partial allowance and resumes the remaining message IDs without relisting", async () => {
+    mocks.list.mockResolvedValue({ data: { messages: ["one","two","three","four"].map(id => ({ id })), nextPageToken: "older" } });
+    vi.mocked(reserveGmailQuota).mockImplementation(async (_org, units) => Math.min(units, 40));
+    const first = await gmail.fetchReplies(12345,"tenant-a");
+    expect(first.replies.map(r=>r.messageId)).toEqual(["one","two"]);
+    vi.mocked(reserveGmailQuota).mockImplementation(async (_org, units) => units);
+    const last = await gmail.fetchReplies(12345,"tenant-a",{ pageToken:first.nextPageToken });
+    expect(last.replies.map(r=>r.messageId)).toEqual(["three","four"]);
+    expect(last.nextPageToken).toBe("older");
+    expect(mocks.list).toHaveBeenCalledTimes(1);
   });
   it("continues the same search range on the supplied page rather than skipping old replies", async () => {
     mocks.list.mockResolvedValue({ data: { messages: [{ id: "older-mail" }] } });

@@ -1021,8 +1021,13 @@ export const gmail = {
         ids = (list.data.messages ?? []).flatMap((m) => m.id ? [m.id] : []);
         next = list.data.nextPageToken ?? undefined;
       }
-      if (ids.length) await reserveGmailQuota(org, ids.length * 20);
-      for (let index = 0; index < ids.length; index += 1) {
+      let readCount = ids.length;
+      if (ids.length) {
+        // Use the remaining allowance instead of repeatedly refusing a full
+        // page while ordinary sends are using part of the mailbox quota.
+        readCount = (await reserveGmailQuota(org, ids.length * 20, 20)) / 20;
+      }
+      for (let index = 0; index < readCount; index += 1) {
         try {
           const msg = await client.users.messages.get({ userId: "me", id: ids[index], format: "full" });
           const header = (name: string) =>
@@ -1071,6 +1076,7 @@ export const gmail = {
       // clear revoked authentication or an unrelated sending failure.
       await query(`update integration_tokens set status='connected',last_error=null,updated_at=now()
         where provider='gmail' and org_id=$1 and status='error' and last_error ~* '(quota|rate.?limit)'`, [org]);
+      if (readCount < ids.length) next = encodeGmailRemainder({ ids: ids.slice(readCount), next });
       return next ? { replies, truncated: true, nextPageToken: next } : { replies };
     } catch (err) {
       const message = (err as { message?: string }).message ?? "Gmail poll failed";

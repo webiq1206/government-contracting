@@ -111,7 +111,7 @@ const ACCOUNT_SELECT = `
         from organization_members m
         join users u on u.id = m.user_id
        where m.org_id = o.id and m.role = 'owner'
-       order by m.created_at asc
+       order by m.created_at asc, m.user_id asc
        limit 1
     ) owner on true`;
 

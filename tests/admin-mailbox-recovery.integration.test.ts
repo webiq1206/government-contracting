@@ -70,6 +70,8 @@ describe("shared mailbox pacing and durable bounce progress", () => {
     await state.db!.exec("update gmail_quota_windows set window_start=now()-interval '2 minutes'");
     const results = await Promise.allSettled([reserveGmailQuota(LEGACY_ORG_ID,2000),reserveGmailQuota(other,2000)]);
     expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+    expect(await reserveGmailQuota(LEGACY_ORG_ID, 2000, 20)).toBe(500);
+    await expect(reserveGmailQuota(other,20)).rejects.toThrow("next minute");
   });
   it("resumes across runs and rejects stale cursor writers", async () => {
     const initial = await loadBounceCursor(180);
