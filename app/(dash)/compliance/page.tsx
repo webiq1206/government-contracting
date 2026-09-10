@@ -409,7 +409,7 @@ export default async function CompliancePage(
               </Link>
             }
           />
-          <AddComplianceItem />
+          {can(viewer?.orgRole, "manage_compliance") && <AddComplianceItem />}
         </div>
       </div>
     );
@@ -800,7 +800,7 @@ export default async function CompliancePage(
             when somebody asks for it.
           </p>
           <div className="mt-3">
-            <AddComplianceItem />
+            {can(viewer?.orgRole, "manage_compliance") && <AddComplianceItem />}
           </div>
         </div>
 

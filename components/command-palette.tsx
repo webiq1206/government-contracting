@@ -190,6 +190,13 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
     const request = requestRef.current + 1;
     requestRef.current = request;
     const controller = new AbortController();
+    const deadline = setTimeout(() => {
+      controller.abort();
+      if (request === requestRef.current) {
+        setSearchError("Search took too long. Check your connection and try again.");
+        setSearching(false);
+      }
+    }, 20_000);
     setSearching(true);
     setSearchError(null);
     setResults([]);
@@ -222,11 +229,13 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
           "Search could not reach the server. Your records are unchanged. Check the connection and try again."
         );
       } finally {
+        clearTimeout(deadline);
         if (request === requestRef.current) setSearching(false);
       }
     }, 250);
     return () => {
       clearTimeout(t);
+      clearTimeout(deadline);
       controller.abort();
     };
   }, [q, open, searchAttempt]);
@@ -305,6 +314,8 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
                 e.preventDefault();
                 setActive((a) => Math.max(a - 1, 0));
               } else if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
                 if (flat[active]) go(flat[active], q);
                 else if (q.trim().length >= 2 && !searchError) {
                   // Nothing highlighted, so Enter means "show me everything".

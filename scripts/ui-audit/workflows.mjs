@@ -13,7 +13,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       record.status = 'workflow passed in disposable environment';
       results.push(record);
     } catch (error) {
-      record.status = 'workflow failed'; record.error = String(error.stack ?? error);
+      record.status = 'workflow failed'; record.finalUrl = page.url(); record.error = String(error.stack ?? error);
       record.screenshot = `${device}-workflow-${task}-failed.png`;
       await page.screenshot({ path: join(out, record.screenshot) }).catch(() => {});
       failures.push(record);
@@ -63,6 +63,19 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await page.getByRole('heading', { name: 'Email draft: Ledger Audit Draft', exact: true }).first().waitFor();
   });
+  await check(`/opportunity/${ids.opportunity}`, 'pursuit-pause-network-recovery-and-resume', async () => {
+    const endpoint = `**/api/opportunities/${ids.opportunity}/pursuit`;
+    await page.route(endpoint, r => r.abort('failed'));
+    try {
+      await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'The change was not confirmed.' }).waitFor();
+      assert(await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).isEnabled());
+    } finally { await page.unroute(endpoint); }
+    await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).click();
+    await page.getByRole('button', { name: 'Resume', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).waitFor();
+  });
   await check('/review', 'nested-confirmation-and-keyboard', async () => {
     await page.getByRole('link', { name: 'Quick look', exact: true }).first().click();
     const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
@@ -83,6 +96,10 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await dialog.waitFor({ state: 'hidden' });
     await drawer.waitFor();
     await page.keyboard.press('Escape');
+    await drawer.waitFor({ state: 'hidden' });
+    await page.goBack({ waitUntil: 'networkidle' });
+    await drawer.waitFor();
+    await page.goForward({ waitUntil: 'networkidle' });
     await drawer.waitFor({ state: 'hidden' });
   });
   await check(`/subs/${ids.sub}`, 'subcontractor-tabs-notes-and-recovery', async () => {
@@ -137,6 +154,21 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByLabel('Award amount', { exact: true }).fill('32000');
     await page.getByLabel('Starts', { exact: true }).fill('2026-10-01');
     await page.getByLabel('Ends', { exact: true }).fill('2027-01-31');
+    const contractDialog = page.getByRole('dialog', { name: 'Record a contract', exact: true });
+    assert(await contractDialog.evaluate(el => el.matches(':modal')));
+    const originalViewport = page.viewportSize();
+    await page.setViewportSize(device === 'desktop' ? { width: 1024, height: 600 } : { width: 640, height: 360 });
+    try {
+      const action = contractDialog.getByRole('button', { name: 'Record it', exact: true });
+      await action.scrollIntoViewIfNeeded();
+      const bounds = await action.boundingBox();
+      assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= page.viewportSize().height, 'Contract action remains reachable on short screens');
+      await page.screenshot({ path: join(out, `${device}-contract-short-screen.png`) });
+      await contractDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page.getByRole('button', { name: 'Record one by hand', exact: true }).click();
+      assert.equal(await page.getByLabel('Contract number', { exact: true }).inputValue(), number, 'Closing and reopening preserves the draft');
+    } finally { await page.setViewportSize(originalViewport); }
+
     await page.route('**/api/contracts', r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The contract could not be saved.' }) }));
     try {
       await page.getByRole('button', { name: 'Record it', exact: true }).click();
@@ -148,15 +180,34 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: number, exact: true }).waitFor();
   });
+  await check(`/vendor/${ids.vendorToken}`, 'vendor-paperwork-forms-and-cancel', async () => {
+    await page.getByRole('heading', { name: /Sample Electrical Services, we need/ }).waitFor();
+    await page.getByRole('button', { name: 'Fill in and sign', exact: true }).click();
+    await page.getByLabel('Mailing address', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Fill in and sign', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Upload certificate', exact: true }).first().click();
+    assert.equal(await page.locator('input[type=file]').count(), 1);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.equal(await page.locator('input[type=file]').count(), 0);
+    // Form display only. No certification, signature, upload or message.
+  });
   await check('/today', 'global-search-keyboard-and-recovery', async () => {
     await page.getByRole('button', { name: 'Search everything', exact: true }).filter({ visible: true }).first().click();
     const dialog = page.getByRole('dialog', { name: /Search/ });
     await dialog.waitFor();
     const input = dialog.getByRole('combobox');
-    await input.fill('Facility maintenance');
+    await page.route('**/api/search?**', r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Search unavailable' }) }));
+    try {
+      await input.fill('Facility maintenance');
+      await dialog.getByRole('alert').filter({ hasText: 'Search did not load' }).waitFor();
+      assert.equal(await input.inputValue(), 'Facility maintenance');
+    } finally { await page.unroute('**/api/search?**'); }
+    await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
     const option = dialog.getByRole('option').filter({ hasText: 'Facility maintenance and electrical upgrades' }).first();
     await option.waitFor();
     await input.press('ArrowDown');
+    await input.press('ArrowUp');
     await input.press('Enter');
     await page.getByRole('heading', { name: 'Facility maintenance and electrical upgrades', exact: true }).waitFor();
   });
@@ -180,7 +231,7 @@ export async function auditRoles({ browser, device, width, height, base, out, re
         assert.equal(await page.getByRole('heading', { name: 'That page or record is unavailable', exact: true }).count(), 0);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
         assert.equal(await page.getByRole('link', { name: 'Accounts', exact: true }).count(), 0, 'Tenant roles have no platform navigation');
-        if (route === '/settings/profile' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Save profile', exact: true }).count(), 0);
+        if (route === '/settings/profile' && ['operator', 'member', 'viewer'].includes(role)) assert(!(await page.getByRole('button', { name: 'Save profile', exact: true }).isEnabled()), 'The populated profile is readable but not editable');
         if (route === '/settings/integrations' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.locator('#sam input').count(), 0);
         if (route === '/contracts' && ['member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Record one by hand', exact: true }).count(), 0);
         if (route === '/compliance' && role === 'viewer') assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);

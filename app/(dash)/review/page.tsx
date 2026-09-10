@@ -155,6 +155,7 @@ export default async function ReviewPage(
       ) : (
         <>
           <QueueKeys
+            documentNavigation
             prevHref={
               peeked
                 ? peekPosition.prevId
@@ -235,6 +236,7 @@ export default async function ReviewPage(
             */}
           {peeked && (
             <QuickViewDrawer
+              documentNavigation
               view={peeked.view}
               closeHref={closePeekHref}
               actions={opportunityRowActions(peeked.actionFacts, {

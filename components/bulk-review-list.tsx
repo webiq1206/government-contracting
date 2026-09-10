@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { Opportunity } from "@/lib/types";
 import { ScoreBadge, TierBadge } from "@/components/badges";
 import { RowActions } from "@/components/row-actions";
@@ -69,7 +68,7 @@ function ReviewCard({
          * record is one click further on, from the brief, which is where
          * somebody goes when the brief did not settle it.
          */}
-        <Link
+        <a
           href={href}
           aria-current={selected ? "true" : undefined}
           className="block min-w-0 flex-1 space-y-3"
@@ -153,7 +152,7 @@ function ReviewCard({
         </div>
       )}
 
-        </Link>
+        </a>
       </div>
 
       {dims.length > 0 && (
@@ -193,19 +192,18 @@ function ReviewCard({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Link
+          <a
             href={href}
             className="inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent-strong"
           >
             Open brief
-          </Link>
-          <Link
+          </a>
+          <a
             href={peekHref}
-            scroll={false}
             className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
           >
             Quick look
-          </Link>
+          </a>
         </div>
         {/*
           Pursue as the button, everything else behind the menu. The per-card

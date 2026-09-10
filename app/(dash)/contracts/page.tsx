@@ -238,7 +238,7 @@ export default async function ContractsPage(
           help={PAGE_HELP["contracts"]}
           title="Contracts"
           status={contractsHeadline(counts)}
-          explanation="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
+          explanation="Track awarded work, deadlines, payments, and subcontractor requirements."
           primaryAction={canManage ? <CreateContract /> : undefined}
         />
 

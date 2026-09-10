@@ -10,7 +10,7 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 function walk(dir) {return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):e.name==='page.tsx'?[join(dir,e.name)]:[]);}
 const routes=walk('app').map(file=>({file,route:'/'+file.split('/').slice(1,-1).filter(s=>!s.startsWith('(')).join('/')})).filter(x=>!x.route.startsWith('/theme-qa'));
 function resolve(route) {
-  return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]','invalid-audit-token');
+  return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]',ids.vendorToken);
 }
 const browser=await chromium.launch();
 const results=[];
@@ -311,6 +311,8 @@ try {
   await page.getByRole('button',{name:'Run now',exact:true}).first().click();
   const runConfirmation=page.getByRole('dialog',{name:/^Run .+ now\?$/});
   await runConfirmation.getByText('This starts an additional run and may use paid API credits.',{exact:false}).waitFor();
+  assert(await runConfirmation.evaluate(el => el.matches(':modal')),'Confirmation uses native modal isolation');
+  assert(await runConfirmation.getByRole('button',{name:'Cancel',exact:true}).evaluate(el => document.activeElement === el),'Focus starts on Cancel');
   await runConfirmation.getByRole('button',{name:'Cancel',exact:true}).click();
   assert.equal(manualRequests,0,'Cancel must not enqueue or spend API credits');
   page.removeListener('request',noManualRun);

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UnsavedGuard } from "./unsaved-guard";
 
 /** Preset categories. Values match the Compliance Monitor's category keys where
  *  they overlap, so a manual item folds into the same group as tracked ones. */
@@ -73,6 +74,7 @@ export function AddComplianceItem() {
 
   return (
     <div className="card space-y-3">
+      <UnsavedGuard when={label.trim() !== "" || dueAt !== ""} />
       <p className="eyebrow">Track your own item</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block sm:col-span-1">
@@ -86,7 +88,7 @@ export function AddComplianceItem() {
         </label>
         <label className="block">
           <span className="label mb-1 block">Category</span>
-          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <select aria-label="Category" className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}

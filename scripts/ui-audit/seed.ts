@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { queryOne, query, closePool } from "../../lib/db";
 import { hashPassword } from "../../lib/auth";
+import { encodePortalToken } from "../../lib/domain/sub-portal-link";
 
 async function main() {
 if (process.env.CI !== "true" || process.env.PGHOST !== "127.0.0.1" || process.env.PGDATABASE !== "brostco_audit" || process.env.USE_REPLIT_DEV_DB !== "true") {
@@ -19,7 +20,7 @@ try {
     select 'Pagination Audit '||lpad(n::text,3,'0'),'pagination-audit-'||n,'active','test' from generate_series(1,57) n`);
   await query(`insert into communications(org_id,channel,direction,subject,body,recipient_email,delivery_state)
     values($1,'email','outbound','Ledger Audit Draft','Synthetic wording for the ledger regression.','fixture@example.test','draft')`, [org!.id]);
-  writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,sub:sub!.id,contract:contract!.id}));
+  writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,sub:sub!.id,contract:contract!.id,vendorToken:encodePortalToken({s:sub!.id,e:Math.floor(Date.now()/1000)+3600})}));
 } finally { await closePool(); }
 
 }

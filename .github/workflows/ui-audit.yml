@@ -41,6 +41,7 @@ jobs:
       PGDATABASE: brostco_audit
       PGUSER: postgres
       PGPASSWORD: disposable-ci-only
+      AUTH_SECRET: disposable-ui-audit-signing-key-not-for-production
       BROSTCO_PROCESS_ROLE: web
       PLATFORM_ADMIN_EMAILS: ui-owner@example.test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'

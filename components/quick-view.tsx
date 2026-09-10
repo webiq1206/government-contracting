@@ -33,7 +33,9 @@ export function QuickViewDrawer({
   actions = [],
   members = [],
   viewerId,
+  documentNavigation = false,
 }: {
+  documentNavigation?: boolean;
   view: QuickView;
   closeHref: string;
   nav?: {
@@ -49,6 +51,7 @@ export function QuickViewDrawer({
 }) {
   return (
     <DetailDrawer
+      documentNavigation={documentNavigation}
       title={view.title}
       subtitle={view.subtitle}
       closeHref={closeHref}

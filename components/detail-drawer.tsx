@@ -30,7 +30,9 @@ export function DetailDrawer({
   footer,
   nav,
   navigate,
+  documentNavigation = false,
 }: {
+  documentNavigation?: boolean;
   navigate?: (href: string) => void;
   title: string;
   subtitle?: string | null;
@@ -64,22 +66,23 @@ export function DetailDrawer({
     total: number;
   };
 }) {
+  const QueryLink = documentNavigation ? "a" : Link;
   return (
-    <DetailDrawerFrame closeHref={closeHref} navigate={navigate}>
+    <DetailDrawerFrame closeHref={closeHref} navigate={navigate} documentNavigation={documentNavigation}>
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="truncate text-base font-medium text-foreground">{title}</h2>
             {subtitle && <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>}
           </div>
-          <Link
+          <QueryLink
             href={closeHref}
-            prefetch={navigate ? false : null}
+            {...(!documentNavigation ? { prefetch: navigate ? false : null } : {})}
             aria-label="Close details"
             className="tap shrink-0 text-sm text-slate-500 hover:text-accent"
           >
             Close
-          </Link>
+          </QueryLink>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Link href={openHref} className="btn-ghost inline-flex text-xs">
@@ -87,9 +90,9 @@ export function DetailDrawer({
           </Link>
           {nav && (
             <span className="ml-auto flex items-center gap-1">
-              <Link
+              <QueryLink
                 href={nav.prevHref ?? "#"}
-                prefetch={navigate ? false : null}
+                {...(!documentNavigation ? { prefetch: navigate ? false : null } : {})}
                 aria-disabled={nav.prevHref == null}
                 className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
                   nav.prevHref
@@ -99,13 +102,13 @@ export function DetailDrawer({
               >
                 <span aria-hidden>↑</span>
                 <span className="sr-only">Previous record</span>
-              </Link>
+              </QueryLink>
               <span className="num px-1 text-xs text-muted-foreground">
                 {nav.index + 1} of {nav.total}
               </span>
-              <Link
+              <QueryLink
                 href={nav.nextHref ?? "#"}
-                prefetch={navigate ? false : null}
+                {...(!documentNavigation ? { prefetch: navigate ? false : null } : {})}
                 aria-disabled={nav.nextHref == null}
                 className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
                   nav.nextHref
@@ -115,7 +118,7 @@ export function DetailDrawer({
               >
                 <span aria-hidden>↓</span>
                 <span className="sr-only">Next record</span>
-              </Link>
+              </QueryLink>
             </span>
           )}
         </div>

@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UnsavedGuard } from "./unsaved-guard";
+import { ConfirmDialog } from "./confirm-dialog";
 
 /**
  * Record a contract by hand.
@@ -44,6 +46,8 @@ export function CreateContract() {
         setError(data.error ?? "That did not save.");
         return;
       }
+      setNumber(""); setAward(""); setStart(""); setEnd("");
+      setOpen(false);
       router.push(`/contracts/${data.id}`);
     } catch {
       setError("The save was not confirmed. Check your contracts before trying again. Your entries are still here.");
@@ -53,16 +57,21 @@ export function CreateContract() {
     }
   }
 
-  if (!open) {
-    return (
+  return (
+    <>
+      <UnsavedGuard when={number.trim() !== "" || award !== "" || start !== "" || end !== ""} />
       <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(true)}>
         Record one by hand
       </button>
-    );
-  }
-
-  return (
-    <div className="space-y-3 rounded-md border border-border bg-surface-raised p-3 text-left">
+      <ConfirmDialog
+        open={open}
+        title="Record a contract"
+        confirmLabel="Record it"
+        busy={busy}
+        confirmDisabled={!number.trim()}
+        onConfirm={() => void save()}
+        onCancel={() => setOpen(false)}
+        body={<div className="space-y-3 text-left">
       <p className="text-xs text-muted-foreground">
         For work already under contract that this account did not bid here. It is marked as
         entered by hand, and shows no expected profit, because there is no bid behind it to
@@ -91,14 +100,8 @@ export function CreateContract() {
         </label>
       </div>
       {error && <p role="alert" className="text-xs text-risk">{error}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" disabled={busy || !number.trim()} onClick={() => void save()}>
-          {busy ? "Saving…" : "Record it"}
-        </button>
-        <button type="button" className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
+        </div>}
+      />
+    </>
   );
 }

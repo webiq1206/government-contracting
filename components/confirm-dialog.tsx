@@ -7,7 +7,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 /**
  * The confirmation this product uses instead of `window.confirm`.
  *
- * The native dialog is tempting and wrong for three separate reasons.
+ * The blocking window.confirm prompt has three limitations.
  *
  * It cannot say what the action costs. `window.confirm` takes one string, so a
  * question that needs a count, a list of what is kept, or a warning about what

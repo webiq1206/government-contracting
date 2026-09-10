@@ -231,7 +231,7 @@ export default async function IntegrationsPage(
             ? `${troubleCount} need attention · ${workingCount} of ${initial.length} confirmed working`
             : `${workingCount} of ${initial.length} confirmed working`
         }
-        explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, and a key that passed a test is not the same as one doing its job, so each one shows both."
+        explanation="Connect services, check their status, and fix connection problems."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 

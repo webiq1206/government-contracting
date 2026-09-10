@@ -4,10 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 /** A side column on desktop, a focused modal sheet on touch-sized layouts. */
-export function DetailDrawerFrame({ children, closeHref, navigate }: { children: ReactNode; closeHref: string; navigate?: (href: string) => void }) {
+export function DetailDrawerFrame({ children, closeHref, navigate, documentNavigation = false }: { documentNavigation?: boolean; children: ReactNode; closeHref: string; navigate?: (href: string) => void }) {
   const panel = useRef<HTMLDialogElement>(null);
   const router = useRouter();
-  const close = () => navigate ? navigate(closeHref) : router.push(closeHref, { scroll: false });
+  const close = () => navigate ? navigate(closeHref) : documentNavigation ? window.location.assign(closeHref) : router.push(closeHref, { scroll: false });
   const [modal, setModal] = useState(false);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1023px)");

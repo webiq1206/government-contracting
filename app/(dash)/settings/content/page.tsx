@@ -103,7 +103,7 @@ export default async function ContentLibraryPage() {
             ? `${items.length} snippet${items.length === 1 ? "" : "s"} · ${templates.length} email template${templates.length === 1 ? "" : "s"}`
             : `${templates.length} email template${templates.length === 1 ? "" : "s"}`
         }
-        explanation="The language this platform reuses: the emails it sends to subcontractors, and the short paragraphs it drafts into bids."
+        explanation="Edit the email templates and saved text used in your bids."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 

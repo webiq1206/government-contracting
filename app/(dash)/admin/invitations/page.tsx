@@ -52,7 +52,7 @@ export default async function AdminInvitationsPage() {
       <PageFrame
         breadcrumbs={[{ label: "Platform admin" }]}
         title="Invitations"
-        explanation="Bring somebody onto the platform on terms you choose, instead of the public trial everyone else gets."
+        explanation="Invite someone and choose their plan and billing terms."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         <InvitationForm />

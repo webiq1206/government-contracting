@@ -41,11 +41,11 @@ export function ActivityLedger() {
   const qs = params.toString();
   const filters = Object.fromEntries(params);
   const [viewError, setViewError] = useState("");
-  const setFilters = (next: Record<string, string> | ((current: Record<string, string>) => Record<string, string>)) => {
+  const setFilters = (next: Record<string, string> | ((current: Record<string, string>) => Record<string, string>), replace = false) => {
     const values = typeof next === "function" ? next(filters) : next;
     const query = new URLSearchParams(Object.entries(values).filter(([, value]) => value)).toString();
     // Native history retains Next's state and lets Back restore the selected view.
-    if (query !== qs) history.pushState(null, "", "/activity" + (query ? "?" + query : ""));
+    if (query !== qs) history[replace ? "replaceState" : "pushState"](null, "", "/activity" + (query ? "?" + query : ""));
   };
   const [data, setData] = useState<Data | null>(null),
     [error, setError] = useState(""),
@@ -78,6 +78,7 @@ export function ActivityLedger() {
         if (!controller.signal.aborted) setData(body);
       })
       .catch((e) => {
+        if (controller.signal.aborted && controller.signal.reason?.name === "AbortError") return;
         if (e.name !== "AbortError") setError("Your activity could not be loaded. Check your connection and try again.");
       })
       .finally(() => {
@@ -87,7 +88,7 @@ export function ActivityLedger() {
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [qs, refresh]);
   const change = (key: string, value: string) =>
-    setFilters((f) => ({ ...f, [key]: value, page: "1" }));
+    setFilters((f) => ({ ...f, [key]: value, page: "1" }), key === "q");
   const persistViews = (next: typeof saved) => {
     try {
       localStorage.setItem("activity-views:" + data?.viewScope, JSON.stringify(next));

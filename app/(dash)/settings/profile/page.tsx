@@ -118,7 +118,7 @@ export default async function ProfilePage() {
             ? `Version ${profile.version} · updated ${shortDate(profile.updated_at)}`
             : "No active profile"
         }
-        explanation="Who the company is, what it can bid on, and where. Scoring, eligibility and every generated document read this as the source of truth."
+        explanation="Keep the company details used to match opportunities and prepare bids."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 
