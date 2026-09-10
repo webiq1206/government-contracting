@@ -3,6 +3,29 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check('/communications', 'draft-status-and-delivery-evidence', async () => {
+    await page.getByText('Draft, not sent', { exact: true }).waitFor();
+    if (device === 'desktop') {
+      assert.equal(await page.getByText('100%', { exact: true }).count(), 0, 'An unsent draft must not imply confirmed delivery');
+      await page.getByText('Nothing sent yet', { exact: true }).first().waitFor();
+    }
+  });
+  await check('/call-queue', 'call-workspace-load-failure-and-recovery', async () => {
+    const endpoint = `**/api/call-cards/${ids.call}/workspace`;
+    await page.route(endpoint, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The call could not be loaded.' }) }));
+    try {
+      await page.goto(`${base}/call-queue?open=${ids.call}`, { waitUntil: 'networkidle' });
+      await page.getByRole('alert').filter({ hasText: 'The call workspace did not load' }).waitFor();
+    } finally { await page.unroute(endpoint); }
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    const workspace = page.getByRole('region', { name: 'Call workspace for Sample Electrical Services', exact: true });
+    await workspace.waitFor();
+    await page.screenshot({ path: join(out, `${device}-call-workspace-recovery.png`) });
+    await workspace.getByRole('button', { name: 'Close', exact: true }).click();
+    await workspace.waitFor({ state: 'hidden' });
+    await page.getByRole('heading', { name: 'Call Queue', exact: true }).waitFor();
+    // No dialing, scope acknowledgement, call outcome or follow-up is submitted.
+  });
   for (const route of ['/pipeline', '/subs', '/communications']) {
     await check(route, `${route.slice(1)}-quick-view-and-history`, async () => {
       await page.getByRole('link', { name: 'Quick look', exact: true }).filter({ visible: true }).first().click();
@@ -108,7 +131,7 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     const saved = page.waitForResponse(r => r.url() === base + '/api/automation/rules' && r.request().method() === 'POST' && !r.request().postDataJSON().preview_only);
     await page.getByRole('button', { name: 'Save rules', exact: true }).filter({ visible: true }).click();
     assert((await saved).ok());
-    await page.getByText(/^Saved at .*Applied everywhere immediately\./).waitFor();
+    await page.getByText(/^Saved at .*Applied everywhere immediately\./).filter({ visible: true }).waitFor();
     await page.reload({ waitUntil: 'networkidle' });
     if (!(await amber.isVisible())) await page.getByText('Adjust automation rules', { exact: true }).click();
     assert.equal(await amber.inputValue(), value);

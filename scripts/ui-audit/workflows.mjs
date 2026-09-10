@@ -237,6 +237,7 @@ export async function auditRoles({ browser, device, width, height, base, out, re
         if (route === '/settings/profile' && ['operator', 'member', 'viewer'].includes(role)) assert(!(await page.getByRole('button', { name: 'Save profile', exact: true }).isEnabled()), 'The populated profile is readable but not editable');
         if (route === '/settings/integrations' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.locator('#sam input').count(), 0);
         if (route === '/contracts' && ['member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Record one by hand', exact: true }).count(), 0);
+        if (route === '/subs' && role === 'viewer') assert.equal(await page.getByRole('button', { name: /^Edit contact info for/ }).count(), 0);
         if (route === '/compliance' && role === 'viewer') assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
         const screenshot = `${device}-${role}-${route.replaceAll('/', '_')}.png`;
         await page.screenshot({ path: join(out, screenshot) });

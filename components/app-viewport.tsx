@@ -2,10 +2,12 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useKeyboardViewport } from "./use-keyboard-viewport";
+import { restorePageScroll } from "./refresh-page";
 
 /** Shared sizing for the workspace and account pages when a phone keyboard opens. */
 export function AppViewport({ children }: { children: ReactNode }) {
   const keyboard = useKeyboardViewport();
+  useEffect(restorePageScroll, []);
   useEffect(() => {
     if (!keyboard) return;
     const frame = requestAnimationFrame(() => {

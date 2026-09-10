@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { refreshPage } from "./refresh-page";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ALL_KPI_METRICS, getMetric } from "@/lib/domain/kpi";
 
@@ -11,7 +11,6 @@ import { ALL_KPI_METRICS, getMetric } from "@/lib/domain/kpi";
  * window or minimum score, and names it.
  */
 export function KpiManager() {
-  const router = useRouter();
   const pending = useRef(false);
   const [open, setOpen] = useState(false);
   const [metric, setMetric] = useState(ALL_KPI_METRICS[0].id);
@@ -45,7 +44,7 @@ export function KpiManager() {
       }
       setLabel("");
       setOpen(false);
-      router.refresh();
+      refreshPage();
     } catch {
       setError("The save was not confirmed. Check your metrics before trying again. Your entries are still here.");
     } finally {
@@ -130,7 +129,6 @@ export function KpiManager() {
 
 /** Delete control shown on each custom KPI card. */
 export function KpiDeleteButton({ id }: { id: string }) {
-  const router = useRouter();
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -144,7 +142,7 @@ export function KpiDeleteButton({ id }: { id: string }) {
       const response = await fetch(`/api/kpis/${id}`, { method: "DELETE", signal: AbortSignal.timeout(20_000) });
       if (!response.ok) { setError("The KPI could not be removed. Try again."); return; }
       setAsking(false);
-      router.refresh();
+      refreshPage();
     } catch {
       setError("Removal was not confirmed. Check your metrics before trying again.");
     } finally {

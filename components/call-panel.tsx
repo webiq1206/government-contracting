@@ -15,8 +15,6 @@
  */
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { CallWorkspace, type CallWorkspaceData } from "./call-workspace";
 
 export function CallPanel({
@@ -26,7 +24,6 @@ export function CallPanel({
   cardId: string;
   closeHref: string;
 }) {
-  const router = useRouter();
   const [data, setData] = useState<CallWorkspaceData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -92,9 +89,9 @@ export function CallPanel({
             >
               Try again
             </button>
-            <Link href={closeHref} className="btn-ghost inline-flex text-sm">
+            <a href={closeHref} className="btn-ghost inline-flex text-sm">
               Back to the queue
-            </Link>
+            </a>
           </div>
         </div>
       </div>
@@ -117,16 +114,16 @@ export function CallPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-border/55 px-4 py-2 dark:border-white/10 lg:hidden">
-        <Link href={closeHref} className="tap text-xs text-slate-500 hover:text-accent">
+        <a href={closeHref} className="tap text-xs text-slate-500 hover:text-accent">
           Back to the queue
-        </Link>
+        </a>
       </div>
       <div className="min-h-0 flex-1">
         <CallWorkspace
           data={data}
           variant="inline"
           onClose={() => {
-            router.push(closeHref);
+            window.location.assign(closeHref);
           }}
         />
       </div>

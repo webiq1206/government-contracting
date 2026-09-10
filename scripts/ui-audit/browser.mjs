@@ -79,6 +79,23 @@ try {
       if(scrolled) {record.bottomScreenshot=name.replace('.png','-bottom.png');await p.screenshot({path:join(out,record.bottomScreenshot)});}
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
       record.scrollFrames=await captureScrollFrames(p,out,name.replace('.png',''));
+      record.disclosures=[];
+      // Open secondary controls before inspecting their layout and tab contents.
+      // Native summaries only; this never presses a save, send or run control.
+      for(let disclosure=0;disclosure<await p.locator('details > summary').count();disclosure++) {
+        assert(disclosure<150,'Unexpected disclosure count; inspect this page manually');
+        const summary=p.locator('details > summary').nth(disclosure);
+        if(!(await summary.isVisible())) continue;
+        if(!(await summary.evaluate(el=>el.parentElement.open))) {
+          record.disclosures.push(await summary.innerText());
+          await summary.click();
+        }
+      }
+      if(record.disclosures.length) {
+        record.expandedScreenshot=name.replace('.png','-expanded.png');
+        await p.screenshot({path:join(out,record.expandedScreenshot),fullPage:true});
+        record.expandedScrollFrames=await captureScrollFrames(p,out,name.replace('.png','-expanded'));
+      }
       record.tabs=[];
       const tablists=p.getByRole('tablist');
       for(let group=0;group<await tablists.count();group++) {
@@ -95,6 +112,7 @@ try {
           record.tabs.push({group,label:labels[tab],screenshot,scrollFrames,status:'tab opened'});
         }
       }
+      record.overflow=record.overflow||await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
       record.status=record.http>=500||errors.length||record.overflow?'needs review':'render captured';
       if(!publicPage&&record.finalPath==='/login') record.status='authentication failed';
       if(record.status!=='render captured') failures.push(record);
@@ -464,6 +482,32 @@ try {
   await v.waitForURL('**/#workflow');
   await v.locator('#workflow').waitFor();
   results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to workflow checked'});
+  if(device!=='desktop') {
+    for(const route of ['/', '/privacy']) {
+      await v.goto(base+route,{waitUntil:'networkidle'});
+      const trigger=v.getByRole('button',{name:'Open navigation',exact:true});
+      await trigger.click();
+      const menu=v.getByRole('dialog',{name:'Explore Brost Co',exact:true});
+      await menu.waitFor();
+      assert(await menu.evaluate(el=>el.matches(':modal')),'Public menu must isolate the page');
+      const close=menu.getByRole('button',{name:'Close navigation',exact:true});
+      assert(await close.evaluate(el=>document.activeElement===el));
+      await v.keyboard.press('Shift+Tab');
+      assert(await menu.getByRole('link',{name:'Start free trial',exact:true}).evaluate(el=>document.activeElement===el),'Keyboard focus stays inside the menu');
+      await v.screenshot({path:join(out,`${device}-public-menu-${route==='/'?'home':'privacy'}.png`)});
+      await v.keyboard.press('Escape');
+      await menu.waitFor({state:'hidden'});
+      assert(await trigger.evaluate(el=>document.activeElement===el));
+      await trigger.click();
+      await menu.getByRole('link',{name:'Pricing',exact:true}).click();
+      await v.waitForURL('**/#pricing');
+      await v.locator('#pricing').waitFor();
+      await menu.waitFor({state:'hidden'});
+      await v.goBack({waitUntil:'networkidle'});
+      assert.equal(new URL(v.url()).pathname,route);
+      results.push({device,role:'visitor',route,status:'public menu, focus isolation, Escape, pricing link and Back checked'});
+    }
+  }
   await viewer.close();
   checkpoint();
   } catch(error) {

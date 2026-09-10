@@ -382,6 +382,7 @@ export default async function CommunicationsPage(
         */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <QueueKeys
+        documentNavigation
           prevHref={
             peeked
               ? peekPosition.prevId
@@ -513,13 +514,13 @@ export default async function CommunicationsPage(
                       well as acting.
                     */}
                     <div className="flex items-center justify-between gap-2 px-4 pb-2">
-                      <Link
+                      <a
                         href={withPeek(c.threadKey)}
-                        scroll={false}
+
                         className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
                       >
                         Quick look
-                      </Link>
+                      </a>
                       <RowActions
                         actions={conversationRowActions(
                           {
@@ -596,6 +597,7 @@ export default async function CommunicationsPage(
 
         {peeked && (
           <QuickViewDrawer
+      documentNavigation
             view={peeked.view}
             closeHref={withoutPeek()}
             actions={conversationRowActions(peeked.actionFacts, {
@@ -635,14 +637,14 @@ function Deliverability({ rates }: { rates: ReturnType<typeof deliverability> })
       <div>
         <h2 className="label">Deliverability, last 90 days</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Measured over {rates.sent} message{rates.sent === 1 ? "" : "s"} you sent.
+          Measured over {rates.sent} outbound attempt{rates.sent === 1 ? "" : "s"}. Drafts are excluded.
         </p>
       </div>
       <dl className="space-y-3">
         <Rate
-          label="Arrived"
+          label="Confirmed delivery"
           value={formatRate(rates.deliveryRate)}
-          note="Accepted by the receiving server."
+          note="Delivery or engagement evidence was recorded. Unconfirmed sends are not necessarily failures."
         />
         <Rate
           label="Answered"

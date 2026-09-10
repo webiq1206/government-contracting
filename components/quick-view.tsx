@@ -49,6 +49,7 @@ export function QuickViewDrawer({
   members?: Owner[];
   viewerId?: string;
 }) {
+  const RecordLink = documentNavigation ? "a" : Link;
   return (
     <DetailDrawer
       documentNavigation={documentNavigation}
@@ -172,9 +173,9 @@ export function QuickViewDrawer({
         * so at the bottom as well as the top: somebody who has read to the end
         * has usually decided this is the record they wanted.
         */}
-      <Link href={view.openHref} className="btn-ghost inline-flex text-xs">
+      <RecordLink href={view.openHref} className="btn-ghost inline-flex text-xs">
         {view.openLabel}
-      </Link>
+      </RecordLink>
     </DetailDrawer>
   );
 }

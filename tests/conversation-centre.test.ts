@@ -398,6 +398,27 @@ describe("counts and filters", () => {
 });
 
 describe("deliverability", () => {
+  it("does not count an unsent draft as a send or a successful delivery", () => {
+    const draft = msg({ id: "draft", delivery_state: "draft", follow_up_at: at(-1) });
+    const summary = summarize(thread({ messages: [draft] }), NOW);
+    expect(summary.state).toBe("draft");
+    expect(matchesFilter(summary, "draft")).toBe(true);
+    expect(matchesFilter(summary, "awaiting_them")).toBe(false);
+    expect(deliverability([draft])).toMatchObject({ sent: 0, deliveryRate: null, responseRate: null });
+  });
+
+  it("requires affirmative evidence for delivery instead of assuming silence means arrival", () => {
+    const rates = deliverability([
+      msg({ id: "sent", delivery_state: "sent" }),
+      msg({ id: "delayed", delivery_state: "deferred" }),
+      msg({ id: "delivered", delivery_state: "delivered" }),
+      msg({ id: "draft", delivery_state: "draft" }),
+    ]);
+    expect(rates.sent).toBe(3);
+    expect(rates.deliveryRate).toBeCloseTo(1 / 3);
+    expect(rates.failed).toBe(0);
+  });
+
   it("reports no rate rather than 0% when nothing has been sent", () => {
     /*
      * A brand new account showing "0% delivered" is being told its mail is

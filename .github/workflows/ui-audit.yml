@@ -68,7 +68,7 @@ jobs:
             if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
             sleep 2
           done
-          timeout 900s node scripts/ui-audit/browser.mjs
+          timeout 1200s node scripts/ui-audit/browser.mjs
       - name: Preserve screenshots and results
         if: always()
         uses: actions/upload-artifact@v4

@@ -85,9 +85,9 @@ export function DetailDrawer({
           </QueryLink>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link href={openHref} className="btn-ghost inline-flex text-xs">
+          <QueryLink href={openHref} className="btn-ghost inline-flex text-xs">
             {openLabel}
-          </Link>
+          </QueryLink>
           {nav && (
             <span className="ml-auto flex items-center gap-1">
               <QueryLink

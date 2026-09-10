@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { refreshPage } from "./refresh-page";
 import { UnsavedGuard } from "./unsaved-guard";
 
 /** Preset categories. Values match the Compliance Monitor's category keys where
@@ -22,7 +22,6 @@ const CATEGORIES: { value: string; label: string }[] = [
  * the countdown and alerts.
  */
 export function AddComplianceItem() {
-  const router = useRouter();
   const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
@@ -55,7 +54,7 @@ export function AddComplianceItem() {
       setLabel("");
       setDueAt("");
       setOpen(false);
-      router.refresh();
+      refreshPage();
     } catch {
       setError("The save was not confirmed. Check the list before trying again. Your entries are still here.");
     } finally {

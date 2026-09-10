@@ -461,6 +461,7 @@ export default async function PipelinePage(
   const peekNav = queuePosition(peekOrder, peekId);
   const peekDrawer = peeked ? (
     <QuickViewDrawer
+      documentNavigation
       view={peeked.view}
       closeHref={closePeekHref}
       /* The same builder the card and the table row call. */
@@ -923,13 +924,13 @@ function PipelineCard({
       */}
       <div className="mt-2 flex items-center justify-end gap-2">
         {peekHref && (
-          <Link
+          <a
             href={peekHref}
-            scroll={false}
+
             className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
           >
             Quick look
-          </Link>
+          </a>
         )}
         <RowActions
           actions={opportunityRowActions(

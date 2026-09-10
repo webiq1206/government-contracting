@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
+import { MarketingMobileMenu } from "./mobile-menu";
 
 const LINKS = [
   { id: "platform", label: "Product" },
@@ -89,6 +90,7 @@ export function MarketingNav({
           >
             Sign up
           </Link>
+          <div className="lg:hidden"><MarketingMobileMenu signupHref={signupHref} loginHref={loginHref} onLanding={onLanding} dark={dark} /></div>
         </div>
       </div>
     </header>

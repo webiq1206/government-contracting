@@ -53,6 +53,7 @@
 .mkt-lp .desktop-nav a:hover, .mkt-lp .nav-actions > a:first-child:hover { color: #fff; }
 .mkt-lp .nav-actions { justify-self: end; display: flex; gap: 25px; align-items: center; }
 .mkt-lp .mobile-nav { display: none; }
+.mkt-lp .mobile-nav > button { font-size: 24px; line-height: 1; }
 .mkt-lp .btn { min-height: 54px; padding: 0 24px; display: inline-flex; align-items: center; justify-content: center; gap: 14px; border: 0; background: var(--gold); color: #16140f; font-size: 13px; font-weight: 600; transition: background .25s, box-shadow .25s; }
 .mkt-lp .btn:hover { background: #d6b986; box-shadow: 0 12px 32px rgba(195,160,107,.17); }
 .mkt-lp .btn-arrow { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; transition: transform .2s ease; }

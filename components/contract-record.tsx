@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { refreshPage } from "./refresh-page";
 
 export interface RecordMilestone {
   id: string;
@@ -106,7 +106,6 @@ export function ContractRecordSections({
   coordination: RecordCoordination[];
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ bad: boolean; text: string } | null>(null);
@@ -131,7 +130,7 @@ export function ContractRecordSections({
       }
       setMessage({ bad: false, text: data.message ?? "Saved." });
       setOpen(null);
-      router.refresh();
+      refreshPage();
       return true;
     } catch {
       setMessage({ bad: true, text: "The save was not confirmed. Check the record before trying again. Your entries are still here." });
