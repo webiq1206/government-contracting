@@ -72,8 +72,8 @@ export function DetailDrawer({
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-medium text-foreground">{title}</h2>
-            {subtitle && <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>}
+            <h2 className="line-clamp-3 break-words text-base font-medium text-foreground">{title}</h2>
+            {subtitle && <p className="mt-0.5 line-clamp-2 break-words text-xs text-slate-500">{subtitle}</p>}
           </div>
           <QueryLink
             href={closeHref}

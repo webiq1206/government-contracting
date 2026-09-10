@@ -781,27 +781,17 @@ export default async function CompliancePage(
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* How this board works: automatic tracking vs your job. */}
-        <div className="callout-panel">
-          <p className="text-sm font-medium text-foreground">
-            The system watches these for you. Renewing is your job.
-          </p>
-          <p className="mt-1 text-sm text-slate-600">
-            Every day it checks each item and warns you before anything lapses.
-            For it to count down, it needs a date. Open any item, set its renewal
-            date, and you&rsquo;ll get alerts as the deadline gets close. Items
-            showing &ldquo;no date set&rdquo; can&rsquo;t be tracked yet.
-            {/*
-              Attaching the certificate is now the thing worth telling people to
-              do. The line used to point at a link box, which was all the board
-              could offer: a link breaks when a folder moves and cannot be
-              produced when a contracting officer asks.
-            */}{" "}
-            Attach the certificate itself to each item, so you can produce it
-            when somebody asks for it.
-          </p>
-          <div className="mt-3">
-            {can(viewer?.orgRole, "manage_compliance") && <AddComplianceItem />}
-          </div>
+        <div className="space-y-3">
+          <details className="rounded-md border border-border bg-surface px-4">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">How compliance checks work</summary>
+            <p className="pb-2 pt-1 text-sm text-muted-foreground">
+              Set a renewal date so daily checks can warn you before it lapses.
+              Attach the certificate to keep the evidence on file.
+              Your team still needs to renew it and confirm the details.
+              Items without a date cannot have a countdown.
+            </p>
+          </details>
+          {can(viewer?.orgRole, "manage_compliance") && <AddComplianceItem />}
         </div>
 
         {/*
@@ -1059,25 +1049,28 @@ export default async function CompliancePage(
 
 function Legend() {
   return (
-    <div className="flex items-center gap-3 text-xs text-slate-600">
+    <details className="w-full shrink-0 border-b border-border/40 px-5 text-left text-xs text-slate-600">
+      <summary className="min-h-11 cursor-pointer py-3 font-medium">Status guide</summary>
+      <div className="grid gap-2 pb-3 sm:grid-cols-2 xl:grid-cols-4">
       {/*
         The legend says what the colours mean, in the same words the badges
         use. It used to name three severities, none of which were states the
         cards could actually be in.
       */}
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> Complete
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-pursue" /> Complete
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-review" /> Expiring soon, or needs a person
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-review" /> Expiring soon, or needs a person
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Expired, blocked, or conflicting
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-risk" /> Expired, blocked, or conflicting
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-border" /> Nothing on file, or nothing we can check
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-border" /> Nothing on file, or nothing we can check
       </span>
-    </div>
+      </div>
+    </details>
   );
 }
 
