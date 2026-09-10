@@ -166,7 +166,7 @@ try {
     await page.getByRole('link',{name:/^Pagination Audit 026(?:\s|$)/}).first().waitFor();
     assert.equal(await page.getByRole('link',{name:/^Pagination Audit 001(?:\s|$)/}).count(),0);
     if(device!=='desktop') {
-      await page.getByLabel('Sort by',{exact:true}).selectOption('-name');
+      await page.getByRole('combobox',{name:/^Sort by(?:\s|$)/}).selectOption('-name');
     } else {
       await page.getByRole('columnheader').getByRole('link',{name:/^Account/}).click();
     }
