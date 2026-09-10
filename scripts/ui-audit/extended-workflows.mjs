@@ -74,9 +74,17 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await page.getByRole('heading', { name: 'Call Queue', exact: true }).waitFor();
     // No dialing, scope acknowledgement, call outcome or follow-up is submitted.
   });
-  for (const route of ['/pipeline', '/pipeline?view=list', '/pipeline?view=stages', '/pipeline?view=table', '/subs', '/communications']) {
+  for (const route of ['/pipeline', '/pipeline?view=list', '/pipeline?view=stages', '/pipeline?view=table', '/subs', '/communications', '/today', '/workbench', '/call-queue', '/search?q=Facility', '/recap']) {
     const viewName = route.slice(1).replace(/[?=]/g, '-');
     await check(route, `${viewName}-quick-view-and-history`, async () => {
+      if (route === '/pipeline?view=stages' && device !== 'desktop') {
+        await page.getByRole('tablist', { name: 'Pipeline stages', exact: true }).getByRole('tab', { name: /^Scoring/ }).click();
+      }
+      if (route === '/recap') {
+        const todayHref = await page.getByRole('link', { name: 'Today so far', exact: true }).getAttribute('href');
+        assert(todayHref);
+        await page.goto(base + todayHref, { waitUntil: 'networkidle' });
+      }
       await page.getByRole('link', { name: 'Quick look', exact: true }).filter({ visible: true }).first().click();
       const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
       await drawer.waitFor();

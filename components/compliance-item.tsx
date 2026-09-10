@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OwnerPicker } from "@/components/owner-picker";
 import type { Owner } from "@/lib/domain/ownership";
+import { refreshPage } from "@/components/refresh-page";
 
 /** A file on the item, as the card needs it. */
 export interface ComplianceDocView {
@@ -369,25 +370,30 @@ export function ComplianceItemCard({
   viewerId?: string;
   canAssign?: boolean;
 }) {
-  const router = useRouter();
+  const pending = useRef(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
 
   async function remove() {
-    setAsking(false);
+    if (!canAssign || pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/compliance/${item.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/compliance/${item.id}`, { method: "DELETE", signal: AbortSignal.timeout(20_000) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Could not delete.");
         return;
       }
-      router.refresh();
+      setAsking(false);
+      refreshPage();
+    } catch {
+      setError("The deletion was not confirmed. Check the record before trying again.");
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -422,11 +428,14 @@ export function ComplianceItemCard({
    * meaning to, assert they had checked the certificate.
    */
   async function act(body: Record<string, unknown>) {
+    if (!canAssign || pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`/api/compliance/${item.id}`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -436,20 +445,24 @@ export function ComplianceItemCard({
         return;
       }
       setEditing(false);
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+      refreshPage();
+    } catch {
+      setError("The change was not confirmed. Check the record before trying again.");
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
 
   async function save() {
+    if (!canAssign || pending.current) return;
+    pending.current = true;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`/api/compliance/${item.id}`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
@@ -459,10 +472,11 @@ export function ComplianceItemCard({
         return;
       }
       setEditing(false);
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+      refreshPage();
+    } catch {
+      setError("The save was not confirmed. Your entries are still here. Check the record before trying again.");
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -525,7 +539,9 @@ export function ComplianceItemCard({
             attach it on the card instead: a link cannot be produced in an audit.
           </span>
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <details className="rounded-md border border-border p-3">
+          <summary className="cursor-pointer font-medium">Renewal schedule and escalation</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="label mb-1 block">How often it repeats</span>
             <select
@@ -563,6 +579,7 @@ export function ComplianceItemCard({
               className="input"
               inputMode="numeric"
               placeholder="30"
+              aria-label="Warn this many days ahead"
               value={form.window_days}
               onChange={(e) => set("window_days", e.target.value)}
             />
@@ -598,6 +615,9 @@ export function ComplianceItemCard({
             />
           </label>
         </div>
+        </details>
+        <details className="space-y-3 rounded-md border border-border p-3" open={Boolean(item.blockedBy || item.conflictDetail || item.needsReviewReason)}>
+          <summary className="cursor-pointer font-medium">Blockers and review notes</summary>
         <label className="block">
           <span className="label mb-1 block">Waiting on something else</span>
           <input
@@ -629,6 +649,7 @@ export function ComplianceItemCard({
             onChange={(e) => set("needs_review_reason", e.target.value)}
           />
         </label>
+        </details>
         <label className="block">
           <span className="label mb-1 block">Notes</span>
           <textarea
@@ -675,7 +696,7 @@ export function ComplianceItemCard({
           >
             Cancel
           </button>
-          {error && <span className="text-sm text-risk">{error}</span>}
+          {error && <span className="text-sm text-risk" role="alert">{error}</span>}
         </div>
       </div>
     );
@@ -767,18 +788,21 @@ export function ComplianceItemCard({
       <ConfirmDialog
         open={asking}
         title={`Delete "${item.label}"?`}
-        body="The item and its history go. Evidence files already uploaded against it stay on the account."
+        body={<>
+          <p>The item and its history go. Evidence files already uploaded against it stay on the account.</p>
+          {error && <p className="mt-2 text-risk" role="alert">{error}</p>}
+        </>}
         confirmLabel="Delete it"
         danger
         busy={saving}
         onConfirm={() => void remove()}
-        onCancel={() => setAsking(false)}
+        onCancel={() => { setAsking(false); setError(null); }}
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
+        {canAssign && <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
           Edit
-        </button>
-        {item.manual && (
+        </button>}
+        {canAssign && item.manual && (
           <button
             className="btn-ghost text-xs text-risk"
             onClick={() => setAsking(true)}

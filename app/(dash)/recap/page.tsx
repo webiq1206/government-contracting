@@ -188,6 +188,7 @@ export default async function RecapPage(
 
       {peekedOpp && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedOpp.view}
           closeHref={peekHref(null)}
           actions={opportunityRowActions(peekedOpp.actionFacts, { role: user.orgRole })}
@@ -196,6 +197,7 @@ export default async function RecapPage(
       )}
       {peekedSub && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedSub.view}
           closeHref={peekHref(null)}
           actions={subcontractorRowActions(peekedSub.actionFacts, { role: user.orgRole })}

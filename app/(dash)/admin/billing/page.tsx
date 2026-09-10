@@ -203,7 +203,7 @@ export default async function AdminBillingPage({ searchParams }: {
           </label>
           <label>
             <span className="label mb-1 block">Subscription status</span>
-            <select className="input" name="status" defaultValue={selectedStatus}>
+            <select className="input" aria-label="Subscription status" name="status" defaultValue={selectedStatus}>
               <option value="">All statuses</option>
               {statuses.map(value => <option key={value} value={value}>{value.replace(/_/g, " ")}</option>)}
             </select>

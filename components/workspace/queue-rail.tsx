@@ -184,13 +184,12 @@ export function QueueRail({
                 </Row>
                 {e.quickLookHref && (
                   <div className="border-b border-border/40 px-4 pb-2 pl-12 dark:border-white/5">
-                    <Link
+                    <a
                       href={e.quickLookHref}
-                      scroll={false}
                       className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
                     >
                       Quick look
-                    </Link>
+                    </a>
                   </div>
                 )}
               </li>

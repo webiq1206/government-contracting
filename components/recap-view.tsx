@@ -94,9 +94,8 @@ function ItemRow({
         * nothing else, which is the honest answer.
         */}
       {peek && peekHref && (
-        <Link
+        <a
           href={peekHref(peekParam(peek))}
-          scroll={false}
           aria-current={openPeek === peekParam(peek) ? "true" : undefined}
           className={`tap row-raise mt-1.5 inline-flex text-xs underline-offset-2 hover:text-accent ${
             openPeek === peekParam(peek)
@@ -105,7 +104,7 @@ function ItemRow({
           }`}
         >
           Quick look
-        </Link>
+        </a>
       )}
     </li>
   );

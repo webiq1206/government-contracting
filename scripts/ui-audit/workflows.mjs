@@ -150,6 +150,40 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await savedItem.waitFor();
     await page.reload({ waitUntil: 'networkidle' });
     await savedItem.waitFor();
+    const card = page.locator('.card').filter({ has: savedItem }).last();
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editor = page.locator('.card').filter({ has: page.getByLabel('Notes', { exact: true }) });
+    const schedule = editor.getByText('Renewal schedule and escalation', { exact: true });
+    assert.equal(await schedule.evaluate(el => el.parentElement.open), false);
+    await schedule.click();
+    await editor.getByLabel('Warn this many days ahead', { exact: true }).fill('45');
+    await schedule.click();
+    const note = `Keep the renewal receipt ${device}.`;
+    await editor.getByLabel('Notes', { exact: true }).fill(note);
+    const endpoint = '**/api/compliance/*';
+    await page.route(endpoint, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The changes could not be saved.' }) }));
+    try {
+      await editor.getByRole('button', { name: 'Save', exact: true }).click();
+      await editor.getByRole('alert').filter({ hasText: 'The changes could not be saved.' }).waitFor();
+      assert.equal(await editor.getByLabel('Notes', { exact: true }).inputValue(), note);
+      await editor.screenshot({ path: join(out, `${device}-compliance-editor-recovery.png`) });
+    } finally { await page.unroute(endpoint); }
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.getByText(note, { exact: true }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByText(note, { exact: true }).waitFor();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: `Delete "${name}"?`, exact: true });
+    await dialog.waitFor();
+    await page.route(endpoint, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The item could not be deleted.' }) }));
+    try {
+      await dialog.getByRole('button', { name: 'Delete it', exact: true }).click();
+      await dialog.getByRole('alert').filter({ hasText: 'The item could not be deleted.' }).waitFor();
+      assert(await dialog.isVisible());
+      await dialog.screenshot({ path: join(out, `${device}-compliance-delete-recovery.png`) });
+    } finally { await page.unroute(endpoint); }
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await savedItem.waitFor();
   });
   await check('/contracts', 'contract-create-failure-retry', async () => {
     await page.getByRole('button', { name: 'Record one by hand', exact: true }).click();
@@ -242,7 +276,10 @@ export async function auditRoles({ browser, device, width, height, base, out, re
         if (route === '/settings/integrations' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.locator('#sam input').count(), 0);
         if (route === '/contracts' && ['member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Record one by hand', exact: true }).count(), 0);
         if (route === '/subs' && role === 'viewer') assert.equal(await page.getByRole('button', { name: /^Edit contact info for/ }).count(), 0);
-        if (route === '/compliance' && role === 'viewer') assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
+        if (route === '/compliance' && role === 'viewer') {
+          assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
+          assert.equal(await page.getByRole('button', { name: /^(Edit|Delete|Add file)$/ }).count(), 0);
+        }
         const screenshot = `${device}-${role}-${route.replaceAll('/', '_')}.png`;
         await page.screenshot({ path: join(out, screenshot) });
         results.push({ device, role, route, status: 'tenant route and role controls checked', screenshot });

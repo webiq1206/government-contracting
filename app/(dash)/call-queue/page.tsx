@@ -272,6 +272,7 @@ export default async function CallQueuePage(
               * in one hand.
               */}
             <QueueKeys
+              documentNavigation={Boolean(peeked)}
               prevHref={
                 peeked
                   ? peekPosition.prevId
@@ -449,6 +450,7 @@ export default async function CallQueuePage(
             </section>
             {peeked && (
               <QuickViewDrawer
+                documentNavigation
                 view={peeked.view}
                 closeHref={peekHref(null)}
                 actions={callCardRowActions(peeked.actionFacts, {

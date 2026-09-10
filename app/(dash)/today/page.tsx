@@ -1442,6 +1442,7 @@ export default async function TodayPage(
       </div>
       {peekView && (
         <QuickViewDrawer
+          documentNavigation
           view={peekView}
           closeHref={withoutPeek()}
           actions={peekActions}

@@ -258,13 +258,12 @@ export default async function SearchPage(
                         folded count nobody can open is a fact stated and then
                         withheld. */}
                     {peekTarget(r) && (
-                      <Link
+                      <a
                         href={peekHref(peekParam(peekTarget(r)!))}
-                        scroll={false}
                         className="tap mt-1 inline-flex pl-3 text-xs text-muted-foreground underline-offset-2 hover:text-accent"
                       >
                         Quick look
-                      </Link>
+                      </a>
                     )}
                     {r.cluster && (
                       <Link
@@ -284,6 +283,7 @@ export default async function SearchPage(
 
       {peekedOpp && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedOpp.view}
           closeHref={peekHref(null)}
           actions={opportunityRowActions(peekedOpp.actionFacts, { role: viewer?.orgRole })}
@@ -292,6 +292,7 @@ export default async function SearchPage(
       )}
       {peekedSub && (
         <QuickViewDrawer
+          documentNavigation
           view={peekedSub.view}
           closeHref={peekHref(null)}
           actions={subcontractorRowActions(peekedSub.actionFacts, { role: viewer?.orgRole })}

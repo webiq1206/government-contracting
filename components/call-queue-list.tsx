@@ -204,15 +204,14 @@ export function CallQueueList({
                     cancels default behaviour would stop it opening.
                   */}
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <Link
+                    <a
                       href={`${peekBase}${encodeURIComponent(
                         quickViewValue({ kind: "call_card", id: c.id })
                       )}`}
-                      scroll={false}
                       className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
                     >
                       Quick look
-                    </Link>
+                    </a>
                     <RowActions
                       actions={callCardRowActions(
                         {

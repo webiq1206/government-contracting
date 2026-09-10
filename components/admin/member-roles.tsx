@@ -87,6 +87,7 @@ export function MemberRoles({
             <label className="flex items-center gap-2 text-xs">
               <span className="sr-only">Role for {m.email}</span>
               <select
+                aria-label={`Role for ${m.email}`}
                 className="input h-8 w-32 text-xs"
                 value={m.role}
                 disabled={busy != null || (m.role === "owner" && owners <= 1)}
