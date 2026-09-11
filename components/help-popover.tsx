@@ -1,11 +1,5 @@
 "use client";
 
-/**
- * The small "?" next to each page title. Opens a compact popover with a few
- * bullets: what this page is for, what to do here, and what runs on its own.
- * Deliberately short, the full journey lives at /how-it-works.
- */
-
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -19,7 +13,6 @@ export function HelpPopover({
   variant: _variant = "light",
 }: {
   help: HelpContent;
-  /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "dark";
 }) {
   const [open, setOpen] = useState(false);
@@ -35,14 +28,14 @@ export function HelpPopover({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (rect) setAlignRight(rect.left + 320 > window.innerWidth - 16);
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
         setOpen(false);
         triggerRef.current?.focus();
       }
     }
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    function onClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     }
     place();
     document.addEventListener("keydown", onKey);
@@ -60,18 +53,16 @@ export function HelpPopover({
       <button
         ref={triggerRef}
         type="button"
-        aria-label={open ? "Hide page help" : "What is this page?"}
+        aria-label={open ? "Hide page help" : "Page help"}
         aria-expanded={open}
         aria-controls={panelId}
-        title="What is this page?"
-        onClick={() => setOpen((o) => !o)}
-        className={`tap h-8 w-8 shrink-0 rounded-full border text-xs font-semibold transition-colors lg:h-6 lg:w-6 ${
-          open
-            ? "border-accent bg-gold text-on-accent"
-            : "border-foreground/50 text-muted-foreground hover:border-accent hover:text-gold-text"
+        title="Page help"
+        onClick={() => setOpen((value) => !value)}
+        className={`tap inline-flex min-h-8 items-center px-1 text-xs font-medium transition-colors ${
+          open ? "text-accent" : "text-muted-foreground hover:text-accent"
         }`}
       >
-        ?
+        Help
       </button>
 
       {open && (
@@ -79,7 +70,7 @@ export function HelpPopover({
           id={panelId}
           role="region"
           aria-labelledby={titleId}
-          className={`fixed inset-x-4 top-[4.25rem] z-[70] max-h-[calc(100dvh-8.25rem-env(safe-area-inset-bottom))] w-auto overflow-y-auto rounded-md border border-border bg-background p-4 shadow-xl lg:absolute lg:inset-x-auto lg:top-8 lg:max-h-none lg:w-80 lg:overflow-visible ${
+          className={`fixed inset-x-4 top-16 z-[70] max-h-[calc(100dvh-5rem)] w-auto overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl lg:absolute lg:inset-x-auto lg:top-8 lg:max-h-none lg:w-80 lg:overflow-visible ${
             alignRight ? "lg:right-0" : "lg:left-0"
           }`}
         >
@@ -87,10 +78,10 @@ export function HelpPopover({
             {help.title}
           </p>
           <ul className="mt-2 space-y-1.5">
-            {help.points.map((p, i) => (
-              <li key={i} className="flex gap-2 text-sm leading-snug text-slate-600">
+            {help.points.map((point, index) => (
+              <li key={index} className="flex gap-2 text-sm leading-snug text-muted-foreground">
                 <span className="mt-0.5 text-accent">·</span>
-                <span>{p}</span>
+                <span>{point}</span>
               </li>
             ))}
           </ul>
@@ -99,7 +90,7 @@ export function HelpPopover({
             className="mt-3 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline"
             onClick={() => setOpen(false)}
           >
-            See how the whole process works →
+            Help center
           </Link>
         </div>
       )}
