@@ -210,6 +210,15 @@ export interface Attachment {
   mime?: string;
 }
 
+/** List pages must not load or serialize full solicitation documents. */
+export type OpportunitySummary = Pick<Opportunity,
+  "id" | "org_id" | "solicitation_number" | "title" | "naics_code" |
+  "set_aside_type" | "value_estimated" | "value_estimated_source" | "deadline" |
+  "posted_at" | "location_state" | "agency" | "sub_agency" | "score" |
+  "score_breakdown" | "tier" | "risk_flags" | "stage" | "status" |
+  "human_action_required" | "snoozed_until" | "pursuit_state" | "created_at" | "updated_at"
+>;
+
 export interface ScoreBreakdown {
   /** How well this fits the company, given what we know. */
   total: number;
