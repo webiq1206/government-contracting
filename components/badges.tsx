@@ -12,7 +12,6 @@ export function ScoreBadge({
   variant = "inline",
 }: {
   score: number | null;
-  /** `box` matches the Opportunity mock square fit-score treatment. */
   variant?: "inline" | "box";
 }) {
   if (score == null) return <span className="text-slate-500">-</span>;
@@ -29,12 +28,7 @@ export function ScoreBadge({
   return <span className={`num text-base font-semibold ${color}`}>{score}</span>;
 }
 
-/**
- * Page chrome pinned above the page scroller (page-shell shrink-0 sibling).
- * Kept compact on mobile so content keeps most of the viewport under the
- * mobile top nav and above the tab bar. Prefer one header region; put
- * search/filters in PageToolbar rather than a third custom bar.
- */
+/** A compact orientation row, not a second navigation bar. */
 export function PageHeader({
   title,
   subtitle,
@@ -45,29 +39,25 @@ export function PageHeader({
   variant: _variant = "light",
 }: {
   title: string;
-  /** Supporting sentence: what this page is for / how many items. */
   subtitle?: ReactNode;
   eyebrow?: string;
-  /** Optional live status chip/line shown above the subtitle. */
   status?: ReactNode;
   help?: HelpContent;
   children?: ReactNode;
-  /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "dark";
 }) {
   return (
-    <div className="product-page-header flex shrink-0 flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-        {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
-        <div className="flex items-start gap-2">
-          <h1 className="min-w-0 break-words font-sans text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
+    <div className="product-page-header flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="min-w-0 flex-1">
+        {eyebrow && <p className="mb-1 text-xs font-medium text-muted-foreground">{eyebrow}</p>}
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="min-w-0 break-words font-display text-xl font-semibold leading-tight text-foreground sm:text-2xl">
             {title}
           </h1>
           {help && <HelpPopover help={help} />}
         </div>
-
         {status != null && status !== "" && (
-          <div className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground sm:mt-1.5 sm:line-clamp-none sm:text-sm">
+          <div className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">
             {status}
           </div>
         )}
@@ -78,7 +68,7 @@ export function PageHeader({
         )}
       </div>
       {children && (
-        <div className="flex w-full max-w-full flex-wrap items-center gap-1.5 pt-1 sm:w-auto sm:pt-0">
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1.5">
           {children}
         </div>
       )}
