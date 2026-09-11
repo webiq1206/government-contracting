@@ -35,7 +35,7 @@ jobs:
           test "$(sha256sum docs/redesign/import/02-marketing.patch | cut -d' ' -f1)" = "6f9ce04a236f85c6602347b07cc4ab4b6a1ba97a4416a13aef02c1f8058b52f2"
           test "$(sha256sum docs/redesign/import/03-workflow.patch | cut -d' ' -f1)" = "6b5d814b8a3b8e9954dd53b6063fcf0ce5961bfd739bb2fbefdafdcf5b20d35f"
           test "$(sha256sum docs/redesign/import/04-tests.patch | cut -d' ' -f1)" = "bcbe318db8c3e8e996b48b737408302a87f1cf9385d2c45d26b54917c571d732"
-          test "$(sha256sum docs/redesign/import/05-gray-background.patch | cut -d' ' -f1)" = "3d88e2e41b7747f8ef85d4101cf1caa4ff62898814d98dd869ef72d4662b8926"
+          test "$(sha256sum docs/redesign/import/05-gray-background.patch | cut -d' ' -f1)" = "691a322df2db211a72ae53c2f77f5a0b60c3d5551a715745395651a37cd59d0c"
       - name: Apply exact authored source changes
         shell: bash
         run: |
