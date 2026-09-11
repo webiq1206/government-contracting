@@ -129,9 +129,9 @@ describe("rendered accessibility sweep coverage", () => {
 
   it("uses visible form and secondary-control borders in both themes", () => {
     const css = readFileSync("app/globals.css", "utf8");
-    expect(css).toContain("border-foreground/50 bg-background");
-    expect(css).toContain("border-white/35 bg-shell");
-    expect(css).toContain("border-foreground/50 bg-surface");
+    expect(css).toContain("border-control-border bg-surface");
+    expect(css).toMatch(/\.dark \.input\s*\{[^}]*border-control-border bg-surface/s);
+    expect(css).toMatch(/\.btn-secondary\s*\{[^}]*border-control-border bg-surface/s);
 
     const rootStart = css.indexOf(":root");
     const darkStart = css.indexOf("\n.dark {", rootStart);
@@ -160,9 +160,9 @@ describe("rendered accessibility sweep coverage", () => {
     const lightBackground = token(root, "background");
     const darkBackground = token(dark, "shell");
     expect(
-      contrast(blend(token(root, "foreground"), lightBackground, 0.5), lightBackground)
+      contrast(token(root, "control-border"), lightBackground)
     ).toBeGreaterThanOrEqual(3);
-    expect(contrast(blend([255, 255, 255], darkBackground, 0.35), darkBackground)).toBeGreaterThanOrEqual(
+    expect(contrast(token(dark, "control-border"), darkBackground)).toBeGreaterThanOrEqual(
       3
     );
   });

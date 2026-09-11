@@ -6,18 +6,18 @@ This document records the redesign on `redesign/complete-platform`. It supersede
 
 | Role | Light | Dark |
 | --- | --- | --- |
-| Page | #F6F8FB | #0C121E |
-| Text | #152033 | #EDF3FC |
-| Surface | #FFFFFF | #141D2D |
-| Secondary text | #526176 | #A5B5CC |
-| Primary action / focus | #2457E6 | #8BADFF |
-| Positive status | #0F766E | #5CCFAF |
-| Attention | #92520D | #F5BF62 |
-| Risk | #B93037 | #FF8F96 |
+| Page | #F4F6F6 | #0B1720 |
+| Text | #111A1F | #EFF5F4 |
+| Surface | #FFFFFF | #102A33 |
+| Secondary text | #617077 | #A8BABC |
+| Primary action / focus | #0E6F75 | #53BAC0 |
+| Positive status | #2B6F52 | #85C9A3 |
+| Attention | #95601B | #E5BC78 |
+| Risk | #A33A31 | #F19B92 |
 
-Use semantic Tailwind tokens from `app/globals.css` and `tailwind.config.ts`. Legacy `gold` class names remain compatible aliases to blue, not a second brand palette. `on-accent` and `on-status` supply the foreground for solid semantic fills. Quiet card boundaries are distinct from stronger input boundaries.
+Use semantic Tailwind tokens from `app/globals.css` and `tailwind.config.ts`. Legacy `gold` class names remain compatible aliases to Petrol, not a second brand palette. `on-accent` and `on-status` supply the foreground for solid semantic fills. Quiet card boundaries are distinct from stronger input boundaries.
 
-DM Sans is the interface face. Display headings use the same family with tighter spacing; they no longer require an ornamental serif. Use 16px form input text, 14px secondary operational text, and readable body copy. Existing small metadata in the app shell has a 12px floor. This is a readability improvement, not a claim that every legacy component has reached a 16px body target.
+Inter is the interface face. Manrope supplies 700-weight display headings. System monospace is reserved for structured identifiers. Use 16px form input text, 14px secondary operational text, and readable body copy. Existing small metadata in the app shell has a 12px floor. This is a readability improvement, not a claim that every legacy component has reached a 16px body target.
 
 Keep spacing on the existing compact scale. Controls generally have a 44px minimum height, and coarse-pointer overrides preserve it when responsive utility classes compress controls. Verify actual targets and spacing in the browser; CSS rules alone do not prove accessibility.
 
@@ -45,6 +45,14 @@ Status color always needs a readable label or icon. Focus uses the primary seman
 
 ## Public site and media
 
-The public site uses the same colors with larger typography and more whitespace. It explains a small number of meaningful outcomes before detailed capabilities. The signup CTA is primary; the product demonstration is secondary.
+The public site uses Midnight navigation and hero surfaces, cool light-gray content, white cards, and Petrol actions. Primary and destructive buttons retain a fixed dark fill and white text in both themes. Aqua identifies automation; Brass identifies attention, neither substitutes for a primary action. It explains a small number of meaningful outcomes before detailed capabilities. The signup CTA is primary; the product demonstration is secondary.
 
 Videos play deliberately with native controls, inline support, captions, posters, and transcripts. No sound autoplays. Gallery selection unmounts the prior video so two gallery clips cannot keep playing. Current assets are honestly labeled guided screen previews with sample data. Live interaction footage remains a release requirement.
+
+## Current completion pass
+
+The always-dark sidebar scopes its own tokens and uses the approved white logo. It does not force dark surfaces onto the light application header. Essential secondary text and input outlines have tested contrast in both modes. Control outlines use #82918F on light and #6F8B8F on dark surfaces, rather than decorative low-contrast card borders.
+
+The opportunity page includes read-only, explicitly requested AI questions. The server rebuilds authorized facts, returns links to the records checked, and does not treat a workflow summary as a full source-document review. No question sends a message, changes a record, or submits a bid. API usage rules are unchanged.
+
+Activity filters remain visible as individually removable chips, including hidden attention constraints. Browser history retains the view. Video failures offer a retry and transcript; native controls, captions and deliberate playback remain in place.

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useMenuIsolation } from "./menu-isolation";
 import { ThemeWordmark } from "./theme-wordmark";
+import { Wordmark } from "./wordmark";
 import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
 import { CloseIcon, MenuIcon } from "./tab-icons";
@@ -380,7 +381,7 @@ export function Nav({
         inert={isMobile && !open ? true : undefined}
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
-        className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-shell transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-[232px] lg:translate-x-0 lg:border-r lg:transition-none ${
+        className={`app-navigation fixed inset-0 z-[71] flex flex-col border-border/55 bg-shell transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-[232px] lg:translate-x-0 lg:border-r lg:transition-none ${
           open
             ? "visible translate-x-0"
             : "invisible pointer-events-none -translate-x-full lg:visible lg:pointer-events-auto"
@@ -394,7 +395,7 @@ export function Nav({
             className="flex coarse:min-h-11 items-center lg:block"
             aria-label="Brost Co Today"
           >
-            <ThemeWordmark className="h-7 w-auto" />
+            <Wordmark variant="light" className="h-7 w-auto" />
             <p className="mt-2 text-[0.65rem] uppercase tracking-[0.16em] text-muted-foreground">
               Workspace
             </p>
@@ -403,7 +404,7 @@ export function Nav({
 
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/55 px-4 dark:border-white/10 lg:hidden">
           <div className="inline-flex items-center" style={{ height: "1.75rem" }}>
-            <ThemeWordmark className="h-full w-auto" />
+            <Wordmark variant="light" className="h-full w-auto" />
           </div>
           <button
             type="button"

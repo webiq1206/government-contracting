@@ -25,7 +25,7 @@ export function MarketingNav({
   loginHref = "/login",
   signupHref,
   onLanding = false,
-  variant = "light",
+  variant = "dark",
 }: MarketingNavProps) {
   const dark = variant === "dark";
 

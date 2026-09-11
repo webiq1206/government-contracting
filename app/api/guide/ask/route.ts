@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   if (!(await claudeEnabled())) {
     return NextResponse.json(
       {
-        error: "Claude is not connected. Open Integrations to enable Q&A.",
+        error: "AI is not connected. Open Connections to ask questions.",
         code: "claude_missing",
       },
       { status: 503 }
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { guide } = await loadGuideBundle(auth, pathname);
+    const { guide, sources } = await loadGuideBundle(auth, pathname);
     const { text } = await complete(
       buildAskUserPrompt({ guide, question, history }),
       {
@@ -94,12 +94,12 @@ export async function POST(req: Request) {
       path: guide.pathname,
       meta: { pageKey: guide.pageKey, qLen: question.length },
     });
-    return NextResponse.json({ answer });
+    return NextResponse.json({ answer, sources });
   } catch (e) {
     if (e instanceof ClaudeNotConfiguredError) {
       return NextResponse.json(
         {
-          error: "Claude is not connected. Open Integrations to enable Q&A.",
+          error: "AI is not connected. Open Connections to ask questions.",
           code: "claude_missing",
         },
         { status: 503 }

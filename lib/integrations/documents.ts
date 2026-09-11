@@ -151,14 +151,14 @@ class PdfWriter {
       y: this.y - size,
       size,
       font: this.fonts.bold,
-      color: rgb(0.082, 0.125, 0.2), // BrostCo text #152033
+      color: rgb(17 / 255, 26 / 255, 31 / 255), // Brost Ink #111A1F
     });
     this.y -= size * 1.4;
     this.page.drawLine({
       start: { x: MARGIN, y: this.y + 2 },
       end: { x: PAGE_WIDTH - MARGIN, y: this.y + 2 },
       thickness: 0.75,
-      color: rgb(0.141, 0.341, 0.902), // BrostCo accent #2457E6
+      color: rgb(14 / 255, 111 / 255, 117 / 255), // Federal Petrol #0E6F75
     });
     this.y -= 6;
   }
@@ -202,7 +202,7 @@ class PdfWriter {
         y: 28,
         size: 9,
         font: this.fonts.regular,
-        color: rgb(0.32, 0.38, 0.46),
+        color: rgb(69 / 255, 84 / 255, 92 / 255),
       });
     });
     return this.doc.save();

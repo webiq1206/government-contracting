@@ -12,6 +12,8 @@ const nextConfig = {
   },
   experimental: {
     webpackBuildWorker: false,
+    // Keep production builds within Replit and review-runner memory limits.
+    cpus: 2,
   },
   // Keep server-only dependencies external to route bundles.
   serverExternalPackages: [

@@ -2,90 +2,112 @@
 @tailwind components;
 @tailwind utilities;
 
-/* BrostCo product tokens. Legacy gold names remain aliases for compatibility. */
+/* Approved BrostCo palette. Legacy gold tokens remain action aliases, not brass.
+ * Separate attention and automation tokens keep their meanings distinct.
+ * Dark text shades and control borders are adjusted for readable contrast. */
 :root {
   color-scheme: light;
-  --background: 246 248 251;
-  --foreground: 21 32 51;
+  --background: 244 246 246;
+  --foreground: 17 26 31;
   --surface: 255 255 255;
   --surface-raised: 255 255 255;
-  --muted: 234 239 246;
-  --muted-foreground: 82 97 118;
-  --border: 207 218 231;
-  --border-strong: 147 163 184;
+  --muted: 238 242 242;
+  --muted-foreground: 97 112 119;
+  --border: 216 224 222;
+  --border-strong: 190 202 200;
+  --control-border: 130 145 143;
   --shell: 255 255 255;
-  --shell-border: 220 227 237;
-  --ink: 21 32 51;
+  --shell-border: 216 224 222;
+  --ink: 11 23 32;
   --on-accent: 255 255 255;
-  --accent: 36 87 230;
-  --accent-soft: 235 241 255;
-  --accent-strong: 28 66 180;
+  --accent: 14 111 117;
+  --accent-soft: 233 245 243;
+  --accent-strong: 11 94 99;
   --on-status: 255 255 255;
-  --gold: 36 87 230;
-  --gold-deep: 28 66 180;
-  --gold-text: 28 66 180;
-  --pursue: 15 118 110;
-  --pursue-strong: 13 95 89;
-  --pursue-soft: 229 245 240;
-  --review: 146 82 13;
-  --dismiss: 93 107 125;
-  --risk: 185 48 55;
-  --slate-50: 248 250 252;
-  --slate-100: 241 245 249;
-  --slate-200: 226 232 240;
-  --slate-300: 203 213 225;
-  --slate-400: 148 163 184;
-  --slate-500: 92 108 130;
-  --slate-600: 71 85 105;
-  --slate-700: 51 65 85;
-  --slate-800: 30 41 59;
-  --slate-900: 21 32 51;
-  --slate-950: 10 18 32;
-  --warning-strip-bg: 255 246 226;
-  --warning-strip-fg: 133 77 14;
-  --badge-match-bg: 229 245 240;
+  --gold: 14 111 117;
+  --gold-deep: 11 94 99;
+  --gold-text: 11 94 99;
+  --action: 14 111 117;
+  --action-hover: 11 94 99;
+  --action-pressed: 8 75 80;
+  --automation: 107 174 170;
+  --automation-foreground: 53 104 102;
+  --automation-soft: 233 245 243;
+  --attention: 200 156 67;
+  --attention-foreground: 124 85 19;
+  --attention-soft: 251 244 230;
+  --pursue: 43 111 82;
+  --pursue-strong: 33 88 63;
+  --pursue-soft: 234 245 239;
+  --review: 149 96 27;
+  --dismiss: 97 112 119;
+  --risk: 163 58 49;
+  --slate-50: 244 246 246;
+  --slate-100: 238 242 242;
+  --slate-200: 216 224 222;
+  --slate-300: 190 202 200;
+  --slate-400: 130 145 143;
+  --slate-500: 97 112 119;
+  --slate-600: 69 84 92;
+  --slate-700: 52 67 75;
+  --slate-800: 16 42 51;
+  --slate-900: 17 26 31;
+  --slate-950: 11 23 32;
+  --warning-strip-bg: 251 241 223;
+  --warning-strip-fg: 149 96 27;
+  --badge-match-bg: 234 245 239;
 }
 .dark {
   color-scheme: dark;
-  --background: 12 18 30;
-  --foreground: 237 243 252;
-  --surface: 20 29 45;
-  --surface-raised: 28 39 58;
-  --muted: 32 44 64;
-  --muted-foreground: 165 181 204;
-  --border: 89 108 135;
-  --border-strong: 130 151 180;
-  --shell: 16 24 39;
-  --shell-border: 61 78 104;
-  --ink: 12 18 30;
-  --on-accent: 12 18 30;
-  --accent: 139 173 255;
-  --accent-soft: 28 43 74;
-  --accent-strong: 172 196 255;
-  --on-status: 12 18 30;
-  --gold: 139 173 255;
-  --gold-deep: 115 153 245;
-  --gold-text: 160 187 255;
-  --pursue: 92 207 175;
-  --pursue-strong: 129 228 200;
-  --pursue-soft: 20 53 47;
-  --review: 245 191 98;
-  --dismiss: 161 177 201;
-  --risk: 255 143 150;
-  --slate-50: 12 18 30;
-  --slate-100: 20 29 45;
-  --slate-200: 32 44 64;
-  --slate-300: 61 78 104;
-  --slate-400: 110 129 153;
-  --slate-500: 160 177 201;
-  --slate-600: 184 199 219;
-  --slate-700: 208 219 235;
-  --slate-800: 225 234 246;
-  --slate-900: 237 243 252;
-  --slate-950: 248 250 255;
-  --warning-strip-bg: 58 43 22;
-  --warning-strip-fg: 245 191 98;
-  --badge-match-bg: 20 53 47;
+  --background: 11 23 32;
+  --foreground: 239 245 244;
+  --surface: 16 42 51;
+  --surface-raised: 23 52 61;
+  --muted: 30 57 66;
+  --muted-foreground: 168 186 188;
+  --border: 40 66 74;
+  --border-strong: 85 112 119;
+  --control-border: 111 139 143;
+  --shell: 16 42 51;
+  --shell-border: 40 66 74;
+  --ink: 11 23 32;
+  --on-accent: 11 23 32;
+  --accent: 83 186 192;
+  --accent-soft: 21 56 61;
+  --accent-strong: 143 211 212;
+  --on-status: 11 23 32;
+  --gold: 83 186 192;
+  --gold-deep: 83 186 192;
+  --gold-text: 143 211 212;
+  --action: 14 111 117;
+  --action-hover: 11 94 99;
+  --action-pressed: 8 75 80;
+  --automation: 107 174 170;
+  --automation-foreground: 154 201 197;
+  --automation-soft: 25 54 58;
+  --attention: 200 156 67;
+  --attention-foreground: 230 196 122;
+  --attention-soft: 48 42 32;
+  --pursue: 133 201 163;
+  --pursue-strong: 171 225 191;
+  --pursue-soft: 24 56 45;
+  --review: 229 188 120;
+  --dismiss: 168 186 188;
+  --risk: 241 155 146;
+  --slate-50: 11 23 32;
+  --slate-100: 16 42 51;
+  --slate-200: 30 57 66;
+  --slate-300: 40 66 74;
+  --slate-400: 111 139 143;
+  --slate-500: 168 186 188;
+  --slate-600: 199 210 212;
+  --slate-700: 216 226 225;
+  --slate-800: 229 238 236;
+  --slate-900: 239 245 244;
+  --slate-950: 255 255 255;
+  --warning-strip-bg: 48 42 32;
+  --warning-strip-fg: 229 188 120;
+  --badge-match-bg: 24 56 45;
 }
 
 html,
@@ -111,7 +133,7 @@ body {
 .dark *,
 .dark ::before,
 .dark ::after {
-  border-color: rgb(var(--border) / 0.12);
+  border-color: rgb(var(--border) / 0.8);
 }
 
 ::selection {
@@ -120,11 +142,11 @@ body {
 }
 
 @layer components {
-  /* Clear sans-serif headings across product and marketing surfaces. */
+  /* Manrope headings and Inter interface text form one shared type system. */
   .font-display {
-    font-family: theme("fontFamily.sans");
-    font-weight: 650;
-    letter-spacing: -0.035em;
+    font-family: theme("fontFamily.display");
+    font-weight: 700;
+    letter-spacing: -0.03em;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
@@ -161,7 +183,7 @@ body {
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /*
@@ -278,23 +300,28 @@ body {
     }
   }
   .btn-primary {
-    @apply bg-gold text-on-accent hover:bg-accent-strong dark:hover:bg-accent;
+    background: rgb(var(--action));
+    color: #fff;
   }
+  .btn-primary:hover:not(:disabled) { background: rgb(var(--action-hover)); }
+  .btn-primary:active:not(:disabled) { background: rgb(var(--action-pressed)); }
   .btn-ghost {
-    @apply border border-foreground/50 text-foreground hover:bg-surface;
+    @apply border border-control-border text-foreground hover:bg-muted;
   }
   .dark .btn-ghost {
     @apply border-white/35 hover:bg-white/5;
   }
   .btn-danger {
-    @apply bg-risk text-on-status hover:bg-red-800;
+    background: #A33A31;
+    color: #fff;
   }
+  .btn-danger:hover:not(:disabled) { background: #852C25; }
   .btn-success {
     @apply bg-pursue text-on-status hover:bg-pursue-strong;
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-foreground/50 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/70 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-control-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-control-border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* Surfaces */
@@ -336,7 +363,7 @@ body {
     @apply border-white/10;
   }
   .shell-ghost {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-foreground/50 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-border-strong bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
   }
   .dark .shell-ghost {
     @apply border-white/35 hover:bg-white/5;
@@ -419,17 +446,17 @@ body {
   .status-strip--risk {
     @apply border-risk/40 bg-risk/5 text-foreground;
     border-left-width: 3px;
-    border-left-color: #A2453C;
+    border-left-color: rgb(var(--risk));
   }
   .status-strip--review {
     @apply border-review/40 bg-review/5 text-foreground;
     border-left-width: 3px;
-    border-left-color: #855C2C;
+    border-left-color: rgb(var(--review));
   }
   .status-strip--ok {
     @apply border-pursue/35 bg-pursue/5 text-foreground;
     border-left-width: 3px;
-    border-left-color: #5A6B52;
+    border-left-color: rgb(var(--pursue));
   }
 
   /* Empty / calm states */
@@ -455,7 +482,7 @@ body {
 
   /* Badges / labels */
   .badge {
-    @apply inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold;
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold;
   }
   .label {
     @apply text-sm font-medium text-muted-foreground;
@@ -478,10 +505,11 @@ body {
 
   /* Inputs: taller until the sidebar arrives. 640px is still a thumb. */
   .input {
-    @apply w-full rounded-xl border border-foreground/50 bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent coarse:min-h-11 coarse:py-2.5 coarse:text-base;
+    @apply w-full rounded-lg border border-control-border bg-surface px-3 py-2 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent coarse:min-h-11 coarse:py-2.5;
+    box-shadow: none;
   }
   .dark .input {
-    @apply border-white/35 bg-shell focus:border-gold;
+    @apply border-control-border bg-surface focus:border-accent;
   }
   .select {
     @apply input appearance-none;
@@ -722,7 +750,7 @@ html:has([data-app-shell]) body {
 [data-app-shell] input:not([type=checkbox]):not([type=radio]), [data-app-shell] textarea, [data-app-shell] select { font-size: 1rem; }
 [data-app-shell] .label { font-family: inherit; font-size: .8125rem; letter-spacing: .01em; text-transform: none; }
 [data-app-shell] .eyebrow-gold::before { display: none; }
-[data-app-shell] .card, [data-app-shell] .panel { box-shadow: 0 2px 5px rgb(15 23 42 / .025); }
+[data-app-shell] .card, [data-app-shell] .panel { box-shadow: none; }
 .product-page-header { background: rgb(var(--surface)); padding: 1.25rem 1.5rem; border-bottom: 1px solid rgb(var(--border) / .65); }
 .product-page-header h1 { font-size: 1.65rem; }
 .product-page-header .page-description { max-width: 60rem; font-size: .875rem; line-height: 1.5; }
@@ -748,4 +776,42 @@ html:has([data-app-shell]) body {
 
 @media (max-width: 1023px) {
  body:has([data-call-workspace]) nav[aria-label="Quick navigation"] { display: none; }
+}
+
+/* The navigation stays Midnight in both themes. Override the scoped tokens,
+   rather than leaking dark-mode colors into the surrounding work surface. */
+.app-navigation {
+  color-scheme: dark;
+  --foreground: 255 255 255;
+  --muted-foreground: 170 184 187;
+  --background: 11 23 32;
+  --surface: 16 42 51;
+  --surface-raised: 23 52 61;
+  --shell: 11 23 32;
+  --border: 40 66 74;
+  --border-strong: 85 112 119;
+  --control-border: 111 139 143;
+  --accent: 83 186 192;
+  --accent-soft: 14 111 117;
+  --accent-strong: 255 255 255;
+  --gold: 14 111 117;
+  --gold-text: 154 201 197;
+  --gold-deep: 107 174 170;
+  --on-accent: 255 255 255;
+  --review: 229 188 120;
+  --risk: 241 155 146;
+  --pursue: 133 201 163;
+  color: rgb(var(--foreground));
+}
+.app-navigation [aria-current="page"] { background: #0E6F75; color: #fff; }
+.app-navigation :focus-visible { outline-color: #8FD3D4; }
+.input:focus-visible { box-shadow: 0 0 0 3px rgb(var(--accent) / .15); }
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }

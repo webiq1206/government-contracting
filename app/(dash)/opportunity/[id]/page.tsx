@@ -8,6 +8,7 @@ import { OutcomeForm } from "@/components/outcome-form";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
+import { ContextualQuestion } from "@/components/contextual-question";
 import { BidRequirements } from "@/components/bid-requirements";
 import { briefInputFrom, buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
 import { requirementViews } from "@/lib/requirement-states";
@@ -800,6 +801,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               </div>
 
               <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
+              <ContextualQuestion key={opp.id} path={`/opportunity/${opp.id}`} />
 
               {/*
                 * Moved here from a tab labelled "More". It said so itself:

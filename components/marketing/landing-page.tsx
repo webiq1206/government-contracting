@@ -1,3 +1,4 @@
+import { ProductVideo } from "./product-video";
 import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
 import { MarketingMobileMenu } from "./mobile-menu";
@@ -79,7 +80,7 @@ export function LandingPage({
       <header className="bco-nav">
         <div className="bco-container bco-nav-inner">
           <Link href="/" aria-label="BrostCo home">
-            <Wordmark variant="dark" priority className="h-7" />
+            <Wordmark variant="light" priority className="h-7" />
           </Link>
           <nav aria-label="Primary navigation" className="bco-desktop-nav">
             <a href="#platform">Product</a>
@@ -99,12 +100,14 @@ export function LandingPage({
                 signupHref={signupHref}
                 loginHref={loginHref}
                 onLanding
+                dark
               />
             </div>
           </div>
         </div>
       </header>
       <main id="top">
+        <div className="bco-hero-band">
         <section className="bco-container bco-hero">
           <div className="bco-hero-copy">
             <p className="bco-kicker">AI for government contracting</p>
@@ -139,20 +142,7 @@ export function LandingPage({
               <span>One place to move work forward</span>
               <span>Product preview</span>
             </div>
-            <video
-              controls
-              playsInline
-              muted
-              preload="none"
-              poster="/demos/today-desktop.jpg"
-              aria-label="BrostCo Today: guided screen preview using sample data"
-              width="1440"
-              height="960"
-            >
-              <source src="/demos/hero-preview.mp4" type="video/mp4" />
-              <track kind="captions" src="/demos/hero-preview.vtt" srcLang="en" label="English" default />
-              Read the <a href="/demos/hero-preview.txt">preview transcript</a>.
-            </video>
+            <ProductVideo slug="hero-preview" poster="/demos/today-desktop.jpg" title="BrostCo Today: product walkthrough using sample data" />
             <div className="bco-preview-footer">
               <span>Know what needs you.</span>
               <a href="#platform">
@@ -161,6 +151,7 @@ export function LandingPage({
             </div>
           </div>
         </section>
+        </div>
         <div className="bco-proof">
           <div className="bco-container">
             <span>Built around the work of federal contractors</span>
@@ -226,25 +217,7 @@ export function LandingPage({
               supporting information.
             </p>
           </div>
-          <video
-            className="bco-tour"
-            controls
-            playsInline
-            preload="none"
-            poster="/demos/today-desktop.jpg"
-            aria-label="BrostCo platform: guided screen preview using sample data"
-          >
-            <source src="/demos/platform-walkthrough.mp4" type="video/mp4" />
-            <track
-              kind="captions"
-              src="/demos/platform-walkthrough.vtt"
-              srcLang="en"
-              label="English"
-              default
-            />
-            Your browser does not support video. Read the walkthrough transcript
-            below.
-          </video>
+          <ProductVideo slug="platform-walkthrough" poster="/demos/today-desktop.jpg" title="BrostCo platform: product walkthrough using sample data" className="bco-tour" />
           <a className="bco-text-link" href="/demos/platform-walkthrough.txt">
             Read the walkthrough transcript
           </a>
@@ -388,7 +361,7 @@ export function LandingPage({
           </div>
         </section>
       </main>
-      <MarketingFooter loginHref={loginHref} />
+      <MarketingFooter loginHref={loginHref} variant="dark" />
     </div>
   );
 }

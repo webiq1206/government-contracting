@@ -1,19 +1,22 @@
 .bco-site {
-  background: #fff;
-  color: #152033;
+  background: #f4f6f6;
+  color: #111a1f;
   font:
-    16px/1.6 "DM Sans",
+    16px/1.6 "Inter",
     system-ui,
     sans-serif;
   overflow: clip;
-  --ink: 21 32 51;
-  --background: 246 248 251;
-  --foreground: 21 32 51;
+  --ink: 11 23 32;
+  --background: 244 246 246;
+  --foreground: 17 26 31;
   --surface: 255 255 255;
-  --muted-foreground: 82 97 118;
-  --border: 207 218 231;
-  --gold-text: 28 66 180;
-  --accent: 36 87 230;
+  --muted-foreground: 97 112 119;
+  --border: 216 224 222;
+  --gold-text: 11 94 99;
+  --accent: 14 111 117;
+  --gold: 14 111 117;
+  --on-accent: 255 255 255;
+  --muted: 238 242 242;
 }
 .bco-container {
   max-width: 1280px;
@@ -24,9 +27,9 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #ffffffed;
-  border-bottom: 1px solid #e4eaf2;
-  backdrop-filter: blur(16px);
+  background: #0b1720;
+  border-bottom: 1px solid #28424a;
+  color: #fff;
 }
 .bco-nav-inner {
   display: flex;
@@ -58,7 +61,7 @@
   min-height: 48px;
   padding: 12px 22px;
   border-radius: 9px;
-  background: #2457e6;
+  background: #0e6f75;
   color: white;
   font-size: 14px;
   font-weight: 600;
@@ -66,15 +69,15 @@
   transition: background 0.15s;
 }
 .bco-button:hover {
-  background: #1944bd;
+  background: #0b5e63;
 }
 .bco-button-secondary {
   background: white;
-  color: #152033;
-  border: 1px solid #cfd9e7;
+  color: #111a1f;
+  border: 1px solid #becac8;
 }
 .bco-button-secondary:hover {
-  background: #f4f7fc;
+  background: #eef2f2;
 }
 .bco-actions {
   display: flex;
@@ -87,7 +90,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #2457e6;
+  color: #0e6f75;
   margin: 0 0 18px;
 }
 .bco-hero {
@@ -99,40 +102,40 @@
   padding-bottom: 94px;
 }
 .bco-hero h1 {
-  font-size: clamp(48px, 4.8vw, 72px);
+  font-size: clamp(44px, 4.8vw, 64px);
   line-height: 1.06;
-  letter-spacing: -0.055em;
-  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-weight: 700;
   margin: 0 0 25px;
 }
 .bco-hero h1 span {
-  color: #2457e6;
+  color: #0e6f75;
 }
 .bco-lead {
   font-size: 18px;
-  color: #526176;
+  color: #45545c;
   max-width: 510px;
   line-height: 1.7;
 }
 .bco-caption {
   font-size: 12px;
-  color: #617087;
+  color: #617077;
   line-height: 1.6;
 }
 .bco-hero-product {
   min-width: 0;
-  background: #f1f5fd;
-  border: 1px solid #dce5f3;
-  border-radius: 18px;
+  background: #102a33;
+  border: 1px solid #d8e0de;
+  border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 24px 70px #142d6420;
-  transform: rotate(-1deg);
+  box-shadow: none;
+
 }
 .bco-hero-product img,
 .bco-hero-product video {
   width: 100%;
   height: auto;
-  border: 1px solid #dae2ee;
+  border: 1px solid #d8e0de;
   border-radius: 9px;
   background: white;
 }
@@ -144,22 +147,22 @@
   align-items: center;
   font-size: 12px;
   padding: 0 0 14px;
-  color: #50617b;
+  color: #c7d2d4;
 }
 .bco-preview-label span:first-child {
   font-weight: 600;
-  color: #263f65;
+  color: #ffffff;
 }
 .bco-preview-footer {
   padding: 16px 0 0;
 }
 .bco-preview-footer a {
-  color: #2457e6;
+  color: #0e6f75;
 }
 .bco-proof {
-  background: #f7f9fc;
-  border-top: 1px solid #e7ecf4;
-  border-bottom: 1px solid #e7ecf4;
+  background: #eef2f2;
+  border-top: 1px solid #d8e0de;
+  border-bottom: 1px solid #d8e0de;
 }
 .bco-proof > div {
   display: flex;
@@ -173,7 +176,7 @@
 }
 .bco-proof span {
   max-width: 170px;
-  color: #617087;
+  color: #617077;
 }
 .bco-proof strong {
   font-weight: 600;
@@ -188,38 +191,38 @@
   margin-bottom: 40px;
 }
 .bco-site h2 {
-  font-size: clamp(34px, 3.5vw, 50px);
+  font-size: clamp(32px, 3.5vw, 44px);
   line-height: 1.12;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.03em;
   font-weight: 600;
   margin: 0 0 22px;
 }
 .bco-section-heading > p:last-child {
   max-width: 560px;
-  color: #617087;
+  color: #617077;
 }
 .bco-gallery {
-  border: 1px solid #dbe4f0;
+  border: 1px solid #d8e0de;
   border-radius: 16px;
   overflow: hidden;
 }
 .bco-gallery-tabs {
   display: flex;
   overflow-x: auto;
-  border-bottom: 1px solid #dbe4f0;
-  background: #fafbfd;
+  border-bottom: 1px solid #d8e0de;
+  background: #eef2f2;
 }
 .bco-gallery-tabs button {
   flex: 1;
   white-space: nowrap;
   padding: 20px 18px;
   min-height: 56px;
-  color: #617087;
+  color: #617077;
   font-size: 14px;
   position: relative;
 }
 .bco-gallery-tabs button[aria-selected="true"] {
-  color: #2457e6;
+  color: #0e6f75;
   background: white;
   font-weight: 600;
 }
@@ -230,7 +233,7 @@
   left: 20px;
   right: 20px;
   height: 3px;
-  background: #2457e6;
+  background: #0e6f75;
   border-radius: 3px;
 }
 .bco-gallery-panel {
@@ -248,7 +251,7 @@
   margin-bottom: 18px;
 }
 .bco-gallery-copy > p {
-  color: #617087;
+  color: #617077;
 }
 .bco-gallery-copy ul {
   margin-top: 24px;
@@ -258,12 +261,12 @@
 }
 .bco-gallery-copy li:before {
   content: "✓";
-  color: #0f766e;
+  color: #2b6f52;
   margin-right: 10px;
 }
 .bco-gallery-media {
   min-width: 0;
-  background: #f0f4fc;
+  background: #eef2f2;
   padding: 14px;
   border-radius: 12px;
 }
@@ -273,7 +276,7 @@
   object-fit: contain;
   border-radius: 8px;
   background: white;
-  box-shadow: 0 4px 18px #15203312;
+  box-shadow: 0 4px 18px #0b17200f;
 }
 .bco-gallery-media .bco-caption {
   margin: 12px 0 0;
@@ -282,7 +285,7 @@
   text-decoration: underline;
 }
 .bco-workflow {
-  background: #f7f9fc;
+  background: #eef2f2;
 }
 .bco-steps {
   display: grid;
@@ -292,8 +295,8 @@
 .bco-step-number {
   font-size: 13px;
   display: inline-flex;
-  background: #e9f0ff;
-  color: #2457e6;
+  background: #e9f5f3;
+  color: #0e6f75;
   width: 38px;
   height: 38px;
   align-items: center;
@@ -309,7 +312,7 @@
 }
 .bco-steps p {
   font-size: 15px;
-  color: #617087;
+  color: #617077;
 }
 .bco-tour-heading {
   display: flex;
@@ -320,29 +323,29 @@
 }
 .bco-tour-heading > p {
   max-width: 400px;
-  color: #617087;
+  color: #617077;
   margin-bottom: 20px;
 }
 .bco-tour {
   width: 100%;
   aspect-ratio: 3/2;
   max-height: 650px;
-  background: #edf2fa;
-  border: 1px solid #dce5f3;
+  background: #eef2f2;
+  border: 1px solid #d8e0de;
   border-radius: 16px;
 }
 .bco-text-link {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
-  color: #2457e6;
+  color: #0e6f75;
   font-size: 14px;
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 .bco-control {
-  background: #11213b;
+  background: #0b1720;
   color: white;
 }
 .bco-control-grid {
@@ -351,13 +354,13 @@
   gap: 100px;
 }
 .bco-control .bco-kicker {
-  color: #95b7ff;
+  color: #6baeaa;
 }
 .bco-control h2 {
-  font-size: 52px;
+  font-size: 44px;
 }
 .bco-control p:not(.bco-kicker) {
-  color: #b4c4dc;
+  color: #c7d2d4;
   max-width: 470px;
 }
 .bco-control .bco-button {
@@ -369,7 +372,7 @@
 }
 .bco-control-list article {
   padding-bottom: 24px;
-  border-bottom: 1px solid #31425c;
+  border-bottom: 1px solid #28424a;
 }
 .bco-control-list article:last-child {
   border: 0;
@@ -390,14 +393,14 @@
   align-items: center;
 }
 .bco-pricing > div > p:not(.bco-kicker) {
-  color: #617087;
+  color: #617077;
   max-width: 390px;
 }
 .bco-price-card {
-  border: 1px solid #dbe4f0;
-  border-radius: 18px;
+  border: 1px solid #d8e0de;
+  border-radius: 16px;
   padding: 36px;
-  box-shadow: 0 12px 36px #193d7810;
+  box-shadow: 0 12px 36px #0b17200f;
 }
 .bco-plan-label {
   font-size: 14px;
@@ -405,18 +408,18 @@
 }
 .bco-price-card .bco-price {
   font-size: 52px !important;
-  color: #152033 !important;
-  letter-spacing: -0.055em;
+  color: #111a1f !important;
+  letter-spacing: -0.03em;
   line-height: 1.4;
   margin-top: 12px;
 }
 .bco-price span {
   font-size: 16px;
   letter-spacing: 0;
-  color: #617087;
+  color: #617077;
 }
 .bco-price-card ul {
-  border-top: 1px solid #e6ecf4;
+  border-top: 1px solid #d8e0de;
   margin: 24px 0;
   padding-top: 24px;
   display: grid;
@@ -425,7 +428,7 @@
 }
 .bco-price-card li:before {
   content: "✓";
-  color: #0f766e;
+  color: #2b6f52;
   margin-right: 8px;
 }
 .bco-price-card .bco-button {
@@ -440,10 +443,10 @@
   display: grid;
   grid-template-columns: 0.7fr 1fr;
   gap: 80px;
-  border-top: 1px solid #e5ebf3;
+  border-top: 1px solid #d8e0de;
 }
 .bco-faq details {
-  border-bottom: 1px solid #dce5f0;
+  border-bottom: 1px solid #d8e0de;
 }
 .bco-faq summary {
   display: flex;
@@ -459,18 +462,18 @@
   display: none;
 }
 .bco-faq summary span {
-  color: #2457e6;
+  color: #0e6f75;
 }
 .bco-faq details[open] summary span {
   transform: rotate(45deg);
 }
 .bco-faq details p {
   padding-bottom: 24px;
-  color: #617087;
+  color: #617077;
   font-size: 15px;
 }
 .bco-final {
-  background: #edf3ff;
+  background: #e9f5f3;
   text-align: center;
   padding: 80px 0;
 }
@@ -479,15 +482,16 @@
 }
 .bco-final > .bco-container > p:last-child {
   font-size: 13px;
-  color: #617087;
+  color: #617077;
   margin-top: 16px;
 }
 .bco-site :focus-visible {
-  outline: 3px solid #2457e6;
+  outline: 3px solid #0e6f75;
   outline-offset: 4px;
 }
 .bco-site footer {
-  background: white;
+  background: #0b1720;
+  color: #fff;
 }
 .bco-site footer p {
   max-width: 40rem;
@@ -504,7 +508,7 @@
     gap: 18px;
   }
   .bco-hero h1 {
-    font-size: 52px;
+    font-size: 44px;
   }
   .bco-gallery-panel {
     padding: 28px;
@@ -543,7 +547,7 @@
     max-width: 650px;
   }
   .bco-hero h1 {
-    font-size: 64px;
+    font-size: 48px;
   }
   .bco-hero-product {
     transform: none;
@@ -598,7 +602,7 @@
     gap: 12px;
   }
   .bco-hero h1 {
-    font-size: 48px;
+    font-size: 40px;
   }
   .bco-hero {
     padding-top: 40px;
@@ -633,8 +637,8 @@
     max-width: none;
   }
   .bco-section {
-    padding-top: 48px;
-    padding-bottom: 48px;
+    padding-top: 56px;
+    padding-bottom: 56px;
   }
   .bco-section-heading {
     margin-bottom: 28px;
@@ -670,7 +674,7 @@
     font-size: 18px;
   }
   .bco-steps p {
-    font-size: 14px;
+    font-size: 16px;
   }
   .bco-control-grid,
   .bco-pricing {
@@ -681,7 +685,7 @@
     padding: 24px;
   }
   .bco-faq summary {
-    font-size: 15px;
+    font-size: 16px;
   }
   .bco-final {
     padding: 50px 0;
@@ -700,3 +704,37 @@
     animation: none !important;
   }
 }
+
+/* Stable brand surfaces, independent of the application theme preference. */
+.bco-site :is(h1, h2, h3) {
+  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  font-weight: 700;
+}
+.bco-hero-band { background: #0b1720; color: #fff; }
+.bco-hero h1 span { color: #fff; }
+.bco-hero .bco-kicker, .bco-control .bco-kicker { color: #6baeaa; }
+.bco-hero .bco-lead { color: #c7d2d4; }
+.bco-hero .bco-caption { color: #9fb0b4; }
+.bco-hero-product { border-color: #28424a; box-shadow: none; }
+.bco-preview-footer a { color: #9ac9c5; }
+.bco-nav :is(.bco-desktop-nav a, .bco-login) { color: #c7d2d4; }
+.bco-nav :is(.bco-desktop-nav a, .bco-login):hover { color: #fff; }
+.bco-hero-band :focus-visible, .bco-nav :focus-visible,
+.bco-control :focus-visible, .bco-site footer :focus-visible { outline-color: #8fd3d4; }
+.bco-gallery, .bco-price-card { background: #fff; }
+.bco-price-card { box-shadow: 0 6px 24px rgb(11 23 32 / .06); }
+.bco-site footer p { color: #c7d2d4; }
+.bco-site footer nav { color: #c7d2d4; }
+.bco-site footer .text-gold-text { color: #6baeaa; }
+.bco-button:active { background: #084b50; }
+.bco-button-secondary:active { background: #e9f5f3; }
+@media (max-width: 380px) {
+  .bco-hero h1 { font-size: 36px; }
+  .bco-actions { flex-direction: column; }
+  .bco-preview-footer { align-items: start; flex-direction: column; gap: 4px; }
+}
+
+.bco-product-video { min-width: 0; }
+.bco-product-video video { display: block; width: 100%; }
+.bco-video-error { padding: 16px; color: #111a1f; background: #fbf4e6; border: 1px solid #c89c43; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+.bco-video-error .bco-actions { margin-top: 12px; }

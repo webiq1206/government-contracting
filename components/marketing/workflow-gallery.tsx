@@ -1,4 +1,5 @@
 "use client";
+import { ProductVideo } from "./product-video";
 import { useId, useRef, useState } from "react";
 const workflows = [
   {
@@ -123,24 +124,7 @@ export function WorkflowGallery() {
           </ul>
         </div>
         <div className="bco-gallery-media">
-          <video
-            key={item.file}
-            controls
-            playsInline
-            preload="none"
-            poster={`/demos/${item.file}-desktop.jpg`}
-            aria-label={`${item.label}: guided screen preview using sample data`}
-          >
-            <source src={`/demos/${item.file}.mp4`} type="video/mp4" />
-            <track
-              kind="captions"
-              src={`/demos/${item.file}.vtt`}
-              srcLang="en"
-              label="English"
-              default
-            />
-            Read the <a href={`/demos/${item.file}.txt`}>screen preview transcript</a>.
-          </video>
+          <ProductVideo key={item.file} slug={item.file} poster={`/demos/${item.file}-desktop.jpg`} title={`${item.label}: product walkthrough using sample data`} />
           <p className="bco-caption">
             Guided screen preview · Sample data.{" "}
             <a href={`/demos/${item.file}.txt`}>Read transcript</a>
