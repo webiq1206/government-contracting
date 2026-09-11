@@ -26,7 +26,8 @@ export function connectionFailure(detail: unknown): string {
     case "provider_credit": return "The service reports insufficient credit. Work using it is blocked. Review billing with the service, then test the connection again.";
     case "provider_auth":
     case "integration_auth": return "The service rejected the connection details. Work using it may be blocked. Replace the saved details or reconnect the account, then test again.";
-    case "provider_rate_limit": return "The service is receiving too many requests. Work may be delayed. Wait a few minutes before testing again.";
+    case "provider_rate_limit":
+    case "mailbox_rate_limit": return "The service is receiving too many requests. Work may be delayed. Wait a few minutes before testing again.";
     case "not_configured": return "The connection needs setup before it can be used. Complete the details below, save them, then test the connection.";
     default: return "The connection could not be verified. Work using this service may be delayed. Check the setup details below, then choose Test connection again.";
   }

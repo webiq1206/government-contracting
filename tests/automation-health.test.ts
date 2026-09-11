@@ -50,9 +50,16 @@ describe("classifyFailure", () => {
 
   it("keeps Google quota 403 and old reconnect advice out of auth incidents", () => {
     expect(classifyFailure("Gmail 403: Quota exceeded for quota metric Total Query Cost, Units per minute per user. Reconnect Gmail."))
-      .toBe("provider_rate_limit");
+      .toBe("mailbox_rate_limit");
     expect(classifyFailure("Gmail 403: insufficient authentication scopes"))
       .toBe("integration_auth");
+  });
+
+  it("identifies unstoreable inbox text separately from connection failures", () => {
+    expect(classifyFailure('Reply processing stopped: invalid byte sequence for encoding "UTF8": 0x00'))
+      .toBe("mailbox_content");
+    expect(causeSpec("mailbox_content").repair).not.toMatch(/reconnect|credit/i);
+    expect(causeSpec("mailbox_rate_limit").title).toContain("Gmail");
   });
 
   it("reads a mailbox needing reconnection as an integration problem", () => {

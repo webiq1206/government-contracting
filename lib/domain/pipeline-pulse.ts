@@ -354,7 +354,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
   // still exists, and it stays dead until a human reconnects.
   const g = input.gmail;
   if (g.status === "revoked" || (g.connected && g.status === "error")) {
-    const throttled = g.status !== "revoked" && classifyFailure(g.lastError) === "provider_rate_limit";
+    const throttled = g.status !== "revoked" && ["provider_rate_limit", "mailbox_rate_limit"].includes(classifyFailure(g.lastError));
     const needsSignIn = g.status === "revoked" || classifyFailure(g.lastError) === "integration_auth";
     findings.push({
       key: "gmail_broken",

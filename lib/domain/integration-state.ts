@@ -140,11 +140,11 @@ export function integrationState(f: IntegrationFacts, now = new Date()): Integra
         nextAction: "Replace the key, or reconnect the account.",
       };
     }
-    if (cause === "provider_rate_limit" || cause === "provider_unavailable" || cause === "network") {
+    if (cause === "provider_rate_limit" || cause === "mailbox_rate_limit" || cause === "provider_unavailable" || cause === "network") {
       return {
         state: "degraded",
         reason:
-          cause === "provider_rate_limit"
+          cause === "provider_rate_limit" || cause === "mailbox_rate_limit"
             ? "The provider is rate-limiting us."
             : cause === "network"
               ? "Requests are failing to reach it."

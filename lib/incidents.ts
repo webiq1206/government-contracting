@@ -334,7 +334,8 @@ export async function syncAutomationIncidents(
       orgId,
       cause: found.cause,
       severity: "blocking",
-      provider: found.cause.startsWith("provider_") ? "anthropic" : null,
+      provider: found.cause.startsWith("provider_") ? "anthropic"
+        : found.cause.startsWith("mailbox_") || found.cause === "integration_auth" ? "gmail" : null,
       startedAt: new Date(found.firstSeen),
       failedCount: found.failures,
       recommendedAction: found.spec.repair ?? null,

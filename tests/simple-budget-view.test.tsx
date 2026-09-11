@@ -18,3 +18,10 @@ it("a read-only member cannot see budget-change or resume controls",()=>{
   const html=renderToStaticMarkup(<ApiSpendingControls budget={{...budget,paused:true}} busy={false} editable={false} save={vi.fn()}/>);
   expect(html).not.toContain('<button');expect(html).toContain("owner or administrator");
 });
+it("names the exhausted daily request cap instead of suggesting a larger monthly budget",()=>{
+  const html=renderToStaticMarkup(<ApiSpendingControls budget={{...budget,monthly_limit:"1000",month_spend:"46.44",day_requests:100}} busy={false} save={vi.fn()}/>);
+  expect(html).toContain("Daily request limit reached");
+  expect(html).toContain("Review daily limits");
+  expect(html).toContain("Raising the monthly budget will not clear this daily limit");
+  expect(html).not.toContain("Monthly budget reached");
+});

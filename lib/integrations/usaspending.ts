@@ -5,7 +5,8 @@
  * skip instead of crashing.
  */
 import { config } from "../config";
-import { fetchJson, withRetry } from "./http";
+import { fetchJson, HttpError, withRetry } from "./http";
+import { serviceAreaStateCodes } from "../us-states";
 
 const base = config.usaspending.baseUrl;
 
@@ -66,8 +67,19 @@ export const usaspending = {
    */
   async searchAwards(
     params: SearchAwardsParams = {}
-  ): Promise<{ results: UsaAward[]; error?: string }> {
+  ): Promise<{ results: UsaAward[]; error?: string; skippedReason?: string }> {
     const { naics, state, fromDate, toDate, limit = 100 } = params;
+    const normalizedState = state?.trim()
+      ? serviceAreaStateCodes([state])?.values().next().value
+      : undefined;
+    if (state?.trim() && !normalizedState) {
+      // SAM also supplies foreign subdivision codes (e.g. Seoul's KR-11).
+      // Do not submit those as US states or silently broaden to unrelated comps.
+      return {
+        results: [],
+        skippedReason: `The location "${state.trim()}" is not a supported U.S. state or territory. Automatic pricing comparisons currently require a U.S. location. Review pricing manually, or correct the location if this is a U.S. opportunity.`,
+      };
+    }
     const now = new Date();
     const start = fromDate ?? isoDate(new Date(now.getTime() - 36 * 30 * 86_400_000));
     const end = toDate ?? isoDate(now);
@@ -76,8 +88,8 @@ export const usaspending = {
       filters: {
         award_type_codes: ["A", "B", "C", "D"],
         naics_codes: naics ? [naics] : undefined,
-        place_of_performance_locations: state
-          ? [{ country: "USA", state }]
+        place_of_performance_locations: normalizedState
+          ? [{ country: "USA", state: normalizedState }]
           : undefined,
         time_period: [{ start_date: start, end_date: end }],
       },
@@ -115,7 +127,10 @@ export const usaspending = {
       }));
       return { results };
     } catch (err) {
-      return { results: [], error: (err as Error).message };
+      const detail = err instanceof HttpError && [400, 422].includes(err.status)
+        && err.body && typeof err.body === "object" && "detail" in err.body
+        && typeof err.body.detail === "string" ? err.body.detail.slice(0, 400) : null;
+      return { results: [], error: `${(err as Error).message}${detail ? `: ${detail}` : ""}` };
     }
   },
 

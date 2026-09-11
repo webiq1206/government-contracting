@@ -25,6 +25,7 @@ export type CredentialSource =
   | "none";
 
 export type CreditState =
+  | "budget_held"
   | "out_of_credit"
   | "key_rejected"
   | "throttled"
@@ -136,6 +137,13 @@ export function creditView(causes: string[], callsMade: number): CreditView {
       state: "throttled",
       label: "Throttling calls",
       detail: "The account is at its rate limit. Work retries on its own, so this usually needs nobody, but it slows everything down.",
+    };
+  }
+  if (causes.includes("spending_limit")) {
+    return {
+      state: "budget_held",
+      label: "Paid work is waiting at a spending limit",
+      detail: "Review the active limit in API Usage. A daily request limit is separate from the monthly dollar budget.",
     };
   }
   if (callsMade <= 0) {
