@@ -1,0 +1,125 @@
+diff --git a/app/globals.css b/app/globals.css
+index 0ac57e5..f4671a1 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -8,11 +8,11 @@
+  * Dark text shades and control borders are adjusted for readable contrast. */
+ :root {
+   color-scheme: light;
+-  --background: 247 247 243;
++  --background: 244 246 246;
+   --foreground: 17 26 31;
+   --surface: 255 255 255;
+   --surface-raised: 255 255 255;
+-  --muted: 238 241 237;
++  --muted: 238 242 242;
+   --muted-foreground: 97 112 119;
+   --border: 216 224 222;
+@@ -43,8 +43,8 @@
+   --review: 149 96 27;
+   --dismiss: 97 112 119;
+   --risk: 163 58 49;
+-  --slate-50: 247 247 243;
+-  --slate-100: 238 241 237;
++  --slate-50: 244 246 246;
++  --slate-100: 238 242 242;
+   --slate-200: 216 224 222;
+   --slate-300: 190 202 200;
+diff --git a/app/layout.tsx b/app/layout.tsx
+index ed1a2d9..969151e 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -47,3 +47,3 @@ export const viewport: Viewport = {
+   themeColor: [
+-    { media: "(prefers-color-scheme: light)", color: "#F7F7F3" },
++    { media: "(prefers-color-scheme: light)", color: "#F4F6F6" },
+     { media: "(prefers-color-scheme: dark)", color: "#0B1720" },
+diff --git a/components/marketing/redesign.css b/components/marketing/redesign.css
+index 60516c8..5bd5722 100644
+--- a/components/marketing/redesign.css
++++ b/components/marketing/redesign.css
+@@ -1,4 +1,4 @@
+ .bco-site {
+-  background: #f7f7f3;
++  background: #f4f6f6;
+   color: #111a1f;
+   font:
+@@ -8,3 +8,3 @@
+   overflow: clip;
+   --ink: 11 23 32;
+-  --background: 247 247 243;
++  --background: 244 246 246;
+   --foreground: 17 26 31;
+@@ -15,3 +15,3 @@
+   --gold: 14 111 117;
+   --on-accent: 255 255 255;
+-  --muted: 238 241 237;
++  --muted: 238 242 242;
+ }
+@@ -73,3 +73,3 @@
+ }
+ .bco-button-secondary:hover {
+-  background: #eef1ed;
++  background: #eef2f2;
+ }
+@@ -159,3 +159,3 @@
+ }
+ .bco-proof {
+-  background: #eef1ed;
++  background: #eef2f2;
+   border-top: 1px solid #d8e0de;
+@@ -211,3 +211,3 @@
+   overflow-x: auto;
+   border-bottom: 1px solid #d8e0de;
+-  background: #eef1ed;
++  background: #eef2f2;
+ }
+@@ -268,3 +268,3 @@
+   min-width: 0;
+-  background: #eef1ed;
++  background: #eef2f2;
+   padding: 14px;
+@@ -287,3 +287,3 @@
+ }
+ .bco-workflow {
+-  background: #eef1ed;
++  background: #eef2f2;
+ }
+@@ -332,3 +332,3 @@
+   max-height: 650px;
+-  background: #eef1ed;
++  background: #eef2f2;
+   border: 1px solid #d8e0de;
+diff --git a/lib/domain/email-shell.ts b/lib/domain/email-shell.ts
+index 0f6fdb1..93321d4 100644
+--- a/lib/domain/email-shell.ts
++++ b/lib/domain/email-shell.ts
+@@ -28,5 +28,5 @@
+ export const BRAND = {
+-  paper: "#f7f7f3",
++  paper: "#f4f6f6",
+   surface: "#ffffff",
+-  surfaceMuted: "#eef1ed",
++  surfaceMuted: "#eef2f2",
+   ink: "#111a1f",
+diff --git a/docs/redesign/design-system.md b/docs/redesign/design-system.md
+index 0fd313b..7c35d16 100644
+--- a/docs/redesign/design-system.md
++++ b/docs/redesign/design-system.md
+@@ -8,3 +8,3 @@
+ | --- | --- | --- |
+-| Page | #F7F7F3 | #0B1720 |
++| Page | #F4F6F6 | #0B1720 |
+ | Text | #111A1F | #EFF5F4 |
+@@ -47,3 +47,3 @@
+-The public site uses Midnight navigation and hero surfaces, warm-neutral content, and Petrol actions. Primary and destructive buttons retain a fixed dark fill and white text in both themes. Aqua identifies automation; Brass identifies attention, neither substitutes for a primary action. It explains a small number of meaningful outcomes before detailed capabilities. The signup CTA is primary; the product demonstration is secondary.
++The public site uses Midnight navigation and hero surfaces, cool light-gray content, white cards, and Petrol actions. Primary and destructive buttons retain a fixed dark fill and white text in both themes. Aqua identifies automation; Brass identifies attention, neither substitutes for a primary action. It explains a small number of meaningful outcomes before detailed capabilities. The signup CTA is primary; the product demonstration is secondary.
+diff --git a/tests/design-system.test.ts b/tests/design-system.test.ts
+index da09c06..d926693 100644
+--- a/tests/design-system.test.ts
++++ b/tests/design-system.test.ts
+@@ -76,3 +76,3 @@ describe("the design system holds", () => {
+      */
+-    const ALLOWED = new Set(["app/layout.tsx:48 #F7F7F3", "app/layout.tsx:49 #0B1720"]);
++    const ALLOWED = new Set(["app/layout.tsx:48 #F4F6F6", "app/layout.tsx:49 #0B1720"]);
+     const hits = scan(
