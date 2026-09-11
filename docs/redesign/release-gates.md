@@ -1,47 +1,50 @@
 # Release gates and unresolved work
 
-**Status: draft implementation for review. Do not describe the entire master brief as complete.** The code and assets are concrete; the remaining requirements below need current evidence before production release.
+**Status: final redesign candidate awaiting current CI and browser evidence before production release.** The authored redesign is now applied to source, including the cool light-gray palette requested for light mode. Do not treat older CI runs as evidence for this final source revision.
 
-## Verified locally
+## Current validation checkpoint
 
-- Full local unit run: 4,469 passed, 735 database-dependent tests skipped, no failures.
-- Initial published CI passed, including 798 PostgreSQL integration tests without skips. Desktop browser audit passed; mobile/tablet follow-up rerun remains required.
-- A three-page bid with 24 long scope descriptions was visually reviewed. Full text now wraps without truncation; paragraph grouping and page numbers improve continuation. The new content regression plus existing document/email checks passed (26 tests).
-- Production build and TypeScript checks passed.
-- All 58 discovered page routes exercised by the production HTTP fixture harness. Redirects and token/error states are not counted as complete content workflows.
-- Anonymous saved-view access denied; authenticated fixture access allowed.
-- Static CSS review across application/public patterns, including 320px mobile opportunity controls and dark mode.
-- A portable 48-screen review with device widths and theme controls.
-- Seven MP4 assets with measured durations, VTT captions, transcripts, and posters. The 120-second asset decoded and played in the browser at 1280x960, readyState 4, with no media error.
+- The exact authored redesign patches were applied and validated in GitHub Actions before commit.
+- TypeScript passed.
+- The full unit suite passed.
+- The production build passed.
+- The final source uses #F4F6F6 for the primary light background, #EEF2F2 for muted surfaces, white cards, Midnight navigation, and Petrol actions.
+- Normal repository CI, PostgreSQL integration checks, and the desktop/tablet/mobile UI audit must pass on the final branch commit before merge.
+
+## Previously verified redesign evidence
+
+- Initial redesign CI passed, including 798 PostgreSQL integration tests without skips. Those results predate the final palette and interaction changes.
+- A three-page bid with 24 long scope descriptions was visually reviewed. Full text wraps without truncation; paragraph grouping and page numbers improve continuation.
+- All 58 discovered page routes were exercised by the production HTTP fixture harness on the earlier redesign checkpoint.
+- Anonymous saved-view access was denied; authenticated fixture access was allowed.
+- A portable 48-screen review covered multiple widths and light/dark themes.
+- Seven captioned MP4 preview assets, transcripts, and posters were validated at the earlier checkpoint.
 
 ## Open gates
 
-| Gate | Precise remaining work | Why it remains open / closure evidence |
+| Gate | Precise remaining work | Closure evidence |
 | --- | --- | --- |
-| Authenticated browser journeys | Run and inspect existing UI-audit results for desktop, tablet and mobile; repair failures and confirm navigation, forms, dialogs, disclosures, drafts, recovery and roles | The managed live preview served mismatched client bundles from another application. Server rendering was verified independently. Static review does not hydrate BrostCo's client code. CI browser artifacts can close the fixture portion of this gate. |
-| Full route/state acceptance | Inspect all meaningful tabs, dialogs, menus, empty/error/slow states and long-content cases; confirm every route-specific requirement in the brief | A shared style change and HTTP 200 are not individual UX acceptance. Coverage ledger distinguishes direct simplifications and inherited presentation. |
-| Device/accessibility matrix | Complete 360/390/768/1024/1440/1920 widths, landscape, short screens, keyboard-open behavior, 200% zoom, keyboard navigation, screen reader, focus and contrast audit | Available visual samples and 44px CSS rules do not prove all states or WCAG compliance. Use actual interactive pages and devices. |
-| Real workflow videos | Record authentic click-through sequences using sanitized demo data; edit clear desktop/mobile crops; provide main narration and verify all captions/playback states | Current MP4s are guided sequences of captured screens, not action recordings. The storyboard and script are ready; usable players and preview media are implemented. |
-| Real PostgreSQL gate | Pass repository CI database workflow on the final branch | Initial published CI passed 798 PostgreSQL tests without skips. Require the same gate on the final follow-up commit. PGlite SSR fixtures alone do not replace this gate. |
-| Provider and payment integration | Exercise existing test-mode end-to-end flows for configured services, usage charges and recovery where required by existing release policy | No external sends, real calls, live charges, provider runs or actual submissions were executed in this redesign. |
-| Performance | Measure authenticated route budgets, public lab performance and production field metrics after rollout | HTTP fixture durations are not browser performance. No Core Web Vitals or improvement percentage is claimed. |
-| Usability and comparison | Run the repository's task-based usability protocol with representative contractors; verify task time, steps, clarity and error recovery | The visual redesign has not been demonstrated to outperform GovDash in a controlled comparison. |
-| Before/after evidence | Pair current screenshots with matching-role, matching-data baseline screenshots at the same widths | Historical research screenshots use different fixture/revision combinations. This handoff does not mislabel those as a controlled comparison. |
-| Email/document visual QA | Inspect rendered outputs across target clients and representative long bids | A representative three-page bid and its full pricing text were reviewed and tested; every exported or emailed state and target email client is not yet certified. |
+| Final CI | Pass TypeScript, full application tests, production build, and PostgreSQL integration checks on the final branch commit | Current GitHub CI run must be green |
+| Final responsive UI audit | Pass authenticated desktop, tablet, and mobile fixture journeys on the final branch commit | Current UI-audit workflow must be green and screenshots inspected |
+| Production sync | Merge the validated redesign to `main`, pull that exact `main` revision into the BrostCo Replit workspace, and confirm Replit no longer reports remote changes pending | Replit Git state must show the merged remote revision present locally |
+| Production publish | Republish BrostCo from the synchronized Replit workspace and confirm deployment success | Replit deployment status and public smoke checks |
+| Provider and payment integration | Preserve existing production integrations and avoid live sends, calls, charges, or submissions during redesign validation | Post-deploy read-only smoke checks plus existing provider safeguards |
+| Performance and representative-user usability | Measure production behavior after rollout | Follow-up field evidence, not a blocker for source integrity if all release checks pass |
 
 ## Decisions and implementation limits
 
-The landing page was rebuilt. Core queue, opportunity, settings navigation, activity arrival, and mobile action layers received targeted behavior changes. Many supporting pages keep their existing feature structure while adopting the shared visual system. Any route-specific brief item absent from the implementation is still open; the route ledger is not a blanket completion checkmark.
+The landing page, core queue, opportunity experience, settings navigation, activity ledger presentation, mobile action layers, and shared visual system received targeted redesign work while preserving existing business rules and integrations. AI assistance added in this pass is read-only, user-initiated, source-linked where possible, and does not send messages, change records, or submit bids.
 
-No feature was deliberately removed. No general-purpose AI chat, collaborative proposal editor, new pricing workbook, custom report builder, or document diff engine was added without a supporting backend. The existing strengths are retained and made more accessible.
+The final light theme intentionally uses a cool gray foundation rather than beige or warm cream. White content surfaces provide separation without relying on heavy shadows. Midnight and Petrol remain the dominant brand colors; Aqua identifies automation, Brass identifies attention, green indicates positive status, and red indicates destructive or risk states.
 
-The public review file contains synthetic data and disconnected actions. Do not publish raw audit HTML or temporary fixture identifiers. The fixture-render route returns 404 in production.
+No production schema migration is introduced by this redesign. No feature should be removed merely to simplify the interface.
 
 ## Release sequence
 
-1. Inspect the draft PR, review file and coverage ledger.
-2. Require passing CI, database and browser jobs on the final commit; inspect screenshots and failures rather than only the job summary.
-3. Close the master brief's interaction, device, media, accessibility and measurement gates. Mark any deliberate scope change explicitly instead of implying it shipped.
-4. Follow the established BrostCo merge and deployment process. Keep the prior production revision available.
-5. Smoke-test public conversion, signup/login, Today, a record action, saved work, activity, role boundaries and usage/billing access.
-6. If a regression blocks work, revert the application change and redeploy. This branch introduces no production data migration.
+1. Require green final CI and UI-audit results for the exact redesign branch head.
+2. Inspect final screenshots and resolve any responsive or visual regression.
+3. Merge the validated pull request to `main`.
+4. Synchronize the Replit workspace with the merged `main` revision and verify the Git panel is no longer one-way stale.
+5. Republish BrostCo from that synchronized workspace.
+6. Smoke-test the public homepage, login, Today, one opportunity, Activity, settings, role boundaries, and usage/billing access.
+7. If a regression blocks work, revert the application change and redeploy the prior revision.
