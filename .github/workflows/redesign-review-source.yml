@@ -12,18 +12,28 @@ jobs:
   source:
     if: github.head_ref == 'redesign/complete-platform'
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Archive the exact tracked review source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install the committed review toolchain
+        run: npm ci
+      - name: Archive tracked source and offline dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/review-source"
           git archive --format=tar.gz HEAD > "$RUNNER_TEMP/review-source/brostco-source.tar.gz"
+          tar -czf "$RUNNER_TEMP/review-source/brostco-node-modules.tar.gz" node_modules
           git rev-parse HEAD > "$RUNNER_TEMP/review-source/revision.txt"
           git rev-parse HEAD^{tree} > "$RUNNER_TEMP/review-source/tree.txt"
-          sha256sum "$RUNNER_TEMP/review-source/brostco-source.tar.gz" > "$RUNNER_TEMP/review-source/checksum.txt"
+          sha256sum "$RUNNER_TEMP/review-source/"*.tar.gz > "$RUNNER_TEMP/review-source/checksum.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: brostco-review-source
