@@ -96,13 +96,13 @@ export async function sweepRecapBounces(lookbackMinutes = 180): Promise<BounceSw
           from: msg.from,
           subject: msg.subject,
           contentType: msg.contentType,
-          body: msg.body,
+          body: msg.deliveryReport || msg.body,
         })
       ) {
         continue;
       }
 
-      const report = parseBounce(msg.body ?? "");
+      const report = parseBounce(msg.deliveryReport || msg.body || "");
       const address = (report.recipient ?? "").trim();
       if (!address || !address.includes("@")) continue;
 

@@ -61,11 +61,22 @@ export const pricingResearch: AgentDefinition = {
     }
 
     // 1) Last 36 months of awards for this NAICS (+ state when known).
-    const { results: awards, error: awardsError } = await usaspending.searchAwards({
+    const { results: awards, error: awardsError, skippedReason } = await usaspending.searchAwards({
       naics,
       state: state ?? undefined,
       limit: 100,
     });
+    if (skippedReason) {
+      await logAgent({
+        agent: "pricing-research",
+        action: "comps",
+        opportunityId,
+        level: "warn",
+        status: "skipped",
+        message: `${skippedReason} Existing pricing was left untouched.`,
+      });
+      return { ok: true, humanActionRequired: true, summary: skippedReason };
+    }
     if (awardsError) {
       // Do NOT write pricing built on a failed lookup: zero comps from an
       // outage produces median $0 and $0 target bids that look like data.
@@ -75,11 +86,11 @@ export const pricingResearch: AgentDefinition = {
         opportunityId,
         level: "error",
         status: "error",
-        message: `USASpending could not be reached (${awardsError}), so no comps were pulled. Pricing was left untouched rather than written as zeros; it retries on the next run.`,
+        message: `USASpending award lookup failed (${awardsError}), so no comps were pulled. Pricing was left untouched rather than written as zeros; it retries on the next run.`,
       });
       return {
         ok: false,
-        summary: `Pricing research failed: USASpending unavailable (${awardsError}).`,
+        summary: `Pricing research failed: USASpending award lookup failed (${awardsError}).`,
       };
     }
 

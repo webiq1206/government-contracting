@@ -11,6 +11,7 @@
  */
 import { gmail, type GmailAttachmentRef } from "../integrations/gmail";
 import { extractPdfText } from "../integrations/pdf";
+import { decodeInboundText, inboundText } from "./inbound-text";
 
 /** How many attachments on one message are worth opening. */
 const MAX_DOCS = 3;
@@ -77,9 +78,9 @@ export async function readReplyAttachments(input: {
     const isPdf = /pdf/i.test(a.mimeType) || /\.pdf$/i.test(a.filename);
     if (isPdf) {
       const res = await extractPdfText(buf, MAX_DOC_CHARS);
-      text = res.text;
+      text = inboundText(res.text);
     } else {
-      text = buf.toString("utf8").slice(0, MAX_DOC_CHARS);
+      text = decodeInboundText(buf).slice(0, MAX_DOC_CHARS);
     }
 
     // A PDF of a scanned page extracts to nothing. Calling that "read" would
@@ -109,6 +110,6 @@ export async function readReplyAttachments(input: {
  * them apart.
  */
 export function combineReplyText(body: string, attachmentText: string): string {
-  if (!attachmentText) return body;
-  return `${body}\n\n${attachmentText}`;
+  if (!attachmentText) return inboundText(body);
+  return inboundText(`${body}\n\n${attachmentText}`);
 }

@@ -26,6 +26,16 @@ describe("recovery checks the failed dependency", () => {
     expect((await testIncidentDependency("integration_auth", "org-a")).passed).toBe(false);
     expect(mocks.complete).not.toHaveBeenCalled();
   });
+  it("checks Gmail for Gmail throttling without spending AI credit", async () => {
+    expect((await testIncidentDependency("mailbox_rate_limit", "org-a")).model).toBe("gmail");
+    expect(mocks.gmail).toHaveBeenCalledWith("org-a", { fresh: true });
+    expect(mocks.complete).not.toHaveBeenCalled();
+  });
+  it("does not declare corrupt mail repaired just because authentication works", async () => {
+    expect((await testIncidentDependency("mailbox_content", "org-a")).passed).toBe(false);
+    expect(mocks.gmail).not.toHaveBeenCalled();
+    expect(mocks.complete).not.toHaveBeenCalled();
+  });
   it("requires a ready worker and working queue, not only a live database", async () => {
     expect((await testIncidentDependency("queue_unreachable", "org-a")).passed).toBe(true);
     mocks.heartbeat.mockResolvedValue({ phase: "ready", updatedAt: new Date(0) });

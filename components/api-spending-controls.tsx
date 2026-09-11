@@ -19,18 +19,18 @@ export function ApiSpendingControls({ budget: b, save, busy, editable = true }: 
   const current={dailyLimit:b.daily_limit,monthlyLimit:b.monthly_limit,dailyRequests:b.daily_requests,paused:b.paused,allowComplex:b.allow_complex};
   return <section className="card space-y-3" aria-label="Account spending controls">
     <h2 className="font-semibold">Your spending protection</h2>
-    <p role="status" className="font-medium">{b.paused?"API work is paused":atMonthly?"Monthly budget reached":atDaily||atRequests?"Daily allowance reached":b.unknown_costs>0?"Some costs need review":"Spending protection is on"}</p>
+    <p role="status" className="font-medium">{b.paused?"API work is paused":atMonthly?"Monthly budget reached":atDaily?"Daily dollar limit reached":atRequests?"Daily request limit reached":b.unknown_costs>0?"Some costs need review":"Spending protection is on"}</p>
     <div className="grid gap-3 sm:grid-cols-3 text-sm">
       <p>Monthly budget<br/><strong>{money(b.monthly_limit)}</strong></p>
       <p>Used or held this month<br/><strong>{b.unknown_costs>0?"Not fully known":money(b.month_spend)}</strong></p>
       <p>Paid requests today<br/><strong>{b.day_requests}{b.daily_requests!==null?` of ${b.daily_requests}`:""}</strong></p>
     </div>
     <p className="text-sm">We choose the AI model automatically and stop new paid requests before their allowance runs out. More powerful AI is reserved for complex work.</p>
-    {hold && <p role="alert" className="text-sm text-review">{b.paused?"New paid work is waiting. Resume it when you’re ready.":b.unknown_costs>0?"Unresolved costs can hold new work. The platform administrator must review these charges before a dollar budget can cover more requests.":"New paid work is waiting to protect your budget. Daily allowances reset at midnight UTC; monthly budgets reset on the first day. You can also change your budget."}</p>}
+    {hold && <p role="alert" className="text-sm text-review">{b.paused?"New paid work is waiting. Resume it when you’re ready.":b.unknown_costs>0?"Unresolved costs can hold new work. The platform administrator must review these charges before a dollar budget can cover more requests.":atMonthly?"Your monthly budget is reached. Paid work waits until the first day of next month or an approved budget change.":atRequests&&!atDaily?`Today’s ${b.daily_requests}-request limit is reached. It resets at midnight UTC. Raising the monthly budget will not clear this daily limit. Review the daily request limit below if you want more work to run today.`:"Your daily dollar limit is reached. It resets at midnight UTC. Review the daily dollar limit below before allowing more spending."}</p>}
     {!b.allow_complex && <p className="text-sm text-review">Complex tasks are paused by your saved preference. Enable them in advanced controls to continue bid analysis.</p>}
     {(b.held_requests??0)>0 && <p className="text-xs text-muted-foreground">Includes allowances held for {b.held_requests} unfinished or unconfirmed requests. These are not final charges.</p>}
     <div className="flex flex-wrap gap-3">
-      {editable && <button type="button" className="btn-secondary" disabled={busy} onClick={()=>setEditing(!editing)}>{editing?"Close controls":"Change budget"}</button>}
+      {editable && <button type="button" className="btn-secondary" disabled={busy} onClick={()=>setEditing(!editing)}>{editing?"Close controls":atRequests||atDaily?"Review daily limits":"Change budget"}</button>}
       {editable && <button type="button" className="text-sm underline" disabled={busy} onClick={()=>void save({action:"budget",budget:{...current,paused:!b.paused}})}>{b.paused?"Resume API work":"Pause API work"}</button>}
       {b.unknown_costs>0 && <Link href="/automation" className="text-sm underline">Review automation status</Link>}
     </div>
@@ -42,7 +42,7 @@ export function ApiSpendingControls({ budget: b, save, busy, editable = true }: 
     }}>
       <label className="block max-w-sm text-sm">Monthly budget in dollars<input name="monthlyLimit" inputMode="decimal" className={field} defaultValue={b.monthly_limit??""}/></label>
       <p className="text-xs text-muted-foreground">Applies to paid work through BrostCo, using our API or yours. Amounts include conservative allowances for pending requests. Provider bills remain final.</p>
-      <details className="rounded border p-3"><summary className="cursor-pointer text-sm font-medium">Advanced controls</summary>
+      <details open={atRequests||atDaily||undefined} className="rounded border p-3"><summary className="cursor-pointer text-sm font-medium">Advanced controls</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-sm">Daily dollar limit<input name="dailyLimit" inputMode="decimal" defaultValue={b.daily_limit??""} className={field}/></label>
           <label className="text-sm">Daily request limit<input name="dailyRequests" type="number" min="0" max="1000000" defaultValue={b.daily_requests??""} className={field}/></label>

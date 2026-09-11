@@ -19,6 +19,7 @@ import { tryResolveTenantOrgId } from "../tenant";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { encryptSecret, decryptSecret } from "../integration-settings";
 import { describeSendFailure } from "./gmail-send-failure";
+import { decodeInboundText, inboundText } from "../domain/inbound-text";
 
 export { describeSendFailure } from "./gmail-send-failure";
 
@@ -438,6 +439,7 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
 
 type GmailPart = {
   mimeType?: string | null;
+  headers?: { name?: string | null; value?: string | null }[] | null;
   filename?: string | null;
   body?: { data?: string | null; attachmentId?: string | null; size?: number | null } | null;
   parts?: GmailPart[] | null;
@@ -483,6 +485,8 @@ export interface GmailInboundMessage {
   /** Gmail's own API id for the message. */
   messageId: string;
   body: string;
+  /** Machine-readable DSN fields and original headers, separate from reply text. */
+  deliveryReport?: string;
   attachments: GmailAttachmentRef[];
 }
 
@@ -511,7 +515,7 @@ export function collectAttachments(
     const p = stack.shift()!;
     if (p.parts) stack.push(...p.parts);
     const id = p.body?.attachmentId;
-    const name = p.filename?.trim();
+    const name = p.filename ? inboundText(p.filename).trim() : "";
     if (!id || !name) continue;
     out.push({
       filename: name,
@@ -523,8 +527,10 @@ export function collectAttachments(
   return out;
 }
 
-function decodeB64Url(data: string): string {
-  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+function decodeB64Url(data: string, part: GmailPart): string {
+  const contentType = part.headers?.find((h) => h.name?.toLowerCase() === "content-type")?.value ?? "";
+  const charset = /charset\s*=\s*["']?([^\s;"']+)/i.exec(contentType)?.[1];
+  return decodeInboundText(Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64"), charset);
 }
 
 /** Walk a message payload for the best text body (text/plain, else stripped text/html). */
@@ -534,19 +540,44 @@ export function extractBodyText(payload: GmailPart | null | undefined): string {
   let htmlFallback = "";
   while (stack.length) {
     const p = stack.shift()!;
-    if (p.mimeType === "text/plain" && p.body?.data) return decodeB64Url(p.body.data).trim();
+    // An attached binary or forwarded message is not the enclosing reply body.
+    if (p.filename || p.mimeType === "message/rfc822") continue;
+    if (p.mimeType === "text/plain" && p.body?.data) return decodeB64Url(p.body.data, p).trim();
     if (p.mimeType === "text/html" && p.body?.data && !htmlFallback) {
-      htmlFallback = stripHtml(decodeB64Url(p.body.data));
+      htmlFallback = stripHtml(decodeB64Url(p.body.data, p));
     }
     if (p.parts) stack.push(...p.parts);
   }
   if (htmlFallback) return htmlFallback;
   // Single-part message with data on the root payload.
-  if (payload.body?.data) {
-    const text = decodeB64Url(payload.body.data);
+  if (payload.body?.data && !payload.filename && (!payload.mimeType || /^text\//i.test(payload.mimeType))) {
+    const text = decodeB64Url(payload.body.data, payload);
     return payload.mimeType === "text/html" ? stripHtml(text) : text.trim();
   }
   return "";
+}
+
+/** Gmail puts the recipient/status in a sibling MIME part. Reading only the
+ * human explanation discarded the fields needed to match delivery failures. */
+export function extractDeliveryReportText(payload: GmailPart | null | undefined): string {
+  if (!payload) return "";
+  const parts = [payload];
+  const text: string[] = [];
+  while (parts.length) {
+    const part = parts.shift()!;
+    if (part.mimeType === "message/delivery-status" || part.mimeType === "text/rfc822-headers") {
+      if (part.body?.data) text.push(decodeB64Url(part.body.data, part));
+    }
+    if (part.mimeType === "message/rfc822") {
+      for (const original of part.parts ?? []) {
+        const id = original.headers?.find((h) => h.name?.toLowerCase() === "message-id")?.value;
+        if (id) text.push(`Original-Message-ID: ${inboundText(id)}`);
+      }
+      continue;
+    }
+    if (part.parts) parts.push(...part.parts);
+  }
+  return text.join("\n");
 }
 
 function stripHtml(html: string): string {
@@ -1030,10 +1061,10 @@ export const gmail = {
       for (let index = 0; index < readCount; index += 1) {
         try {
           const msg = await client.users.messages.get({ userId: "me", id: ids[index], format: "full" });
-          const header = (name: string) =>
+          const header = (name: string) => inboundText(
             msg.data.payload?.headers?.find(
               (h) => (h.name ?? "").toLowerCase() === name
-            )?.value ?? "";
+            )?.value ?? "");
           replies.push({
             threadId: msg.data.threadId ?? "",
             from: header("from"),
@@ -1056,9 +1087,10 @@ export const gmail = {
             references: header("references")
               ? header("references").split(/\s+/).filter(Boolean)
               : [],
-            snippet: msg.data.snippet ?? "",
+            snippet: inboundText(msg.data.snippet ?? ""),
             messageId: msg.data.id ?? "",
-            body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),
+            body: extractBodyText(msg.data.payload) || inboundText(msg.data.snippet ?? ""),
+            deliveryReport: extractDeliveryReportText(msg.data.payload),
             attachments: collectAttachments(msg.data.payload as GmailPart),
           });
         } catch (err) {

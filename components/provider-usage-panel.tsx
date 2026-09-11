@@ -41,7 +41,7 @@ export function ProviderUsagePanel({
   const creditTone =
     credit.state === "out_of_credit" || credit.state === "key_rejected"
       ? "text-risk"
-      : credit.state === "throttled"
+      : credit.state === "throttled" || credit.state === "budget_held"
         ? "text-review"
         : credit.state === "accepting"
           ? "text-pursue"

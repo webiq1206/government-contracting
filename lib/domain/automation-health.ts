@@ -51,6 +51,8 @@ export type IncidentCause =
   | "provider_credit"
   | "provider_auth"
   | "provider_rate_limit"
+  | "mailbox_rate_limit"
+  | "mailbox_content"
   | "provider_unavailable"
   | "integration_auth"
   | "queue_unreachable"
@@ -113,6 +115,19 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     title: "The AI account is being rate limited",
     effect: "Work is running slower than usual and some jobs are being retried.",
     repair: "This usually clears itself. If it lasts more than an hour, ask Anthropic to raise the account limits.",
+    blocking: false,
+  },
+  mailbox_rate_limit: {
+    title: "Gmail is limiting inbox requests",
+    effect: "Email checks are delayed. Messages stay in the inbox and polling resumes as allowance becomes available.",
+    repair: "Wait for the Gmail allowance to reset. Reconnecting Gmail or changing the AI key will not raise this limit.",
+    repairHref: "/settings/integrations#gmail",
+    blocking: false,
+  },
+  mailbox_content: {
+    title: "An email could not be saved",
+    effect: "An incoming message contains text the database cannot store. The inbox is retrying that page.",
+    repair: "The inbox retries automatically. If this continues, contact support with the error details. The original email remains in Gmail.",
     blocking: false,
   },
   provider_unavailable: {
@@ -190,7 +205,10 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
   // Google can return quota exhaustion as HTTP 403. Check throttling before
   // authentication, including historical messages with a reconnect suffix.
-  if (/rate.?limit|quota exceeded|quota.*(?:per minute|per user)|429|too many requests/i.test(text)) return "provider_rate_limit";
+  if (/invalid byte sequence for encoding.*0x00|\\u0000 cannot be converted/.test(text)) return "mailbox_content";
+  if (/rate.?limit|quota exceeded|quota.*(?:per minute|per user)|429|too many requests/i.test(text)) {
+    return /gmail|mailbox|inbox/.test(text) ? "mailbox_rate_limit" : "provider_rate_limit";
+  }
   // Match the named service before generic HTTP/auth words. A Google 401 is
   // not repaired by replacing an Anthropic key, and a Gmail timeout is not an
   // expired grant.

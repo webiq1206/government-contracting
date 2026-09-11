@@ -107,7 +107,10 @@ function describeDropped(dropped: { label: string; id: string }[]): string {
   return `(Recorded without its record link: ${named.join(", ")} ${verb}.)`;
 }
 
-export async function logAgent(entry: AgentLogInput): Promise<void> {
+export async function logAgent(
+  entry: AgentLogInput,
+  options: { requirePersistence?: boolean } = {}
+): Promise<void> {
   const level = entry.level ?? "info";
   const prefix = `[${entry.agent}] ${entry.action}`;
   const line = entry.message ? `${prefix}, ${entry.message}` : prefix;
@@ -157,8 +160,10 @@ export async function logAgent(entry: AgentLogInput): Promise<void> {
       }
     }
   } catch (err) {
-    // Logging must never crash an agent. Surface to console only.
+    // Most telemetry must not crash an agent. A log used as a durable record
+    // before advancing an inbox cursor must report a failed write to its caller.
     console.error("[logger] failed to persist agent_log:", (err as Error).message);
+    if (options.requirePersistence) throw err;
   }
 }
 

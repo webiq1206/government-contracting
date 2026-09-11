@@ -110,11 +110,17 @@ export async function testIncidentDependency(cause: string, orgId: string): Prom
   }
   if (cause.startsWith("provider_") || cause === "model_output") return testProvider();
   try {
-    if (cause === "integration_auth") {
+    if (cause === "mailbox_content") {
+      return { passed: false, model: "gmail", technical: null,
+        detail: "The next inbox poll must successfully save the affected messages before this issue can be marked recovered. Check its result in Automation Health; contact support if the same error continues." };
+    }
+    if (cause === "integration_auth" || cause === "mailbox_rate_limit") {
       const passed = await gmail.canAuthenticate(orgId, { fresh: true });
       return { passed, model: "gmail", technical: null,
         detail: passed ? "The connected mailbox accepted the connection check."
-          : "The mailbox could not be verified. Reconnect it in Integrations, then run this check again." };
+          : cause === "mailbox_rate_limit"
+            ? "Gmail could not complete the check. Wait for its request allowance, then check again."
+            : "The mailbox could not be verified. Reconnect it in Integrations, then run this check again." };
     }
     if (cause === "queue_unreachable") {
       const [queue, heartbeat] = await Promise.all([getQueue(), readWorkerHeartbeat()]);

@@ -326,6 +326,7 @@ async function lastCallForOrg(
 async function recordBounce(input: {
   orgId: string;
   threadId: string;
+  messageId: string;
   report: BounceReport;
 }): Promise<boolean> {
   const { orgId, threadId, report } = input;
@@ -363,18 +364,19 @@ async function recordBounce(input: {
   );
 
   if (updated.length === 0) {
-    // Keep the provider failure in the tenant-visible automation log and make
-    // the enclosing poll fail honestly. The mailbox cursor can still advance,
-    // avoiding an endless replay of a DSN that cannot be correlated.
+    // Saving an unmatched notice is completed inbox work needing human review.
+    // Only a failed write should replay the page. Re-reading an unrelated DSN
+    // cannot create the missing outbound message and used to stall this inbox.
     await logAgent({
       agent: "reply-poll",
       action: "bounce-unmatched",
-      level: "error",
-      status: "error",
+      level: "warn",
+      status: "skipped",
+      input: { messageId: input.messageId, threadId, report },
       message:
         `An email delivery failure for ${report.recipient ?? "an unknown recipient"} could not be matched to an outbound message. ` +
         `${report.reason} Open the connected inbox and correct the affected contact before sending again.`,
-    });
+    }, { requirePersistence: true });
     return false;
   }
 
@@ -2609,6 +2611,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     let matched = 0;
     let reviewCount = 0;
     let processingFailures = 0;
+    let unmatchedBounces = 0;
     const touchedOpportunities = new Set<string>();
     const opportunityTitles = new Map<string, string>();
     for (const r of replies) {
@@ -2630,14 +2633,15 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         from: r.from,
         subject: r.subject,
         contentType: r.contentType,
-        body: r.body || r.snippet,
+        body: r.deliveryReport || r.body || r.snippet,
       })) {
         const recorded = await recordBounce({
           orgId,
           threadId: r.threadId,
-          report: parseBounce(r.body || r.snippet),
+          messageId: r.messageId,
+          report: parseBounce(r.deliveryReport || r.body || r.snippet),
         });
-        if (!recorded) processingFailures++;
+        if (!recorded) unmatchedBounces++;
         continue;
       }
 
@@ -2790,10 +2794,11 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       if (result.bounce) {
         const recorded = await recordBounce({
           orgId,
+          messageId: r.messageId,
           threadId: r.threadId,
-          report: parseBounce(r.body || r.snippet),
+          report: parseBounce(r.deliveryReport || r.body || r.snippet),
         });
-        if (!recorded) processingFailures++;
+        if (!recorded) unmatchedBounces++;
         continue;
       }
       // Already captured (e.g. by the Resend inbound webhook or a previous
@@ -3185,13 +3190,13 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
 
     return {
       ok: processingFailures === 0,
-      summary: `${matched} matched${truncated ? "; mailbox backlog will continue next run" : ""}${
+      summary: `${matched} matched${unmatchedBounces ? `; ${unmatchedBounces} unmatched delivery notices saved for review` : ""}${truncated ? "; mailbox backlog will continue next run" : ""}${
         processingFailures > 0
           ? `; ${processingFailures} reply-processing or notification failure${processingFailures === 1 ? " needs" : "s need"} attention`
           : ""
       }.`,
       enqueued,
-      humanActionRequired: reviewCount > 0 || processingFailures > 0,
+      humanActionRequired: reviewCount > 0 || processingFailures > 0 || unmatchedBounces > 0,
     };
 }
 
