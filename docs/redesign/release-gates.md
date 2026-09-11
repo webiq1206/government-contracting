@@ -4,7 +4,9 @@
 
 ## Verified locally
 
-- Full unit run: 4,469 passed, 735 database-dependent tests skipped, no failures.
+- Full local unit run: 4,469 passed, 735 database-dependent tests skipped, no failures.
+- Initial published CI passed, including 798 PostgreSQL integration tests without skips. Desktop browser audit passed; mobile/tablet follow-up rerun remains required.
+- A three-page bid with 24 long scope descriptions was visually reviewed. Full text now wraps without truncation; paragraph grouping and page numbers improve continuation. The new content regression plus existing document/email checks passed (26 tests).
 - Production build and TypeScript checks passed.
 - All 58 discovered page routes exercised by the production HTTP fixture harness. Redirects and token/error states are not counted as complete content workflows.
 - Anonymous saved-view access denied; authenticated fixture access allowed.
@@ -20,12 +22,12 @@
 | Full route/state acceptance | Inspect all meaningful tabs, dialogs, menus, empty/error/slow states and long-content cases; confirm every route-specific requirement in the brief | A shared style change and HTTP 200 are not individual UX acceptance. Coverage ledger distinguishes direct simplifications and inherited presentation. |
 | Device/accessibility matrix | Complete 360/390/768/1024/1440/1920 widths, landscape, short screens, keyboard-open behavior, 200% zoom, keyboard navigation, screen reader, focus and contrast audit | Available visual samples and 44px CSS rules do not prove all states or WCAG compliance. Use actual interactive pages and devices. |
 | Real workflow videos | Record authentic click-through sequences using sanitized demo data; edit clear desktop/mobile crops; provide main narration and verify all captions/playback states | Current MP4s are guided sequences of captured screens, not action recordings. The storyboard and script are ready; usable players and preview media are implemented. |
-| Real PostgreSQL gate | Pass repository CI database workflow on the final branch | 735 local tests were skipped. PGlite SSR fixtures do not replace PostgreSQL, restricted-role/RLS or concurrency tests. |
+| Real PostgreSQL gate | Pass repository CI database workflow on the final branch | Initial published CI passed 798 PostgreSQL tests without skips. Require the same gate on the final follow-up commit. PGlite SSR fixtures alone do not replace this gate. |
 | Provider and payment integration | Exercise existing test-mode end-to-end flows for configured services, usage charges and recovery where required by existing release policy | No external sends, real calls, live charges, provider runs or actual submissions were executed in this redesign. |
 | Performance | Measure authenticated route budgets, public lab performance and production field metrics after rollout | HTTP fixture durations are not browser performance. No Core Web Vitals or improvement percentage is claimed. |
 | Usability and comparison | Run the repository's task-based usability protocol with representative contractors; verify task time, steps, clarity and error recovery | The visual redesign has not been demonstrated to outperform GovDash in a controlled comparison. |
 | Before/after evidence | Pair current screenshots with matching-role, matching-data baseline screenshots at the same widths | Historical research screenshots use different fixture/revision combinations. This handoff does not mislabel those as a controlled comparison. |
-| Email/document visual QA | Inspect rendered outputs across target clients and representative long bids | Shared palette changes and document tests passed; every exported or emailed state was not visually certified. |
+| Email/document visual QA | Inspect rendered outputs across target clients and representative long bids | A representative three-page bid and its full pricing text were reviewed and tested; every exported or emailed state and target email client is not yet certified. |
 
 ## Decisions and implementation limits
 

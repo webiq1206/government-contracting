@@ -39,5 +39,29 @@
     "components/marketing/landing-page.tsx": "f1240c29ffe726be30ace2c5d5342691cd7dab7778670920ceeb532923469ab7",
     "components/marketing/workflow-gallery.tsx": "a5965273a2c3bb8b6b6b74a989950413f34a727c8f6b60e6fe5eea45ff94dcff",
     "app/(dash)/activity/page.tsx": "4613d230a78b48c086f81e2ef9d9b8b4edb31bc454145c0448454d096b1d81b8"
+  },
+  "github_initial_ci": {
+    "commit": "462b586b7f2caea590a7e8878d0b9bbdc7ac7de6",
+    "run_id": 34620266854,
+    "conclusion": "success",
+    "postgres_tests": 798,
+    "postgres_skipped": 0,
+    "postgres_failed": 0
+  },
+  "github_initial_ui": {
+    "run_id": 34620266842,
+    "desktop": "success",
+    "mobile": "failure; stale desktop-only settings navigation selector corrected in follow-up",
+    "tablet": "failure; same selector follow-up",
+    "artifacts_visual_inspection": "Artifact references returned, but byte download was blocked with HTTP 403. Static local layout samples remain the visually inspected evidence."
+  },
+  "pdf_visual_check": {
+    "file": "sample-bid.pdf",
+    "pages": 3,
+    "long_scope_rows": 24,
+    "all_pages_reviewed": true,
+    "render_engine": "PyMuPDF (local Poppler font substitution did not render Helvetica accurately)",
+    "scope_content_regression": "passed",
+    "document_and_email_tests_passed": 26
   }
 }

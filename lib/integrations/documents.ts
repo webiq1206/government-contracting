@@ -119,17 +119,25 @@ class PdfWriter {
     const color = opts.color ?? [0.1, 0.1, 0.1];
     const lineHeight = size * 1.4;
     // Hard rule: no em dashes in any generated document.
-    const lines = wrapText(noEmDash(content), font, size, CONTENT_WIDTH - indent);
-    for (const line of lines) {
-      this.ensureSpace(lineHeight);
-      this.page.drawText(line, {
-        x: MARGIN + indent,
-        y: this.y - size,
-        size,
-        font,
-        color: rgb(color[0], color[1], color[2]),
-      });
-      this.y -= lineHeight;
+    for (const paragraph of noEmDash(content).split("\n")) {
+      if (!paragraph.trim()) {
+        this.gap(lineHeight);
+        continue;
+      }
+      const lines = wrapText(paragraph, font, size, CONTENT_WIDTH - indent);
+      // Keep short paragraphs together and avoid a single continuation line.
+      this.ensureSpace((lines.length <= 4 ? lines.length : 2) * lineHeight);
+      for (let index = 0; index < lines.length; index++) {
+        this.ensureSpace((index === lines.length - 2 ? 2 : 1) * lineHeight);
+        this.page.drawText(lines[index], {
+          x: MARGIN + indent,
+          y: this.y - size,
+          size,
+          font,
+          color: rgb(color[0], color[1], color[2]),
+        });
+        this.y -= lineHeight;
+      }
     }
   }
 
@@ -155,33 +163,48 @@ class PdfWriter {
     this.y -= 6;
   }
 
-  /** A left label + right-aligned value on one row (used for line items). */
+  /** A complete wrapping scope label with its right-aligned price. */
   row(rawLabel: string, rawValue: string, opts: { bold?: boolean; size?: number } = {}): void {
     const label = noEmDash(rawLabel);
     const value = noEmDash(rawValue);
     const size = opts.size ?? 11;
     const font = opts.bold ? this.fonts.bold : this.fonts.regular;
     const lineHeight = size * 1.5;
-    this.ensureSpace(lineHeight);
     const valueWidth = font.widthOfTextAtSize(value, size);
     const maxLabelWidth = CONTENT_WIDTH - valueWidth - 12;
-    // Truncate an over-long label so the value stays on the same line.
-    let label2 = label;
-    while (label2 && font.widthOfTextAtSize(label2, size) > maxLabelWidth) {
-      label2 = label2.slice(0, -1);
+    const lines = wrapText(label, font, size, maxLabelWidth);
+    // Scope is part of the offer. Never discard the end to fit a price beside it.
+    // Keep ordinary rows together; exceptionally long rows can continue on a page.
+    this.ensureSpace(Math.min(lines.length * lineHeight, PAGE_HEIGHT - MARGIN * 2));
+    for (let index = 0; index < lines.length; index++) {
+      this.ensureSpace(lineHeight);
+      this.page.drawText(lines[index], { x: MARGIN, y: this.y - size, size, font });
+      if (index === 0) {
+        this.page.drawText(value, {
+          x: PAGE_WIDTH - MARGIN - valueWidth,
+          y: this.y - size,
+          size,
+          font,
+        });
+      }
+      this.y -= lineHeight;
     }
-    if (label2 !== label) label2 = `${label2.slice(0, -1)}…`;
-    this.page.drawText(label2, { x: MARGIN, y: this.y - size, size, font });
-    this.page.drawText(value, {
-      x: PAGE_WIDTH - MARGIN - valueWidth,
-      y: this.y - size,
-      size,
-      font,
-    });
-    this.y -= lineHeight;
+    if (lines.length > 1) this.gap(4);
   }
 
   save(): Promise<Uint8Array> {
+    const pages = this.doc.getPages();
+    pages.forEach((page, index) => {
+      const text = `Page ${index + 1} of ${pages.length}`;
+      const width = this.fonts.regular.widthOfTextAtSize(text, 9);
+      page.drawText(text, {
+        x: PAGE_WIDTH - MARGIN - width,
+        y: 28,
+        size: 9,
+        font: this.fonts.regular,
+        color: rgb(0.32, 0.38, 0.46),
+      });
+    });
     return this.doc.save();
   }
 }

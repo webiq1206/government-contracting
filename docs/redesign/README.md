@@ -4,6 +4,8 @@ This branch implements a new visual system, simpler workspaces, and a rebuilt pu
 
 Base: `4a5461b` on `main`. Working branch: `redesign/complete-platform`. The separate page-loading checkout was not modified.
 
+The latest automated check status is recorded on [draft PR #132](https://github.com/webiq1206/government-contracting/pull/132). Committed evidence files describe their named checkpoints.
+
 ## Review the result
 
 Open [review.html](review.html) in a browser. It contains 48 synthetic product and public screens, with 320, 390, 768, 1024, and 1280px width controls and a dark-theme toggle. Native disclosures work. Application navigation, forms, tabs, saves, and transactions in this portable review are intentionally disconnected. It demonstrates layout, not live workflow completion.
@@ -20,7 +22,7 @@ The homepage implementation is in `components/marketing/landing-page.tsx`. All s
 - Focused mobile records and calls use their contextual actions without a second global bottom navigation layer. Profile save controls become persistent when work is unsaved. Settings use a labeled destination selector on phones.
 - The activity ledger receives its first page of authorized account data from the server, so the initial render contains activity. Filtering, refresh, error recovery, exports, and subsequent requests retain the existing client behavior.
 - The public homepage explains audience, outcome, workflow, human control, pricing, and signup in a deliberate sequence. Five workflow tabs, a hero preview, and a two-minute overview provide product evidence without fabricated customer claims.
-- Login and signup are clearer; supporting public pages and account/admin screens inherit the new system. Shared email and generated-document presentation use the new palette without changing their substantive content.
+- Login and signup are clearer; supporting public pages and account/admin screens inherit the new system. Shared email and generated-document presentation use the new palette. Generated PDF pricing rows now wrap full scope descriptions, preserve short paragraphs across page breaks, and include page numbers. No scope text is truncated to fit a price.
 
 The homepage uses the existing subscription catalog and real signup path. AI usage remains separately billable under existing account terms. No pricing, eligibility, approval, tenant, provider, or job-processing rules were replaced.
 
@@ -31,6 +33,10 @@ The full local suite completed with **4,469 tests passed, 735 skipped, and no fa
 The production HTTP harness checks all 58 page routes against disposable PGlite fixtures. Content responses and redirects are recorded separately. Additional checks cover saved-view authorization, five compatibility redirects, and the production exclusion of the fixture-only review endpoint.
 
 These results do not establish browser interaction, field performance, payment-provider integration, or complete accessibility conformance. [Release gates](release-gates.md) names the remaining work. [Coverage](coverage.md) distinguishes shared styling, direct workflow changes, captured screens, and open acceptance checks.
+
+The initial published commit also passed GitHub CI, including **798 PostgreSQL integration tests with no failures or skips**. Its desktop browser audit passed. The mobile/tablet checks exposed a stale desktop-only settings selector in the regression script; the follow-up adapts that check to the native selector and retains its URL/history assertions. Require the rerun on the final follow-up commit.
+
+A [three-page sample bid](evidence/sample-bid.pdf) was generated from 24 long synthetic pricing descriptions and reviewed page by page. Its content-preservation regression and the existing document/email tests passed (26 tests).
 
 ## Reproduce the local render review
 

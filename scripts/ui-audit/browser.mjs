@@ -340,7 +340,11 @@ try {
   results.push({device,role:'owner',route:'/agents',status:(filtersPassed?'automation filters, ':'')+'safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
-  await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
+  if (device === 'desktop') {
+    await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
+  } else {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
+  }
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/settings');
@@ -546,4 +550,8 @@ try {
  await browser.close();
 }
 console.log(JSON.stringify({captured:results.length,needsReview:failures.length}));
+for (const failure of failures) {
+  const error=String(failure.error??failure.errors?.join('; ')??'').replace(/\/vendor\/[^\s"']+/g,'/vendor/[token]').slice(0,3000);
+  console.error(JSON.stringify({device:failure.device,route:failure.route,task:failure.task,status:failure.status,error}));
+}
 if(failures.length) process.exitCode=1;

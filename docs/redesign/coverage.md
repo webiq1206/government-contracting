@@ -78,7 +78,7 @@ Every route below receives the shared theme where it uses the existing interface
 | Public conversion/media | Responsive static landing review; MP4 duration/codec and main native playback verified | Hydrated gallery/menu, form errors, mobile media/caption/seek/failure cases and analytics |
 | First-run setup, invite and reset variants | Redirect/missing-token renders only | Fresh-deployment setup and valid/expired/used token states |
 | Not-found, unauthorized and errors | Existing boundaries retained; unit tests where present | Full route/state visual and keyboard review |
-| Emails and documents | Shared palette refresh; 25 relevant email/document tests passed | Representative long output rendering and email-client checks |
+| Emails and documents | Shared palette refresh; 26 email/document tests passed; a three-page bid visually reviewed | Other generated-output variants and target email-client checks |
 
 ## Responsive evidence
 
