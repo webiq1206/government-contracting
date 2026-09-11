@@ -2,159 +2,90 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ==========================================================================
-   BROST CO brand design system (aligned to marketing landing)
-   Ink #171713 · Night #090a09 / #171813 · Paper #f1ece3 · Gold #c3a06b
-   Light / Dark themes swap via `html.dark` + CSS variables.
-   DM Sans is UI/body; GFS Didot is display (.font-display); JetBrains Mono
-   is micro labels. Gold signals importance only, never a large field.
-   Sage green (`pursue` #5A6B52 family) is the positive/"go" accent.
-   ========================================================================== */
-
+/* BrostCo product tokens. Legacy gold names remain aliases for compatibility. */
 :root {
   color-scheme: light;
-
-  /* Surfaces */
-  --background: 241 236 227; /* paper #f1ece3 */
-  --foreground: 23 23 19; /* ink */
-  /* Lifted further off the paper background: at 246-on-241 a card
-     read as the same color and sections blurred together. */
-  --surface: 249 246 240;
-  --surface-raised: 254 253 251;
-  --muted: 232 225 214;
-  --muted-foreground: 107 100 88;
-  --border: 205 195 181; /* #cdc3b5 */
-  --border-strong: 180 168 150;
-
-  /* Chrome (sidebar / elevated panels) — light theme stays on paper family */
-  --shell: 249 246 240;
-  --shell-border: 205 195 181;
-
-  /* Brand ink stays dark in both themes (gold CTAs, marketing night). */
-  --ink: 23 23 19;
-
-  /* Accents */
-  --accent: 126 94 51; /* accessible gold-brown */
-  --accent-soft: 246 241 232;
-  --accent-strong: 126 94 51;
-  /*
-   * The colour that goes ON a status fill.
-   *
-   * The status tokens lighten in dark mode so they can carry text on a dark
-   * page, which is right. It breaks anything that uses one as a FILL with
-   * white type: `bg-pursue text-white` measured 5.75:1 in light and 2.88:1 in
-   * dark, on the Pursue and Pass buttons, which are the two most important
-   * controls in the product. Nothing had ever measured it, because the sweep
-   * only ran the light theme.
-   *
-   * So the foreground flips with the fill rather than being assumed. Light:
-   * white on a dark fill. Dark: ink on a light one.
-   */
+  --background: 246 248 251;
+  --foreground: 21 32 51;
+  --surface: 255 255 255;
+  --surface-raised: 255 255 255;
+  --muted: 234 239 246;
+  --muted-foreground: 82 97 118;
+  --border: 207 218 231;
+  --border-strong: 147 163 184;
+  --shell: 255 255 255;
+  --shell-border: 220 227 237;
+  --ink: 21 32 51;
+  --on-accent: 255 255 255;
+  --accent: 36 87 230;
+  --accent-soft: 235 241 255;
+  --accent-strong: 28 66 180;
   --on-status: 255 255 255;
-  --gold: 195 160 107; /* #c3a06b */
-  --gold-deep: 166 130 80; /* #a68250 */
-  /*
-   * The brand gold, darkened just enough to be readable as TEXT on the light
-   * surfaces it actually lands on.
-   *
-   * #c3a06b is 2.08:1 against the page -- less than half the 4.5:1 that AA
-   * asks for body text -- and it was carrying page titles in the mobile app
-   * bar, every eyebrow, and most link text. The accessibility sweep found it
-   * on all sixteen operator pages.
-   *
-   * Same hue, scaled to 64%, which is the largest value that clears 4.5:1 on
-   * the lightest surface it sits on (4.63:1). The undarkened gold stays
-   * exactly as it was for rules, borders, fills and the wordmark, where the
-   * 3:1 non-text threshold applies and it passes.
-   */
-  --gold-text: 125 102 68;
-
-  /* Status */
-  --pursue: 90 107 82;
-  --pursue-strong: 74 89 67;
-  --pursue-soft: 233 237 229;
-  --review: 133 92 44;
-  --dismiss: 120 120 110;
-  --risk: 162 69 60;
-
-  /* Warm slate ramp (light) */
-  --slate-50: 248 247 244;
-  --slate-100: 241 236 227;
-  --slate-200: 226 220 208;
-  --slate-300: 205 195 181;
-  --slate-400: 168 158 142;
-  /* 120 112 98 measured 4.16:1 against the page, just under the 4.5:1 that
-     AA asks of the supporting text this tone carries. Same hue, 5% darker,
-     which clears it at 4.54:1 without collapsing the step to slate-600. */
-  --slate-500: 114 106 93;
-  --slate-600: 92 85 74;
-  --slate-700: 64 59 51;
-  --slate-800: 40 37 32;
-  --slate-900: 23 23 19;
-  --slate-950: 12 12 10;
-
-  --warning-strip-bg: 246 241 232;
-  --warning-strip-fg: 122 86 40;
-  --badge-match-bg: 233 237 229;
+  --gold: 36 87 230;
+  --gold-deep: 28 66 180;
+  --gold-text: 28 66 180;
+  --pursue: 15 118 110;
+  --pursue-strong: 13 95 89;
+  --pursue-soft: 229 245 240;
+  --review: 146 82 13;
+  --dismiss: 93 107 125;
+  --risk: 185 48 55;
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 92 108 130;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 21 32 51;
+  --slate-950: 10 18 32;
+  --warning-strip-bg: 255 246 226;
+  --warning-strip-fg: 133 77 14;
+  --badge-match-bg: 229 245 240;
 }
-
 .dark {
   color-scheme: dark;
-
-  --background: 9 10 9; /* night */
-  --foreground: 246 242 235;
-  /* 23-on-9 made cards a rumor; sections need to be planes, not
-     tints. Raised in step so hover still has somewhere to go. */
-  --surface: 28 29 25;
-  --surface-raised: 38 39 35;
-  --muted: 36 37 33;
-  --muted-foreground: 186 176 160;
-  --border: 255 255 255;
-  --border-strong: 255 255 255;
-
-  --shell: 28 29 25;
-  --shell-border: 255 255 255;
-
-  --ink: 23 23 19;
-
-  /* Ink on the lightened fills. See --on-status above. */
-  --on-status: 23 23 19;
-  --accent: 195 160 107;
-  --accent-soft: 36 32 24;
-  --accent-strong: 212 180 130;
-  --gold: 195 160 107;
-  --gold-deep: 166 130 80;
-  /* Dark mode needs no adjustment: the same gold is 6.13:1 on night. */
-  --gold-text: 195 160 107;
-
-  --pursue: 138 158 128;
-  --pursue-strong: 168 186 156;
-  --pursue-soft: 32 38 30;
-  --review: 212 168 104;
-  --dismiss: 140 140 130;
-  --risk: 220 120 110;
-
-  /* Flipped slate so existing text-slate-800 etc. stay readable on dark */
-  --slate-50: 12 12 10;
-  --slate-100: 17 18 19;
-  --slate-200: 36 37 33;
-  --slate-300: 55 56 50;
-  --slate-400: 107 100 88;
-  /*
-   * Nudged up from 140 132 118, which measured 4.38:1 on --accent-soft and
-   * needs 4.5. It carries "3 steps already done" and the percentage on Today,
-   * so it is ordinary reading text rather than decoration.
-   */
-  --slate-500: 145 137 123;
-  --slate-600: 180 170 155;
-  --slate-700: 210 200 185;
-  --slate-800: 232 225 214;
-  --slate-900: 246 242 235;
-  --slate-950: 251 250 247;
-
-  --warning-strip-bg: 48 38 24;
-  --warning-strip-fg: 212 168 104;
-  --badge-match-bg: 32 38 30;
+  --background: 12 18 30;
+  --foreground: 237 243 252;
+  --surface: 20 29 45;
+  --surface-raised: 28 39 58;
+  --muted: 32 44 64;
+  --muted-foreground: 165 181 204;
+  --border: 89 108 135;
+  --border-strong: 130 151 180;
+  --shell: 16 24 39;
+  --shell-border: 61 78 104;
+  --ink: 12 18 30;
+  --on-accent: 12 18 30;
+  --accent: 139 173 255;
+  --accent-soft: 28 43 74;
+  --accent-strong: 172 196 255;
+  --on-status: 12 18 30;
+  --gold: 139 173 255;
+  --gold-deep: 115 153 245;
+  --gold-text: 160 187 255;
+  --pursue: 92 207 175;
+  --pursue-strong: 129 228 200;
+  --pursue-soft: 20 53 47;
+  --review: 245 191 98;
+  --dismiss: 161 177 201;
+  --risk: 255 143 150;
+  --slate-50: 12 18 30;
+  --slate-100: 20 29 45;
+  --slate-200: 32 44 64;
+  --slate-300: 61 78 104;
+  --slate-400: 110 129 153;
+  --slate-500: 160 177 201;
+  --slate-600: 184 199 219;
+  --slate-700: 208 219 235;
+  --slate-800: 225 234 246;
+  --slate-900: 237 243 252;
+  --slate-950: 248 250 255;
+  --warning-strip-bg: 58 43 22;
+  --warning-strip-fg: 245 191 98;
+  --badge-match-bg: 20 53 47;
 }
 
 html,
@@ -184,24 +115,22 @@ body {
 }
 
 ::selection {
-  background-color: rgba(195, 160, 107, 0.22);
+  background-color: rgb(var(--accent) / 0.18);
   color: rgb(var(--foreground));
 }
 
 @layer components {
-  /* Headings. GFS Didot: editorial display serif for premium headlines and
-     selective brand moments. */
+  /* Clear sans-serif headings across product and marketing surfaces. */
   .font-display {
-    font-family: theme("fontFamily.serif");
-    font-weight: 400;
-    letter-spacing: -0.025em;
+    font-family: theme("fontFamily.sans");
+    font-weight: 650;
+    letter-spacing: -0.035em;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
-  /* The accent treatment: small-cap-feel gold, echoing the CO in the wordmark.
-     Applied via class, never as a default. */
+  /* Optional accent treatment using the shared action palette. */
   .font-accent {
-    font-family: theme("fontFamily.serif");
+    font-family: theme("fontFamily.sans");
     color: rgb(var(--gold-text));
     font-feature-settings: "kern" 1, "liga" 1;
   }
@@ -232,7 +161,7 @@ body {
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /*
@@ -349,7 +278,7 @@ body {
     }
   }
   .btn-primary {
-    @apply bg-gold text-ink hover:bg-[#d6b986];
+    @apply bg-gold text-on-accent hover:bg-accent-strong dark:hover:bg-accent;
   }
   .btn-ghost {
     @apply border border-foreground/50 text-foreground hover:bg-surface;
@@ -365,12 +294,12 @@ body {
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {
-    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/70 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-foreground/50 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/70 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* Surfaces */
   .card {
-    @apply rounded-sm border border-border/75 bg-surface p-4 sm:p-5 shadow-none;
+    @apply rounded-xl border border-border/75 bg-surface p-4 sm:p-5 shadow-none;
   }
   .dark .card {
     @apply border-white/[0.17] bg-shell;
@@ -401,13 +330,13 @@ body {
 
   /* Elevated panels (sidebar chrome, readiness blocks) */
   .shell-panel {
-    @apply rounded-sm border border-border/55 bg-shell;
+    @apply rounded-xl border border-border/55 bg-shell;
   }
   .dark .shell-panel {
     @apply border-white/10;
   }
   .shell-ghost {
-    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-foreground/50 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
   }
   .dark .shell-ghost {
     @apply border-white/35 hover:bg-white/5;
@@ -417,11 +346,11 @@ body {
     scroll-margin-top: var(--editorial-sticky-offset, 3.5rem);
   }
   .focus-rail {
-    border-left: 2px solid #c3a06b;
-    background: linear-gradient(90deg, rgba(195, 160, 107, 0.1), transparent);
+    border-left: 2px solid rgb(var(--accent));
+    background: linear-gradient(90deg, rgb(var(--accent) / .1), transparent);
   }
   .dark .focus-rail {
-    background: linear-gradient(90deg, rgba(195, 160, 107, 0.18), transparent);
+    background: linear-gradient(90deg, rgb(var(--accent) / .18), transparent);
   }
   .fit-score-box {
     @apply flex h-[4.5rem] w-[4.5rem] shrink-0 flex-col items-center justify-center border border-gold sm:h-[5.25rem] sm:w-[5.25rem];
@@ -464,12 +393,10 @@ body {
   .dark .action-row--shell {
     @apply border-white/10;
   }
-  /* Landing-matched eyebrow: mono label with gold hairline rule. */
+  /* Optional small section label; the legacy name remains for callers. */
   .eyebrow-gold {
-    /* text-gold-text, not text-gold: this is 10px type, and the brand gold is
-       2.08:1 on the page. See --gold-text. */
-    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-gold-text;
-    letter-spacing: 0.16em;
+    @apply inline-flex items-center gap-2.5 font-sans text-xs font-semibold text-gold-text;
+    letter-spacing: 0.04em;
   }
   .eyebrow-gold::before {
     content: "";
@@ -528,15 +455,15 @@ body {
 
   /* Badges / labels */
   .badge {
-    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold;
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold;
   }
   .label {
-    @apply text-[0.7rem] font-medium uppercase text-muted-foreground;
-    letter-spacing: 0.14em;
+    @apply text-sm font-medium text-muted-foreground;
+    letter-spacing: 0.02em;
   }
   .eyebrow {
-    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-muted-foreground;
-    letter-spacing: 0.16em;
+    @apply inline-flex items-center gap-2.5 font-sans text-xs font-semibold text-muted-foreground;
+    letter-spacing: 0.04em;
   }
   .eyebrow::before {
     content: "";
@@ -551,7 +478,7 @@ body {
 
   /* Inputs: taller until the sidebar arrives. 640px is still a thumb. */
   .input {
-    @apply w-full rounded-sm border border-foreground/50 bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent coarse:min-h-11 coarse:py-2.5 coarse:text-base;
+    @apply w-full rounded-xl border border-foreground/50 bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent coarse:min-h-11 coarse:py-2.5 coarse:text-base;
   }
   .dark .input {
     @apply border-white/35 bg-shell focus:border-gold;
@@ -591,7 +518,7 @@ body {
     @apply h-px w-full bg-border/55;
   }
   .callout-panel {
-    @apply rounded-sm border border-border/55 bg-accent-soft p-5;
+    @apply rounded-xl border border-border/55 bg-accent-soft p-5;
     border-left: 3px solid #c3a06b;
   }
   .accent-left {
@@ -649,7 +576,7 @@ body {
     @apply bg-accent text-white;
   }
   .chip {
-    @apply cursor-pointer rounded-sm border border-border/55 px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
+    @apply cursor-pointer rounded-xl border border-border/55 px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
   }
   .chip--active {
     @apply border-accent bg-accent-soft text-accent-strong;
@@ -756,11 +683,8 @@ html:has([data-app-shell]) body {
 }
 
 :focus-visible {
-  outline: 2px solid #7E5E33; /* accessible gold-brown (3:1+ vs background) */
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
-}
-.dark :focus-visible {
-  outline-color: #c3a06b;
 }
 
 /* A wide tablet is still operated by touch even when its layout has crossed
@@ -792,3 +716,36 @@ html:has([data-app-shell]) body {
 /* Let form fields use the space reclaimed while the on-screen keyboard is open. */
 [data-keyboard-open="true"] .page-main { padding-bottom: 0; }
 [data-app-shell] :is(input, textarea, select, [contenteditable="true"]) { scroll-margin-block: 1rem; }
+
+/* Working surfaces share a readable scale without changing domain components. */
+[data-app-shell] .text-\[8px\], [data-app-shell] .text-\[9px\], [data-app-shell] .text-\[10px\], [data-app-shell] .text-\[11px\] { font-size: .75rem; line-height: 1.5; }
+[data-app-shell] input:not([type=checkbox]):not([type=radio]), [data-app-shell] textarea, [data-app-shell] select { font-size: 1rem; }
+[data-app-shell] .label { font-family: inherit; font-size: .8125rem; letter-spacing: .01em; text-transform: none; }
+[data-app-shell] .eyebrow-gold::before { display: none; }
+[data-app-shell] .card, [data-app-shell] .panel { box-shadow: 0 2px 5px rgb(15 23 42 / .025); }
+.product-page-header { background: rgb(var(--surface)); padding: 1.25rem 1.5rem; border-bottom: 1px solid rgb(var(--border) / .65); }
+.product-page-header h1 { font-size: 1.65rem; }
+.product-page-header .page-description { max-width: 60rem; font-size: .875rem; line-height: 1.5; }
+.workspace-queue { background: rgb(var(--surface)); }
+.workspace-detail { background: rgb(var(--surface)); }
+.workspace-context { background: rgb(var(--background)); }
+@media (max-width: 1023px) {
+  .product-page-header { padding: .875rem 1rem; }
+  .product-page-header h1 { font-size: 1.375rem; }
+  [data-app-shell]:has([data-workspace-selected=true]) .page-main,
+  [data-app-shell][data-focus-mode=true] .page-main { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body:has([data-workspace-selected=true]) nav[aria-label="Quick navigation"],
+  body:has([data-focus-mode=true]) nav[aria-label="Quick navigation"] { display: none; }
+  [data-workspace-selected=true] .workspace-footer { position: static; max-height: none; overflow: visible; }
+}
+
+/* Keep optional queue controls beside search until they are expanded. */
+.queue-filter-disclosure[open] { grid-column: 1 / -1; }
+.queue-filter-disclosure:not([open]) summary::after { content: "⌄"; margin-left: .6rem; }
+[data-app-shell] .text-\[0\.65rem\],
+[data-app-shell] .text-\[0\.6rem\],
+[data-app-shell] .text-\[0\.7rem\] { font-size: .75rem; line-height: 1.45; }
+
+@media (max-width: 1023px) {
+ body:has([data-call-workspace]) nav[aria-label="Quick navigation"] { display: none; }
+}

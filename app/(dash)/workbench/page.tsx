@@ -340,7 +340,7 @@ export default async function WorkbenchPage(
       <div className={opened ? "hidden lg:contents" : "contents"}>
         <PageFrame
           help={PAGE_HELP["workbench"]}
-          title="Workbench"
+          title="My Work"
           status={queueUnavailable ? "Queue status unavailable" : summarizeQueue(items)}
           explanation="Everything waiting on a person, worked one at a time without leaving this screen."
           primaryAction={
@@ -445,6 +445,7 @@ export default async function WorkbenchPage(
             })}
           </nav>
 
+          <details className="mt-2" open={Boolean(kind || owner !== "anyone")}><summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium">More filters{kind || owner !== "anyone" ? " · Active" : ""}</summary>
           <nav aria-label="Filter by owner" className="chip-row mt-2">
             {OWNER_FILTERS.map((o) => (
               <Link
@@ -487,6 +488,7 @@ export default async function WorkbenchPage(
               );
             })}
           </nav>
+          </details>
         </PageToolbar>
       </div>
 

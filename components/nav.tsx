@@ -101,7 +101,7 @@ function NavigationRow({ item, compact = false, active, badge, onNavigate }: { i
           </span>
         </span>
         {badge > 0 && (
-          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-ink">
+          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-on-accent">
             {badge}
           </span>
         )}
@@ -380,13 +380,13 @@ export function Nav({
         inert={isMobile && !open ? true : undefined}
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
-        className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-background transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 lg:border-r lg:transition-none ${
+        className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-shell transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-[232px] lg:translate-x-0 lg:border-r lg:transition-none ${
           open
             ? "visible translate-x-0"
             : "invisible pointer-events-none -translate-x-full lg:visible lg:pointer-events-auto"
         }`}
       >
-        <div className="hidden shrink-0 px-5 py-6 lg:block">
+        <div className="hidden shrink-0 px-5 py-5 lg:block">
           {/* min-h-11 on touch: the wordmark is the app bar's route home and
               was a 24px-tall target, the smallest on every mobile screen. */}
           <Link
@@ -470,11 +470,11 @@ export function Nav({
             <span aria-hidden className="text-gold-text">
               ?
             </span>
-            Guide Me
+            Guide me
           </button>
         </div>
 
-        <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:overflow-y-auto lg:px-4 lg:pb-3">
+        <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:overflow-y-auto lg:px-3 lg:pb-3">
           {sections.map((sec) => {
             const open = isSectionOpen(sec);
             const waiting = sectionBadgeTotal(sec);
@@ -490,7 +490,7 @@ export function Nav({
                 >
                   {/* A heading, not another dim menu item: a rule above it,
                       real weight, and separation from the links beneath. */}
-                  <span className="flex items-center gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-foreground/70">
+                  <span className="flex items-center gap-2 text-xs font-semibold text-foreground/70">
                     <span aria-hidden className="h-px w-3 shrink-0 bg-gold/70" />
                     {sec.label}
                     {/* Collapsed groups must not be able to hide work. */}
@@ -515,7 +515,7 @@ export function Nav({
                   <ul className="mb-1 space-y-0.5">
                     {sec.items.map((item) => (
                       <li key={item.href}>
-                        <NavigationRow item={item} compact={sec.key !== "work"} active={isActive(item.href)} badge={item.badge ? counts[item.badge] : 0} onNavigate={() => setOpen(false)} />
+                        <NavigationRow item={item} compact active={isActive(item.href)} badge={item.badge ? counts[item.badge] : 0} onNavigate={() => setOpen(false)} />
                       </li>
                     ))}
                   </ul>
@@ -557,7 +557,7 @@ export function Nav({
             is present without being findable: reachable only by opening the
             drawer, scrolling past every link, and spotting grey-on-grey text.
             Now it is a real control with a thumb-sized target. */}
-        <div className="shrink-0 space-y-3 border-t border-border/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
+        <div className="shrink-0 space-y-2 border-t border-border/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
           <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
           <div className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-border-strong/40 text-xs font-medium text-foreground dark:border-white/20">

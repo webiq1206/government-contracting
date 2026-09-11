@@ -1,0 +1,43 @@
+{
+  "date_utc": "2026-09-11",
+  "base_revision": "4a5461b",
+  "branch": "redesign/complete-platform",
+  "unit_tests": {
+    "passed": 4469,
+    "failed": 0,
+    "skipped": 735,
+    "files_passed": 434,
+    "files_skipped": 89
+  },
+  "production_build": "passed",
+  "typecheck": "passed",
+  "route_render_checks": 58,
+  "route_render_failures": 0,
+  "browser_live_application_interactions": "blocked by mismatched preview client bundles; CI pending",
+  "visual_review": "48 static synthetic screens; not hydrated application sessions",
+  "main_preview_playback": {
+    "duration": 120,
+    "videoWidth": 1280,
+    "videoHeight": 960,
+    "readyState": 4,
+    "paused": false,
+    "error": null
+  },
+  "live_workflow_recordings": false,
+  "post_final_adjustment_checks": {
+    "focused_tests_passed": 26,
+    "settings_guard_tests_passed": 12,
+    "browser_scripts_syntax": "passed"
+  },
+  "additional_http_checks": {
+    "passed": 8,
+    "failed": 0
+  },
+  "source_sha256": {
+    "app/globals.css": "a1ed0e06b6fde75260ed1206dbe2352df9c20e40042e6a99fc5b09eff6c7ce0d",
+    "components/settings-nav.tsx": "177cc6d1c1ef0f5732e43ca5185bacd8029b625c51f2da912f7dadb4ff44169a",
+    "components/marketing/landing-page.tsx": "f1240c29ffe726be30ace2c5d5342691cd7dab7778670920ceeb532923469ab7",
+    "components/marketing/workflow-gallery.tsx": "a5965273a2c3bb8b6b6b74a989950413f34a727c8f6b60e6fe5eea45ff94dcff",
+    "app/(dash)/activity/page.tsx": "4613d230a78b48c086f81e2ef9d9b8b4edb31bc454145c0448454d096b1d81b8"
+  }
+}

@@ -178,7 +178,7 @@ export default async function CallQueuePage(
     <div className="flex page-shell">
       <PageFrame
         help={PAGE_HELP["call-queue"]}
-        title="Call Queue"
+        title="Calls"
         /*
          * A scoped queue is a place you can be, so it gets a trail back. The
          * only way out of "just this bid's calls" used to be the browser's

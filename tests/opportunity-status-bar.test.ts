@@ -38,7 +38,8 @@ describe("what it carries", () => {
     // tabs below. A second computation here would be a second answer.
     expect(PAGE).toContain("readinessPercent={readiness.percent}");
     expect(PAGE).toContain("uncoveredTrades={coverage.totals.uncovered}");
-    expect(PAGE).toContain("nextAction={plan.active?.action ?? null}");
+    expect(PAGE).toContain("nextAction={null}");
+    expect(PAGE).toContain("<NextStepBanner opportunityId={opp.id}");
   });
 });
 

@@ -48,6 +48,15 @@ export function TrialBanner({
         ? "1 day left in your trial"
         : `${daysLeft} days left in your trial`;
 
+  if (!urgent && !anyExhausted && unreadable.length === 0) return (
+    <details className="shrink-0 border-b border-border/50 bg-surface px-4 text-sm sm:px-6">
+      <summary className="min-h-9 cursor-pointer py-2 text-muted-foreground">{dayLabel} <span className="text-accent">· View usage</span></summary>
+      <div className="flex flex-wrap items-center gap-3 pb-3">
+        {quotas.map(q => <span key={q.metric}>{q.used ?? "?"}/{q.limit} {TRIAL_METRIC_LABEL[q.metric]}</span>)}
+        <Link href="/settings/billing" className="btn-secondary ml-auto">Choose a plan</Link>
+      </div>
+    </details>
+  );
   return (
     <div
       className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-xs sm:px-6 ${

@@ -1,0 +1,11 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  Find a subcontractor
+Search the roster by company, trade, or location. Open filters when you need a narrower view.
+
+00:00:08.000  Check the relationship
+Review contact details, qualification status, and past activity before starting the next conversation.
+
+00:00:16.000  Keep work connected
+Open the subcontractor record to follow its opportunities, conversations, and required paperwork.

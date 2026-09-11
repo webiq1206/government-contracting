@@ -242,7 +242,7 @@ export default async function KnowledgeCenterPage(
     <div className="flex page-shell">
       <PageFrame
         help={PAGE_HELP["how-it-works"]}
-        title="Knowledge Center"
+        title="Help center"
         status={
           needsYou > 0
             ? `${WORKFLOW_STEPS.length} steps · ${needsYou} ${needsYou === 1 ? "step needs" : "steps need"} you`

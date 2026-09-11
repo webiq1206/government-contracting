@@ -143,14 +143,14 @@ class PdfWriter {
       y: this.y - size,
       size,
       font: this.fonts.bold,
-      color: rgb(0.141, 0.141, 0.141), // brand charcoal #242424
+      color: rgb(0.082, 0.125, 0.2), // BrostCo text #152033
     });
     this.y -= size * 1.4;
     this.page.drawLine({
       start: { x: MARGIN, y: this.y + 2 },
       end: { x: PAGE_WIDTH - MARGIN, y: this.y + 2 },
       thickness: 0.75,
-      color: rgb(0.698, 0.561, 0.365), // brand gold #B28F5D
+      color: rgb(0.141, 0.341, 0.902), // BrostCo accent #2457E6
     });
     this.y -= 6;
   }

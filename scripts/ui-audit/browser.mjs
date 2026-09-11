@@ -39,7 +39,7 @@ try {
     await trigger.click();
     const menu=page.getByRole('navigation',{name:'Main',exact:true});
     await menu.getByRole('button',{name:'Settings',exact:true}).click();
-    await menu.getByRole('link',{name:'API Usage',exact:true}).first().waitFor();
+    await menu.getByRole('link',{name:'AI usage',exact:true}).first().waitFor();
     assert(await page.locator('main').evaluate(n=>n.inert),'Menu must isolate background');
     await page.keyboard.press('Escape');
     await page.waitForFunction(()=>!document.querySelector('main')?.inert);
@@ -345,6 +345,14 @@ try {
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/settings');
   await page.getByLabel('Legal name',{exact:true}).fill('Audit Company '+device);
+  if (device !== 'desktop') {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/rules');
+    const settingsWarning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});
+    await settingsWarning.waitFor();
+    await settingsWarning.getByRole('button',{name:'Stay here',exact:true}).click();
+    assert.equal(new URL(page.url()).pathname,'/settings/profile','Settings selection must honor unsaved work');
+    assert.equal(await page.getByLabel('Legal name',{exact:true}).inputValue(),'Audit Company '+device);
+  }
   if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:/^Today/}).click();
   const warning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});

@@ -1,11 +1,15 @@
 # Design system
 
+The September 11 redesign updates the visual system and responsive action layers.
+Use [redesign/design-system.md](redesign/design-system.md) for the current palette,
+typography, navigation dimensions and mobile behavior. The earlier conventions
+below remain historical context where they conflict with that implementation.
+
 What already exists in `app/globals.css` and `tailwind.config.ts`, written down
 so it can be followed rather than guessed at, plus the responsive rules that
 were previously decided per component.
 
-This is a description, not a proposal. Where a rule below differs from the code,
-the code is the bug.
+The redesign specification above takes precedence over older visual conventions.
 
 ## Breakpoints
 

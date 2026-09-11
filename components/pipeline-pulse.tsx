@@ -10,19 +10,15 @@ export function PipelinePulse({ findings, compact = false }: { findings: PulseFi
   if (findings.length === 0) return null;
   if (compact) {
     return (
-      <section aria-label="Automation needs attention" className="divide-y divide-border rounded-md border border-review/40 bg-surface px-4">
+      <section aria-label="Automation needs attention" className="divide-y divide-border rounded-xl border border-review/40 bg-surface px-3">
         {findings.map((finding) => (
-          <div key={finding.key} className="py-2">
-            <details>
-              <summary className={`min-h-11 cursor-pointer py-2 text-sm font-semibold ${finding.severity === "down" ? "text-risk" : "text-foreground"}`}>
-                {finding.title}
-              </summary>
-              <p className="pb-2 text-sm text-muted-foreground">{finding.detail}</p>
-            </details>
-            <Link href={finding.href} className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-2">
-              {finding.cta}
-            </Link>
-          </div>
+          <details key={finding.key} className="py-1">
+            <summary className={`min-h-11 cursor-pointer py-3 text-sm font-medium ${finding.severity === "down" ? "text-risk" : "text-foreground"}`}>
+              {finding.title}
+            </summary>
+            <p className="text-sm text-muted-foreground">{finding.detail}</p>
+            <Link href={finding.href} className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline underline-offset-2">{finding.cta}</Link>
+          </details>
         ))}
       </section>
     );

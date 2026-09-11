@@ -224,7 +224,7 @@ export default async function AgentsPage(
     <div className="flex page-shell">
       <PageFrame
         help={PAGE_HELP["agents"]}
-        title="Automation Health"
+        title="Automation"
         explanation="Whether the automation is doing its work, what is stopping it, and how to fix it."
         status={live.headline}
       />

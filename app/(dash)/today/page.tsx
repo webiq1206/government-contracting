@@ -221,7 +221,7 @@ function Section({
       <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b border-border/55 dark:border-white/15 pb-3 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="eyebrow-gold">{eyebrow}</p>
-          <h2 className="mt-1 font-display text-2xl font-normal text-foreground">
+          <h2 className="mt-1 font-sans text-xl font-semibold text-foreground">
             {title}
             {typeof count === "number" && (
               <span className="num ml-2 text-base font-normal text-muted-foreground">
@@ -358,7 +358,7 @@ function PipelineHealthRail({
                   full-width, thumb-height door to the same stage, with the bar
                   drawn sideways. Same data, same links; only the geometry
                   follows the pointer. */}
-              <div className="mt-6 flex h-24 items-end gap-1.5 coarse:hidden">
+              <div className="mt-6 flex h-14 items-end gap-1.5 coarse:hidden">
                 {bars.map((b) =>
                   b.count > 0 ? (
                     <Link
@@ -823,7 +823,7 @@ export default async function TodayPage(
       <TodayLive />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
+        <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
           <div className="mb-2 hidden justify-end lg:flex">
             <HelpPopover help={PAGE_HELP["today"]} />
           </div>
@@ -856,8 +856,8 @@ export default async function TodayPage(
             setupRemaining={setup.total - setup.done}
           />
 
-          <div className="mt-4 flex gap-10 lg:mt-8">
-            <div className="min-w-0 flex-1 space-y-6 lg:space-y-10">
+          <div className="mt-2 flex gap-6">
+            <div className="min-w-0 flex-1 space-y-5">
               <AutomationPausedBanner state={automation} editable={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))} />
 
               {!automation.paused && <PipelinePulse findings={pulse} compact />}
@@ -1041,7 +1041,7 @@ export default async function TodayPage(
                   eyebrow="Needs your decision"
                   title="Decide: pursue or pass"
                   count={data.triage.length}
-                  defaultOpen={firstOpen === "triage"}
+                  defaultOpen={false}
                 >
                   <p className="mb-2 text-sm text-foreground/45">
                     These scored in the borderline band, so the system wants your judgment.
@@ -1064,7 +1064,7 @@ export default async function TodayPage(
                   eyebrow="Keep things moving"
                   title="Calls to make"
                   count={data.calls.count}
-                  defaultOpen={firstOpen === "calls"}
+                  defaultOpen={false}
                 >
                   <p className="mb-2 text-sm text-foreground/45">
                     Each row opens that call&rsquo;s guided workspace. Select several to skip
@@ -1087,7 +1087,7 @@ export default async function TodayPage(
                   eyebrow="Subcontractor outreach"
                   title="Follow up with subcontractors"
                   count={data.subFollowUps.length}
-                  defaultOpen={firstOpen === "other"}
+                  defaultOpen={false}
                 >
                   <p className="mb-2 text-sm text-foreground/45">
                     Automated email and follow-up already went out.{" "}

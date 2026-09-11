@@ -4,7 +4,7 @@ import { MarketingMobileMenu } from "./mobile-menu";
 
 const LINKS = [
   { id: "platform", label: "Product" },
-  { id: "pipeline", label: "Guide Me" },
+  { id: "workflow", label: "How it works" },
   { id: "pricing", label: "Pricing" },
 ] as const;
 
@@ -31,7 +31,7 @@ export function MarketingNav({
 
   return (
     <header
-      className={`sticky top-0 z-50 backdrop-blur-md ${
+      className={`relative z-50 backdrop-blur-md ${
         dark
           ? "border-b border-white/10 bg-ink/85"
           : "border-b border-border bg-background/95"
@@ -78,17 +78,17 @@ export function MarketingNav({
                 : "btn-ghost"
             }`}
           >
-            Login
+            Log in
           </Link>
           <Link
             href={signupHref}
             className={`inline-flex min-h-11 items-center justify-center rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${
               dark
-                ? "bg-gold text-ink hover:bg-[#d6b986]"
+                ? "bg-gold text-on-accent hover:bg-accent-strong"
                 : "btn-primary"
             }`}
           >
-            Sign up
+            Start free trial
           </Link>
           <div className="lg:hidden"><MarketingMobileMenu signupHref={signupHref} loginHref={loginHref} onLanding={onLanding} dark={dark} /></div>
         </div>

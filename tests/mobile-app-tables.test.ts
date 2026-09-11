@@ -46,10 +46,10 @@ describe("dashboard tables become cards on a phone", () => {
     expect(docs).not.toContain("md:block");
   });
 
-  it("gives settings a chip rail on a phone instead of an eight-tab strip", () => {
+  it("gives settings a labelled section picker on a phone", () => {
     const src = readFileSync("components/settings-nav.tsx", "utf8");
-    expect(src).toContain("chip-row");
-    expect(src).not.toContain('id="settings-section"');
+    expect(src).toContain("<select");
+    expect(src).toContain('aria-label="Settings section"');
     expect(src).toContain("lg:hidden");
     expect(src).toContain("lg:flex");
   });

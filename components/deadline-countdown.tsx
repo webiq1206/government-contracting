@@ -29,7 +29,7 @@ export function DeadlineCountdown({ deadline }: { deadline: string | null }) {
   if (now === null) {
     return (
       <span className="block">
-        <span className="num text-lg font-semibold tabular-nums text-foreground">…</span>
+        <time dateTime={new Date(target).toISOString()} className="text-sm font-medium text-foreground">{new Date(target).toLocaleString("en-US", {month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"UTC",timeZoneName:"short"})}</time>
       </span>
     );
   }

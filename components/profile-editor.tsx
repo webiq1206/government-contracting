@@ -625,7 +625,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
        * are not readable through the bar when there are unsaved changes.
        */}
       <div
-        className={`sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border-t py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur ${
+        className={`${dirty || saving || error ? "sticky bottom-0 z-10" : "relative"} flex flex-wrap items-center gap-3 border-t py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur ${
           dirty ? "border-review/40 bg-background/95" : "border-border bg-background/95"
         }`}
       >

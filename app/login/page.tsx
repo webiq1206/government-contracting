@@ -26,13 +26,13 @@ export default async function LoginPage() {
       <div className="absolute right-4 top-4">
         <ThemeToggle compact />
       </div>
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8">
         <div className="mb-10 text-center">
-          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <p className="mb-4 text-sm text-muted-foreground">Your government contracting workspace</p>
           <h1 className="flex justify-center">
             <ThemeWordmark className="h-12" />
           </h1>
-          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
+          <h2 className="mt-6 text-2xl font-semibold tracking-tight">Welcome back</h2>
         </div>
         <LoginForm />
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">

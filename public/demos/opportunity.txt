@@ -1,0 +1,11 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  Start with the next step
+The opportunity brings its identity, deadline, owner, and next action together.
+
+00:00:08.000  Open the needed detail
+Use the record sections for requirements, subcontractors, pricing, documents, submission, and activity.
+
+00:00:16.000  Review before submission
+Expand readiness to find remaining work. Your team handles final review, signatures, and submission.

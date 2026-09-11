@@ -50,7 +50,7 @@ const TABS: {
 /** Visible text where the full label will not fit five across. */
 const SHORT_LABEL: Record<string, string> = {
   "/subs": "Subs",
-  "/pipeline": "Bids",
+  "/pipeline": "Pipeline",
 };
 
 export function MobileTabBar({
@@ -92,7 +92,7 @@ export function MobileTabBar({
       aria-label="Quick navigation"
       style={keyboard ? { display: "none" } : undefined}
       inert={menuOpen || undefined}
-      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-surface pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden"
     >
       {TABS.map((tab) => {
         const active = mobileDestination(pathname) === tab.href;
@@ -102,7 +102,7 @@ export function MobileTabBar({
             key={tab.href}
             href={tab.href}
             aria-current={active ? "page" : undefined}
-            className={`relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-2.5 text-[10px] sm:text-[11px] ${
+            className={`relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-2.5 text-xs ${
               active ? "font-semibold text-gold-text" : "text-muted-foreground"
             }`}
           >
@@ -113,10 +113,10 @@ export function MobileTabBar({
               a 390px screen genuinely cannot hold it.
             */}
             <span aria-hidden>{SHORT_LABEL[tab.href] ?? tab.label}</span>
-            <span className="sr-only">{tab.label}</span>
+            <span className="sr-only">{SHORT_LABEL[tab.href] ? `${SHORT_LABEL[tab.href]} (${tab.label})` : tab.label}</span>
             {count > 0 && (
               <span
-                className="absolute right-[18%] top-1.5 min-w-[1.15rem] rounded-full bg-gold px-1 text-center text-[10px] font-semibold leading-4 text-ink"
+                className="absolute right-[18%] top-1.5 min-w-[1.15rem] rounded-full bg-gold px-1 text-center text-[10px] font-semibold leading-4 text-on-accent"
                 aria-label={`${count} waiting`}
               >
                 {count > 99 ? "99+" : count}

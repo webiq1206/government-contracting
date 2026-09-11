@@ -587,12 +587,12 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               still leaves you knowing where opportunities live. */}
           <Link
             href="/pipeline"
-            className="flex coarse:min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex coarse:min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <span aria-hidden>←</span> Opportunities
           </Link>
           {opp.solicitation_number && (
-            <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+            <p className="truncate text-sm font-medium text-muted-foreground/70">
               · {opp.solicitation_number}
             </p>
           )}
@@ -605,7 +605,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           it was, or that automation had stopped on something. All of it was on
           the page, at the top, past the scroll.
         */}
-        <div className="min-w-0 lg:flex-1 lg:shrink">
+        <div className="hidden min-w-0 2xl:flex 2xl:flex-1 2xl:shrink">
           <OpportunityStatusBar
             stageLabel={stageLabel(opp.stage)}
             deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}
@@ -617,7 +617,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             packageReady={readiness.packageReady}
             uncoveredTrades={coverage.totals.uncovered}
             riskFlags={opp.risk_flags}
-            nextAction={plan.active?.action ?? null}
+            nextAction={null}
           />
         </div>
       </div>
@@ -630,7 +630,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           timeline's home. */}
       <div className="flex min-h-0 flex-1">
         <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-        <header className="border-b border-border px-4 py-4 sm:px-6 sm:py-8">
+        <header className="border-b border-border px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className="min-w-0 max-w-3xl flex-1">
               {opp.agency && (
@@ -640,7 +640,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   {shortenAgency(opp.agency, opp.sub_agency).full}
                 </p>
               )}
-              <h1 className="mt-2 font-display text-2xl leading-[1.15] text-foreground sm:mt-3 sm:text-4xl lg:text-[2.75rem]">
+              <h1 className="mt-2 font-display text-xl leading-tight text-foreground sm:mt-2 sm:text-3xl">
                 {opp.title ?? "Opportunity"}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground sm:mt-3">
@@ -657,7 +657,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               </div>
               {/* The single most action-relevant fact, so it lives where every
                   tab can see it rather than one click inside Details. */}
-              <div className="mt-4 flex flex-wrap items-end gap-6">
+              <div className="mt-3 flex flex-wrap items-end gap-4">
                 <div>
                   <p className="label">Time to submit</p>
                   <div className="mt-0.5">
@@ -698,14 +698,14 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             without hunting, and hunting is what a control in Settings means.
           */}
           {abortImpact && (
-            <div className="mt-5">
+            <details className="mt-2"><summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-accent">Pursuit controls</summary>
               <PursuitControls
                 opportunityId={opp.id}
                 state={pursuit}
                 impact={abortImpact}
                 canControl={can(viewer?.orgRole, "outreach")}
               />
-            </div>
+            </details>
           )}
           {pursuitImpactRead.failed && (
             <p role="alert" className="mt-5 rounded-md bg-risk/10 px-3 py-2 text-sm text-risk">
@@ -717,12 +717,20 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
         <OpportunityWorkspace
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">
-              <GuidedPlanPanel plan={plan} headerAction={false} />
-              <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner opportunityId={opp.id} {...stepInput} />
               </div>
-              <AttentionStrip readiness={readiness} opportunityId={opp.id} />
+              <details className="rounded-xl border border-border bg-surface">
+                <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-4 text-sm font-medium">
+                  Readiness and full workflow
+                  <span className="text-muted-foreground">{readiness.percent}% ready <span aria-hidden>⌄</span></span>
+                </summary>
+                <div className="space-y-3 border-t border-border p-3">
+                  <GuidedPlanPanel plan={plan} headerAction={false} />
+                  <TradeRequirementSummary coverage={coverage} />
+                  <AttentionStrip readiness={readiness} opportunityId={opp.id} />
+                </div>
+              </details>
             </div>
           }
           brief={
@@ -810,7 +818,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
                 {/* Below xl there is no side panel, so the same live task list
                     lives here rather than only on wide screens. */}
-                <div className="pt-2 xl:hidden">
+                <div className="pt-2 2xl:hidden">
                   <OpportunityTaskList plan={plan} />
                 </div>
                 <a href="#next-step" className="btn-ghost text-xs">
@@ -1068,7 +1076,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div>
                         <p className="eyebrow text-pursue-strong">Your turn</p>
-                        <h2 className="mt-0.5 font-display text-2xl font-normal text-foreground">
+                        <h2 className="mt-0.5 font-sans text-xl font-semibold text-foreground">
                           {quotesEntered === 0
                             ? "Enter subcontractor quotes"
                             : "Quotes collected"}
@@ -1390,7 +1398,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
         <RecordActionBar step={step} opportunityId={opp.id} />
         </div>
 
-        <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">
+        <aside className="hidden w-80 shrink-0 flex-col border-l border-border 2xl:flex">
           {/* What is live comes before what has happened. This column used to
               open on "No activity yet" and a screen of empty space, which is
               the least useful thing a record can say about itself. */}

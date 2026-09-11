@@ -311,7 +311,7 @@ export function FilterToolbar({
   }, [remember, rememberedQuery, lastKey, restoredKey]);
 
   return (
-    <div aria-busy={navigating} className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+    <div aria-busy={navigating} className="relative z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
         {/* Wide enough for the fields: they apply as they change. */}
         <div className="hidden flex-wrap items-end gap-3 lg:flex">
@@ -486,7 +486,7 @@ export function FilterToolbar({
                       onClick={() => startTransition(() => router.push(v.query ? `${pathname}?${v.query}` : pathname))}
                       className={`badge transition-colors ${
                         activeView?.id === v.id
-                          ? "bg-gold text-ink"
+                          ? "bg-gold text-on-accent"
                           : v.scope === "team"
                             ? "bg-gold/15 text-gold-text hover:text-foreground"
                             : "bg-muted text-muted-foreground hover:text-foreground"

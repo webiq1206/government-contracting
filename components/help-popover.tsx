@@ -67,7 +67,7 @@ export function HelpPopover({
         onClick={() => setOpen((o) => !o)}
         className={`tap h-8 w-8 shrink-0 rounded-full border text-xs font-semibold transition-colors lg:h-6 lg:w-6 ${
           open
-            ? "border-accent bg-gold text-ink"
+            ? "border-accent bg-gold text-on-accent"
             : "border-foreground/50 text-muted-foreground hover:border-accent hover:text-gold-text"
         }`}
       >

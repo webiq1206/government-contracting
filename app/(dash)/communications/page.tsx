@@ -259,7 +259,7 @@ export default async function CommunicationsPage(
       <div className="flex page-shell">
         <PageFrame
           help={PAGE_HELP["email-log"]}
-          title="Communications"
+          title="Inbox"
           status="No conversations yet"
           explanation="Every conversation with a subcontractor, what arrived, and who is waiting on whom."
         />
@@ -291,7 +291,7 @@ export default async function CommunicationsPage(
       <div className={selected ? "hidden lg:contents" : "contents"}>
         <PageFrame
           help={PAGE_HELP["email-log"]}
-          title="Communications"
+          title="Inbox"
           status={headline(counts, all.length)}
           explanation="Every conversation with a subcontractor, what arrived, and who is waiting on whom."
         />

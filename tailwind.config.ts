@@ -35,6 +35,7 @@ const config: Config = {
         "border-strong": "rgb(var(--border-strong) / <alpha-value>)",
         // Chrome / elevated night (theme-aware; light theme maps to paper tones)
         ink: "rgb(var(--ink) / <alpha-value>)",
+        "on-accent": "rgb(var(--on-accent) / <alpha-value>)",
         shell: "rgb(var(--shell) / <alpha-value>)",
         "shell-border": "rgb(var(--shell-border) / <alpha-value>)",
         accent: "rgb(var(--accent) / <alpha-value>)",

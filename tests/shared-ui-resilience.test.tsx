@@ -24,6 +24,12 @@ describe("shared mobile overlays", () => {
     ];
     for (const file of files) {
       const source = readFileSync(file, "utf8");
+      if (file.endsWith("call-workspace.tsx")) {
+        expect(source).toContain("fixed inset-0 z-[80]");
+        expect(source).toContain("data-call-workspace");
+        expect(readFileSync("app/globals.css", "utf8")).toContain('body:has([data-call-workspace]) nav[aria-label="Quick navigation"] { display: none; }');
+        continue;
+      }
       expect(
         source.includes("dialog.showModal()") ||
           source.includes("mobile-tab-clearance") ||

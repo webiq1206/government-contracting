@@ -1,0 +1,11 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  Review one decision
+Keep the opportunity and its decision brief together while you review.
+
+00:00:08.000  Check what is known
+Inspect strengths, risks, missing information, and the time available before you commit.
+
+00:00:16.000  Decide with context
+Pursue, pass, or open the full record. Your decision stays connected to the opportunity.

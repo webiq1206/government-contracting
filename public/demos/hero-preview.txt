@@ -1,0 +1,5 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  Know what needs you
+A clear queue connects each task to the next action and its underlying record.

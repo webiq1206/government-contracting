@@ -33,6 +33,6 @@ describe("clock-dependent first renders", () => {
     const server = render();
     vi.setSystemTime(new Date("2026-09-08T23:00:00Z"));
     expect(render()).toBe(server);
-    expect(server).toContain("Welcome back");
+    expect(server).toContain("Today");
   });
 });

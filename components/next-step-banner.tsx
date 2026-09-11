@@ -57,7 +57,7 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-2 xl:w-auto">
         {step.decision === "triage" && (
           <>
             <ActionButton

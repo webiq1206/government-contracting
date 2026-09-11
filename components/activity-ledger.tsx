@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { ActivityRow } from "@/lib/activity/read";
@@ -22,7 +22,7 @@ const categories = [
 ];
 const label = (s: string) =>
   s.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-type Data = {
+export type ActivityData = {
   viewScope: string;
   rows: ActivityRow[];
   summary: {
@@ -36,7 +36,8 @@ type Data = {
   page: number;
   pageSize: number;
 };
-export function ActivityLedger() {
+export function ActivityLedger({initialData = null, initialQuery = ""}: {initialData?: ActivityData | null; initialQuery?: string}) {
+  const initialRead = useRef(Boolean(initialData));
   const params = useSearchParams();
   const qs = params.toString();
   const filters = Object.fromEntries(params);
@@ -47,9 +48,9 @@ export function ActivityLedger() {
     // Native history retains Next's state and lets Back restore the selected view.
     if (query !== qs) history[replace ? "replaceState" : "pushState"](null, "", "/activity" + (query ? "?" + query : ""));
   };
-  const [data, setData] = useState<Data | null>(null),
+  const [data, setData] = useState<ActivityData | null>(initialData),
     [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(!initialData);
   const [refresh, setRefresh] = useState(0),
     [saved, setSaved] = useState<
       { name: string; filters: Record<string, string> }[]
@@ -67,6 +68,10 @@ export function ActivityLedger() {
     }
   }, [data?.viewScope]);
   useEffect(() => {
+    if (initialRead.current) {
+      initialRead.current = false;
+      if (qs === initialQuery && refresh === 0) return;
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("The ledger took too long to load. Try again.")), 20_000);
     setLoading(true);
@@ -86,7 +91,7 @@ export function ActivityLedger() {
         if (!controller.signal.aborted || controller.signal.reason?.name !== "AbortError") setLoading(false);
       });
     return () => { clearTimeout(timeout); controller.abort(); };
-  }, [qs, refresh]);
+  }, [qs, refresh, initialQuery]);
   const change = (key: string, value: string) =>
     setFilters((f) => ({ ...f, [key]: value, page: "1" }), key === "q");
   const persistViews = (next: typeof saved) => {

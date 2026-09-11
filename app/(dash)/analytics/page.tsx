@@ -415,7 +415,7 @@ export default async function AnalyticsPage(
     <div className="flex page-shell">
       <PageFrame
         help={PAGE_HELP["analytics"]}
-        title="Analytics"
+        title="Reports"
         status={
           winRate != null
             ? `${winRate}% win rate${
@@ -489,7 +489,7 @@ export default async function AnalyticsPage(
         <AnalyticsSection id="engine">
         <div className="space-y-6">
         {!snapData && (
-          <div className="callout-panel text-sm text-slate-700">
+          <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-slate-700">
             Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
             rankings, velocity) appear after Analytics Engine runs.{" "}
             <Link
@@ -510,7 +510,7 @@ export default async function AnalyticsPage(
           * are a stored copy with a date on it, and exactly one panel is a
           * projection rather than a count.
           */}
-        <div className="callout-panel space-y-1 text-xs leading-relaxed text-slate-600">
+        <details className="rounded-xl border border-border bg-surface px-4 py-2 text-sm leading-relaxed text-slate-600"><summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground">How these numbers are calculated</summary>
           <p>
             <strong className="font-semibold text-slate-900">Counted now:</strong> the funnel
             and every headline figure, read straight from your records as this page loaded.
@@ -532,7 +532,7 @@ export default async function AnalyticsPage(
               that is a forecast rather than a fact.
             </p>
           )}
-        </div>
+        </details>
 
         </div>
         </AnalyticsSection>

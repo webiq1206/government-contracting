@@ -35,7 +35,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     try {
       const nav = page.getByRole('navigation', { name: 'Main', exact: true });
       const today = nav.getByRole('link', { name: /^Today/ });
-      const workbench = nav.getByRole('link', { name: /^Workbench/ });
+      const workbench = nav.getByRole('link', { name: /^My Work/ });
       await today.click();
       await today.getByRole('status').waitFor();
       await workbench.click();
@@ -96,6 +96,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('heading', { name: 'Email draft: Ledger Audit Draft', exact: true }).first().waitFor();
   });
   await check(`/opportunity/${ids.opportunity}`, 'pursuit-pause-network-recovery-and-resume', async () => {
+    await page.getByText('Pursuit controls', { exact: true }).click();
     const endpoint = `**/api/opportunities/${ids.opportunity}/pursuit`;
     await page.route(endpoint, r => r.abort('failed'));
     try {

@@ -42,7 +42,7 @@ export function WorkspaceShell({
   context,
   contextLabel = "Supporting detail",
   selected,
-  queueWidth = "lg:w-[380px]",
+  queueWidth = "lg:w-[320px] 2xl:w-[360px]",
 }: {
   queue: ReactNode;
   queueLabel?: string;
@@ -57,10 +57,10 @@ export function WorkspaceShell({
   queueWidth?: string;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div data-workspace-selected={selected} className="flex min-h-0 flex-1 overflow-hidden">
       <section
         aria-label={queueLabel}
-        className={`scroll-thin w-full shrink-0 overflow-y-auto border-r border-border/55 dark:border-white/10 ${queueWidth} ${
+        className={`workspace-queue scroll-thin w-full shrink-0 overflow-y-auto border-r border-border/55 dark:border-white/10 ${queueWidth} ${
           selected ? "hidden lg:block" : "block"
         }`}
       >
@@ -68,13 +68,13 @@ export function WorkspaceShell({
       </section>
 
       <div
-        className={`scroll-thin min-w-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden ${
+        className={`scroll-thin min-w-0 flex-1 flex-col overflow-y-auto 2xl:flex-row 2xl:overflow-hidden ${
           selected ? "flex" : "hidden lg:flex"
         }`}
       >
         <section
           aria-label={primaryLabel}
-          className="flex min-w-0 flex-col xl:min-h-0 xl:flex-1"
+          className="workspace-detail flex min-w-0 flex-col 2xl:min-h-0 2xl:flex-1"
         >
           {primary}
         </section>
@@ -82,7 +82,7 @@ export function WorkspaceShell({
         {context && (
           <aside
             aria-label={contextLabel}
-            className="scroll-thin shrink-0 border-t border-border/55 px-4 py-4 dark:border-white/10 xl:w-[320px] xl:overflow-y-auto xl:border-l xl:border-t-0"
+            className="workspace-context scroll-thin shrink-0 border-t border-border/55 px-4 py-4 dark:border-white/10 2xl:w-[320px] 2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0"
           >
             {context}
           </aside>
@@ -110,7 +110,7 @@ export function WorkspacePane({
   footer?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col xl:min-h-0 xl:flex-1">
+    <div className="flex flex-col 2xl:min-h-0 2xl:flex-1">
       {header && (
         /*
          * Sticky rather than fixed below `xl`, where the column scrolls as one
@@ -118,11 +118,11 @@ export function WorkspacePane({
          * package that means scrolling back to the top to remember which one
          * you are reading.
          */
-        <header className="sticky top-0 z-10 shrink-0 border-b border-border/55 bg-background px-4 py-3 dark:border-white/10 xl:static">
+        <header className="relative z-10 shrink-0 border-b border-border/55 bg-background px-4 py-3 dark:border-white/10 2xl:static">
           {header}
         </header>
       )}
-      <div className="scroll-thin px-4 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+      <div className="scroll-thin px-4 py-4 2xl:min-h-0 2xl:flex-1 2xl:overflow-y-auto">
         {children}
       </div>
       {footer && (
@@ -138,7 +138,7 @@ export function WorkspacePane({
           * explanations moved into the body; this makes sure the next pane to
           * grow a control cannot do the same thing again.
           */
-        <div className="scroll-thin sticky bottom-0 z-10 max-h-[45vh] shrink-0 overflow-y-auto border-t border-border/55 bg-background px-4 py-3 dark:border-white/10 xl:max-h-none xl:overflow-visible xl:static">
+        <div className="workspace-footer shrink-0 border-t border-border/55 bg-background px-4 py-3 dark:border-white/10 2xl:max-h-none 2xl:overflow-visible 2xl:static">
           {footer}
         </div>
       )}

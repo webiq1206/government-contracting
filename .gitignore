@@ -50,3 +50,14 @@ yarn-error.log*
 .upm/
 .config/
 replit.nix.lock
+
+.qa-db/
+
+.next-release/
+.qa-test-db/
+
+.qa-screens/
+
+/artifacts/redesign/
+
+/public/demos/design-review.html

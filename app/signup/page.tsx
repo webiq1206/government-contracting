@@ -17,7 +17,7 @@ import { SessionLoadFailure } from "@/components/session-load-failure";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Start your Brost Co subscription",
+  title: "Start your BrostCo free trial",
   description:
     "Create your Brost Co account and subscribe to government contracting software for opportunity scoring, subcontractor sourcing, and bid preparation.",
   alternates: { canonical: "/signup" },
@@ -59,16 +59,16 @@ export default async function SignupPage(
       </div>
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <p className="mb-4 text-sm text-muted-foreground">A clearer way to pursue federal work</p>
           <h1 className="flex justify-center">
             <Link href="/">
               <ThemeWordmark className="h-12" />
             </Link>
           </h1>
-          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
+
         </div>
 
-        <h2 className="font-display text-2xl text-foreground">Create your account</h2>
+        <h2 className="font-display text-3xl text-foreground">Create your account</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {plan === "founding" ? (
             <>
