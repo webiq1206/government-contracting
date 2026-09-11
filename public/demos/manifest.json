@@ -1,0 +1,14 @@
+{
+  "type": "guided_screen_previews",
+  "recorded_interactions": false,
+  "sample_data": true,
+  "durationsSeconds": {
+    "pipeline": 24,
+    "review": 24,
+    "subs": 24,
+    "opportunity": 24,
+    "activity": 24,
+    "platform-walkthrough": 120,
+    "hero-preview": 15
+  }
+}

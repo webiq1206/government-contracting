@@ -1,0 +1,627 @@
+[
+  {
+    "file": "app/(account)/settings/account/page.tsx",
+    "route": "/settings/account",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 185,
+    "bytes": 78401,
+    "errors": [],
+    "html": "_settings_account.html"
+  },
+  {
+    "file": "app/(account)/settings/billing/page.tsx",
+    "route": "/settings/billing",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 105,
+    "bytes": 57134,
+    "errors": [],
+    "html": "_settings_billing.html"
+  },
+  {
+    "file": "app/(account)/settings/notifications/page.tsx",
+    "route": "/settings/notifications",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 77,
+    "bytes": 68453,
+    "errors": [],
+    "html": "_settings_notifications.html"
+  },
+  {
+    "file": "app/(dash)/activity/page.tsx",
+    "route": "/activity",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 107,
+    "bytes": 74263,
+    "errors": [],
+    "html": "_activity.html"
+  },
+  {
+    "file": "app/(dash)/admin/accounts/[id]/page.tsx",
+    "route": "/admin/accounts/43d453bd-8ee9-4a8c-9b15-fb3aae9721b5",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 85,
+    "bytes": 95520,
+    "errors": [],
+    "html": "_admin_accounts_43d453bd_8ee9_4a8c_9b15_fb3aae9721b5.html"
+  },
+  {
+    "file": "app/(dash)/admin/accounts/page.tsx",
+    "route": "/admin/accounts",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 69,
+    "bytes": 72901,
+    "errors": [],
+    "html": "_admin_accounts.html"
+  },
+  {
+    "file": "app/(dash)/admin/api-usage/page.tsx",
+    "route": "/admin/api-usage",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 51,
+    "bytes": 56230,
+    "errors": [],
+    "html": "_admin_api_usage.html"
+  },
+  {
+    "file": "app/(dash)/admin/audit/page.tsx",
+    "route": "/admin/audit",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 59,
+    "bytes": 54460,
+    "errors": [],
+    "html": "_admin_audit.html"
+  },
+  {
+    "file": "app/(dash)/admin/billing/page.tsx",
+    "route": "/admin/billing",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 130,
+    "bytes": 331272,
+    "errors": [],
+    "html": "_admin_billing.html"
+  },
+  {
+    "file": "app/(dash)/admin/health/page.tsx",
+    "route": "/admin/health",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 72,
+    "bytes": 74615,
+    "errors": [],
+    "html": "_admin_health.html"
+  },
+  {
+    "file": "app/(dash)/admin/invitations/page.tsx",
+    "route": "/admin/invitations",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 41,
+    "bytes": 58639,
+    "errors": [],
+    "html": "_admin_invitations.html"
+  },
+  {
+    "file": "app/(dash)/admin/page.tsx",
+    "route": "/admin",
+    "status": 200,
+    "redirect": "/admin/accounts",
+    "durationMs": 40,
+    "bytes": 46958,
+    "errors": [],
+    "html": "_admin.html"
+  },
+  {
+    "file": "app/(dash)/admin/recap/page.tsx",
+    "route": "/admin/recap",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 84,
+    "bytes": 109293,
+    "errors": [],
+    "html": "_admin_recap.html"
+  },
+  {
+    "file": "app/(dash)/agents/page.tsx",
+    "route": "/agents",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 96,
+    "bytes": 120945,
+    "errors": [],
+    "html": "_agents.html"
+  },
+  {
+    "file": "app/(dash)/analytics/page.tsx",
+    "route": "/analytics",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 121,
+    "bytes": 170619,
+    "errors": [],
+    "html": "_analytics.html"
+  },
+  {
+    "file": "app/(dash)/authority/page.tsx",
+    "route": "/authority",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 52,
+    "bytes": 58720,
+    "errors": [],
+    "html": "_authority.html"
+  },
+  {
+    "file": "app/(dash)/automation/page.tsx",
+    "route": "/automation",
+    "status": 200,
+    "redirect": "/agents",
+    "durationMs": 37,
+    "bytes": 48640,
+    "errors": [],
+    "html": "_automation.html"
+  },
+  {
+    "file": "app/(dash)/call-queue/page.tsx",
+    "route": "/call-queue",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 52,
+    "bytes": 75596,
+    "errors": [],
+    "html": "_call_queue.html"
+  },
+  {
+    "file": "app/(dash)/communications/page.tsx",
+    "route": "/communications",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 51,
+    "bytes": 67957,
+    "errors": [],
+    "html": "_communications.html"
+  },
+  {
+    "file": "app/(dash)/compliance/page.tsx",
+    "route": "/compliance",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 47,
+    "bytes": 52335,
+    "errors": [],
+    "html": "_compliance.html"
+  },
+  {
+    "file": "app/(dash)/contracts/[id]/page.tsx",
+    "route": "/contracts/93f653df-4977-4a12-abd3-973a55382c78",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 66,
+    "bytes": 82743,
+    "errors": [],
+    "html": "_contracts_93f653df_4977_4a12_abd3_973a55382c78.html"
+  },
+  {
+    "file": "app/(dash)/contracts/page.tsx",
+    "route": "/contracts",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 60,
+    "bytes": 100718,
+    "errors": [],
+    "html": "_contracts.html"
+  },
+  {
+    "file": "app/(dash)/email-log/page.tsx",
+    "route": "/email-log",
+    "status": 200,
+    "redirect": "/communications",
+    "durationMs": 45,
+    "bytes": 47988,
+    "errors": [],
+    "html": "_email_log.html"
+  },
+  {
+    "file": "app/(dash)/feedback/page.tsx",
+    "route": "/feedback",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 37,
+    "bytes": 55655,
+    "errors": [],
+    "html": "_feedback.html"
+  },
+  {
+    "file": "app/(dash)/how-it-works/page.tsx",
+    "route": "/how-it-works",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 140,
+    "bytes": 292880,
+    "errors": [],
+    "html": "_how_it_works.html"
+  },
+  {
+    "file": "app/(dash)/more/page.tsx",
+    "route": "/more",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 59,
+    "bytes": 76243,
+    "errors": [],
+    "html": "_more.html"
+  },
+  {
+    "file": "app/(dash)/opportunities/page.tsx",
+    "route": "/opportunities",
+    "status": 200,
+    "redirect": "/pipeline",
+    "durationMs": 54,
+    "bytes": 47256,
+    "errors": [],
+    "html": "_opportunities.html"
+  },
+  {
+    "file": "app/(dash)/opportunity/[id]/page.tsx",
+    "route": "/opportunity/9a307a4e-d05b-47fb-843c-74c2fd5d8c39",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 154,
+    "bytes": 205625,
+    "errors": [],
+    "html": "_opportunity_9a307a4e_d05b_47fb_843c_74c2fd5d8c39.html"
+  },
+  {
+    "file": "app/(dash)/opportunity/[id]/requirements/page.tsx",
+    "route": "/opportunity/9a307a4e-d05b-47fb-843c-74c2fd5d8c39/requirements",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 67,
+    "bytes": 71559,
+    "errors": [],
+    "html": "_opportunity_9a307a4e_d05b_47fb_843c_74c2fd5d8c39_requirements.html"
+  },
+  {
+    "file": "app/(dash)/pipeline/page.tsx",
+    "route": "/pipeline",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 68,
+    "bytes": 131055,
+    "errors": [],
+    "html": "_pipeline.html"
+  },
+  {
+    "file": "app/(dash)/recap/page.tsx",
+    "route": "/recap",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 84,
+    "bytes": 84073,
+    "errors": [],
+    "html": "_recap.html"
+  },
+  {
+    "file": "app/(dash)/review/page.tsx",
+    "route": "/review",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 44,
+    "bytes": 73050,
+    "errors": [],
+    "html": "_review.html"
+  },
+  {
+    "file": "app/(dash)/search/page.tsx",
+    "route": "/search",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 35,
+    "bytes": 48371,
+    "errors": [],
+    "html": "_search.html"
+  },
+  {
+    "file": "app/(dash)/settings/api-usage/page.tsx",
+    "route": "/settings/api-usage",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 35,
+    "bytes": 55645,
+    "errors": [],
+    "html": "_settings_api_usage.html"
+  },
+  {
+    "file": "app/(dash)/settings/content/page.tsx",
+    "route": "/settings/content",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 62,
+    "bytes": 144275,
+    "errors": [],
+    "html": "_settings_content.html"
+  },
+  {
+    "file": "app/(dash)/settings/integrations/page.tsx",
+    "route": "/settings/integrations",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 85,
+    "bytes": 100633,
+    "errors": [],
+    "html": "_settings_integrations.html"
+  },
+  {
+    "file": "app/(dash)/settings/page.tsx",
+    "route": "/settings",
+    "status": 200,
+    "redirect": "/settings/profile",
+    "durationMs": 36,
+    "bytes": 49719,
+    "errors": [],
+    "html": "_settings.html"
+  },
+  {
+    "file": "app/(dash)/settings/profile/page.tsx",
+    "route": "/settings/profile",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 58,
+    "bytes": 80369,
+    "errors": [],
+    "html": "_settings_profile.html"
+  },
+  {
+    "file": "app/(dash)/settings/recap/page.tsx",
+    "route": "/settings/recap",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 46,
+    "bytes": 74279,
+    "errors": [],
+    "html": "_settings_recap.html"
+  },
+  {
+    "file": "app/(dash)/settings/rules/page.tsx",
+    "route": "/settings/rules",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 60,
+    "bytes": 74010,
+    "errors": [],
+    "html": "_settings_rules.html"
+  },
+  {
+    "file": "app/(dash)/subs/[id]/page.tsx",
+    "route": "/subs/15e766a4-dcdf-4561-ba3a-9bae2aa3f144",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 78,
+    "bytes": 105343,
+    "errors": [],
+    "html": "_subs_15e766a4_dcdf_4561_ba3a_9bae2aa3f144.html"
+  },
+  {
+    "file": "app/(dash)/subs/page.tsx",
+    "route": "/subs",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 51,
+    "bytes": 106056,
+    "errors": [],
+    "html": "_subs.html"
+  },
+  {
+    "file": "app/(dash)/today/page.tsx",
+    "route": "/today",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 191,
+    "bytes": 184618,
+    "errors": [],
+    "html": "_today.html"
+  },
+  {
+    "file": "app/(dash)/workbench/page.tsx",
+    "route": "/workbench",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 54,
+    "bytes": 80721,
+    "errors": [],
+    "html": "_workbench.html"
+  },
+  {
+    "file": "app/(marketing)/compare/page.tsx",
+    "route": "/compare",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 33,
+    "bytes": 55940,
+    "errors": [],
+    "html": "_compare.html"
+  },
+  {
+    "file": "app/(marketing)/pricing-guide/page.tsx",
+    "route": "/pricing-guide",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 27,
+    "bytes": 49250,
+    "errors": [],
+    "html": "_pricing_guide.html"
+  },
+  {
+    "file": "app/(marketing)/privacy/page.tsx",
+    "route": "/privacy",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 18,
+    "bytes": 28932,
+    "errors": [],
+    "html": "_privacy.html"
+  },
+  {
+    "file": "app/(marketing)/sitemap/page.tsx",
+    "route": "/sitemap",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 13,
+    "bytes": 47716,
+    "errors": [],
+    "html": "_sitemap.html"
+  },
+  {
+    "file": "app/(marketing)/terms/page.tsx",
+    "route": "/terms",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 13,
+    "bytes": 29967,
+    "errors": [],
+    "html": "_terms.html"
+  },
+  {
+    "file": "app/billing/success/page.tsx",
+    "route": "/billing/success",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 20,
+    "bytes": 16306,
+    "errors": [],
+    "html": "_billing_success.html"
+  },
+  {
+    "file": "app/forgot-password/page.tsx",
+    "route": "/forgot-password",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 10,
+    "bytes": 16516,
+    "errors": [],
+    "html": "_forgot_password.html"
+  },
+  {
+    "file": "app/invite/page.tsx",
+    "route": "/invite",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 21,
+    "bytes": 17134,
+    "errors": [],
+    "html": "_invite.html"
+  },
+  {
+    "file": "app/login/page.tsx",
+    "route": "/login",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 15,
+    "bytes": 18566,
+    "errors": [],
+    "html": "_login.html"
+  },
+  {
+    "file": "app/page.tsx",
+    "route": "/",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 34,
+    "bytes": 67238,
+    "errors": [],
+    "html": "_.html"
+  },
+  {
+    "file": "app/reset-password/page.tsx",
+    "route": "/reset-password",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 19,
+    "bytes": 17042,
+    "errors": [],
+    "html": "_reset_password.html"
+  },
+  {
+    "file": "app/setup/page.tsx",
+    "route": "/setup",
+    "status": 200,
+    "redirect": "/login",
+    "durationMs": 18,
+    "bytes": 14286,
+    "errors": [],
+    "html": "_setup.html"
+  },
+  {
+    "file": "app/signup/page.tsx",
+    "route": "/signup",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 31,
+    "bytes": 19775,
+    "errors": [],
+    "html": "_signup.html"
+  },
+  {
+    "file": "app/vendor/[token]/page.tsx",
+    "route": "/vendor/[token]",
+    "status": 200,
+    "redirect": null,
+    "durationMs": 22,
+    "bytes": 22845,
+    "errors": [],
+    "html": null
+  },
+  {
+    "test": "anonymous private API access denied",
+    "status": 401,
+    "pass": true
+  },
+  {
+    "test": "authenticated saved views available",
+    "status": 200,
+    "pass": true
+  },
+  {
+    "test": "compatibility redirect /opportunities?q=facility&view=table",
+    "actual": "/pipeline?q=facility&view=table",
+    "expected": "/pipeline?q=facility&view=table",
+    "pass": true
+  },
+  {
+    "test": "compatibility redirect /email-log?q=fixture&status=failed",
+    "actual": "/communications?q=fixture&filter=delivery_failed",
+    "expected": "/communications?q=fixture&filter=delivery_failed",
+    "pass": true
+  },
+  {
+    "test": "compatibility redirect /automation",
+    "actual": "/agents",
+    "expected": "/agents",
+    "pass": true
+  },
+  {
+    "test": "compatibility redirect /settings",
+    "actual": "/settings/profile",
+    "expected": "/settings/profile",
+    "pass": true
+  },
+  {
+    "test": "compatibility redirect /admin",
+    "actual": "/admin/accounts",
+    "expected": "/admin/accounts",
+    "pass": true
+  },
+  {
+    "test": "fixture screen endpoint unavailable in production",
+    "status": 404,
+    "pass": true
+  }
+]

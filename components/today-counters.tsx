@@ -35,7 +35,7 @@ export function TodayCounters({
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
       {cells.map((c) => (
         <Link
           key={c.key}
@@ -46,16 +46,16 @@ export function TodayCounters({
               ? "Not due today, including work with no date"
               : undefined
           }
-          className={`rounded-md border px-2 py-2 transition-colors sm:px-3 sm:py-2.5 ${
+          className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg border bg-surface px-3 py-2 transition-colors ${
             active === c.key
               ? "border-gold bg-gold/10"
               : "border-border/55 hover:border-foreground/30 dark:border-white/10"
           }`}
         >
-          <span className="block text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
+          <span className="block text-sm text-slate-600">
             {QUEUE_FILTER_LABEL[c.key]}
           </span>
-          <span className={`num block text-xl sm:text-2xl ${c.tone}`}>{c.value}</span>
+          <span className={`num block text-base font-semibold ${c.tone}`}>{c.value}</span>
         </Link>
       ))}
 
@@ -67,17 +67,17 @@ export function TodayCounters({
       <Link
         href={completedHref}
         aria-current={active === "completed_today" ? "page" : undefined}
-        className={`rounded-md border px-2 py-2 transition-colors sm:px-3 sm:py-2.5 ${
+        className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg border bg-surface px-3 py-2 transition-colors ${
           active === "completed_today"
             ? "border-gold bg-gold/10"
             : "border-border/55 hover:border-foreground/30 dark:border-white/10"
         }`}
       >
-          <span className="block text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
+          <span className="block text-sm text-slate-600">
           Completed today
         </span>
-        <span className="num block text-xl text-pursue sm:text-2xl">{done.total}</span>
-        <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">
+        <span className="num block text-base font-semibold text-pursue">{done.total}</span>
+        <span className="hidden text-xs text-muted-foreground 2xl:inline">
           <span className="num">{done.found}</span> found
           <span aria-hidden className="mx-0.5">
             ·

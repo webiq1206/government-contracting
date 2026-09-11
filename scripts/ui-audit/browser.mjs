@@ -39,7 +39,7 @@ try {
     await trigger.click();
     const menu=page.getByRole('navigation',{name:'Main',exact:true});
     await menu.getByRole('button',{name:'Settings',exact:true}).click();
-    await menu.getByRole('link',{name:'API Usage',exact:true}).first().waitFor();
+    await menu.getByRole('link',{name:'AI usage',exact:true}).first().waitFor();
     assert(await page.locator('main').evaluate(n=>n.inert),'Menu must isolate background');
     await page.keyboard.press('Escape');
     await page.waitForFunction(()=>!document.querySelector('main')?.inert);
@@ -340,11 +340,23 @@ try {
   results.push({device,role:'owner',route:'/agents',status:(filtersPassed?'automation filters, ':'')+'safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
-  await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
+  if (device === 'desktop') {
+    await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
+  } else {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
+  }
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/settings');
   await page.getByLabel('Legal name',{exact:true}).fill('Audit Company '+device);
+  if (device !== 'desktop') {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/rules');
+    const settingsWarning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});
+    await settingsWarning.waitFor();
+    await settingsWarning.getByRole('button',{name:'Stay here',exact:true}).click();
+    assert.equal(new URL(page.url()).pathname,'/settings/profile','Settings selection must honor unsaved work');
+    assert.equal(await page.getByLabel('Legal name',{exact:true}).inputValue(),'Audit Company '+device);
+  }
   if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:/^Today/}).click();
   const warning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});
@@ -538,4 +550,8 @@ try {
  await browser.close();
 }
 console.log(JSON.stringify({captured:results.length,needsReview:failures.length}));
+for (const failure of failures) {
+  const error=String(failure.error??failure.errors?.join('; ')??'').replace(/\/vendor\/[^\s"']+/g,'/vendor/[token]').slice(0,3000);
+  console.error(JSON.stringify({device:failure.device,route:failure.route,task:failure.task,status:failure.status,error}));
+}
 if(failures.length) process.exitCode=1;

@@ -44,6 +44,7 @@ const PUBLIC_PREFIXES = [
   // Landing product film (video, poster, captions) — served to anonymous
   // visitors on `/`, so it must never be bounced to the login page.
   "/film",
+  "/demos",
   // Subcontractor paperwork portal. Public for the same reason /d/ is: the
   // subcontractor has no account and never will. Authorization is the signed,
   // expiring token in the URL, checked inside the route.

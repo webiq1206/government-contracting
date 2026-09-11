@@ -1,0 +1,11 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  See whose turn it is
+The pipeline groups opportunities by work that needs you, work BrostCo is handling, and work waiting on others.
+
+00:00:08.000  Inspect fit and timing
+Read the fit score, deadline, and current status. Open the record for the evidence behind a decision.
+
+00:00:16.000  Choose the right view
+Use a simple board, a list, all stages, or a table to organize the same opportunities.

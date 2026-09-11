@@ -28,12 +28,12 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
       { href: "/today", label: "Today", hint: "Everything that needs you" },
       {
         href: "/workbench",
-        label: "Workbench",
+        label: "My Work",
         hint: "Work the whole queue on one screen",
       },
       { href: "/pipeline", label: "Opportunities", hint: "Every opportunity, by whose turn it is" },
       { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
-      { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },
+      { href: "/call-queue", label: "Calls", hint: "Work calls one after another", badge: "calls" },
     ],
   },
   {
@@ -41,7 +41,7 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
     label: "Relationships",
     items: [
       { href: "/subs", label: "Subcontractors" },
-      { href: "/communications", label: "Communications" },
+      { href: "/communications", label: "Inbox" },
     ],
   },
   {
@@ -54,16 +54,16 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
   },
   {
     key: "performance",
-    label: "Performance",
+    label: "Insights",
     items: [
       {
         href: "/recap",
-        label: "Daily Recap",
+        label: "Daily recap",
         hint: "What happened yesterday, urgent things first",
       },
-      { href: "/activity", label: "Activity Ledger", hint: "Every recorded action, message and result" },
-      { href: "/analytics", label: "Analytics" },
-      { href: "/agents", label: "Automation Health", hint: "Whether the automation is working, and what is stopping it" },
+      { href: "/activity", label: "Activity", hint: "Every recorded action, message and result" },
+      { href: "/analytics", label: "Reports" },
+      { href: "/agents", label: "Automation", hint: "Whether the automation is working, and what is stopping it" },
     ],
   },
   {
@@ -73,7 +73,7 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
     // looking at, because its whole value is knowing where you are. Listing it
     // as a destination here would be a link that navigates nowhere.
     items: [
-      { href: "/how-it-works", label: "Knowledge Center" },
+      { href: "/how-it-works", label: "Help center" },
       // Every role can reach this, including the read-only ones. Somebody
       // looking at a figure that does not add up is the person who should be
       // able to say so, and there was previously nowhere to say it.
@@ -91,10 +91,10 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
       { href: "/settings/profile", label: "Company" },
       { href: "/settings/rules", label: "Rules" },
       { href: "/settings/content", label: "Content" },
-      { href: "/settings/integrations", label: "Integrations" },
-      { href: "/settings/api-usage", label: "API Usage" },
+      { href: "/settings/integrations", label: "Connections" },
+      { href: "/settings/api-usage", label: "AI usage" },
       { href: "/settings/billing", label: "Billing" },
-      { href: "/settings/recap", label: "Daily Recap" },
+      { href: "/settings/recap", label: "Daily recap" },
       // Which alerts reach this account by email and which live only in the
       // product. Worth its own entry because the answer is surprising.
       { href: "/settings/notifications", label: "Notifications" },
@@ -109,28 +109,28 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
   },
   {
     key: "platform",
-    label: "Platform Admin",
+    label: "Platform admin",
     adminOnly: true,
     items: [
       { href: "/admin/accounts", label: "Accounts" },
       { href: "/admin/invitations", label: "Invitations" },
-      { href: "/admin/billing", label: "Customer Billing" },
-      { href: "/admin/api-usage", label: "API Usage" },
+      { href: "/admin/billing", label: "Customer billing" },
+      { href: "/admin/api-usage", label: "AI usage" },
       // Its own entry rather than fifteen rows at the foot of Accounts. The
       // record of what we did to somebody's account is a different question
       // from which account is in trouble, and it is the one somebody comes
       // looking for months later.
-      { href: "/admin/audit", label: "Audit Log" },
+      { href: "/admin/audit", label: "Audit log" },
       // Platform-wide, as against the per-account Automation Health under
       // Delivery. An outage affecting every customer used to be findable only
       // by opening accounts one at a time until a pattern appeared.
-      { href: "/admin/health", label: "System Health" },
-      { href: "/admin/recap", label: "Platform Recap" },
+      { href: "/admin/health", label: "System health" },
+      { href: "/admin/recap", label: "Platform recap" },
     ],
   },
   {
     key: "optional",
-    label: "Optional Tools",
+    label: "Optional tools",
     /*
      * Site Authority tracks OUR marketing domain's backlinks. It is
      * meaningless to a contractor and a window onto our own business, so it
@@ -159,3 +159,11 @@ export function mobileDestination(pathname: string): string {
 }
 
 export const SETTINGS_DESTINATIONS = NAVIGATION_SECTIONS.find(section => section.key === "settings")!.items;
+
+export function recordParent(path: string): { href: string; label: string } | null {
+  if (path.startsWith("/opportunity/")) return { href: "/pipeline", label: "Opportunities" };
+  if (path.startsWith("/subs/")) return { href: "/subs", label: "Subcontractors" };
+  if (path.startsWith("/contracts/")) return { href: "/contracts", label: "Contracts" };
+  if (path.startsWith("/admin/accounts/")) return { href: "/admin/accounts", label: "Accounts" };
+  return null;
+}

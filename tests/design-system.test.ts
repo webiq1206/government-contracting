@@ -74,7 +74,7 @@ describe("the design system holds", () => {
      * layout's metadata: that is consumed by the operating system, not by CSS,
      * so it cannot be a variable and has to state both values literally.
      */
-    const ALLOWED = new Set(["app/layout.tsx:48 #f1ece3", "app/layout.tsx:49 #090a09"]);
+    const ALLOWED = new Set(["app/layout.tsx:48 #F4F6F6", "app/layout.tsx:49 #0B1720"]);
     const hits = scan(
       /(?:text|bg|border)-(?:red|green|blue|yellow|orange|purple|pink|indigo|teal|cyan|emerald|lime|amber|rose|violet|fuchsia|sky|stone|zinc|neutral|gray)-\d{2,3}\b|#[0-9a-fA-F]{6}\b/g
     ).filter((h) => !ALLOWED.has(h));

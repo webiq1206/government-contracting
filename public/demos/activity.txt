@@ -1,0 +1,11 @@
+BROSTCO | GUIDED SCREEN PREVIEW
+Sample data. This preview uses captured product screens.
+
+00:00:00.000  See the recorded history
+The activity history brings actions, messages, and outcomes into a readable account record.
+
+00:00:08.000  Find the exact event
+Search for a company, message, bid, or phrase. Expand filters to narrow the history.
+
+00:00:16.000  Inspect the result
+Open event details and the related record to understand what happened and what needs attention.

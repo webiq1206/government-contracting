@@ -71,7 +71,7 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await page.screenshot({ path: join(out, `${device}-call-workspace-recovery.png`) });
     await workspace.getByRole('button', { name: 'Close', exact: true }).click();
     await workspace.waitFor({ state: 'hidden' });
-    await page.getByRole('heading', { name: 'Call Queue', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Calls', exact: true }).waitFor();
     // No dialing, scope acknowledgement, call outcome or follow-up is submitted.
   });
   for (const route of ['/pipeline', '/pipeline?view=list', '/pipeline?view=stages', '/pipeline?view=table', '/subs', '/communications', '/today', '/workbench', '/call-queue', '/search?q=Facility', '/recap']) {

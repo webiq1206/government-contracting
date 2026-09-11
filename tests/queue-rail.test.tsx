@@ -140,7 +140,7 @@ describe("the shell", () => {
   it("gives the phone the queue until something is opened", () => {
     const closed = renderToStaticMarkup(<WorkspaceShell {...panes} selected={false} />);
     // The queue is visible and the record column is not, below lg.
-    expect(closed).toContain("lg:w-[380px] block");
+    expect(closed).toContain("lg:w-[320px] 2xl:w-[360px] block");
     expect(closed).toContain("hidden lg:flex");
     // And the other way round once something is open.
     const open = renderToStaticMarkup(<WorkspaceShell {...panes} selected />);

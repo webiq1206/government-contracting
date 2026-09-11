@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { activityFilterLabels } from "@/lib/domain/activity-filters";
 import type { ActivityRow } from "@/lib/activity/read";
 const categories = [
   "email",
@@ -22,7 +23,7 @@ const categories = [
 ];
 const label = (s: string) =>
   s.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-type Data = {
+export type ActivityData = {
   viewScope: string;
   rows: ActivityRow[];
   summary: {
@@ -36,10 +37,12 @@ type Data = {
   page: number;
   pageSize: number;
 };
-export function ActivityLedger() {
+export function ActivityLedger({initialData = null, initialQuery = ""}: {initialData?: ActivityData | null; initialQuery?: string}) {
+  const initialRead = useRef(Boolean(initialData));
   const params = useSearchParams();
   const qs = params.toString();
   const filters = Object.fromEntries(params);
+  const activeFilters = activityFilterLabels(filters);
   const [viewError, setViewError] = useState("");
   const setFilters = (next: Record<string, string> | ((current: Record<string, string>) => Record<string, string>), replace = false) => {
     const values = typeof next === "function" ? next(filters) : next;
@@ -47,9 +50,9 @@ export function ActivityLedger() {
     // Native history retains Next's state and lets Back restore the selected view.
     if (query !== qs) history[replace ? "replaceState" : "pushState"](null, "", "/activity" + (query ? "?" + query : ""));
   };
-  const [data, setData] = useState<Data | null>(null),
+  const [data, setData] = useState<ActivityData | null>(initialData),
     [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(!initialData);
   const [refresh, setRefresh] = useState(0),
     [saved, setSaved] = useState<
       { name: string; filters: Record<string, string> }[]
@@ -67,6 +70,10 @@ export function ActivityLedger() {
     }
   }, [data?.viewScope]);
   useEffect(() => {
+    if (initialRead.current) {
+      initialRead.current = false;
+      if (qs === initialQuery && refresh === 0) return;
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("The ledger took too long to load. Try again.")), 20_000);
     setLoading(true);
@@ -86,7 +93,7 @@ export function ActivityLedger() {
         if (!controller.signal.aborted || controller.signal.reason?.name !== "AbortError") setLoading(false);
       });
     return () => { clearTimeout(timeout); controller.abort(); };
-  }, [qs, refresh]);
+  }, [qs, refresh, initialQuery]);
   const change = (key: string, value: string) =>
     setFilters((f) => ({ ...f, [key]: value, page: "1" }), key === "q");
   const persistViews = (next: typeof saved) => {
@@ -142,7 +149,7 @@ export function ActivityLedger() {
             onChange={(e) => change("q", e.target.value)}
           />
         </label>
-        <details className="sm:col-span-2 lg:col-span-4"><summary className="cursor-pointer text-sm font-medium">More filters</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <details className="sm:col-span-2 lg:col-span-4"><summary className="cursor-pointer text-sm font-medium">More filters{activeFilters.filter(f => f.key !== "q").length > 0 ? ` (${activeFilters.filter(f => f.key !== "q").length} applied)` : ""}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm">
           Activity type
           <select
@@ -152,7 +159,7 @@ export function ActivityLedger() {
           >
             <option value="">All types</option>
             {categories.map((c) => (
-              <option key={c}>{c}</option>
+              <option value={c} key={c}>{label(c)}</option>
             ))}
           </select>
         </label>
@@ -210,13 +217,13 @@ export function ActivityLedger() {
           />
         </label>
         <label className="text-sm">
-          Recorded actor
+          Who did it
           <select
             className="input mt-1 w-full"
             value={filters.actor || ""}
             onChange={(e) => change("actor", e.target.value)}
           >
-            <option value="">Everyone and all agents</option>
+            <option value="">Everyone and all automations</option>
             {data?.actors.map((a) => (
               <option key={a}>{a}</option>
             ))}
@@ -268,7 +275,12 @@ export function ActivityLedger() {
         </button>
         </div></details>
       </div>
-      {Object.values(filters).some(Boolean) && <p className="text-xs text-muted-foreground">Current filters: {Object.entries(filters).filter(([,v])=>v).map(([k,v])=>k==="attention"?"Needs attention":`${label(k)}: ${label(v)}`).join(" · ")}</p>}
+      {activeFilters.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Applied activity filters">
+        {activeFilters.map(filter => <button key={filter.key} type="button" className="btn-secondary max-w-full text-sm"
+          aria-label={`Remove filter: ${filter.label}`} onClick={() => setFilters(current => { const next: Record<string, string> = { ...current, page: "1" }; delete next[filter.key]; return next; })}>
+          <span className="min-w-0 break-all">{filter.label}</span><span aria-hidden="true">×</span>
+        </button>)}
+      </div>}
       {viewError && <p role="alert" className="text-sm text-risk">{viewError}</p>}
       {saved.length > 0 && (
         <details><summary className="cursor-pointer text-sm">Saved views</summary><div className="flex flex-wrap gap-2">

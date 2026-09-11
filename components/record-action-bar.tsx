@@ -50,7 +50,7 @@ export function RecordActionBar({
       />
       <div
         className="fixed inset-x-0 z-50 border-t border-border bg-background/95 px-3 py-2 backdrop-blur lg:hidden"
-        style={{ bottom: "calc(4rem + env(safe-area-inset-bottom, 0px))" }}
+        style={{ bottom: "0", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
       >
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">

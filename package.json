@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -n web,worker -c cyan,magenta \"npm:dev:web\" \"npm:dev:worker\"",
+    "dev": "node scripts/dev.mjs",
     "dev:web": "BROSTCO_PROCESS_ROLE=web NODE_ENV=development next dev",
     "dev:worker": "tsx watch worker/index.ts",
     "build": "next build",
@@ -76,8 +76,10 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.24",
+    "linkedom": "^0.18.12",
     "vitest": "^3.2.7"
   },
   "overrides": {

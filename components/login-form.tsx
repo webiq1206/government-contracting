@@ -85,7 +85,7 @@ export function LoginForm() {
           href="/signup"
           className="inline-flex coarse:min-h-11 items-center font-medium text-accent-strong hover:underline"
         >
-          Start a subscription
+          Start your free trial
         </Link>
       </p>
     </form>

@@ -1,0 +1,107 @@
+[
+  {
+    "file": "review.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "24.000000",
+      "size": "237730"
+    }
+  },
+  {
+    "file": "pipeline.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "24.000000",
+      "size": "247405"
+    }
+  },
+  {
+    "file": "subs.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "24.000000",
+      "size": "197426"
+    }
+  },
+  {
+    "file": "hero-preview.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "15.000000",
+      "size": "137809"
+    }
+  },
+  {
+    "file": "opportunity.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "24.000000",
+      "size": "222200"
+    }
+  },
+  {
+    "file": "platform-walkthrough.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "120.000000",
+      "size": "911301"
+    }
+  },
+  {
+    "file": "activity.mp4",
+    "programs": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 960
+      }
+    ],
+    "format": {
+      "duration": "24.000000",
+      "size": "188234"
+    }
+  }
+]

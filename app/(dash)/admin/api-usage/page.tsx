@@ -11,7 +11,7 @@ export default async function Page() {
     <>
       <PageFrame
         breadcrumbs={[{ label: "Platform admin" }]}
-        title="API Usage"
+        title="AI usage"
         explanation="Track service costs and tenant charges."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">

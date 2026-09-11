@@ -65,8 +65,8 @@ export function QueueFilters({
   }
 
   return (
-    <div className="space-y-2">
-      <form method="get" action="/today" className="search-row">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+      <form method="get" action="/today" className="search-row min-w-0">
         {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
         {kind && <input type="hidden" name="kind" value={kind} />}
         {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
@@ -88,6 +88,8 @@ export function QueueFilters({
         )}
       </form>
 
+      <details className="queue-filter-disclosure rounded-xl border border-border/60 bg-surface px-3" open={Boolean(kind || owner !== "anyone")}>
+        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Filters{kind || owner !== "anyone" ? " · Active" : ""}</summary>
       {/*
         Whose work. First, above the kind chips, because on a team it is the
         cut somebody applies before any other: "what is on me" comes before
@@ -130,6 +132,7 @@ export function QueueFilters({
           ))}
         </nav>
       )}
+      </details>
     </div>
   );
 }

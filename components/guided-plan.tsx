@@ -125,7 +125,7 @@ export function GuidedPlanPanel({
 
 const CIRCLE: Record<PlanStep["status"], string> = {
   done: "border-pursue/40 bg-pursue/15 text-pursue",
-  current: "border-gold bg-gold text-ink",
+  current: "border-gold bg-gold text-on-accent",
   blocked: "border-risk/50 bg-risk/15 text-risk",
   upcoming: "border-border bg-surface text-muted-foreground/70",
 };

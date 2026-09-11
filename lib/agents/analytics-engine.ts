@@ -408,8 +408,8 @@ function renderDigestHtml(k: {
     )
     .join("");
   return `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424">
-<h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;color:#242424;margin:0 0 4px">BROST CO Weekly KPIs</h2>
-<div style="width:48px;height:2px;background:#B28F5D;margin:0 0 14px"></div>
+<h2 style="font-family:Inter,Helvetica,Arial,sans-serif;font-weight:600;color:#152033;margin:0 0 4px">BROST CO Weekly KPIs</h2>
+<div style="width:48px;height:2px;background:#2457E6;margin:0 0 14px"></div>
 <table style="border-collapse:collapse">${trs}</table>
 </div>`;
 }

@@ -29,7 +29,7 @@ const CSS = readFileSync("app/globals.css", "utf8");
 describe("the shell", () => {
   it("puts the sidebar at lg, not md", () => {
     expect(NAV).toContain("lg:static");
-    expect(NAV).toContain("lg:w-64");
+    expect(NAV).toContain("lg:w-[232px]");
     // Not one leftover: a single md: in this file is a sidebar that half
     // appears, or a drawer header that vanishes while the drawer is still the
     // only way to navigate.

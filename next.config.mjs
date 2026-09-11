@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.BROSTCO_BUILD_DIR || ".next",
   // Cloud Run / Replit builds have flaky webpack WASM (xxhash64) init. Prefer
   // Node's sha256 hasher, and keep the build on the main thread so a worker
   // crash cannot surface as Hash.update(undefined).
@@ -11,6 +12,8 @@ const nextConfig = {
   },
   experimental: {
     webpackBuildWorker: false,
+    // Keep production builds within Replit and review-runner memory limits.
+    cpus: 2,
   },
   // Keep server-only dependencies external to route bundles.
   serverExternalPackages: [

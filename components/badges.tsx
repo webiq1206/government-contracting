@@ -56,7 +56,7 @@ export function PageHeader({
   variant?: "light" | "dark";
 }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-3 gap-y-1.5 border-b border-border/55 bg-background px-4 py-2 dark:border-white/10 sm:px-6 sm:py-3">
+    <div className="product-page-header flex shrink-0 flex-wrap items-center justify-between gap-3">
       <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
         {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
         <div className="flex items-start gap-2">
@@ -65,14 +65,14 @@ export function PageHeader({
           </h1>
           {help && <HelpPopover help={help} />}
         </div>
-        <div className="mt-1.5 hidden h-px w-8 bg-gold sm:block sm:mt-2 sm:w-12" />
+
         {status != null && status !== "" && (
           <div className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground sm:mt-1.5 sm:line-clamp-none sm:text-sm">
             {status}
           </div>
         )}
         {subtitle != null && subtitle !== "" && (
-          <div className="mt-0.5 text-xs leading-snug text-muted-foreground sm:mt-1 sm:text-sm sm:leading-relaxed">
+          <div className="page-description mt-1 text-muted-foreground">
             {subtitle}
           </div>
         )}

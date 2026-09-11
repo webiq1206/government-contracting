@@ -46,9 +46,11 @@ describe("text on a status fill", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("uses the token in the two button classes", () => {
+  it("uses an appropriate foreground for fixed destructive and adaptive success fills", () => {
     const css = readFileSync("app/globals.css", "utf8");
-    expect(css).toContain("bg-risk text-on-status");
+    const danger = css.match(/\.btn-danger\s*\{([^}]+)/)?.[1] ?? "";
+    expect(danger).toContain("background: #A33A31");
+    expect(danger).toContain("color: #fff");
     expect(css).toContain("bg-pursue text-on-status");
   });
 

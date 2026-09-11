@@ -28,6 +28,8 @@ export interface GuideBundle {
   adapters: ReturnType<typeof buildGuideAdapters>;
   /** Changes when the account's workload does, so the panel can refresh. */
   fingerprint: string;
+  /** Authorized records actually read while preparing these facts. */
+  sources: { label: string; href: string }[];
 }
 
 /**
@@ -44,6 +46,7 @@ export async function loadGuideBundle(
   pathname: string
 ): Promise<GuideBundle> {
   const pageKey = pageKeyFromPath(pathname);
+  const sources = [{ label: "Current account workload", href: "/today" }];
 
   await hydrateIntegrationEnv();
 
@@ -148,6 +151,7 @@ export async function loadGuideBundle(
     const detail = await opportunityDetail(oppId);
     if (detail) {
       const { opp, quotes, subs } = detail;
+      sources.push({ label: opp.title || "Current opportunity", href: `/opportunity/${opp.id}#brief` });
       const bid = detail.bid as Bid | null;
       const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
       const breakdown = opp.score_breakdown as ScoreBreakdown | null;
@@ -345,5 +349,5 @@ export async function loadGuideBundle(
     subRow,
   });
 
-  return { guide, adapters, fingerprint: JSON.stringify(pulseRow ?? {}) };
+  return { guide, adapters, sources, fingerprint: JSON.stringify(pulseRow ?? {}) };
 }

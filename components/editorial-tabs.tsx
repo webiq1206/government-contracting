@@ -1,5 +1,7 @@
 "use client";
 
+import { revealEditorialTarget } from "@/lib/editorial-nav";
+
 import {
   useCallback,
   useEffect,
@@ -85,7 +87,10 @@ export function EditorialTabs({
     function applyHash() {
       const raw = window.location.hash.replace(/^#/, "");
       const id = resolveHash(raw);
-      if (id) setTab(id);
+      if (id) {
+        setTab(id);
+        window.requestAnimationFrame(() => revealEditorialTarget(document.getElementById(raw)));
+      }
     }
     applyHash();
     window.addEventListener("hashchange", applyHash);
@@ -107,6 +112,7 @@ export function EditorialTabs({
         const panel = el?.closest<HTMLElement>("[data-editorial-panel]");
         const id = panel?.dataset.editorialPanel;
         if (id) go(id, false, false);
+        revealEditorialTarget(el);
       }
     }
     window.addEventListener("editorial-open-tab", onOpen);
@@ -145,7 +151,7 @@ export function EditorialTabs({
       className={
         layout === "fill"
           ? "flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-background px-4 py-1.5 sm:gap-5 sm:px-6 sm:py-2"
-          : `sticky z-20 flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 ${stickyTopClass}`
+          : `relative lg:sticky z-20 flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-4 py-1 backdrop-blur sm:px-6 sm:py-3 ${stickyTopClass}`
       }
     >
       {tabs.map((t) => {
@@ -153,11 +159,11 @@ export function EditorialTabs({
         const tabClass =
           layout === "fill"
             ? active
-              ? "dash-tab dash-tab--active whitespace-nowrap text-xs uppercase tracking-[0.1em]"
-              : "dash-tab whitespace-nowrap text-xs uppercase tracking-[0.1em]"
+              ? "dash-tab dash-tab--active whitespace-nowrap text-sm"
+              : "dash-tab whitespace-nowrap text-sm"
             : active
-              ? "dash-tab dash-tab--active whitespace-nowrap uppercase tracking-[0.12em]"
-              : "dash-tab whitespace-nowrap uppercase tracking-[0.12em]";
+              ? "dash-tab dash-tab--active whitespace-nowrap "
+              : "dash-tab whitespace-nowrap ";
         return (
           <button
             key={t.id}

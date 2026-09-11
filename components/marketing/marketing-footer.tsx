@@ -8,7 +8,7 @@ interface MarketingFooterProps {
 
 export function MarketingFooter({
   loginHref = "/login",
-  variant = "light",
+  variant = "dark",
 }: MarketingFooterProps) {
   const year = new Date().getFullYear();
   const dark = variant === "dark";
@@ -33,7 +33,7 @@ export function MarketingFooter({
             </Link>
             <p
               className={`mt-3 max-w-xs text-sm leading-relaxed ${
-                dark ? "text-white/55" : "text-muted-foreground"
+                dark ? "text-[#C7D2D4]" : "text-muted-foreground"
               }`}
             >
               Procurement execution for federal services contractors. One queue,
@@ -70,9 +70,8 @@ export function MarketingFooter({
 
         <div className={`mt-10 h-px ${dark ? "bg-white/10" : "bg-border"}`} />
 
-        <p className={`mt-6 text-xs ${dark ? "text-white/40" : "text-muted-foreground"}`}>
-          &copy; {year} Brost Co. Brost Co does not replace SAM.gov and does not
-          submit bids on your behalf without your review.
+        <p className={`mt-6 text-xs ${dark ? "text-[#9FB0B4]" : "text-muted-foreground"}`}>
+          &copy; {year} Brost Co. Brost Co does not replace SAM.gov. Your team is responsible for final bid review and submission.
         </p>
       </div>
     </footer>
@@ -90,7 +89,7 @@ function FooterCol({
 }) {
   return (
     <div>
-      <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${dark ? "text-gold-text" : "text-accent"}`}>
+      <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${dark ? "text-[#6BAEAA]" : "text-accent"}`}>
         {title}
       </p>
       {/*
@@ -100,7 +99,7 @@ function FooterCol({
         */}
       <nav
         className={`mt-3 flex flex-col gap-0 text-sm sm:gap-2 [&_a]:flex coarse:[&_a]:min-h-11 [&_a]:items-center ${
-          dark ? "text-white/65 [&_a:hover]:text-white" : "text-muted-foreground [&_a:hover]:text-foreground"
+          dark ? "text-[#C7D2D4] [&_a:hover]:text-white" : "text-muted-foreground [&_a:hover]:text-foreground"
         }`}
         aria-label={title}
       >

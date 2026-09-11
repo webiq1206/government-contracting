@@ -48,60 +48,14 @@ export function TodayGreeting({
   const settingUp = actionCount === 0 && setupRemaining > 0;
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/55 pb-4 dark:border-white/10 lg:pb-8">
-      <div className="min-w-0">
-        <p className="eyebrow-gold">{parts.date}</p>
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-gold-text lg:mt-4">
-          {settingUp ? "Getting started" : "Needs your attention"}
+    <header className="flex items-center justify-between gap-4 pb-4">
+      <div>
+        <p className="text-xs text-muted-foreground">{parts.date}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Today</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {settingUp ? `${setupRemaining} setup steps before your first opportunity.` : clear ? "You’re all caught up. We’ll keep watching for new work." : `${actionCount} ${actionCount === 1 ? "action needs" : "actions need"} your attention.`}
         </p>
-        <h1 className="mt-1.5 font-display text-2xl leading-tight text-foreground sm:text-4xl lg:mt-2 lg:text-[2.75rem]">
-          {settingUp ? (
-            <>
-              {parts.greeting}.{" "}
-              <span className="text-muted-foreground">
-                {setupRemaining} step{setupRemaining === 1 ? "" : "s"} to go.
-              </span>
-            </>
-          ) : clear ? (
-            <>
-              {parts.greeting}.{" "}
-              <span className="text-muted-foreground">You are clear for now.</span>
-            </>
-          ) : (
-            <>
-              {/*
-                Greeting first. A bare integer as the first word of the
-                largest type on the home screen read as a missing page when
-                the count was 404, which was also the wrong number.
-              */}
-              {parts.greeting}.{" "}
-              <span className="num">{actionCount}</span>{" "}
-              {actionCount === 1 ? "action needs" : "actions need"} you.
-            </>
-          )}
-        </h1>
-        {settingUp ? (
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Finish the setup below and Brost Co starts pulling federal opportunities, scoring
-            them against your company, and lining up the work that needs you. Nothing appears
-            here until that is connected.
-          </p>
-        ) : !clear ? (
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Work the queue in order. Each row opens the exact place to finish the task.
-          </p>
-        ) : null}
       </div>
-      {!clear && (
-        <div className="hidden border border-gold/35 bg-surface-raised px-4 py-3 text-right lg:block">
-          <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
-            Live queue
-          </p>
-          <p className="mt-1 font-display text-2xl text-gold-text">
-            <span className="num">{actionCount}</span>
-          </p>
-        </div>
-      )}
-    </div>
+    </header>
   );
 }

@@ -55,7 +55,7 @@ export function AutomationStatusPanel({
         <h2 id="automation-state" className={`font-display text-lg font-semibold ${tone.text}`}>
           {tone.word}
         </h2>
-        <p className="min-w-0 flex-1 text-sm text-foreground">{health.detail}</p>
+        <details className="min-w-0 flex-1 text-sm text-foreground"><summary className="cursor-pointer text-muted-foreground">What this affects</summary><p className="mt-2">{health.detail}</p></details>
       </div>
 
       {/* The seven facts the audit asks this summary to carry. Each one has a
@@ -243,7 +243,7 @@ export function AutomationBlockerBanner({ health }: { health: AutomationHealth }
           {"✕"}
         </span>
         <p className="font-display text-sm font-semibold text-risk">{health.headline}</p>
-        <p className="min-w-0 flex-1 text-sm text-foreground">{health.detail}</p>
+        <details className="min-w-0 flex-1 text-sm text-foreground"><summary className="cursor-pointer text-muted-foreground">What this affects</summary><p className="mt-2">{health.detail}</p></details>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
         {worst && <p className="min-w-0 flex-1 text-foreground">{worst.spec.repair}</p>}

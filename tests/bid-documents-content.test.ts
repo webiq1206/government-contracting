@@ -54,6 +54,29 @@ describe("offerLineItems", () => {
 });
 
 describe("the submitted bid PDF", () => {
+  it("preserves full scope descriptions and prices when line items span pages", async () => {
+    const prefix = "Provide all labor, materials, supervision, temporary protection, and testing for replacement of the main electrical distribution panel";
+    const line_items = Array.from({ length: 24 }, (_, index) => ({
+      label: `${prefix} in Building ${index + 1}, including final acceptance testing.`,
+      amount: 3500 + index * 125,
+    }));
+    const text = await textOf(await documents.buildBidPdf({
+      company_name: "Sample Facility Services LLC",
+      opportunity_title: "Sample electrical upgrades",
+      bid_amount: line_items.reduce((sum, item) => sum + item.amount, 0),
+      margin_pct: 25,
+      line_items,
+    }));
+    const normalized = text.replace(/\s+/g, " ");
+    for (let index = 0; index < line_items.length; index++) {
+      expect(normalized).toContain(`in Building ${index + 1}, including final acceptance testing.`);
+    }
+    expect(text).toContain("$3,500.00");
+    expect(text).toContain("$6,375.00");
+    expect(text).toContain("$118,500.00");
+    expect(text).not.toContain("…");
+  });
+
   it("does not disclose our margin or our internal review checklist", async () => {
     const buf = await documents.buildBidPdf({
       company_name: "Brost Co",

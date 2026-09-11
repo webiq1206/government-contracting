@@ -26,23 +26,23 @@
 
 /** The light theme's palette, as literal hex. Email cannot read CSS variables. */
 export const BRAND = {
-  paper: "#f1ece3",
+  paper: "#f4f6f6",
   surface: "#ffffff",
-  surfaceMuted: "#f9f6f0",
-  ink: "#171713",
-  inkSoft: "#54514a",
-  border: "#ded6c8",
-  borderStrong: "#c8bda9",
-  gold: "#c3a06b",
-  goldDeep: "#a68250",
-  goldText: "#7d6644",
-  accent: "#7e5e33",
-  risk: "#a2453c",
-  riskSoft: "#fbeceb",
-  review: "#855c2c",
-  reviewSoft: "#fbf1e4",
-  pursue: "#4a5943",
-  pursueSoft: "#eef1ea",
+  surfaceMuted: "#eef2f2",
+  ink: "#111a1f",
+  inkSoft: "#45545c",
+  border: "#d8e0de",
+  borderStrong: "#becac8",
+  gold: "#0e6f75",
+  goldDeep: "#0b5e63",
+  goldText: "#0b5e63",
+  accent: "#0e6f75",
+  risk: "#a33a31",
+  riskSoft: "#fbedeb",
+  review: "#95601b",
+  reviewSoft: "#fbf1df",
+  pursue: "#2b6f52",
+  pursueSoft: "#eaf5ef",
 } as const;
 
 const FONT =
@@ -122,7 +122,7 @@ export function emailShell(opts: EmailShellOptions): string {
           <td style="background:${BRAND.ink};padding:20px 24px;border-radius:4px 4px 0 0">
             ${
               opts.eyebrow
-                ? `<p style="margin:0 0 6px;font-family:${FONT};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${BRAND.gold}">${escapeHtml(
+                ? `<p style="margin:0 0 6px;font-family:${FONT};font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#b2c7ff">${escapeHtml(
                     opts.eyebrow
                   )}</p>`
                 : ""
@@ -132,7 +132,7 @@ export function emailShell(opts: EmailShellOptions): string {
             )}</h1>
             ${
               opts.preheader
-                ? `<p style="margin:8px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:#e6dfd2">${escapeHtml(
+                ? `<p style="margin:8px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:#ccd8eb">${escapeHtml(
                     opts.preheader
                   )}</p>`
                 : ""

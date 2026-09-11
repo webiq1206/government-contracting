@@ -1,0 +1,55 @@
+[
+  {
+    "file": "today-1280.png",
+    "kind": "browser capture of static synthetic server-rendered layout",
+    "css_width": 1280,
+    "height": 900,
+    "recorded_at_utc": "2026-09-11T15:24:12.142797+00:00",
+    "role": "synthetic owner/platform admin",
+    "revision": "redesign working tree based on 4a5461b; not baseline main"
+  },
+  {
+    "file": "today-390.png",
+    "kind": "browser capture of static synthetic server-rendered layout",
+    "css_width": 390,
+    "height": 900,
+    "recorded_at_utc": "2026-09-11T15:22:50.018927+00:00",
+    "role": "synthetic owner/platform admin",
+    "revision": "redesign working tree based on 4a5461b; not baseline main"
+  },
+  {
+    "file": "opportunity-id-1280.png",
+    "kind": "browser capture of static synthetic server-rendered layout",
+    "css_width": 1280,
+    "height": 900,
+    "recorded_at_utc": "2026-09-11T15:24:30.378769+00:00",
+    "role": "synthetic owner/platform admin",
+    "revision": "redesign working tree based on 4a5461b; not baseline main"
+  },
+  {
+    "file": "admin-accounts-1280.png",
+    "kind": "browser capture of static synthetic server-rendered layout",
+    "css_width": 1280,
+    "height": 900,
+    "recorded_at_utc": "2026-09-11T15:16:05.907724+00:00",
+    "role": "synthetic owner/platform admin",
+    "revision": "redesign working tree based on 4a5461b; not baseline main"
+  },
+  {
+    "file": "landing-390.png",
+    "kind": "browser capture of static synthetic server-rendered layout",
+    "css_width": 390,
+    "height": 900,
+    "recorded_at_utc": "2026-09-11T15:50:57.032009+00:00",
+    "role": "public visitor",
+    "revision": "redesign working tree based on 4a5461b; not baseline main"
+  },
+  {
+    "file": "landing-1280.png",
+    "kind": "browser capture of static synthetic server-rendered layout; native media controls",
+    "css_width": 1280,
+    "height": 900,
+    "role": "public visitor",
+    "revision": "redesign working tree based on 4a5461b"
+  }
+]
