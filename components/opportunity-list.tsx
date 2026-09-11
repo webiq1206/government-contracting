@@ -7,34 +7,17 @@ import { DeadlineBadge } from "@/components/deadline-badge";
 import { RowActions } from "@/components/row-actions";
 import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { ScoreBadge } from "@/components/badges";
-import { EstimatedValue } from "@/components/estimated-value";
 import { AgencyPath } from "@/components/agency-path";
-import {
-  BlockerChip,
-  ConfidenceChip,
-  CoverageChip,
-  OwnerChip,
-} from "@/components/opportunity-facts";
 
 /**
- * The compact list: what a phone gets, and what the brief names as the third
- * view.
- *
- * What it replaces on a phone was a swipe rail of four columns. A rail asks
- * somebody to discover three more horizontal panes before they can see their
- * own work, and it is the pattern the responsive rules warn about: the
- * information is there and the way to it is a gesture nobody was told about.
- *
- * A row carries the nine facts the brief requires. Five of them were on no
- * mobile surface at all, and they are the five that say whether the number
- * beside them can be trusted: a 78 scored from a title, a bid whose trades
- * nobody has priced, and a record nobody has picked up all looked exactly like
- * their opposites.
+ * The default opportunity list intentionally shows only the facts needed to
+ * choose a record. Confidence, trade coverage, ownership detail, blockers and
+ * other evidence remain available in Quick look and the full record.
  */
 export function OpportunityList({
   rows,
   rules,
-  coverage,
+  coverage: _coverage,
   owners,
   viewerId,
   nextAction,
@@ -47,100 +30,83 @@ export function OpportunityList({
   coverage: Map<string, TradeCoverage>;
   owners: Map<string, Owner>;
   viewerId?: string;
-  /** Stage to the sentence describing what happens next. */
   nextAction?: Record<string, string>;
-  /** What the reader may do. Without it a row offers nothing. */
   role?: string | null;
-  /** Everybody a row could be handed to. Without it, reassign is dropped. */
   members?: Owner[];
-  /**
-   * Where a row's quick look opens, if the page hosting this list has a
-   * drawer. Omitted on the pages that do not, so the control is absent rather
-   * than dead.
-   */
   peekHrefFor?: (o: OpportunitySummary) => string;
 }) {
+  void _coverage;
+
   if (rows.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+      <p className="px-3 py-8 text-center text-sm text-muted-foreground">
         Nothing here right now.
       </p>
     );
   }
+
   return (
-    <ul className="divide-y divide-border/60 overflow-hidden rounded-md border border-border">
-      {rows.map((o) => (
-        <li key={o.id}>
-          <Link
-            prefetch={false} href={`/opportunity/${o.id}`}
-            className={`block px-4 py-3 transition-colors hover:bg-surface/70 ${
-              o.human_action_required ? "border-l-2 border-gold bg-gold/[0.04]" : ""
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                {/* The exact next action, first, because it is the reason the
-                    row is in front of anybody. */}
-                <p className="eyebrow text-gold-text">
-                  {nextAction?.[o.stage] ?? o.stage.replace(/_/g, " ")}
-                </p>
-                <p className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
-                  {o.title ?? "Untitled opportunity"}
-                </p>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  <AgencyPath agency={o.agency} subAgency={o.sub_agency} />
-                </p>
+    <ul className="divide-y divide-border/50 overflow-hidden rounded-xl bg-surface">
+      {rows.map((o) => {
+        const action = nextAction?.[o.stage] ?? o.stage.replace(/_/g, " ");
+        return (
+          <li key={o.id} className={o.human_action_required ? "bg-accent/[0.035]" : ""}>
+            <Link
+              prefetch={false}
+              href={`/opportunity/${o.id}`}
+              className="block px-4 py-3.5 transition-colors hover:bg-muted/35"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-base font-medium leading-snug text-foreground">
+                    {o.title ?? "Untitled opportunity"}
+                  </p>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    <AgencyPath agency={o.agency} subAgency={o.sub_agency} />
+                  </p>
+                </div>
+                {o.score != null && <ScoreBadge score={o.score} />}
               </div>
-              <ScoreBadge score={o.score} />
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-              <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
-              <DeadlineBadge deadline={o.deadline} rules={rules} />
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <ConfidenceChip breakdown={o.score_breakdown} />
-              <CoverageChip coverage={coverage.get(o.id)} />
-              <OwnerChip owner={owners.get(o.id) ?? null} viewerId={viewerId} />
-              <BlockerChip flags={o.risk_flags} />
-            </div>
-          </Link>
-          {/*
-            The row's controls sit under the link rather than inside it. A
-            button nested in an anchor navigates as well as acting, and the
-            navigation cancels the request it just sent.
-          */}
-          <div className="flex items-center justify-end gap-2 px-4 pb-2">
-            {peekHrefFor && (
-              <a
-                href={peekHrefFor(o)}
-                className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
-              >
-                Quick look
-              </a>
-            )}
-            <RowActions
-              actions={opportunityRowActions(
-                {
-              id: o.id,
-              title: o.title,
-              stage: o.stage,
-              status: o.status,
-              // A record already asleep is offered waking rather than a second
-              // snooze, and a pursuit already called off is not offered an abort.
-              snoozedUntil: o.snoozed_until ?? null,
-              pursuitState: o.pursuit_state ?? null,
-            },
-                { role }
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                <DeadlineBadge deadline={o.deadline} rules={rules} />
+                <span className={o.human_action_required ? "font-medium text-accent" : "text-muted-foreground"}>
+                  {o.human_action_required ? "Needs you" : action}
+                </span>
+              </div>
+            </Link>
+
+            <div className="flex items-center justify-end gap-2 px-4 pb-3">
+              {peekHrefFor && (
+                <a
+                  href={peekHrefFor(o)}
+                  className="tap text-sm text-muted-foreground underline-offset-2 hover:text-accent"
+                >
+                  Quick look
+                </a>
               )}
-              members={members}
-              owner={owners.get(o.id) ?? null}
-              viewerId={viewerId}
-              recordLabel={o.title ?? "this opportunity"}
-              compact
-            />
-          </div>
-        </li>
-      ))}
+              <RowActions
+                actions={opportunityRowActions(
+                  {
+                    id: o.id,
+                    title: o.title,
+                    stage: o.stage,
+                    status: o.status,
+                    snoozedUntil: o.snoozed_until ?? null,
+                    pursuitState: o.pursuit_state ?? null,
+                  },
+                  { role }
+                )}
+                members={members}
+                owner={owners.get(o.id) ?? null}
+                viewerId={viewerId}
+                recordLabel={o.title ?? "this opportunity"}
+                compact
+              />
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
