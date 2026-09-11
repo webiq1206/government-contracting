@@ -1,0 +1,150 @@
+name: Apply page simplification
+
+on:
+  push:
+    branches: [fix/ux-simplification]
+    paths:
+      - '.github/workflows/apply-page-simplification.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ux-simplification
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Simplify key operational pages
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # My Work: one concise header and only the highest-value queue filters.
+          replace_once(
+              'app/(dash)/workbench/page.tsx',
+              '''          status={queueUnavailable ? "Queue status unavailable" : summarizeQueue(items)}
+          explanation="Everything waiting on a person, worked one at a time without leaving this screen."
+          primaryAction={
+            <Link href="/today" className="btn-ghost text-xs">
+              Back to Today
+            </Link>
+          }
+''',
+              '''          status={queueUnavailable ? "Queue status unavailable" : `${actionable.length} need you`}
+          explanation="Work the items that need you. Waiting work stays out of the way."
+'''
+          )
+          replace_once(
+              'app/(dash)/workbench/page.tsx',
+              'placeholder="Company, solicitation, or why it is here…"',
+              'placeholder="Search work…"'
+          )
+          replace_once(
+              'app/(dash)/workbench/page.tsx',
+              'QUEUE_FILTERS.filter((f) => !isCompletedFilter(f)).map((f) => {',
+              'QUEUE_FILTERS.filter((f) => f === "all" || f === "waiting_on_others" || f === "overdue").map((f) => {'
+          )
+          replace_once(
+              'app/(dash)/workbench/page.tsx',
+              '''                  {QUEUE_FILTER_LABEL[f]}
+                  <span className="num text-muted-foreground">{n}</span>
+''',
+              '''                  {f === "all" ? "Needs you" : f === "waiting_on_others" ? "Waiting" : QUEUE_FILTER_LABEL[f]}
+                  <span className="num text-muted-foreground">{n}</span>
+'''
+          )
+          replace_once(
+              'app/(dash)/workbench/page.tsx',
+              '''            })}
+          </nav>
+
+          <details className="mt-2" open={Boolean(kind || owner !== "anyone")}>''',
+              '''            })}
+            <Link
+              href="/today?due=completed_today"
+              className="inline-flex coarse:min-h-11 shrink-0 items-center rounded-full border border-border px-3 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground py-1.5"
+            >
+              Done
+            </Link>
+          </nav>
+
+          <details className="mt-2" open={Boolean(kind || owner !== "anyone")}>'''
+          )
+
+          # Opportunities: concise orientation and one compact View control on phones.
+          replace_once(
+              'app/(dash)/pipeline/page.tsx',
+              '''            : view === "lanes"
+              ? "Grouped by whose turn it is. Start with Needs you."
+              : "Full stage board. Amber cards wait on you; the rest run automatically."
+''',
+              '''            : view === "lanes"
+              ? "Start with what needs you."
+              : "Choose a view when you need more detail."
+'''
+          )
+          replace_once(
+              'app/(dash)/pipeline/page.tsx',
+              '''        <div className="flex gap-1 rounded-md border border-border p-0.5">
+''',
+              '''        <details className="relative sm:hidden">
+          <summary className="btn-secondary min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden">View</summary>
+          <div className="absolute right-0 top-12 z-30 grid min-w-40 gap-1 rounded-lg border border-border bg-background p-2 shadow-xl">
+            <Link href="/pipeline?view=lanes" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Simple</Link>
+            <Link href="/pipeline?view=list" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">List</Link>
+            <Link href="/pipeline?view=stages" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">All stages</Link>
+            <Link href="/pipeline?view=table" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Table</Link>
+          </div>
+        </details>
+        <div className="hidden gap-1 rounded-md border border-border p-0.5 sm:flex">
+'''
+          )
+
+          # Review: focused decision queue and no sticky queue chrome.
+          replace_once(
+              'app/(dash)/review/page.tsx',
+              '''          status={
+            opps.length === 0
+              ? "Nothing waiting"
+              : `${opps.length} to decide${urgent > 0 ? ` · ${urgent} dismissed within a day` : ""}`
+          }
+          explanation="Read each opportunity, then pursue or pass. If an automatic dismissal is scheduled, its deadline appears on the card."
+''',
+              '''          status={
+            opps.length === 0
+              ? "Nothing waiting"
+              : `${opps.length} decision${opps.length === 1 ? "" : "s"}${urgent > 0 ? ` · ${urgent} urgent` : ""}`
+          }
+          explanation="Review one opportunity at a time. Pursue or pass."
+'''
+          )
+          replace_once(
+              'app/(dash)/review/page.tsx',
+              'className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background px-4 py-2 dark:border-white/5"',
+              'className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background px-4 py-2 dark:border-white/5"'
+          )
+          PY
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-page-simplification.yml
+          git config user.name 'BrostCo UX Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Simplify My Work, Opportunities, and Review'
+          git push origin HEAD:fix/ux-simplification
