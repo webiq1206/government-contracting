@@ -46,7 +46,7 @@ import { agentCadence } from "@/lib/agent-cadence";
 import { RememberedView } from "@/components/remembered-view";
 import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
-import type { Opportunity } from "@/lib/types";
+import type { OpportunitySummary } from "@/lib/types";
 import { QuickViewDrawer } from "@/components/quick-view";
 import { parseQuickView } from "@/lib/domain/quick-view";
 import { opportunityQuickViewData } from "@/lib/quick-view-data";
@@ -434,13 +434,13 @@ export default async function PipelinePage(
       : Promise.resolve(new Map<string, Owner>()),
   ]);
 
-  const byStage = new Map<string, Opportunity[]>();
+  const byStage = new Map<string, OpportunitySummary[]>();
   for (const s of stages) byStage.set(s.key, []);
   for (const o of opps) {
     if (!byStage.has(o.stage)) byStage.set(o.stage, []);
     byStage.get(o.stage)!.push(o);
   }
-  const byLane = new Map<LaneKey, Opportunity[]>(LANES.map((l) => [l.key, []]));
+  const byLane = new Map<LaneKey, OpportunitySummary[]>(LANES.map((l) => [l.key, []]));
   for (const o of opps) byLane.get(laneFor(o))!.push(o);
 
   /*
@@ -862,7 +862,7 @@ function PipelineCard({
   members = [],
   peekHref,
 }: {
-  o: Opportunity;
+  o: OpportunitySummary;
   rules?: AutomationRules;
   coverage?: TradeCoverage;
   owner?: Owner | null;
@@ -880,7 +880,7 @@ function PipelineCard({
         o.human_action_required ? "focus-rail border-gold/40 bg-gold/[0.04]" : ""
       }`}
     >
-    <Link href={`/opportunity/${o.id}`} className="block">
+    <Link prefetch={false} href={`/opportunity/${o.id}`} className="block">
       {/* Gold eyebrow label for mobile list cards */}
       <p className="eyebrow mb-2 lg:hidden">{NEXT_ACTION[o.stage] ?? o.stage}</p>
       <div className="flex items-start justify-between gap-2">

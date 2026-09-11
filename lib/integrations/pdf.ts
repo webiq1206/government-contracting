@@ -41,12 +41,11 @@ export async function extractPdfText(
 ): Promise<{ text: string; pages: number }> {
   try {
     ensurePromiseWithResolvers();
-    const { extractText, getDocumentProxy } = await import("unpdf");
-    // pdf.js/unpdf reject a Node Buffer specifically, coerce to a plain Uint8Array.
-    const bytes =
-      data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
-    const pdf = await getDocumentProxy(bytes);
-    const { text, totalPages } = await extractText(pdf, { mergePages: true });
+    const { extractText } = await import("unpdf");
+    // Passing bytes lets unpdf destroy its document in finally, on success
+    // and failure. Caller-created proxies otherwise retain parser resources.
+    // Copy so PDF.js cannot transfer/detach the caller's reusable byte buffer.
+    const { text, totalPages } = await extractText(new Uint8Array(data), { mergePages: true });
     const merged = Array.isArray(text) ? text.join("\n") : text;
     return { text: normalize(merged).slice(0, maxChars), pages: totalPages };
   } catch (err) {
@@ -74,10 +73,8 @@ export async function extractPdfPages(
 ): Promise<{ pages: string[]; total: number; truncated: boolean }> {
   try {
     ensurePromiseWithResolvers();
-    const { extractText, getDocumentProxy } = await import("unpdf");
-    const bytes = data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
-    const pdf = await getDocumentProxy(bytes);
-    const { text, totalPages } = await extractText(pdf, { mergePages: false });
+    const { extractText } = await import("unpdf");
+    const { text, totalPages } = await extractText(new Uint8Array(data), { mergePages: false });
     const raw = Array.isArray(text) ? text : [String(text ?? "")];
     const pages: string[] = [];
     let used = 0;
@@ -153,10 +150,8 @@ export function looksLikePdfBytes(data: Uint8Array | Buffer): boolean {
 export async function extractPdfTitle(data: Uint8Array | Buffer): Promise<string | null> {
   try {
     ensurePromiseWithResolvers();
-    const { getMeta, getDocumentProxy } = await import("unpdf");
-    const bytes =
-      data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
-    const meta = await getMeta(await getDocumentProxy(bytes));
+    const { getMeta } = await import("unpdf");
+    const meta = await getMeta(new Uint8Array(data));
     const title = (meta?.info as { Title?: unknown } | undefined)?.Title;
     return typeof title === "string" && title.trim() ? title.trim() : null;
   } catch (err) {

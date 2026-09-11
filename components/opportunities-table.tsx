@@ -8,7 +8,7 @@ import { STAGE_LABEL } from "@/lib/domain/journey";
 import { currency, shortDate } from "@/lib/format";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { AutomationRules } from "@/lib/domain/intake";
-import type { Opportunity } from "@/lib/types";
+import type { OpportunitySummary } from "@/lib/types";
 import { describeOwner, type Owner } from "@/lib/domain/ownership";
 import { AgencyPath } from "@/components/agency-path";
 import { RowActions } from "@/components/row-actions";
@@ -40,7 +40,7 @@ export function OpportunitiesTable({
   role,
   members = [],
 }: {
-  rows: Opportunity[];
+  rows: OpportunitySummary[];
   total: number;
   filters: FilterValues;
   sort: SortState;
@@ -57,7 +57,7 @@ export function OpportunitiesTable({
   /** Everybody a row could be handed to. Without it, reassign is dropped. */
   members?: Owner[];
 }) {
-  const columns: Column<Opportunity>[] = [
+  const columns: Column<OpportunitySummary>[] = [
     {
       key: "title",
       header: "Opportunity",
@@ -65,7 +65,7 @@ export function OpportunitiesTable({
       render: (o) => (
         <>
           <Link
-            href={`/opportunity/${o.id}`}
+            prefetch={false} href={`/opportunity/${o.id}`}
             className="font-medium text-foreground hover:text-gold-text"
           >
             {o.title ?? "Untitled opportunity"}
@@ -277,7 +277,7 @@ function OpportunityTableCard({
   role,
   members,
 }: {
-  o: Opportunity;
+  o: OpportunitySummary;
   peekBase: string;
   rules?: AutomationRules;
   owners?: Map<string, Owner>;
@@ -292,7 +292,7 @@ function OpportunityTableCard({
         o.human_action_required ? "border-gold/40 bg-gold/[0.04]" : ""
       }`}
     >
-      <Link href={`/opportunity/${o.id}`} className="block p-3">
+      <Link prefetch={false} href={`/opportunity/${o.id}`} className="block p-3">
         <p className="line-clamp-2 text-sm font-medium text-foreground">
           {o.title ?? "Untitled opportunity"}
         </p>

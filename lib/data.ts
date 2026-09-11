@@ -23,7 +23,7 @@ import {
   needsAttentionOnWonWork,
   type AwardComplianceRow,
 } from "./sub-compliance-store";
-import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
+import type { ContentLibraryItem, Opportunity, OpportunitySummary, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { THREAD_KEY_SQL } from "./thread-key";
 import { DEFAULT_TIMEZONE, dayWindow, localDateOf, safeTimeZone } from "./domain/recap/day-window";
@@ -175,10 +175,15 @@ export const PIPELINE_STAGES: { key: string; label: string }[] = [
   { key: "lost", label: "Lost" },
 ];
 
-export async function pipelineOpportunities(): Promise<Opportunity[]> {
+const OPPORTUNITY_SUMMARY_COLUMNS = `id, org_id, solicitation_number, title, naics_code,
+  set_aside_type, value_estimated, value_estimated_source, deadline, posted_at,
+  location_state, agency, sub_agency, score, score_breakdown, tier, risk_flags,
+  stage, status, human_action_required, snoozed_until, pursuit_state, created_at, updated_at`;
+
+export async function pipelineOpportunities(): Promise<OpportunitySummary[]> {
   const orgId = await currentOrg();
-  return query<Opportunity>(
-    `select * from opportunities
+  return query<OpportunitySummary>(
+    `select ${OPPORTUNITY_SUMMARY_COLUMNS} from opportunities
       where org_id = $1 and stage <> 'dismissed' and status <> 'archived'
         and coalesce(pursuit_state, 'active') <> 'aborted'
       order by (deadline is null), deadline asc
@@ -438,7 +443,7 @@ export async function opportunityTableCount(f: OppTableFilters = {}): Promise<nu
 export async function opportunityTable(
   f: OppTableFilters = {},
   page?: { sort?: string; direction?: "asc" | "desc"; limit?: number; offset?: number }
-): Promise<Opportunity[]> {
+): Promise<OpportunitySummary[]> {
   const orgId = await currentOrg();
   const params: unknown[] = [orgId];
   const where = oppTableWhere(f, params);
@@ -457,8 +462,8 @@ export async function opportunityTable(
   params.push(page?.offset ?? 0);
   const offsetAt = params.length;
 
-  return query<Opportunity>(
-    `select * from opportunities
+  return query<OpportunitySummary>(
+    `select ${OPPORTUNITY_SUMMARY_COLUMNS} from opportunities
       where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
       order by ${orderBy}
       limit $${limitAt} offset $${offsetAt}`,

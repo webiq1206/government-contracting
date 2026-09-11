@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Opportunity } from "@/lib/types";
+import type { OpportunitySummary } from "@/lib/types";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { TradeCoverage } from "@/lib/data";
 import type { Owner } from "@/lib/domain/ownership";
@@ -42,7 +42,7 @@ export function OpportunityList({
   members = [],
   peekHrefFor,
 }: {
-  rows: Opportunity[];
+  rows: OpportunitySummary[];
   rules?: AutomationRules;
   coverage: Map<string, TradeCoverage>;
   owners: Map<string, Owner>;
@@ -58,7 +58,7 @@ export function OpportunityList({
    * drawer. Omitted on the pages that do not, so the control is absent rather
    * than dead.
    */
-  peekHrefFor?: (o: Opportunity) => string;
+  peekHrefFor?: (o: OpportunitySummary) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -72,7 +72,7 @@ export function OpportunityList({
       {rows.map((o) => (
         <li key={o.id}>
           <Link
-            href={`/opportunity/${o.id}`}
+            prefetch={false} href={`/opportunity/${o.id}`}
             className={`block px-4 py-3 transition-colors hover:bg-surface/70 ${
               o.human_action_required ? "border-l-2 border-gold bg-gold/[0.04]" : ""
             }`}

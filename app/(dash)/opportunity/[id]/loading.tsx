@@ -1,10 +1,11 @@
+import { LoadingRecovery } from "@/components/loading-recovery";
 import { SkeletonBar, SkeletonCard, SkeletonHeader } from "@/components/skeleton";
 
 /** Sketch of the opportunity record while it loads. */
 export default function OpportunityLoading() {
   return (
-    <div className="flex page-shell" role="status" aria-live="polite" aria-busy="true">
-      <span className="sr-only">Loading opportunity</span>
+    <div className="flex page-shell">
+      <LoadingRecovery label="Loading opportunity" />
       <SkeletonHeader />
       <div className="flex-1 overflow-hidden">
         <div className="px-5 pt-4">

@@ -21,6 +21,37 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     }
     checkpoint();
   };
+  if (device === 'desktop') await check('/agents', 'latest-navigation-replaces-stalled-link', async () => {
+    let releaseToday, releaseWorkbench;
+    const todayGate = new Promise(resolve => { releaseToday = resolve; });
+    const workbenchGate = new Promise(resolve => { releaseWorkbench = resolve; });
+    const destinations = url => ['/today', '/workbench'].includes(url.pathname);
+    await page.route(destinations, async route => {
+      if (route.request().headers().rsc === '1') {
+        await (new URL(route.request().url()).pathname === '/today' ? todayGate : workbenchGate);
+      }
+      await route.continue().catch(() => {}); // Superseded requests may be cancelled.
+    });
+    try {
+      const nav = page.getByRole('navigation', { name: 'Main', exact: true });
+      const today = nav.getByRole('link', { name: /^Today/ });
+      const workbench = nav.getByRole('link', { name: /^Workbench/ });
+      await today.click();
+      await today.getByRole('status').waitFor();
+      await workbench.click();
+      await workbench.getByRole('status').waitFor();
+      await today.getByRole('status').waitFor({ state: 'hidden' });
+      releaseWorkbench();
+      await page.waitForURL(url => url.pathname === '/workbench', { timeout: 15000 });
+      releaseToday();
+      await workbench.getByRole('status').waitFor({ state: 'hidden' });
+      await page.waitForLoadState('networkidle');
+      assert.equal(new URL(page.url()).pathname, '/workbench', 'The latest destination wins after the old request resolves');
+    } finally {
+      releaseToday(); releaseWorkbench();
+      await page.unroute(destinations);
+    }
+  });
   await check('/activity', 'activity-history-and-details', async () => {
     const search = page.getByRole('textbox', { name: 'Search messages, subjects, recipients or opportunities' });
     await search.fill('Ledger Audit Draft');
