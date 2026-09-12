@@ -6,13 +6,13 @@ import "./simplified-shell.css";
 
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 const DESCRIPTION =
-  "Brost Co is government contracting software that helps businesses find, score, pursue, and manage federal opportunities, source subcontractors, and know what needs attention each day.";
+  "BrostCo is an AI platform for government contractors that finds matching federal opportunities, coordinates subcontractor work, prepares bids, and shows teams exactly what needs attention next.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Brost Co | Government Contracting Software",
-    template: "%s | Brost Co",
+    default: "BrostCo | AI for Government Contracting",
+    template: "%s | BrostCo",
   },
   description: DESCRIPTION,
   icons: {
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "Brost Co",
-    title: "Brost Co | Government Contracting Software",
+    siteName: "BrostCo",
+    title: "BrostCo | AI for Government Contracting",
     description: DESCRIPTION,
     url: SITE_URL,
     images: [
@@ -30,13 +30,13 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Brost Co, Automated Government Procurement Software",
+        alt: "BrostCo AI platform for government contracting",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brost Co | Government Contracting Software",
+    title: "BrostCo | AI for Government Contracting",
     description: DESCRIPTION,
     images: ["/og.png"],
   },
