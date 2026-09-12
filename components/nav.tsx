@@ -17,7 +17,7 @@ import {
 } from "@/lib/navigation";
 import type { AutomationState } from "@/lib/domain/automation-health";
 
-const STATE_GLYPH: Record<AutomationState, string> = {
+const CHIP_GLYPH: Record<AutomationState, string> = {
   healthy: "●",
   degraded: "▲",
   blocked: "×",
@@ -49,7 +49,7 @@ function NavLink({
       onClick={onNavigate}
       className={`flex min-h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors ${
         active
-          ? "bg-accent text-white"
+          ? "bg-accent text-on-accent"
           : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
       }`}
     >
@@ -146,8 +146,10 @@ export function Nav({
     if (!open || !isMobile) return;
     const panel = drawerRef.current;
     const opener = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
 
     const focusable = () =>
       Array.from(
@@ -179,7 +181,8 @@ export function Nav({
 
     document.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
       document.removeEventListener("keydown", onKey);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
@@ -237,12 +240,42 @@ export function Nav({
     }
   }
 
+  const togglePending = localPaused !== automationPaused;
+  const mobileState: AutomationState = togglePending && localPaused
+    ? "paused"
+    : automationState ?? (localPaused ? "paused" : "not_configured");
+  const mobileHeadline = togglePending
+    ? localPaused
+      ? "Pausing automation"
+      : "Resuming automation"
+    : automationHeadline ??
+      (mobileState === "healthy"
+        ? "Automation healthy"
+        : mobileState === "degraded"
+          ? "Automation needs attention"
+          : mobileState === "blocked"
+            ? "Automation is blocked"
+            : mobileState === "paused"
+              ? "Automation paused"
+              : "Automation not configured");
+  const mobileDetail = togglePending
+    ? "Saving this change now."
+    : automationDetail ??
+      (mobileState === "healthy"
+        ? "Agents and scheduled work are running."
+        : mobileState === "degraded"
+          ? "Some automated work needs review."
+          : mobileState === "blocked"
+            ? "Open Automation to see what is stopping work."
+            : mobileState === "paused"
+              ? "Automated work is paused for this account."
+              : "Finish setup before automated work can run.");
+
   const sections = NAVIGATION_SECTIONS.filter(
     (section) => !section.adminOnly || isPlatformAdmin
   );
   const primary = sections.find((section) => section.key === "primary")!;
   const secondary = sections.filter((section) => section.key !== "primary");
-  const state: AutomationState = automationState ?? (localPaused ? "paused" : "not_configured");
   const initials =
     email
       .split("@")[0]
@@ -345,11 +378,14 @@ export function Nav({
           <Link
             href="/agents"
             onClick={() => setOpen(false)}
-            title={automationDetail}
-            className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground"
+            title={mobileDetail}
+            className="flex min-h-11 items-start gap-2 rounded-lg px-3 py-2 text-muted-foreground hover:bg-white/5 hover:text-foreground"
           >
-            <span aria-hidden className={STATE_TONE[state]}>{STATE_GLYPH[state]}</span>
-            <span className="min-w-0 flex-1 truncate">{automationHeadline ?? "Automation"}</span>
+            <span aria-hidden className={`mt-0.5 ${STATE_TONE[mobileState]}`}>{CHIP_GLYPH[mobileState]}</span>
+            <span className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">{mobileHeadline}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{mobileDetail}</p>
+            </span>
           </Link>
 
           {canPauseAutomation && automationPaused !== undefined && (
