@@ -145,7 +145,10 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(layout).toContain("<ShellMain");
     expect(layout).not.toContain("<DashboardTabs user={user}");
     expect(readFileSync("components/streamed-navigation.tsx", "utf8")).toContain("<Nav");
-    expect(readFileSync("components/dashboard-shell.tsx", "utf8")).toContain("todayCount={counts.today}");
+    const shell = readFileSync("components/dashboard-shell.tsx", "utf8");
+    expect(shell).toContain("queueCounts()");
+    expect(shell).toContain("automationHealth()");
+    expect(shell).toContain("automationState: health?.state");
   });
 
   it("does not load file storage just to open the Feedback page", () => {
