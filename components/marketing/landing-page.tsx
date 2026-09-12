@@ -7,6 +7,7 @@ import { ProductVideo } from "./product-video";
 import { HeroBackgroundVideo } from "./hero-background-video";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 import "./redesign.css";
+import "./homepage-v2.css";
 
 export interface LandingPageProps {
   promoActive: boolean;
