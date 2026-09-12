@@ -137,11 +137,13 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(how).toContain('"email-log": "/communications"');
   });
 
-  it("keeps the desktop sidebar on subscribed billing pages", () => {
+  it("keeps the subscribed account shell and desktop sidebar on billing pages", () => {
     const layout = readFileSync("app/(account)/layout.tsx", "utf8");
+    expect(layout).toContain("<AppViewport>");
     expect(layout).toContain("<StreamedNavigation");
     expect(layout).toContain("<DashboardNav user={user}");
-    expect(layout).toContain("<DashboardTabs user={user}");
+    expect(layout).toContain("<ShellMain");
+    expect(layout).not.toContain("<DashboardTabs user={user}");
     expect(readFileSync("components/streamed-navigation.tsx", "utf8")).toContain("<Nav");
     expect(readFileSync("components/dashboard-shell.tsx", "utf8")).toContain("todayCount={counts.today}");
   });
