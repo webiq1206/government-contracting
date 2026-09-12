@@ -30,7 +30,6 @@ import {
   parseQueueFilter,
   queueCounts,
   stateOf,
-  summarizeQueue,
   type WorkItem,
   type WorkKind,
 } from "@/lib/domain/work-queue";

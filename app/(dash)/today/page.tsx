@@ -821,8 +821,8 @@ export default async function TodayPage(
   return (
     <div className="flex page-shell bg-background text-foreground">
       <TodayLive />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-      <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
           <div className="mb-2 hidden justify-end lg:flex">
             <HelpPopover help={PAGE_HELP["today"]} />
@@ -860,7 +860,7 @@ export default async function TodayPage(
             <div className="min-w-0 flex-1 space-y-5">
               <AutomationPausedBanner state={automation} editable={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))} />
 
-              {!automation.paused && <PipelinePulse findings={pulse} compact />}
+              {!automation.paused && !health?.interrupt && <PipelinePulse findings={pulse} compact />}
 
               {data.awardCompliance.length > 0 && (
                 <Section
