@@ -410,15 +410,11 @@ export default async function WorkbenchPage(
             {QUEUE_FILTERS.filter((f) => f === "all" || f === "waiting_on_others" || f === "overdue").map((f) => {
               const active = f === bucket;
               const n =
-                f === "all"
-                  ? counts.total
-                  : f === "overdue"
-                    ? counts.overdue
-                    : f === "due_today"
-                      ? counts.dueToday
-                      : f === "remaining"
-                        ? counts.remaining
-                        : items.filter((i) => stateOf(i) === f).length;
+      f === "all"
+        ? counts.total
+        : f === "overdue"
+          ? counts.overdue
+          : items.filter((i) => stateOf(i) === f).length;
               return (
                 <Link
                   key={f}
@@ -547,7 +543,7 @@ export default async function WorkbenchPage(
                 entries={entries}
                 selectedId={selected?.key ?? null}
                 heading="Your queue"
-                summary={summarizeQueue(filteredItems)}
+                summary={`${filteredItems.length} ${filteredItems.length === 1 ? "item" : "items"}`}
                 toolbar={
                   <div className="flex flex-wrap gap-1.5">
                     <KeyHint keys="J / K" label="move" />
