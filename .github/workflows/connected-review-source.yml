@@ -27,7 +27,7 @@ jobs:
           git apply --recount docs/releases/focused-workspace-import.patch
           rm docs/releases/focused-workspace-import.patch docs/releases/focused-workspace-import.md
           git add -A
-          mkdir -p "$RUNNER_TEMP/connected-review"
+          mkdir -p "$RUNNER_TEMP/connected-review" "$RUNNER_TEMP/connected-browsers"
           git archive --format=tar.gz "$(git write-tree)" > "$RUNNER_TEMP/connected-review/source.tar.gz"
           git rev-parse HEAD > "$RUNNER_TEMP/connected-review/revision.txt"
           git write-tree > "$RUNNER_TEMP/connected-review/tree.txt"
@@ -36,11 +36,18 @@ jobs:
         run: |
           npx playwright install chromium webkit
           tar -czf "$RUNNER_TEMP/connected-review/dependencies.tar.gz" node_modules
-          tar -C "$HOME/.cache" -czf "$RUNNER_TEMP/connected-review/browsers.tar.gz" ms-playwright
+          tar -C "$HOME/.cache" -czf "$RUNNER_TEMP/connected-browsers/browsers.tar.gz" ms-playwright
           sha256sum "$RUNNER_TEMP/connected-review/"*.tar.gz > "$RUNNER_TEMP/connected-review/checksums.txt"
+          sha256sum "$RUNNER_TEMP/connected-browsers/browsers.tar.gz" > "$RUNNER_TEMP/connected-browsers/checksums.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: connected-review-source
           path: ${{ runner.temp }}/connected-review/
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: connected-review-browsers
+          path: ${{ runner.temp }}/connected-browsers/
           retention-days: 1
           if-no-files-found: error
