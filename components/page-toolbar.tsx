@@ -1,10 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-/**
- * Compact secondary chrome under PageHeader (search, filters, chips).
- * Pinned via page-shell shrink-0; keep padding tight so it does not
- * dominate the mobile viewport.
- */
+/** Search and filters belong to the page, not to a second sticky header. */
 export function PageToolbar({
   children,
   className = "",
@@ -14,14 +10,15 @@ export function PageToolbar({
 }) {
   return (
     <div
-      className={`shrink-0 border-b border-border/55 bg-background px-4 py-2 dark:border-white/10 sm:px-6 ${className}`}
+      data-page-toolbar
+      className={`page-toolbar-simple bg-background px-4 py-2 sm:px-6 ${className}`}
     >
       {children}
     </div>
   );
 }
 
-/** Horizontally scrollable chip/filter row for narrow screens. */
+/** Horizontally scrollable chips where the choices genuinely need to remain inline. */
 export function PageToolbarChips({
   children,
   className = "",

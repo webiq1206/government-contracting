@@ -6,7 +6,7 @@ import { restorePageScroll } from "./refresh-page";
 import { usePathname } from "next/navigation";
 import { recordParent } from "@/lib/navigation";
 
-/** Shared sizing for the workspace and account pages when a phone keyboard opens. */
+/** Shared application shell. The document owns vertical scrolling. */
 export function AppViewport({ children }: { children: ReactNode }) {
   const keyboard = useKeyboardViewport();
   const focusMode = Boolean(recordParent(usePathname()));
@@ -18,9 +18,15 @@ export function AppViewport({ children }: { children: ReactNode }) {
     });
     return () => cancelAnimationFrame(frame);
   }, [keyboard]);
-  return <div data-app-shell data-focus-mode={focusMode} data-keyboard-open={keyboard ? "true" : undefined}
-    className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
-    style={keyboard ? { top: keyboard.top, height: keyboard.height, bottom: "auto" } : undefined}>
-    {children}
-  </div>;
+
+  return (
+    <div
+      data-app-shell
+      data-focus-mode={focusMode}
+      data-keyboard-open={keyboard ? "true" : undefined}
+      className="flex min-h-dvh min-w-0 flex-col bg-background lg:flex-row"
+    >
+      {children}
+    </div>
+  );
 }

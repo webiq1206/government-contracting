@@ -3,18 +3,7 @@ import type { QueueCounts, QueueFilter } from "@/lib/domain/work-queue";
 import { QUEUE_FILTER_LABEL } from "@/lib/domain/work-queue";
 import type { CompletedItem, CompletedToday } from "@/lib/data";
 
-/**
- * The four numbers a person wants before they want anything else.
- *
- * "Needs you: 12" answers how much, which is the least useful of the questions
- * somebody opening this page has. How much of it is already late is what
- * decides whether this is a normal morning, and it was not on the page at all.
- *
- * Each counter is also its filter, so reading a number and acting on it is one
- * click rather than reading a number and then finding the control that matches
- * it. Completed today is the exception: it is not a filter on the queue,
- * because the queue is what is left.
- */
+/** Compact queue summary. Details belong in the work list, not in dashboard chrome. */
 export function TodayCounters({
   counts,
   done,
@@ -34,121 +23,68 @@ export function TodayCounters({
     { key: "remaining", value: counts.remaining, tone: "text-foreground" },
   ];
 
+  const itemClass = (selected: boolean) =>
+    `inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${
+      selected ? "bg-accent-soft font-medium text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+    }`;
+
   return (
-    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-      {cells.map((c) => (
+    <div className="flex flex-wrap items-center gap-1">
+      {cells.map((cell) => (
         <Link
-          key={c.key}
-          href={hrefFor(active === c.key ? "all" : c.key)}
-          aria-current={active === c.key ? "page" : undefined}
-          title={
-            c.key === "remaining"
-              ? "Not due today, including work with no date"
-              : undefined
-          }
-          className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg border bg-surface px-3 py-2 transition-colors ${
-            active === c.key
-              ? "border-gold bg-gold/10"
-              : "border-border/55 hover:border-foreground/30 dark:border-white/10"
-          }`}
+          key={cell.key}
+          href={hrefFor(active === cell.key ? "all" : cell.key)}
+          aria-current={active === cell.key ? "page" : undefined}
+          className={itemClass(active === cell.key)}
         >
-          <span className="block text-sm text-slate-600">
-            {QUEUE_FILTER_LABEL[c.key]}
-          </span>
-          <span className={`num block text-base font-semibold ${c.tone}`}>{c.value}</span>
+          <span>{cell.key === "remaining" ? "Later" : QUEUE_FILTER_LABEL[cell.key]}</span>
+          <span className={`num font-semibold ${cell.tone}`}>{cell.value}</span>
         </Link>
       ))}
-
-      {/*
-        * Not a filter. The queue is what is left, so filtering it to "done"
-        * would show nothing and read as a broken control. It links to the
-        * section at the foot of the page instead.
-        */}
       <Link
         href={completedHref}
         aria-current={active === "completed_today" ? "page" : undefined}
-        className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg border bg-surface px-3 py-2 transition-colors ${
-          active === "completed_today"
-            ? "border-gold bg-gold/10"
-            : "border-border/55 hover:border-foreground/30 dark:border-white/10"
-        }`}
+        className={itemClass(active === "completed_today")}
       >
-          <span className="block text-sm text-slate-600">
-          Completed today
-        </span>
-        <span className="num block text-base font-semibold text-pursue">{done.total}</span>
-        <span className="hidden text-xs text-muted-foreground 2xl:inline">
-          <span className="num">{done.found}</span> found
-          <span aria-hidden className="mx-0.5">
-            ·
-          </span>
-          <span className="num">{done.emailsSent}</span> emails
-        </span>
+        <span>Done</span>
+        <span className="num font-semibold text-pursue">{done.total}</span>
       </Link>
     </div>
   );
 }
 
-/**
- * What got finished, at the foot of the page and quieter than the queue.
- *
- * Counted from what the work leaves behind rather than from the queue, so an
- * account with nothing to do and an account that has done everything do not
- * read the same. Named parts rather than one number, because "6" tells you
- * nothing and "3 calls, 2 quotes, a bid submitted" is a day.
- */
-/**
- * What was finished today, as records rather than as a total.
- *
- * The counter answers "how much"; this answers "what", which is the question
- * somebody actually has at five o'clock. A count of six and a list of the six
- * are different objects, and only one of them can be checked against memory.
- *
- * Quieter than the queue on purpose. Completed work is context, not something
- * to act on, and the brief asks for finished work to be de-emphasised without
- * being hidden.
- */
 export function CompletedList({ items, timezone }: { items: CompletedItem[] | null; timezone: string }) {
   if (items == null) {
-    /*
-     * The read failed. Not an empty list: "nothing finished today" and "we
-     * could not find out" are different days, and printing the first when the
-     * second happened is the failure this product is built to avoid.
-     */
     return (
-      <section className="card p-6 text-center">
+      <section className="rounded-xl bg-surface p-6 text-center">
         <p className="text-sm text-foreground">Could not load what was finished today.</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          The work still happened; this list is what failed to load. Reload to try again.
+          The work still happened. Reload to try this list again.
         </p>
       </section>
     );
   }
   if (items.length === 0) {
     return (
-      <section className="card p-6 text-center">
+      <section className="rounded-xl bg-surface p-6 text-center">
         <p className="text-sm text-foreground">Nothing finished yet today.</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Bids found, emails sent, calls, quotes, submitted bids, decisions and
-          compliance items all land here.
-        </p>
       </section>
     );
   }
   return (
-    <section className="card p-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-        <h2 className="font-display text-lg font-semibold text-foreground">Finished today</h2>
+    <section className="overflow-hidden rounded-xl bg-surface">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 sm:px-5">
+        <h2 className="text-base font-semibold text-foreground">Finished today</h2>
         <p className="text-xs text-muted-foreground">
-          {items.length} {items.length === 1 ? "item" : "items"}, newest first
+          {items.length} {items.length === 1 ? "item" : "items"}
         </p>
       </div>
-      <ul className="divide-y divide-border/60">
+      <ul className="divide-y divide-border/50">
         {items.map((item) => (
           <li key={item.key}>
             <Link
               href={item.href}
-              className="flex min-h-11 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-surface sm:px-5"
+              className="flex min-h-11 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-muted/35 sm:px-5"
             >
               <span className="text-sm text-foreground">{item.title}</span>
               <span className="min-w-0 truncate text-xs text-muted-foreground">{item.context}</span>
@@ -173,27 +109,18 @@ export function CompletedTodayPanel({ done, timezone }: { done: CompletedToday; 
     done.emailsSent > 0 && `${done.emailsSent} email${done.emailsSent === 1 ? "" : "s"} sent`,
     done.calls > 0 && `${done.calls} call${done.calls === 1 ? "" : "s"} placed`,
     done.quotes > 0 && `${done.quotes} quote${done.quotes === 1 ? "" : "s"} entered`,
-    done.bidsSubmitted > 0 &&
-      `${done.bidsSubmitted} bid${done.bidsSubmitted === 1 ? "" : "s"} submitted`,
+    done.bidsSubmitted > 0 && `${done.bidsSubmitted} bid${done.bidsSubmitted === 1 ? "" : "s"} submitted`,
     done.decisions > 0 && `${done.decisions} decision${done.decisions === 1 ? "" : "s"} recorded`,
-    done.complianceResolved > 0 &&
-      `${done.complianceResolved} compliance item${done.complianceResolved === 1 ? "" : "s"} resolved`,
+    done.complianceResolved > 0 && `${done.complianceResolved} compliance item${done.complianceResolved === 1 ? "" : "s"} resolved`,
   ].filter(Boolean) as string[];
 
   return (
-    <section id="completed" className="scroll-mt-6 border-t border-border/55 pt-4 dark:border-white/10">
-      <h2 className="text-xs uppercase tracking-wide text-slate-500">Completed today</h2>
-      {parts.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-500">
-          Nothing finished yet today. Bids found, emails sent, calls, quotes and
-          submitted bids land here.
-        </p>
-      ) : (
-        <p className="mt-1 text-sm text-slate-600">{parts.join(" · ")}.</p>
-      )}
-      <p className="mt-1 text-xs text-slate-500">
-        Counted in your account timezone: {timezone}.
+    <section id="completed" className="pt-3">
+      <h2 className="text-sm font-semibold text-foreground">Completed today</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {parts.length === 0 ? "Nothing finished yet today." : `${parts.join(" · ")}.`}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">{timezone}</p>
     </section>
   );
 }

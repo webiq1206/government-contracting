@@ -10,17 +10,7 @@ import {
   type QueueFilter,
 } from "@/lib/domain/work-queue";
 
-/**
- * Search and filters over the queue.
- *
- * The audit asks for them, and the reason is scale: at a dozen items the queue
- * is a list you read, and at eighty it is a haystack. Filtering by kind is how
- * somebody who has half an hour and a phone works only the calls.
- *
- * Server-driven through the URL rather than client state, so a filtered queue
- * is a link, the back button works, and there is one implementation of what
- * "overdue calls" means rather than one on the server and one in the browser.
- */
+/** Advanced queue controls stay available without pushing the work below the fold. */
 export function QueueFilters({
   q,
   bucket,
@@ -35,105 +25,94 @@ export function QueueFilters({
   bucket: QueueFilter;
   kind: WorkKind | null;
   kindCounts: Record<WorkKind, number>;
-  /** Whose work is being shown. See lib/domain/ownership. */
   owner?: OwnerFilter;
   ownerHrefFor?: (o: OwnerFilter) => string;
   hrefFor: (opts: { kind?: WorkKind | null }) => string;
   clearHref: string;
 }) {
   const kinds = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).filter(
-    (k) => kindCounts[k] > 0 || kind === k
+    (key) => kindCounts[key] > 0 || kind === key
   );
+  const active = Boolean(q || bucket !== "all" || kind || owner !== "anyone");
 
-  /*
-   * Completed work is a different list, so it gets different controls.
-   *
-   * The search box and the kind chips are cuts of the queue, and the queue is
-   * what is left. Leaving them on screen over a list of finished work would
-   * offer filters that either do nothing or, worse, appear to return no
-   * matches. One sentence and the way back is the honest version.
-   */
   if (bucket === "completed_today") {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <p className="text-sm text-foreground">What you finished today</p>
-        <Link href={clearHref} className="tap text-xs text-slate-500 hover:text-accent">
-          Back to the queue
+        <p className="text-sm text-foreground">Finished today</p>
+        <Link href={clearHref} className="tap text-sm text-muted-foreground hover:text-accent">
+          Back to work
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-      <form method="get" action="/today" className="search-row min-w-0">
-        {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
-        {kind && <input type="hidden" name="kind" value={kind} />}
-        {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="Search the queue…"
-          aria-label="Search the work queue"
-          className="input min-w-0 flex-1 text-sm"
-        />
-        <button type="submit" className="btn-ghost shrink-0 text-sm">
-          Search
-        </button>
-        {(q || bucket !== "all" || kind) && (
-          <Link href={clearHref} className="tap text-xs text-slate-500 hover:text-accent">
-            Clear
-          </Link>
+    <details className="rounded-lg bg-surface/50 px-3" open={active || undefined}>
+      <summary className="inline-flex min-h-11 cursor-pointer list-none items-center text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+        Search & filters{active ? " · Active" : ""}
+      </summary>
+      <div className="space-y-3 pb-3">
+        <form method="get" action="/today" className="search-row min-w-0">
+          {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
+          {kind && <input type="hidden" name="kind" value={kind} />}
+          {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="Search work…"
+            aria-label="Search the work queue"
+            className="input min-w-0 flex-1 text-sm"
+          />
+          <button type="submit" className="btn-secondary shrink-0 text-sm">
+            Search
+          </button>
+          {active && (
+            <Link href={clearHref} className="tap text-sm text-muted-foreground hover:text-accent">
+              Clear
+            </Link>
+          )}
+        </form>
+
+        {ownerHrefFor && (
+          <nav aria-label="Filter by owner" className="chip-row">
+            {OWNER_FILTERS.map((item) => (
+              <Link
+                key={item}
+                href={ownerHrefFor(item)}
+                aria-current={owner === item ? "page" : undefined}
+                className={chip(owner === item)}
+              >
+                {OWNER_FILTER_LABEL[item]}
+              </Link>
+            ))}
+          </nav>
         )}
-      </form>
 
-      <details className="queue-filter-disclosure rounded-xl border border-border/60 bg-surface px-3" open={Boolean(kind || owner !== "anyone")}>
-        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Filters{kind || owner !== "anyone" ? " · Active" : ""}</summary>
-      {/*
-        Whose work. First, above the kind chips, because on a team it is the
-        cut somebody applies before any other: "what is on me" comes before
-        "which of it is calls".
-      */}
-      {ownerHrefFor && (
-        <nav aria-label="Filter by owner" className="chip-row">
-          {OWNER_FILTERS.map((o) => (
+        {kinds.length > 1 && (
+          <nav aria-label="Filter by kind of work" className="chip-row">
             <Link
-              key={o}
-              href={ownerHrefFor(o)}
-              aria-current={owner === o ? "page" : undefined}
-              className={chip(owner === o)}
+              href={hrefFor({ kind: null })}
+              aria-current={kind == null ? "page" : undefined}
+              className={chip(kind == null)}
             >
-              {OWNER_FILTER_LABEL[o]}
+              All kinds
             </Link>
-          ))}
-        </nav>
-      )}
-
-      {kinds.length > 1 && (
-        <nav aria-label="Filter by kind of work" className="chip-row">
-          <Link
-            href={hrefFor({ kind: null })}
-            aria-current={kind == null ? "page" : undefined}
-            className={chip(kind == null)}
-          >
-            All kinds
-          </Link>
-          {kinds.map((k) => (
-            <Link
-              key={k}
-              href={hrefFor({ kind: kind === k ? null : k })}
-              aria-current={kind === k ? "page" : undefined}
-              className={chip(kind === k)}
-            >
-              {KIND_FILTER_LABEL[k]}
-              <span className="num text-muted-foreground">{kindCounts[k]}</span>
-            </Link>
-          ))}
-        </nav>
-      )}
-      </details>
-    </div>
+            {kinds.map((key) => (
+              <Link
+                key={key}
+                href={hrefFor({ kind: kind === key ? null : key })}
+                aria-current={kind === key ? "page" : undefined}
+                className={chip(kind === key)}
+              >
+                {KIND_FILTER_LABEL[key]}
+                <span className="num text-muted-foreground">{kindCounts[key]}</span>
+              </Link>
+            ))}
+          </nav>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -141,6 +120,6 @@ function chip(active: boolean): string {
   const base =
     "inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5";
   return active
-    ? `${base} border-gold bg-gold/15 text-foreground`
+    ? `${base} border-accent bg-accent-soft text-foreground`
     : `${base} border-border text-foreground hover:border-foreground/30`;
 }

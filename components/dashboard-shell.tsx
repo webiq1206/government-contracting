@@ -2,25 +2,22 @@ import { can } from "@/lib/domain/roles";
 import { requestCache as cache } from "@/lib/request-cache";
 import type { SessionUser } from "@/lib/auth";
 import { NavigationUpdate } from "@/components/streamed-navigation";
-import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { getAutomationState } from "@/lib/app-settings";
 import { queueCounts } from "@/lib/data";
 import { automationHealth } from "@/lib/automation-status";
-import { inboxNeedsReplyCount } from "@/lib/conversations";
 import { accessLevel, entitlementOf, trialDaysLeft } from "@/lib/billing/entitlements";
 import { isPlatformAdmin } from "@/lib/platform-admin";
 import { TrialBanner } from "@/components/trial-banner";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
 import { ShellDataWarning } from "@/components/shell-data-warning";
 
-// Request-local sharing: these three independently streamed regions must not
-// repeat the same queries. Nothing here gates page content or authentication.
+// Request-local sharing: navigation and account notices read these facts once.
 const loadShellData = cache(async (user: SessionUser) => {
   const access = accessLevel(entitlementOf(user));
   const shellWarnings: string[] = [];
-  const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
+  const [counts, health, automation, quotas] = await Promise.all([
     queueCounts().catch(() => {
-      shellWarnings.push("Navigation task counts are unknown, not zero.");
+      shellWarnings.push("Navigation task counts are unavailable.");
       return { review: 0, callQueue: 0, today: 0 };
     }),
     automationHealth().catch(() => {
@@ -31,22 +28,14 @@ const loadShellData = cache(async (user: SessionUser) => {
       shellWarnings.push("The account pause-switch state is unavailable.");
       return null;
     }),
-    // Only a trial has meters to show; a paid org pays for none of this work.
-    access === "trial" ? allQuotaStates(user.organizationId!).catch(() => {
-      shellWarnings.push("Trial usage meters are unavailable.");
-      return [];
-    }) : [],
-    /*
-     * Zero on failure rather than a badge that lies upward. An inbox badge
-     * that over-counts sends somebody to a page with nothing on it; one that
-     * under-counts costs them the trip they were going to make anyway.
-     */
-    inboxNeedsReplyCount().catch(() => {
-      shellWarnings.push("The inbox badge is unknown, not zero.");
-      return 0;
-    }),
+    access === "trial"
+      ? allQuotaStates(user.organizationId!).catch(() => {
+          shellWarnings.push("Trial usage meters are unavailable.");
+          return [];
+        })
+      : [],
   ]);
-  return { counts, health, automation, quotas, inboxWaiting, shellWarnings };
+  return { counts, health, automation, quotas, shellWarnings };
 });
 
 export async function DashboardNav({ user }: { user: SessionUser }) {
@@ -65,10 +54,4 @@ export async function DashboardNotices({ user }: { user: SessionUser }) {
       <TrialBanner daysLeft={trialDaysLeft(entitlementOf(user))} quotas={quotas} />}
     <ShellDataWarning items={shellWarnings} />
   </>;
-}
-
-export async function DashboardTabs({ user }: { user: SessionUser }) {
-  const { counts, inboxWaiting } = await loadShellData(user);
-  return <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue}
-    todayCount={counts.today} inboxCount={inboxWaiting} />;
 }

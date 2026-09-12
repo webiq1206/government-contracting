@@ -502,8 +502,8 @@ export default async function PipelinePage(
             ? (focusBlurb ??
               `Only opportunities at the ${focusLabel.toLowerCase()} stage.`)
             : view === "lanes"
-              ? "Grouped by whose turn it is. Start with Needs you."
-              : "Full stage board. Amber cards wait on you; the rest run automatically."
+              ? "Start with what needs you."
+              : "Choose a view when you need more detail."
         }
         primaryAction={
           <>
@@ -512,7 +512,16 @@ export default async function PipelinePage(
             Show all ({allOpps.length})
           </Link>
         )}
-        <div className="flex gap-1 rounded-md border border-border p-0.5">
+        <details className="relative sm:hidden">
+          <summary className="btn-secondary min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden">View</summary>
+          <div className="absolute right-0 top-12 z-30 grid min-w-40 gap-1 rounded-lg border border-border bg-background p-2 shadow-xl">
+            <Link href="/pipeline?view=lanes" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Simple</Link>
+            <Link href="/pipeline?view=list" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">List</Link>
+            <Link href="/pipeline?view=stages" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">All stages</Link>
+            <Link href="/pipeline?view=table" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Table</Link>
+          </div>
+        </details>
+        <div className="hidden gap-1 rounded-md border border-border p-0.5 sm:flex">
           {/*
             * Explicit rather than the bare path: this page now puts back the
             * view you left, so a link to /pipeline would be restored to

@@ -200,23 +200,14 @@ export default async function CallQueuePage(
             ? "Calling is off"
             : cards.length === 0
               ? "No calls waiting"
-              : [
-                  `${counts.remaining} to make`,
-                  counts.urgent > 0 ? `${counts.urgent} on a bid due inside two days` : null,
-                  counts.badHour > 0 ? `${counts.badHour} outside your calling hours there` : null,
-                  counts.attemptsSpent > 0
-                    ? `${counts.attemptsSpent} past the attempt limit`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
+              : `${counts.remaining} to make${counts.urgent > 0 ? ` · ${counts.urgent} urgent` : ""}`
         }
         explanation={
           !callsEnabled
             ? "This account runs on email only, so nothing is queued here and no opportunity is waiting on a call."
             : focusTitle
-              ? `Just the subs for ${focusTitle}, one card per trade. Open a card to start the guided call.`
-              : "Soonest deadline first. Select several to skip or snooze together, or open a card to start the guided call."
+              ? `Calls for ${focusTitle}.`
+              : "Open the next call and work through the queue."
         }
         primaryAction={
           focusId ? (

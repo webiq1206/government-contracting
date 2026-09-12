@@ -1,7 +1,7 @@
 import { AppViewport } from "@/components/app-viewport";
 import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { StreamedNavigation } from "@/components/streamed-navigation";
-import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
+import { DashboardNav, DashboardNotices } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
@@ -16,17 +16,7 @@ import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
 import { isPlatformAdmin } from "@/lib/platform-admin";
 import { SessionLoadFailure } from "@/components/session-load-failure";
 
-/**
- * Authenticated but not necessarily subscribed. Used for Billing so checkout
- * failures cannot loop through the dash subscription gate.
- *
- * Header behaviour:
- *  - Subscribed:   The same sidebar and tab bar as the rest of the product.
- *                  Billing, Notifications, and Your account used to drop it,
- *                  so a working account lost Today, search, and automation
- *                  health the moment they opened a Settings page.
- *  - Unsubscribed: Standard light checkout header with "Complete checkout" CTA.
- */
+/** Authenticated but not necessarily subscribed. Billing must remain reachable after checkout failures. */
 export const dynamic = "force-dynamic";
 
 export default async function AccountLayout({
@@ -42,14 +32,10 @@ export default async function AccountLayout({
     }
   );
   if (!auth.ok) return <SessionLoadFailure />;
-  // Only a successful null means this browser is signed out.
   const user = auth.user;
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
 
-  // Comped and trialling accounts get the full in-app header here, not the
-  // checkout header: they are not mid-purchase and telling them to "complete
-  // checkout" would be wrong.
   const entitlement = entitlementOf(user);
   const subscribed = hasAccess(entitlement);
 
@@ -68,7 +54,7 @@ export default async function AccountLayout({
               </Link>
             </div>
           </header>
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <main className="flex min-h-0 flex-1 flex-col">
             {user.impersonatedBy && (
               <ImpersonationBanner
                 adminEmail={user.impersonatedBy}
@@ -89,13 +75,13 @@ export default async function AccountLayout({
     <ToastProvider><MenuIsolationProvider>
       <AppViewport>
         <Suspense fallback={null}>
-        <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
-          automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
-          isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
-          <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
-        </StreamedNavigation>
+          <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
+            automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
+            isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
+            <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
+          </StreamedNavigation>
         </Suspense>
-        <ShellMain className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <ShellMain className="page-main min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner
               adminEmail={user.impersonatedBy}
@@ -111,7 +97,6 @@ export default async function AccountLayout({
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>
-      <Suspense fallback={null}><DashboardTabs user={user} /></Suspense>
     </MenuIsolationProvider></ToastProvider>
   );
 }

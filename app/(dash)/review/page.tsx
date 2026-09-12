@@ -133,9 +133,9 @@ export default async function ReviewPage(
           status={
             opps.length === 0
               ? "Nothing waiting"
-              : `${opps.length} to decide${urgent > 0 ? ` · ${urgent} dismissed within a day` : ""}`
+              : `${opps.length} decision${opps.length === 1 ? "" : "s"}${urgent > 0 ? ` · ${urgent} urgent` : ""}`
           }
-          explanation="Read each opportunity, then pursue or pass. If an automatic dismissal is scheduled, its deadline appears on the card."
+          explanation="Review one opportunity at a time. Pursue or pass."
         />
       </div>
 
@@ -179,7 +179,7 @@ export default async function ReviewPage(
             queueWidth="lg:w-[420px]"
             queue={
               <div data-guide-target="review-list">
-                <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background px-4 py-2 dark:border-white/5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background px-4 py-2 dark:border-white/5">
                   <div className="flex flex-wrap gap-1.5">
                     <KeyHint keys="J / K" label="move" />
                     <KeyHint keys="⌘ ↵" label="pursue and next" />

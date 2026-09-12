@@ -30,7 +30,6 @@ import {
   parseQueueFilter,
   queueCounts,
   stateOf,
-  summarizeQueue,
   type WorkItem,
   type WorkKind,
 } from "@/lib/domain/work-queue";
@@ -341,13 +340,8 @@ export default async function WorkbenchPage(
         <PageFrame
           help={PAGE_HELP["workbench"]}
           title="My Work"
-          status={queueUnavailable ? "Queue status unavailable" : summarizeQueue(items)}
-          explanation="Everything waiting on a person, worked one at a time without leaving this screen."
-          primaryAction={
-            <Link href="/today" className="btn-ghost text-xs">
-              Back to Today
-            </Link>
-          }
+          status={queueUnavailable ? "Queue status unavailable" : `${actionable.length} need you`}
+          explanation="Work the items that need you. Waiting work stays out of the way."
         />
 
         {(missing || askedCompletedToday) && (
@@ -391,7 +385,7 @@ export default async function WorkbenchPage(
               type="search"
               name="q"
               defaultValue={q}
-              placeholder="Company, solicitation, or why it is here…"
+              placeholder="Search work…"
               className="input text-sm"
             />
             <button type="submit" className="btn-ghost text-sm">
@@ -413,18 +407,14 @@ export default async function WorkbenchPage(
             aria-label="Queue views"
             className="chip-row mt-2"
           >
-            {QUEUE_FILTERS.filter((f) => !isCompletedFilter(f)).map((f) => {
+            {QUEUE_FILTERS.filter((f) => f === "all" || f === "waiting_on_others" || f === "overdue").map((f) => {
               const active = f === bucket;
               const n =
-                f === "all"
-                  ? counts.total
-                  : f === "overdue"
-                    ? counts.overdue
-                    : f === "due_today"
-                      ? counts.dueToday
-                      : f === "remaining"
-                        ? counts.remaining
-                        : items.filter((i) => stateOf(i) === f).length;
+      f === "all"
+        ? counts.total
+        : f === "overdue"
+          ? counts.overdue
+          : items.filter((i) => stateOf(i) === f).length;
               return (
                 <Link
                   key={f}
@@ -438,11 +428,17 @@ export default async function WorkbenchPage(
                         : "border-border text-foreground hover:border-foreground/30"
                   }`}
                 >
-                  {QUEUE_FILTER_LABEL[f]}
+                  {f === "all" ? "Needs you" : f === "waiting_on_others" ? "Waiting" : QUEUE_FILTER_LABEL[f]}
                   <span className="num text-muted-foreground">{n}</span>
                 </Link>
               );
             })}
+            <Link
+              href="/today?due=completed_today"
+              className="inline-flex coarse:min-h-11 shrink-0 items-center rounded-full border border-border px-3 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground py-1.5"
+            >
+              Done
+            </Link>
           </nav>
 
           <details className="mt-2" open={Boolean(kind || owner !== "anyone")}><summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium">More filters{kind || owner !== "anyone" ? " · Active" : ""}</summary>
@@ -547,7 +543,7 @@ export default async function WorkbenchPage(
                 entries={entries}
                 selectedId={selected?.key ?? null}
                 heading="Your queue"
-                summary={summarizeQueue(filteredItems)}
+                summary={`${filteredItems.length} ${filteredItems.length === 1 ? "item" : "items"}`}
                 toolbar={
                   <div className="flex flex-wrap gap-1.5">
                     <KeyHint keys="J / K" label="move" />
