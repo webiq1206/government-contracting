@@ -1,26 +1,50 @@
 /*
  * BrostCo operational simplification layer.
- * This intentionally changes presentation only. Existing routes, actions,
- * permissions, and workflow components keep their behavior.
+ * Presentation only. Existing routes, actions, permissions, and workflow
+ * behavior stay intact.
  */
+
+/* The authenticated shell used to force both scroll roots to overflow:hidden.
+   That made the app depend on nested page scrollers and broke the whole mobile
+   dashboard as soon as those panes moved back into document flow. Restore the
+   browser document as the vertical scroll owner. Inline overflow locks from an
+   open drawer/dialog still take precedence and are restored by the component. */
+html:has([data-app-shell]),
+html:has([data-app-shell]) body {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+}
+
+[data-app-shell] {
+  min-height: 100dvh;
+  overflow: visible;
+}
 
 [data-app-shell] .page-main {
   overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow-y: visible !important;
+  min-height: auto !important;
   padding-bottom: 0 !important;
   overscroll-behavior: auto;
 }
 
 [data-app-shell] .page-shell {
-  min-height: auto;
+  min-height: auto !important;
+  overflow: visible !important;
 }
 
 [data-app-shell] .mobile-tab-clearance {
   margin-bottom: 0 !important;
 }
 
-/* Operational headers should orient, not occupy the first half of a phone. */
+/* Operational headers orient the user without occupying the first half of a
+   phone. They remain in normal flow, never sticky. */
 [data-app-shell] .product-page-header {
+  position: static !important;
   background: transparent;
   border-bottom: 0;
   padding: 0.875rem 1rem 0.625rem;
@@ -44,9 +68,10 @@
   overflow: hidden;
 }
 
-/* Search and filters stay part of page flow instead of reading as another bar. */
+/* Search/filter chrome stays in page flow instead of becoming a second header. */
 [data-app-shell] .page-toolbar-simple,
 [data-app-shell] [data-page-toolbar] {
+  position: static !important;
   background: transparent;
   border-bottom: 0;
 }
@@ -59,16 +84,6 @@
 }
 
 @media (max-width: 1023px) {
-  [data-app-shell] .page-main {
-    overflow: visible !important;
-    min-height: auto !important;
-  }
-
-  [data-app-shell] .page-shell {
-    min-height: auto !important;
-    overflow: visible !important;
-  }
-
   [data-app-shell] .product-page-header {
     padding-inline: 1rem;
   }
@@ -82,11 +97,20 @@
     padding-top: 0;
   }
 
-  /* The document owns vertical scroll on phones. Existing contained panes can
-     still scroll horizontally where their workflow genuinely needs it. */
+  /* Nested workflow containers must not become vertical scroll traps on a
+     phone. Horizontal rails remain horizontally scrollable where required. */
   [data-app-shell] .scroll-thin.overflow-y-auto:not(.drawer-scroll),
   [data-app-shell] .scroll-thin.overflow-auto:not(.drawer-scroll) {
     max-height: none;
+    overflow-y: visible !important;
+  }
+
+  [data-app-shell] .workspace-queue,
+  [data-app-shell] .workspace-detail,
+  [data-app-shell] .workspace-context,
+  [data-app-shell] .workspace-footer {
+    position: static !important;
+    max-height: none !important;
   }
 }
 
