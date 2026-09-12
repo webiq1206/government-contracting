@@ -105,6 +105,15 @@ html:has([data-app-shell]) body {
     overflow-y: visible !important;
   }
 
+  /* The fixed navigation drawer is the exception. Its own contents must remain
+     independently scrollable while the document behind it is locked. */
+  [data-app-shell] .app-navigation .scroll-thin.overflow-y-auto {
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   [data-app-shell] .workspace-queue,
   [data-app-shell] .workspace-detail,
   [data-app-shell] .workspace-context,
