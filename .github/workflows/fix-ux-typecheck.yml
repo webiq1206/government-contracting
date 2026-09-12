@@ -20,33 +20,26 @@ jobs:
         shell: bash
         run: |
           python3 <<'PY'
+          import re
           from pathlib import Path
           p = Path('app/(dash)/workbench/page.tsx')
           text = p.read_text()
-          old = '''              const n =
-                f === "all"
-                  ? counts.total
-                  : f === "overdue"
-                    ? counts.overdue
-                    : f === "due_today"
-                      ? counts.dueToday
-                      : f === "remaining"
-                        ? counts.remaining
-                        : items.filter((i) => stateOf(i) === f).length;'''
-          new = '''              const n =
+          pattern = re.compile(r'''\s*const n =\n\s*f === "all"\n\s*\? counts\.total\n\s*: f === "overdue"\n\s*\? counts\.overdue\n\s*: f === "due_today"\n\s*\? counts\.dueToday\n\s*: f === "remaining"\n\s*\? counts\.remaining\n\s*: items\.filter\(\(i\) => stateOf\(i\) === f\)\.length;''')
+          match = pattern.search(text)
+          if not match:
+              raise SystemExit('queue count block not found')
+          indent = '              '
+          new = '''\n              const n =
                 f === "all"
                   ? counts.total
                   : f === "overdue"
                     ? counts.overdue
                     : items.filter((i) => stateOf(i) === f).length;'''
-          if old not in text:
-              raise SystemExit('queue count block not found')
-          text = text.replace(old, new, 1)
+          text = text[:match.start()] + new + text[match.end():]
           old2 = 'summary={summarizeQueue(filteredItems)}'
-          new2 = 'summary={`${filteredItems.length} ${filteredItems.length === 1 ? "item" : "items"}`}'
           if old2 not in text:
               raise SystemExit('queue summary call not found')
-          text = text.replace(old2, new2, 1)
+          text = text.replace(old2, 'summary={`${filteredItems.length} ${filteredItems.length === 1 ? "item" : "items"}`}', 1)
           p.write_text(text)
           PY
       - name: Commit fix
