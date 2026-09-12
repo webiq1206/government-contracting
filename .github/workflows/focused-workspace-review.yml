@@ -1,0 +1,27 @@
+name: Focused workspace review source
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/focused-workspace-review.yml'
+permissions:
+  contents: read
+jobs:
+  source:
+    if: github.head_ref == 'redesign/focused-workspace'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked review source only
+        run: |
+          mkdir -p "$RUNNER_TEMP/focused-review"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/focused-review/brostco-source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/focused-review/revision.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: focused-workspace-source
+          path: ${{ runner.temp }}/focused-review/
+          retention-days: 1
+          if-no-files-found: error
