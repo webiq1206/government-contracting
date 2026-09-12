@@ -1,0 +1,242 @@
+.bco-site {
+  background: #f4f6f6;
+  color: #111a1f;
+  overflow-x: clip;
+}
+
+.bco-container { max-width: 1240px; }
+.bco-nav { position: sticky; top: 0; background: rgba(11,23,32,.96); backdrop-filter: blur(16px); }
+.bco-nav-inner { min-height: 72px; }
+.bco-brand-link { display: inline-flex; align-items: center; min-height: 44px; }
+.bco-desktop-nav a, .bco-login { color: #c7d2d4; }
+.bco-desktop-nav a:hover, .bco-login:hover { color: #fff; }
+
+.bco-hero-shell {
+  position: relative;
+  min-height: min(780px, 86vh);
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  background: #0b1720;
+}
+.bco-hero-media,
+.bco-hero-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 60% center;
+}
+.bco-hero-poster {
+  background: url('/demos/today-desktop.jpg') center/cover no-repeat;
+}
+.bco-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(11,23,32,.98) 0%, rgba(11,23,32,.92) 38%, rgba(11,23,32,.55) 70%, rgba(11,23,32,.72) 100%),
+    linear-gradient(0deg, rgba(11,23,32,.64), transparent 55%);
+}
+.bco-hero {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding-top: 112px;
+  padding-bottom: 112px;
+}
+.bco-hero-copy { max-width: 760px; }
+.bco-hero h1 {
+  margin: 0;
+  max-width: 800px;
+  color: #fff;
+  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  font-size: clamp(48px, 6.6vw, 84px);
+  line-height: .98;
+  letter-spacing: -.055em;
+  font-weight: 700;
+}
+.bco-kicker-light { color: #8fd3d4; }
+.bco-lead-light {
+  margin-top: 28px;
+  max-width: 690px;
+  color: #d7e1e2;
+  font-size: clamp(18px, 2vw, 22px);
+  line-height: 1.55;
+}
+.bco-button-hero { background: #0e7d83; min-height: 52px; padding-inline: 24px; }
+.bco-button-glass {
+  min-height: 52px;
+  background: rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.26);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+.bco-button-glass:hover { background: rgba(255,255,255,.16); }
+.bco-caption-light { color: #b3c4c6; }
+
+.bco-proof { background: #fff; }
+.bco-proof-grid { min-height: 78px; padding-top: 18px !important; padding-bottom: 18px !important; }
+.bco-proof-grid span { color: #68777d; }
+.bco-proof-grid strong { font-size: 13px; color: #26363d; }
+
+.bco-section { padding-top: 112px; padding-bottom: 112px; }
+.bco-section-heading-wide { max-width: 850px; }
+.bco-section-heading-wide h2,
+.bco-tour-heading h2,
+.bco-control-copy h2,
+.bco-pricing h2,
+.bco-faq h2,
+.bco-final h2 {
+  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  letter-spacing: -.04em;
+  font-weight: 700;
+}
+.bco-section-heading-wide h2 { font-size: clamp(38px, 5vw, 62px); line-height: 1.04; }
+.bco-section-heading-wide > p:last-child { max-width: 740px; font-size: 18px; line-height: 1.65; }
+
+.bco-ai { background: #fff; }
+.bco-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 44px;
+}
+.bco-capability-card {
+  display: flex;
+  gap: 14px;
+  min-height: 190px;
+  padding: 26px;
+  border: 1px solid #d8e0de;
+  border-radius: 16px;
+  background: #f8fafa;
+}
+.bco-capability-card > span {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e5f3f1;
+  color: #0e6f75;
+  font-weight: 700;
+}
+.bco-capability-card h3 { margin: 2px 0 10px; font-size: 18px; font-weight: 700; }
+.bco-capability-card p { margin: 0; color: #617077; font-size: 14px; line-height: 1.6; }
+
+.bco-step-stack { display: grid; gap: 0; border-top: 1px solid #d8e0de; }
+.bco-step-stack article {
+  display: grid;
+  grid-template-columns: 72px minmax(0,1fr);
+  gap: 28px;
+  padding: 34px 0;
+  border-bottom: 1px solid #d8e0de;
+}
+.bco-step-stack article > span {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #e8f4f2;
+  color: #0e6f75;
+  font-weight: 700;
+}
+.bco-step-stack h3 { margin: 0 0 8px; font-size: 24px; font-weight: 700; }
+.bco-step-stack p { margin: 0; max-width: 740px; color: #617077; }
+
+.bco-demo-section { background: #0b1720; color: #fff; }
+.bco-demo-section .bco-tour-heading > p { color: #b8c7c9; }
+.bco-demo-section .bco-kicker { color: #8fd3d4; }
+.bco-demo-frame {
+  padding: 12px;
+  border: 1px solid #28424a;
+  border-radius: 18px;
+  background: #102a33;
+  box-shadow: 0 30px 80px rgba(0,0,0,.24);
+}
+.bco-demo-frame video { border: 0; border-radius: 10px; background: #fff; }
+
+.bco-control-section {
+  display: grid;
+  grid-template-columns: .9fr 1.1fr;
+  gap: 84px;
+  align-items: start;
+}
+.bco-control-copy h2 { font-size: clamp(36px, 4.5vw, 56px); line-height: 1.06; }
+.bco-control-copy > p:not(.bco-kicker) { color: #617077; font-size: 17px; line-height: 1.7; }
+.bco-control-copy .bco-button { margin-top: 22px; }
+.bco-control-points { border-top: 1px solid #d8e0de; }
+.bco-control-points article { display: grid; gap: 7px; padding: 24px 0; border-bottom: 1px solid #d8e0de; }
+.bco-control-points strong { font-size: 17px; }
+.bco-control-points span { color: #617077; font-size: 14px; line-height: 1.6; }
+
+.bco-pricing-section { background: #eef2f2; }
+.bco-pricing h2 { font-size: clamp(36px, 4.5vw, 56px); line-height: 1.06; }
+.bco-price-card { background: #fff; }
+
+.bco-faq { border-top: 0; }
+.bco-faq h2 { font-size: clamp(34px, 4vw, 50px); line-height: 1.08; }
+.bco-faq summary { min-height: 68px; }
+
+.bco-final { background: #dfeeed; padding: 104px 0; }
+.bco-final h2 { max-width: 900px; margin: 0 auto 30px; font-size: clamp(38px, 5vw, 64px); line-height: 1.04; }
+
+@media (max-width: 1023px) {
+  .bco-desktop-nav, .bco-nav-actions > .bco-login, .bco-nav-actions > .bco-button { display: none; }
+  .bco-nav-inner { min-height: 64px; }
+  .bco-hero-shell { min-height: 720px; }
+  .bco-hero-scrim {
+    background: linear-gradient(180deg, rgba(11,23,32,.88) 0%, rgba(11,23,32,.92) 44%, rgba(11,23,32,.98) 100%);
+  }
+  .bco-hero { align-items: end; padding-top: 120px; padding-bottom: 70px; }
+  .bco-hero-copy { max-width: 720px; }
+  .bco-hero h1 { font-size: clamp(48px, 9vw, 70px); }
+  .bco-capability-grid { grid-template-columns: repeat(2, 1fr); }
+  .bco-control-section { grid-template-columns: 1fr; gap: 50px; }
+}
+
+@media (max-width: 767px) {
+  .bco-container { padding-left: 20px; padding-right: 20px; }
+  .bco-hero-shell { min-height: 650px; }
+  .bco-hero-media { opacity: .55; object-position: center; }
+  .bco-hero { padding-top: 96px; padding-bottom: 56px; }
+  .bco-hero h1 { font-size: clamp(42px, 13vw, 58px); }
+  .bco-lead-light { margin-top: 22px; font-size: 17px; }
+  .bco-actions { align-items: stretch; }
+  .bco-actions .bco-button { width: 100%; }
+  .bco-proof-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px 20px !important; }
+  .bco-proof-grid span { grid-column: 1 / -1; max-width: none; }
+  .bco-section { padding-top: 76px; padding-bottom: 76px; }
+  .bco-section-heading-wide h2 { font-size: 38px; }
+  .bco-section-heading-wide > p:last-child { font-size: 16px; }
+  .bco-capability-grid { grid-template-columns: 1fr; }
+  .bco-capability-card { min-height: 0; }
+  .bco-step-stack article { grid-template-columns: 50px minmax(0,1fr); gap: 16px; padding: 26px 0; }
+  .bco-step-stack article > span { width: 40px; height: 40px; }
+  .bco-step-stack h3 { font-size: 20px; }
+  .bco-tour-heading { display: block; }
+  .bco-tour-heading > p { margin-top: 12px; }
+  .bco-demo-frame { padding: 6px; border-radius: 12px; }
+  .bco-pricing { display: grid; grid-template-columns: 1fr; gap: 36px; }
+  .bco-price-card { padding: 24px; }
+  .bco-faq { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  .bco-final { padding: 76px 0; }
+  .bco-final h2 { font-size: 40px; }
+}
+
+@media (max-width: 420px) {
+  .bco-hero h1 { font-size: 41px; }
+  .bco-caption-light { max-width: 300px; }
+  .bco-proof-grid { grid-template-columns: 1fr; }
+  .bco-proof-grid strong { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bco-hero-media { display: none; }
+  .bco-hero-shell { background: #0b1720 url('/demos/today-desktop.jpg') center/cover no-repeat; }
+  .bco-hero-shell::after { content: ''; position: absolute; inset: 0; background: rgba(11,23,32,.76); }
+}
