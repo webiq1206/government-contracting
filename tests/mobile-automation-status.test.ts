@@ -21,7 +21,9 @@ describe("the mobile automation strip", () => {
   it("reads the health state rather than the pause Boolean", () => {
     // The strip renders one computed headline, and that headline starts from
     // the measured state.
-    expect(SRC).toContain("<p className=\"text-sm font-medium text-foreground\">{mobileHeadline}</p>");
+    expect(SRC).toContain("{mobileHeadline}");
+    expect(SRC).toContain('aria-label="Account controls"');
+    expect(SRC).toContain('title={mobileDetail}');
     const definition = SRC.slice(SRC.indexOf("const mobileHeadline"), SRC.indexOf("const mobileDetail"));
     expect(definition).toContain("automationHeadline ??");
     /*

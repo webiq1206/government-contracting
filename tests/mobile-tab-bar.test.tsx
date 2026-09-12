@@ -114,7 +114,8 @@ describe("the menu button", () => {
 describe("the destination that lost its tab", () => {
   it("is still reachable from More", () => {
     const src = readFileSync("app/(dash)/more/page.tsx", "utf8");
-    expect(src).toContain("NAVIGATION_SECTIONS");
+    expect(src).toContain("workspaceSections(admin)");
+    expect(readFileSync("lib/navigation.ts", "utf8")).toContain("return NAVIGATION_SECTIONS.filter");
     expect(readFileSync("lib/navigation.ts", "utf8")).toContain('href: "/communications"');
   });
 });
