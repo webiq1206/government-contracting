@@ -70,7 +70,7 @@ export function HelpPopover({
           id={panelId}
           role="region"
           aria-labelledby={titleId}
-          className={`fixed inset-x-4 top-16 z-[70] max-h-[calc(100dvh-5rem)] w-auto overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl lg:absolute lg:inset-x-auto lg:top-8 lg:max-h-none lg:w-80 lg:overflow-visible ${
+          className={`fixed inset-x-4 top-16 z-[70] max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] w-auto overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-4 shadow-xl lg:absolute lg:inset-x-auto lg:top-8 lg:max-h-none lg:w-80 lg:overflow-visible ${
             alignRight ? "lg:right-0" : "lg:left-0"
           }`}
         >
