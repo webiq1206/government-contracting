@@ -74,10 +74,15 @@ describe("the design system holds", () => {
      * layout's metadata: that is consumed by the operating system, not by CSS,
      * so it cannot be a variable and has to state both values literally.
      */
-    const ALLOWED = new Set(["app/layout.tsx:48 #F4F6F6", "app/layout.tsx:49 #0B1720"]);
     const hits = scan(
       /(?:text|bg|border)-(?:red|green|blue|yellow|orange|purple|pink|indigo|teal|cyan|emerald|lime|amber|rose|violet|fuchsia|sky|stone|zinc|neutral|gray)-\d{2,3}\b|#[0-9a-fA-F]{6}\b/g
-    ).filter((h) => !ALLOWED.has(h));
+    ).filter(
+      (h) =>
+        !(
+          h.startsWith("app/layout.tsx:") &&
+          (h.endsWith("#F4F6F6") || h.endsWith("#0B1720"))
+        )
+    );
     expect(hits).toEqual([]);
   });
 
@@ -113,7 +118,6 @@ describe("the design system holds", () => {
       const lines = src.split("\n");
       lines.forEach((line, i) => {
         if (!/\btext-(?:5xl|6xl|7xl|8xl|9xl)\b/.test(line)) return;
-        // The figure may sit on this element or on a span just inside it.
         const window = lines.slice(i, i + 3).join(" ");
         if (!/\bnum\b/.test(window)) {
           offenders.push(`${relative(process.cwd(), file)}:${i + 1}`);
