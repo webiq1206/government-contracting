@@ -28,7 +28,7 @@ jobs:
             -i public/demos/pipeline.mp4 \
             -i public/demos/opportunity.mp4 \
             -i public/demos/activity.mp4 \
-            -filter_complex "[0:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v0];[1:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v1];[2:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v2];[3:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v3];[v0][v1]xfade=transition=fade:duration=.55:offset=3.45[x1];[x1][v2]xfade=transition=fade:duration=.55:offset=6.9[x2];[x2][v3]xfade=transition=fade:duration=.55:offset=10.35,format=yuv420p[out]" \
+            -filter_complex "[0:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v0];[1:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v1];[2:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v2];[3:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,fps=24[v3];[v0][v1]xfade=transition=fade:duration=0.55:offset=3.45[x1];[x1][v2]xfade=transition=fade:duration=0.55:offset=6.9[x2];[x2][v3]xfade=transition=fade:duration=0.55:offset=10.35,format=yuv420p[out]" \
             -map "[out]" -an -c:v libx264 -preset veryfast -crf 29 -movflags +faststart public/demos/hero-loop.mp4
           test -s public/demos/hero-loop.mp4
           ls -lh public/demos/hero-loop.mp4
