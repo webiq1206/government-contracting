@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -37,7 +40,8 @@ function routes(dir: string, prefix = "", out: string[] = []): string[] {
     if (statSync(full).isDirectory()) {
       if (entry === "api") continue;
       // (dash) and (marketing) are route groups: they organize files, not URLs.
-      const segment = entry.startsWith("(") && entry.endsWith(")") ? "" : `/${entry}`;
+      const segment =
+        entry.startsWith("(") && entry.endsWith(")") ? "" : `/${entry}`;
       routes(full, prefix + segment, out);
     } else if (entry === "page.tsx") {
       out.push(prefix === "" ? "/" : prefix);
@@ -53,10 +57,12 @@ describe("every page is classified", () => {
      * anybody having decided it should be, or a public page that never reaches
      * the sitemap. Both were true of this app before the declaration existed.
      */
-    const unclassified = routes(APP).filter((r) => crawlability(r) === "unclassified");
+    const unclassified = routes(APP).filter(
+      (r) => crawlability(r) === "unclassified",
+    );
     expect(
       unclassified,
-      "add these to PUBLIC_ROUTES or DISALLOWED_PREFIXES in lib/domain/public-routes.ts"
+      "add these to PUBLIC_ROUTES or DISALLOWED_PREFIXES in lib/domain/public-routes.ts",
     ).toEqual([]);
   });
 
@@ -78,7 +84,12 @@ describe("every page is classified", () => {
       expect(crawlability(route.path), route.path).toBe("public");
     }
     // And a signed-in page is never public, whatever else changes.
-    for (const route of ["/today", "/admin", "/settings/profile", "/theme-qa"]) {
+    for (const route of [
+      "/today",
+      "/admin",
+      "/settings/profile",
+      "/theme-qa",
+    ]) {
       expect(crawlability(route), route).toBe("disallowed");
     }
   });
@@ -109,9 +120,15 @@ describe("the declaration itself", () => {
 
   it("builds absolute URLs without a doubled or missing slash", () => {
     expect(absoluteUrl("https://brostco.com", "/")).toBe("https://brostco.com");
-    expect(absoluteUrl("https://brostco.com/", "/")).toBe("https://brostco.com");
-    expect(absoluteUrl("https://brostco.com", "/terms")).toBe("https://brostco.com/terms");
-    expect(absoluteUrl("https://brostco.com/", "/terms")).toBe("https://brostco.com/terms");
+    expect(absoluteUrl("https://brostco.com/", "/")).toBe(
+      "https://brostco.com",
+    );
+    expect(absoluteUrl("https://brostco.com", "/terms")).toBe(
+      "https://brostco.com/terms",
+    );
+    expect(absoluteUrl("https://brostco.com/", "/terms")).toBe(
+      "https://brostco.com/terms",
+    );
   });
 
   it("says why each prefix is disallowed", () => {
@@ -142,7 +159,9 @@ describe("the four surfaces read from the declaration", () => {
     expect(src).toContain("absoluteUrl");
     // The shape of the defect being fixed: a literal marketing URL in the
     // file means somebody has started hand-maintaining it again.
-    expect(src).not.toMatch(/url:\s*`?\$?\{?SITE_URL\}?\/(signup|privacy|terms)/);
+    expect(src).not.toMatch(
+      /url:\s*`?\$?\{?SITE_URL\}?\/(signup|privacy|terms)/,
+    );
   });
 
   it("robots.txt is generated, and names the AI crawlers one at a time", () => {
@@ -182,6 +201,8 @@ describe("the four surfaces read from the declaration", () => {
 
   it("the site map is linked from the marketing footer, so it is not an orphan", () => {
     // A site map nothing links to is reachable only by guessing its address.
-    expect(read("components/marketing/marketing-footer.tsx")).toContain('href="/sitemap"');
+    expect(renderToStaticMarkup(createElement(MarketingFooter))).toContain(
+      'href="/sitemap"',
+    );
   });
 });

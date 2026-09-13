@@ -119,6 +119,13 @@ const ROUTES = [
  * cannot silently turn "I measured the login page" into "I measured Today".
  */
 const SIGNED_OUT_ROUTES = [
+  "/platform",
+  "/ai",
+  "/subcontractors",
+  "/demo",
+  "/get-started",
+  "/security",
+  "/about",
   "/",
   "/login",
   "/signup",

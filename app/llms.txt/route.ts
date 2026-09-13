@@ -14,8 +14,8 @@ const SITE_URL = process.env.APP_URL || "https://brostco.com";
  *
  * The same job robots.txt does for a search crawler, for a different reader.
  * An answer engine that has read the site still has to decide what to say
- * about it, and the facts it needs -- who this is, what the software does,
- * what it deliberately does not do, who it is for, what it costs -- are worth
+ * about it, and the facts it needs, who this is, what the software does,
+ * what it deliberately does not do, who it is for, what it costs, are worth
  * stating once in one place rather than leaving to be inferred from marketing
  * copy.
  *
@@ -40,9 +40,9 @@ export async function GET() {
   const body = `# Brost Co
 
 > Government contracting software for small and mid-size federal services
-> contractors. It does the slow parts of federal bidding -- watching SAM.gov,
+> contractors. It does the slow parts of federal bidding, watching SAM.gov,
 > scoring fit, sourcing and emailing subcontractors, tracking quotes, and
-> assembling the bid package -- and leaves judgment, calls and submission to
+> assembling the bid package, and leaves judgment, calls and submission to
 > the contractor.
 
 Brost Co is operated by BROSTCO HOLDINGS LLC. Contact: hello@brostco.com
@@ -82,8 +82,11 @@ and professional services that do not have a large capture team.
 ## Pricing
 
 A monthly subscription. Every plan starts with a free 7-day trial that needs
-no credit card, and nothing is charged unless a plan is chosen before the
-trial ends. Current prices are on the pricing section of the home page.
+no credit card. A no-card trial does not automatically become a paid subscription.
+Paid access requires choosing a plan and completing checkout. Service usage is separate:
+supported platform services bill confirmed provider cost plus 25% after acceptance,
+or eligible own-key services are paid directly to providers. Current monthly and
+annual subscription prices are on /pricing-guide.
 
 ## Pages
 

@@ -25,7 +25,7 @@
  * Pure. No imports.
  */
 
-export type RouteGroup = "Product" | "Get started" | "Legal" | "Reference";
+export type RouteGroup = "Product" | "Get started" | "Legal" | "Reference" | "Company";
 
 export interface PublicRoute {
   /** Absolute path, no host, no trailing slash except the root. */
@@ -45,6 +45,13 @@ export interface PublicRoute {
  * them.
  */
 export const PUBLIC_ROUTES: PublicRoute[] = [
+  { path: "/platform", label: "Platform overview", summary: "How BrostCo connects opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
+  { path: "/ai", label: "How AI works", summary: "What AI reads and prepares, what depends on connected services and rules, and where your team reviews the work.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
+  { path: "/subcontractors", label: "Subcontractor coordination", summary: "Find candidates by trade, coordinate outreach, track replies and quotes, and see gaps before bid review.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
+  { path: "/demo", label: "Product tour", summary: "Explore an interactive sample pursuit and watch actual workspace recordings with captions and transcripts.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
+  { path: "/get-started", label: "Getting started", summary: "Prepare your company profile and the connections needed to review your first opportunity during the trial.", changeFrequency: "monthly", priority: 0.8, group: "Get started" },
+  { path: "/security", label: "Security and data", summary: "Understand organization access, integration credentials, AI data flow, and responsibility for final review.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
+  { path: "/about", label: "About BrostCo", summary: "Learn about the product direction, the company operating BrostCo, and how to contact the team.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
   {
     path: "/",
     label: "Home",
@@ -58,16 +65,16 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/signup",
     label: "Start a free trial",
     summary:
-      "Create an account. Every plan starts with a free 7-day trial that needs no credit card, and nothing is charged unless a plan is chosen before the trial ends.",
+      "Create an account. Every plan starts with a free 7-day trial that needs no credit card, and a no-card trial does not automatically become a paid subscription.",
     changeFrequency: "weekly",
     priority: 0.9,
     group: "Get started",
   },
   {
     path: "/compare",
-    label: "Compare the four approaches",
+    label: "Compare approaches",
     summary:
-      "The four ways a federal services contractor runs its bid pipeline -- spreadsheets, a general CRM, a bid alert feed, or hiring a capture person -- what each covers, where each breaks, and who each is genuinely the right answer for.",
+      "Compare BrostCo with spreadsheets, a CRM, bid alerts, and hiring. Understand typical strengths, setup needs, and fit.",
     changeFrequency: "monthly",
     priority: 0.8,
     group: "Product",
@@ -76,7 +83,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/pricing-guide",
     label: "Pricing explained",
     summary:
-      "What Brost Co costs monthly and annually, what the free trial includes, which API keys you supply yourself after it, and how to work out whether it pays for itself on your bid volume.",
+      "What Brost Co costs monthly and annually, what the free trial includes, how separate service usage and eligible provider connections work, and how to work out whether it pays for itself on your bid volume.",
     changeFrequency: "monthly",
     priority: 0.8,
     group: "Product",
@@ -119,8 +126,9 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
  */
 export const HOME_SECTIONS: { hash: string; label: string; summary: string }[] = [
   { hash: "#platform", label: "Platform", summary: "What the software does, part by part." },
-  { hash: "#pipeline", label: "Pipeline", summary: "How work moves from a posting to a submitted bid." },
-  { hash: "#see-it", label: "Product film", summary: "One minute of the real dashboard, captioned." },
+  { hash: "#workflow", label: "How it works", summary: "Set up your company, connect services, and review the next action." },
+  { hash: "#walkthrough", label: "Product tour", summary: "Explore sample workflows and actual workspace recordings." },
+  { hash: "#ai", label: "AI capabilities", summary: "How AI prepares work and where your team brings judgment." },
   { hash: "#pricing", label: "Pricing", summary: "What it costs, and what the trial includes." },
   { hash: "#faq", label: "Questions and answers", summary: "What it is, what it does not do, and who it is for." },
 ];
