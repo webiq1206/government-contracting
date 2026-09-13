@@ -13,10 +13,16 @@ html:has([data-app-shell]),
 html:has([data-app-shell]) body {
   height: auto;
   min-height: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-x: none;
   overscroll-behavior-y: auto;
+}
+
+/* Keep only the root as a scroll container. Hidden horizontal overflow would
+   turn visible vertical overflow into auto and trap sticky desktop panels. */
+html:has([data-app-shell]) body {
+  overflow-y: visible;
 }
 
 [data-app-shell] {
@@ -25,7 +31,7 @@ html:has([data-app-shell]) body {
 }
 
 [data-app-shell] .page-main {
-  overflow-x: hidden !important;
+  overflow-x: clip !important;
   overflow-y: visible !important;
   min-height: auto !important;
   padding-bottom: 0 !important;

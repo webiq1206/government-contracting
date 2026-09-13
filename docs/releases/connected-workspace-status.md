@@ -29,6 +29,9 @@ Today now places its desktop Quick look panel beside the page content. The
 previous nesting left it below the full task list, outside the viewport.
 The responsive audit checks every Quick look panel for visible height and
 viewport containment before exercising close and browser-history recovery.
+The shell now clips horizontal overflow without creating an extra vertical
+scroll container on the body or main element, so desktop side panels remain
+visible when a task opens after scrolling down the document.
 
 ## Verification
 
