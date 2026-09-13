@@ -20,7 +20,7 @@ const rows = [
     "Company profile + opportunity",
     "Fit explanation",
     "Scores alignment with your services, qualifications, location, and pursuit rules.",
-    "Check fit and decide whether to pursue.",
+    "Set your pursuit rules and decide on borderline matches.",
   ],
   [
     "Solicitation + attachments",
@@ -31,13 +31,13 @@ const rows = [
   [
     "Trade needs + subcontractor context",
     "Outreach and call preparation",
-    "Prepares quote requests, follow-up work, and call guidance around the opportunity.",
+    "Finds subcontractors, sends quote requests, follows up, and prepares call guidance through your connected services and rules.",
     "Configure sending rules; handle relationships and unclear replies.",
   ],
   [
     "Replies + quotes + requirements",
     "Draft bid work",
-    "Helps organize quote information, draft narratives, and prepare documents.",
+    "Captures clearly stated prices from replies, assembles pricing inputs, drafts narratives, and prepares bid documents.",
     "Confirm pricing, complete required forms, and review the package.",
   ],
 ];
@@ -46,8 +46,8 @@ export default function AIPage() {
     <MarketingShell>
       <PageIntro
         eyebrow="How AI works"
-        title="Useful intelligence. Visible work."
-        copy="AI is part of the pursuit workflow, from reading a solicitation to preparing bid documents. BrostCo brings its output back to the record, where your team can check the context and take the next step."
+        title="AI does the preparation and follow-through."
+        copy="Set your direction, connect your services, and let BrostCo run the routine work: matching opportunities, reading documents, coordinating outreach, following up, and preparing bids. You handle calls, exceptions, and final decisions."
       />
       <section className="bco-container bco-section bco-split">
         <div>

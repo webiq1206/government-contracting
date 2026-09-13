@@ -31,7 +31,7 @@ describe("interactive sample workflow", () => {
     const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
     await click(tabs[2]);
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");
-    expect(container.textContent).toContain("2 of 3 quotes received");
+    expect(container.textContent).toContain("3 of 3 quote replies received");
     const source = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent?.includes("Open sample source"),
     )!;

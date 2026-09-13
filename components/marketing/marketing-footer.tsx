@@ -46,7 +46,7 @@ export function MarketingFooter({
               <Wordmark variant="light" className="h-7 w-auto" />
             </Link>
             <p>
-              AI for federal services contractors.
+              AI for government contractors.
               <br />
               From the right opportunity to a bid ready for your review.
             </p>

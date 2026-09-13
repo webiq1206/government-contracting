@@ -25,9 +25,9 @@ describe("mobile dashboard scrolling", () => {
 
 describe("AI-first homepage", () => {
   it("leads with the audience, concrete outcome, and free trial CTA", () => {
-    expect(landing).toContain("AI for federal services contractors");
-    expect(landing).toContain("Find the right contracts.");
-    expect(landing).toContain("Get bids ready faster.");
+    expect(landing).toContain("AI for government contractors");
+    expect(landing).toContain("AI moves the work forward.");
+    expect(landing).toContain("You make the decisions.");
     expect(landing).toContain("Start free trial");
   });
   it("uses an on-demand product illustration and reduced-motion transitions", () => {

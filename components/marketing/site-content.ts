@@ -12,11 +12,11 @@ export const USAGE_COPY =
 export const HOME_FAQ = [
   [
     "Who is BrostCo for?",
-    "Small and mid-size federal services contractors, especially teams coordinating subcontractors across construction, facilities, and professional services. It is most useful when reading requirements, chasing quotes, and preparing bids consume your team's time.",
+    "Small and mid-size government contractors. Discovery follows your company profile and industry codes across the full industry catalog, with connected pursuit workflows especially useful for services teams coordinating subcontractors. It is most useful when reading requirements, chasing quotes, and preparing bids consume your team's time.",
   ],
   [
     "What does the AI actually do?",
-    "AI scores opportunities against your company profile, extracts scope and requirements, prepares outreach and call guidance, interprets replies, and helps assemble bid documents. Connected services and your automation rules determine which work can run. Your team checks important facts and handles final submission.",
+    "After setup, AI finds and scores opportunities, reads solicitations, finds subcontractors, sends outreach and follow-ups, interprets replies, captures clearly stated prices, and prepares bid documents. Work runs through your connected services and automation rules. Your team handles calls, exceptions, quote confirmation, final pricing and contract review, signatures, and submission.",
   ],
   [
     "Does BrostCo submit bids for me?",
@@ -43,43 +43,61 @@ export const HOME_FAQ = [
 export const WORKFLOW_STAGES = [
   {
     label: "Find",
-    title: "Find work that fits your company.",
-    copy: "BrostCo gathers federal opportunities and scores them against your services, qualifications, and pursuit rules.",
-    benefit:
-      "Spend less time sorting postings. Start with the reason a project fits.",
-    human: "Review fit and decide which opportunities deserve your attention.",
+    title: "AI finds contracts that fit your business.",
+    copy: "BrostCo monitors opportunities and scores each one against your company profile. Strong matches move forward under your rules. Borderline opportunities come to you.",
+    benefit: "A relevant pipeline, without sorting postings every morning.",
+    human: "Set your target work once. Step in for borderline decisions.",
+    done: "Opportunity found and matched",
+    result: "Company profile → relevant opportunity",
+    evidence: "Matched to services, location, and pursuit rules.",
   },
   {
     label: "Understand",
-    title: "Turn a solicitation into a working brief.",
-    copy: "AI extracts scope, dates, requirements, and questions from the solicitation so the team can work from a shared brief.",
-    benefit:
-      "See the work and its requirements without rebuilding the brief by hand.",
-    human: "Check the source documents and resolve ambiguities before you act.",
+    title: "AI reads the solicitation for you.",
+    copy: "BrostCo reads the notice and attachments, extracts the scope, dates, and requirements, and creates the working brief for the next steps.",
+    benefit: "A usable brief, without rebuilding it from pages of documents.",
+    human:
+      "Resolve flagged questions and verify important requirements at review.",
+    done: "Documents analyzed. Brief prepared.",
+    result: "Solicitation → scope, dates, and requirements",
+    evidence: "The extracted brief stays connected to its source material.",
   },
   {
     label: "Coordinate",
-    title: "Keep quotes moving toward the bid.",
-    copy: "Find subcontractors by trade, prepare outreach, track replies, and follow up through your connected mailbox and configured rules.",
+    title: "AI contacts subcontractors and follows up.",
+    copy: "BrostCo finds candidates, sends quote requests through your connected mailbox, follows up, and processes replies using your automation rules.",
     benefit:
-      "See who replied, what is missing, and which conversation needs you.",
+      "Conversations and quotes move forward without manual email chasing.",
     human:
-      "Confirm qualifications, resolve unclear replies, and make the calls that need a person.",
+      "Make the calls that need a person and confirm unclear quotes or qualifications.",
+    done: "Outreach sent. Follow-ups handled.",
+    result: "Trade requirements → outreach and quote replies",
+    evidence:
+      "Sent messages, follow-ups, and replies remain in the opportunity history.",
   },
   {
     label: "Prepare",
-    title: "Build a bid your team can review.",
-    copy: "Bring scope, quotes, pricing, requirements, and draft documents together in the opportunity workspace.",
+    title: "AI prepares the bid for your review.",
+    copy: "Once required pricing is available, BrostCo combines quotes with your margin rules, drafts the documents, and checks the package for missing requirements.",
     benefit:
-      "Find missing information before final review becomes a last-minute scramble.",
+      "A prepared starting point for review, with the supporting work attached.",
     human:
-      "Confirm pricing, review documents, complete signatures, and submit.",
+      "Confirm pricing, review the bid and contract terms, sign, and submit.",
+    done: "Pricing assembled. Bid documents drafted.",
+    result: "Quotes + requirements → draft bid package",
+    evidence:
+      "Drafts and pricing are ready for your final checks. Submission stays with you.",
   },
   {
     label: "Track",
-    title: "Start the day with a clear next step.",
-    copy: "Today brings decisions, replies, calls, blockers, and reviews together. Activity history records the work behind them.",
-    benefit: "Pick up the right task with the context already attached.",
-    human: "Work the queue and adjust automation when your priorities change.",
+    title: "See what's done. Handle what needs you.",
+    copy: "BrostCo keeps the background work moving and brings calls, exceptions, and reviews into Today with the context already attached.",
+    benefit:
+      "Start with the work that needs your judgment, not a search for updates.",
+    human:
+      "Handle the highlighted actions. Adjust your rules when priorities change.",
+    done: "Routine work logged. Next actions prepared.",
+    result: "Background activity → a focused action list",
+    evidence: "Completed automation and human actions are visible separately.",
   },
 ] as const;

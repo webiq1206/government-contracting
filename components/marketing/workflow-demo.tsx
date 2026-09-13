@@ -3,17 +3,23 @@ import { useId, useRef, useState } from "react";
 import { WORKFLOW_STAGES } from "./site-content";
 
 /** A simplified, illustrative workflow. No account data or external actions. */
-export function OpportunityPreview({ stage = 2 }: { stage?: number }) {
+export function OpportunityPreview({ stage = 3 }: { stage?: number }) {
   const [sourceOpen, setSourceOpen] = useState(false);
   const sourceId = useId();
   const [reviewed, setReviewed] = useState(false);
+  const current = Math.max(0, Math.min(WORKFLOW_STAGES.length - 1, stage));
+  const item = WORKFLOW_STAGES[current];
   return (
     <div className="bco-preview">
       <div className="bco-preview-top">
         <span className="bco-preview-mark" aria-hidden="true">
           B
         </span>
-        <strong>Opportunity workspace</strong>
+        <strong>
+          {current === 4
+            ? "Today / Your next actions"
+            : "Opportunity workspace"}
+        </strong>
         <span className="bco-sample">Illustrative sample</span>
       </div>
       <div className="bco-preview-body">
@@ -22,161 +28,208 @@ export function OpportunityPreview({ stage = 2 }: { stage?: number }) {
             <span className="bco-overline">Federal facilities services</span>
             <h3>Riverside facility maintenance</h3>
           </div>
-          <span className="bco-status">
-            {stage === 0
-              ? "Fit review"
-              : stage === 3
-                ? "Bid preparation"
-                : "In pursuit"}
-          </span>
         </div>
         <div className="bco-preview-meta">
           <span>HVAC · Electrical · Grounds</span>
           <span>Sample deadline: Oct 15</span>
         </div>
-        <div className="bco-record-path" aria-label="Example pursuit stages">
-          {["Opportunity", "Requirements", "Quotes", "Bid review"].map(
-            (name, i) => (
-              <span
-                key={name}
-                className={i === Math.min(stage, 3) ? "is-current" : ""}
+        <ol className="bco-record-path" aria-label="Example pursuit progress">
+          {WORKFLOW_STAGES.map((step, i) => (
+            <li
+              key={step.label}
+              className={
+                i === current ? "is-current" : i < current ? "is-done" : ""
+              }
+              aria-current={i === current ? "step" : undefined}
+            >
+              <span aria-hidden="true">{i < current ? "✓ " : ""}</span>
+              {step.label}
+            </li>
+          ))}
+        </ol>
+        <div className="bco-demo-completed">
+          <span aria-hidden="true">✓</span>
+          <strong>{item.done}</strong>
+        </div>
+        <div className="bco-demo-content">
+          {current === 0 && (
+            <>
+              <p className="bco-overline">AI match explanation</p>
+              <h4>A strong fit, ready for analysis.</h4>
+              <div className="bco-demo-row">
+                <strong>Your services</strong>
+                <span>HVAC, electrical, grounds match</span>
+              </div>
+              <div className="bco-demo-row">
+                <strong>Your location</strong>
+                <span>Inside your service area</span>
+              </div>
+              <div className="bco-demo-row">
+                <strong>Your rules</strong>
+                <span>Pursue threshold met</span>
+              </div>
+              <p className="bco-caption">
+                Next: analysis starts under the sample company rules.
+              </p>
+            </>
+          )}
+          {current === 1 && (
+            <>
+              <p className="bco-overline">
+                Extracted from the sample solicitation
+              </p>
+              <h4>The brief is already written.</h4>
+              <div className="bco-demo-row">
+                <strong>Scope</strong>
+                <span>HVAC, electrical & grounds maintenance</span>
+              </div>
+              <div className="bco-demo-row">
+                <strong>Due date</strong>
+                <span>October 15</span>
+              </div>
+              <div className="bco-demo-row">
+                <strong>Pricing needed</strong>
+                <span>A separate price for each trade</span>
+              </div>
+              <p className="bco-caption">
+                Next: the extracted trades guide subcontractor discovery.
+              </p>
+            </>
+          )}
+          {current === 2 && (
+            <>
+              <p className="bco-overline">AI outreach activity</p>
+              <h4>Requests sent. Replies connected.</h4>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">H</span>
+                  <strong>
+                    HVAC<small>Request sent → price captured from reply</small>
+                  </strong>
+                </div>
+                <span className="bco-status">Quote received</span>
+              </div>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">E</span>
+                  <strong>
+                    Electrical
+                    <small>Request sent → price captured from reply</small>
+                  </strong>
+                </div>
+                <span className="bco-status">Quote received</span>
+              </div>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">G</span>
+                  <strong>
+                    Grounds
+                    <small>Follow-up sent → price captured from reply</small>
+                  </strong>
+                </div>
+                <span className="bco-status">Quote received</span>
+              </div>
+              <p className="bco-caption">
+                3 of 3 quote replies received in this example. Your team
+                confirms the prices.
+              </p>
+            </>
+          )}
+          {current === 3 && (
+            <>
+              <p className="bco-overline">
+                Prepared by AI / Ready for your checks
+              </p>
+              <h4>Your draft bid is assembled.</h4>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">▤</span>
+                  <strong>
+                    Bid narrative
+                    <small>Scope and company context included</small>
+                  </strong>
+                </div>
+                <span className="bco-file-type">DOCX</span>
+              </div>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">▤</span>
+                  <strong>
+                    Pricing summary
+                    <small>Trade quotes + your margin rules</small>
+                  </strong>
+                </div>
+                <span className="bco-file-type">PDF</span>
+              </div>
+              <div className="bco-demo-row">
+                <div className="bco-vendor">
+                  <span aria-hidden="true">✓</span>
+                  <strong>
+                    Requirement checklist
+                    <small>Review points and sources attached</small>
+                  </strong>
+                </div>
+                <span className="bco-file-type">CHECKLIST</span>
+              </div>
+              <p className="bco-caption">
+                Next: your team checks pricing, documents, and contract terms.
+              </p>
+            </>
+          )}
+          {current === 4 && (
+            <>
+              <p className="bco-overline">AI completed</p>
+              <p className="bco-completed-summary">
+                Discovery, analysis, outreach, follow-ups, and draft
+                preparation.
+              </p>
+              <div className="bco-human-queue">
+                <div className="bco-demo-label">
+                  <strong>Needs your judgment</strong>
+                  <span>{reviewed ? "1 action" : "2 actions"}</span>
+                </div>
+                <div className="bco-demo-row">
+                  <div>
+                    <strong>Call to confirm site access</strong>
+                    <small>Contact, background, and questions prepared</small>
+                  </div>
+                  <span className="bco-status bco-status-review">Call</span>
+                </div>
+                <div className="bco-demo-row">
+                  <div>
+                    <strong>Review the bid and contract terms</strong>
+                    <small>Draft documents and pricing attached</small>
+                  </div>
+                  <span
+                    className={`bco-status${reviewed ? "" : " bco-status-review"}`}
+                  >
+                    {reviewed ? "Reviewed" : "Review"}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="bco-demo-action"
+                type="button"
+                onClick={() => setReviewed(!reviewed)}
               >
-                {name}
-              </span>
-            ),
+                {reviewed
+                  ? "Reset sample review"
+                  : "Try marking the sample reviewed"}
+                <span aria-hidden="true">↗</span>
+              </button>
+              {reviewed && (
+                <p role="status" className="bco-caption">
+                  Sample marked reviewed. No live record was changed.
+                </p>
+              )}
+            </>
           )}
         </div>
-        {stage === 0 && (
-          <div className="bco-demo-content">
-            <p className="bco-overline">AI fit summary</p>
-            <h4>A match for your facilities work.</h4>
-            <p>
-              The service area and required trades align with this sample
-              company profile.
-            </p>
-            <ul className="bco-check-list">
-              <li>Services align with your target work</li>
-              <li>Performance location is in your service area</li>
-              <li>Review set-aside eligibility before pursuing</li>
-            </ul>
-          </div>
-        )}
-        {stage === 1 && (
-          <div className="bco-demo-content">
-            <p className="bco-overline">AI requirement brief</p>
-            <h4>Three trades. One shared scope.</h4>
-            <div className="bco-demo-row">
-              <strong>HVAC</strong>
-              <span>Preventive maintenance & callouts</span>
-            </div>
-            <div className="bco-demo-row">
-              <strong>Electrical</strong>
-              <span>Inspection & repair coverage</span>
-            </div>
-            <div className="bco-demo-row">
-              <strong>Grounds</strong>
-              <span>Seasonal service schedule</span>
-            </div>
-            <p className="bco-caption">
-              AI extracts the brief. Your team checks the solicitation.
-            </p>
-          </div>
-        )}
-        {stage === 2 && (
-          <div className="bco-demo-content">
-            <div className="bco-demo-label">
-              <p className="bco-overline">Subcontractor coverage</p>
-              <span>2 of 3 quotes received</span>
-            </div>
-            <div className="bco-demo-row">
-              <div className="bco-vendor">
-                <span>H</span>
-                <strong>
-                  HVAC partner<small>Quote attached</small>
-                </strong>
-              </div>
-              <span className="bco-status">Received</span>
-            </div>
-            <div className="bco-demo-row">
-              <div className="bco-vendor">
-                <span>E</span>
-                <strong>
-                  Electrical partner<small>Quote attached</small>
-                </strong>
-              </div>
-              <span className="bco-status">Received</span>
-            </div>
-            <div className="bco-demo-row">
-              <div className="bco-vendor">
-                <span>G</span>
-                <strong>
-                  Grounds partner<small>Scope clarification needed</small>
-                </strong>
-              </div>
-              <span className="bco-status bco-status-review">Needs you</span>
-            </div>
-          </div>
-        )}
-        {stage === 3 && (
-          <div className="bco-demo-content">
-            <p className="bco-overline">Bid readiness</p>
-            <h4>The gap is visible before review.</h4>
-            <ul className="bco-check-list">
-              <li>Scope and requirement brief attached</li>
-              <li>Two trade quotes captured</li>
-              <li>Draft pricing and documents in one record</li>
-            </ul>
-            <div className="bco-demo-notice">
-              <strong>Still needed</strong>
-              <p>
-                Grounds quote, pricing confirmation, and final document review.
-              </p>
-            </div>
-          </div>
-        )}
-        {stage === 4 && (
-          <div className="bco-demo-content">
-            <p className="bco-overline">Today / Next action</p>
-            <h4>Clarify the grounds scope.</h4>
-            <p>
-              The subcontractor replied with a question. Review the source,
-              confirm the scope, and continue the conversation.
-            </p>
-            <div className="bco-demo-notice">
-              <strong>Activity attached</strong>
-              <p>
-                Request prepared → Email sent → Reply received → Human review
-              </p>
-            </div>
-            <button
-              className="bco-demo-action"
-              type="button"
-              onClick={() => setReviewed(!reviewed)}
-            >
-              {reviewed
-                ? "Reset sample review"
-                : "Try marking the sample reviewed"}
-            </button>
-            {reviewed && (
-              <p role="status" className="bco-caption">
-                Sample marked reviewed. No live record was changed.
-              </p>
-            )}
-          </div>
-        )}
         <div className="bco-ai-note">
           <span aria-hidden="true">✧</span>
           <div>
-            <strong>
-              {stage === 2
-                ? "AI surfaces the missing piece."
-                : "The reasoning stays with the work."}
-            </strong>
-            <p>
-              {stage === 2
-                ? "A reply needs scope clarification before the final quote. Your team has the context to act."
-                : "Open the supporting information before making the next decision."}
-            </p>
+            <strong>{item.result}</strong>
+            <p>{item.evidence}</p>
           </div>
         </div>
         <button
@@ -194,7 +247,8 @@ export function OpportunityPreview({ stage = 2 }: { stage?: number }) {
             <p className="bco-overline">Illustrative source / Scope excerpt</p>
             <blockquote>
               “Provide scheduled HVAC, electrical, and grounds maintenance.
-              Include a separate price for each service.”
+              Include a separate price for each service. Responses are due
+              October 15.”
             </blockquote>
             <p>
               This example explains the workflow. It is not an actual
@@ -208,7 +262,9 @@ export function OpportunityPreview({ stage = 2 }: { stage?: number }) {
 }
 
 export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
-  const [selected, setSelected] = useState(initialStage);
+  const [selected, setSelected] = useState(
+    Math.max(0, Math.min(WORKFLOW_STAGES.length - 1, initialStage)),
+  );
   const id = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const item = WORKFLOW_STAGES[selected];
@@ -261,25 +317,43 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
       >
         <div className="bco-demo-explanation">
           <p className="bco-kicker">
-            {String(selected + 1).padStart(2, "0")} / From opportunity to action
+            {String(selected + 1).padStart(2, "0")} /{" "}
+            {selected === 4 ? "Your focused action list" : "AI at work"}
           </p>
           <h3>{item.title}</h3>
           <p>{item.copy}</p>
           <div className="bco-benefit">
-            <strong>What this gives you</strong>
+            <span aria-hidden="true">✓</span>
             <p>{item.benefit}</p>
           </div>
-          <p className="bco-caption">
-            <strong>Your part:</strong> {item.human}
-          </p>
+          <div className="bco-human-role">
+            <strong>Where you come in</strong>
+            <p>{item.human}</p>
+          </div>
         </div>
         <OpportunityPreview key={selected} stage={selected} />
       </div>
-      <p className="bco-caption bco-demo-disclosure">
-        Interactive illustration with sample data. Explore the steps at your own
-        pace. Actual product recordings are available in the{" "}
-        <a href="/demo#recordings">product tour</a>.
-      </p>
+      <div className="bco-demo-footer">
+        <p className="bco-caption">
+          Interactive illustration with sample data. Automation uses your
+          connected services and rules. See actual recordings in the{" "}
+          <a href="/demo#recordings">product tour</a>.
+        </p>
+        <button
+          type="button"
+          className="bco-text-link"
+          onClick={() => {
+            const next = (selected + 1) % WORKFLOW_STAGES.length;
+            setSelected(next);
+            tabs.current[next]?.focus();
+          }}
+        >
+          {selected === WORKFLOW_STAGES.length - 1
+            ? "Back to discovery"
+            : "See the next step"}{" "}
+          <span aria-hidden="true">→</span>
+        </button>
+      </div>
     </div>
   );
 }

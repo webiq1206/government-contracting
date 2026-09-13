@@ -96,6 +96,27 @@ try {
         await p.screenshot({path:join(out,record.expandedScreenshot),fullPage:true});
         record.expandedScrollFrames=await captureScrollFrames(p,out,name.replace('.png','-expanded'));
       }
+      if(entry.route==='/') {
+        const industryTrack=p.locator('.bco-industry-track');
+        await industryTrack.scrollIntoViewIfNeeded();
+        assert.equal(await industryTrack.locator('li').count(),20,'All broad industry sectors should be browsable');
+        await p.getByRole('button',{name:'Next industries',exact:true}).click();
+        await p.waitForFunction(()=>document.querySelector('.bco-industry-track').scrollLeft>100);
+        await industryTrack.screenshot({path:join(out,`${device}-industry-slider.png`)});
+        const search=p.getByLabel('Find your industry or service', {exact:true});
+        await search.fill('HVAC');
+        assert.equal(await p.locator('.bco-industry-directory-body li').count(),1);
+        await search.fill('no-such-service-example');
+        await p.getByText('No matching sector.',{exact:false}).waitFor();
+        await p.getByRole('button',{name:'show all industries',exact:true}).click();
+        assert.equal(await p.locator('.bco-industry-directory-body li').count(),20);
+        await p.locator('.bco-industry-directory > summary').click();
+        await p.locator('.bco-stories').screenshot({path:join(out,`${device}-example-stories.png`)});
+        for(const story of await p.locator('.bco-story-card').all()) {
+          assert((await story.innerText()).includes('not a customer testimonial'),'Every example must be identified');
+        }
+        record.industrySlider='Next, directory filter, empty state, recovery, and all sectors checked';
+      }
       record.tabs=[];
       const tablists=p.getByRole('tablist');
       for(let group=0;group<await tablists.count();group++) {
@@ -491,7 +512,7 @@ try {
   await v.goto(base+'/privacy',{waitUntil:'networkidle'});
   await v.getByRole('navigation',{name:'Platform',exact:true}).getByRole('link',{name:'Platform overview',exact:true}).click();
   await v.waitForURL('**/platform');
-  await v.getByRole('heading',{level:1,name:'One pursuit. All the working context.'}).waitFor();
+  await v.getByRole('heading',{level:1,name:'AI moves the pursuit from discovery to draft.'}).waitFor();
   results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to platform overview checked'});
   if(device!=='desktop') {
     for(const route of ['/', '/privacy']) {

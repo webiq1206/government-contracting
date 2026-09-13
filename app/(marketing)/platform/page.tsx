@@ -20,8 +20,8 @@ export default function PlatformPage() {
     <MarketingShell>
       <PageIntro
         eyebrow="Platform"
-        title="One pursuit. All the working context."
-        copy="BrostCo connects the work between finding a federal opportunity and having a bid ready for review. AI helps prepare the work. Your team stays responsible for the decisions."
+        title="AI moves the pursuit from discovery to draft."
+        copy="After setup, BrostCo finds matching opportunities, analyzes requirements, coordinates subcontractor outreach, and prepares bid work under your rules. Your team handles calls, exceptions, final review, and submission."
       />
       <section className="bco-container bco-section">
         <WorkflowDemo />

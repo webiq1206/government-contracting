@@ -19,8 +19,8 @@ export default function SubcontractorsPage() {
     <MarketingShell>
       <PageIntro
         eyebrow="Subcontractor coordination"
-        title="Get the right people behind the bid."
-        copy="Finding an opportunity is only the beginning. BrostCo connects the scope, subcontractor search, outreach, replies, and quotes so your team can see which trades are covered and what still needs attention."
+        title="AI handles outreach. You handle the relationships."
+        copy="BrostCo finds subcontractors, sends quote requests, follows up, and processes replies under your rules. Your team makes the calls, resolves unclear responses, and confirms pricing."
       />
       <section className="bco-container bco-section">
         <WorkflowDemo initialStage={2} />
@@ -36,9 +36,8 @@ export default function SubcontractorsPage() {
               <ProductIcon kind="people" />
               <h3>Find candidates by trade</h3>
               <p>
-                Search for subcontractors around the work and location. Keep
-                contact details, qualifications, and verification gaps in the
-                record.
+                AI searches your roster and local candidates by trade and
+                location, checks contact routes, and flags gaps.
               </p>
               <span className="bco-card-result">
                 A shortlist your team can evaluate
@@ -48,8 +47,8 @@ export default function SubcontractorsPage() {
               <ProductIcon kind="source" />
               <h3>Ask with the scope attached</h3>
               <p>
-                Prepare quote requests from the solicitation context. Send and
-                follow up through your connected mailbox and configured rules.
+                AI prepares and sends quote requests with the scope attached,
+                then follows up through your connected mailbox under your rules.
               </p>
               <span className="bco-card-result">
                 Less repeated explanation and follow-up
@@ -59,8 +58,8 @@ export default function SubcontractorsPage() {
               <ProductIcon kind="check" />
               <h3>Turn replies into bid inputs</h3>
               <p>
-                Track conversations, capture quote details, and surface unclear
-                responses or missing information for a person to resolve.
+                AI processes replies and captures clearly stated prices. Unclear
+                responses and missing information come to your team.
               </p>
               <span className="bco-card-result">
                 A visible path from reply to bid review
