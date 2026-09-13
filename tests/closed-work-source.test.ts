@@ -148,6 +148,9 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(readFileSync("components/streamed-navigation.tsx", "utf8")).toContain("<Nav");
     expect(dashboardShell).toContain("reviewCount: counts.review");
     expect(dashboardShell).toContain("callCount: counts.callQueue");
+    expect(dashboardShell).toContain("queueCounts()");
+    expect(dashboardShell).toContain("automationHealth()");
+    expect(dashboardShell).toContain("automationState: health?.state");
   });
 
   it("does not load file storage just to open the Feedback page", () => {
