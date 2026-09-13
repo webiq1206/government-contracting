@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ContextualQuestion } from "@/components/contextual-question";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { OwnerPicker } from "@/components/owner-picker";
 import { ContractRecordSections } from "@/components/contract-record";
@@ -76,6 +77,16 @@ export function ContractDetail({
     h.target_margin_pct == null ? null : Number(h.target_margin_pct)
   );
 
+  const recordSections = {
+    contractId: h.id,
+    milestones: record.milestones,
+    modifications: record.modifications,
+    invoices: record.invoices,
+    issues: record.issues,
+    coordination: record.coordination,
+    canEdit,
+  };
+
   return (
 <div className={className}>
           {risks.length > 0 && (
@@ -91,9 +102,95 @@ export function ContractDetail({
             </ul>
           )}
 
-          <GuidedPlanPanel plan={plan} eyebrow="Running this contract" />
-
-          <section className="card">
+          <ContractRecordSections
+            key={h.id}
+            {...recordSections}
+            tabs={{
+              overview: <div className="space-y-6 py-5">
+                <GuidedPlanPanel plan={plan} eyebrow="Running this contract" />
+                <section className="card">
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Who and what</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Owner here</p>
+                <div className="mt-1 max-w-xs">
+                  {/*
+                    * Compact, so the picker's own label is read out but not
+                    * drawn. The heading above it already says what the control
+                    * is, and printing "Owner here" over "Owner" made the field
+                    * look like two fields.
+                    */}
+                  <OwnerPicker
+                    kind="contract"
+                    recordId={h.id}
+                    owner={owner}
+                    members={members}
+                    viewerId={viewerId}
+                    canAssign={canEdit}
+                    compact
+                  />
+                </div>
+              </div>
+              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <Fact label="Agency" value={h.agency} />
+                <Fact
+                  label="Primary subcontractor"
+                  value={h.primary_sub_name}
+                  href={h.primary_sub_id ? `/subs/${h.primary_sub_id}` : null}
+                />
+                <Fact
+                  label="Backup subcontractor"
+                  value={h.backup_sub_name}
+                  href={h.backup_sub_id ? `/subs/${h.backup_sub_id}` : null}
+                />
+                <Fact label="Insurance the contract requires" value={h.insurance_required} />
+                <Fact
+                  label="Bond the contract requires"
+                  value={
+                    h.bond_required_cents == null
+                      ? null
+                      : `$${Math.round(Number(h.bond_required_cents) / 100).toLocaleString("en-US")}`
+                  }
+                />
+                <Fact
+                  label="Opportunity"
+                  value={h.opportunity_title}
+                  href={h.opportunity_id ? `/opportunity/${h.opportunity_id}` : null}
+                />
+              </dl>
+            </div>
+          </section>
+                <ContextualQuestion path={`/contracts/${h.id}`} subject="contract" />
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <Link className="btn-secondary" href={`/contracts?c=${h.id}`}>Open in contract workspace</Link>
+                  {h.opportunity_id && <Link className="btn-secondary" href={`/opportunity/${h.opportunity_id}`}>Open linked opportunity</Link>}
+                </div>
+              </div>,
+              obligations: <div className="space-y-6">
+                <section className="card">
+                  <h2 className="mb-3 text-sm font-semibold">Dates and closeout</h2>
+                  <dl className="grid gap-4 sm:grid-cols-2">
+                    <Fact label="Starts" value={h.start_date ? shortDate(h.start_date) : null} />
+                    <Fact label="Ends" value={h.end_date ? shortDate(h.end_date) : null} />
+                    <Fact label="Performance review due" value={h.cpars_due_at ? shortDate(h.cpars_due_at) : null} />
+                    <Fact label="Performance review status" value={h.cpars_status?.replaceAll("_", " ") ?? null} />
+                    <Fact label="Closeout started" value={h.closeout_started_at ? shortDate(h.closeout_started_at) : null} />
+                    <Fact label="Closeout completed" value={h.closeout_completed_at ? shortDate(h.closeout_completed_at) : null} />
+                  </dl>
+                  {h.closeout_notes && <p className="mt-3 whitespace-pre-wrap text-sm">{h.closeout_notes}</p>}
+                </section>
+              </div>,
+              documents: <div className="space-y-6">
+                <section className="card">
+                  <h2 className="mb-2 text-sm font-semibold">Source documents</h2>
+                  {h.opportunity_id ? <>
+                    <p className="mb-3 text-sm text-muted-foreground">Open the linked opportunity to review its solicitation files and bid documents. Sources for recorded changes appear below.</p>
+                    <Link className="btn-secondary" href={`/opportunity/${h.opportunity_id}#documents`}>Open opportunity documents</Link>
+                  </> : <p className="text-sm text-muted-foreground">This contract has no linked opportunity. Document names and source notes for recorded changes appear below.</p>}
+                </section>
+              </div>,
+              financials: <div className="space-y-6">
+                <section className="card">
             <h2 className="mb-3 text-sm font-semibold text-foreground">The money</h2>
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
               <Money label="Contract value" cents={money.currentValueCents} />
@@ -147,68 +244,8 @@ export function ContractDetail({
               </p>
             )}
           </section>
-
-          <section className="card">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Who and what</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Owner here</p>
-                <div className="mt-1 max-w-xs">
-                  {/*
-                    * Compact, so the picker's own label is read out but not
-                    * drawn. The heading above it already says what the control
-                    * is, and printing "Owner here" over "Owner" made the field
-                    * look like two fields.
-                    */}
-                  <OwnerPicker
-                    kind="contract"
-                    recordId={h.id}
-                    owner={owner}
-                    members={members}
-                    viewerId={viewerId}
-                    canAssign={canEdit}
-                    compact
-                  />
-                </div>
-              </div>
-              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Fact label="Agency" value={h.agency} />
-                <Fact
-                  label="Primary subcontractor"
-                  value={h.primary_sub_name}
-                  href={h.primary_sub_id ? `/subs/${h.primary_sub_id}` : null}
-                />
-                <Fact
-                  label="Backup subcontractor"
-                  value={h.backup_sub_name}
-                  href={h.backup_sub_id ? `/subs/${h.backup_sub_id}` : null}
-                />
-                <Fact label="Insurance the contract requires" value={h.insurance_required} />
-                <Fact
-                  label="Bond the contract requires"
-                  value={
-                    h.bond_required_cents == null
-                      ? null
-                      : `$${Math.round(Number(h.bond_required_cents) / 100).toLocaleString("en-US")}`
-                  }
-                />
-                <Fact
-                  label="Opportunity"
-                  value={h.opportunity_title}
-                  href={h.opportunity_id ? `/opportunity/${h.opportunity_id}` : null}
-                />
-              </dl>
-            </div>
-          </section>
-
-          <ContractRecordSections
-            contractId={h.id}
-            milestones={record.milestones}
-            modifications={record.modifications}
-            invoices={record.invoices}
-            issues={record.issues}
-            coordination={record.coordination}
-            canEdit={canEdit}
+              </div>,
+            }}
           />
         </div>
   );
@@ -244,7 +281,7 @@ function Money({ label, cents }: { label: string; cents: number | null }) {
         */}
         {cents === null
           ? "Not on file"
-          : `${cents < 0 ? "-" : ""}$${Math.abs(Math.round(cents / 100)).toLocaleString("en-US")}`}
+          : `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
       </dd>
     </div>
   );

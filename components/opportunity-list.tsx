@@ -8,16 +8,22 @@ import { RowActions } from "@/components/row-actions";
 import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { ScoreBadge } from "@/components/badges";
 import { AgencyPath } from "@/components/agency-path";
+import {
+  BlockerChip,
+  ConfidenceChip,
+  CoverageChip,
+  OwnerChip,
+} from "@/components/opportunity-facts";
+import { EstimatedValue } from "@/components/estimated-value";
 
 /**
- * The default opportunity list intentionally shows only the facts needed to
- * choose a record. Confidence, trade coverage, ownership detail, blockers and
- * other evidence remain available in Quick look and the full record.
+ * Compact list for fast triage. It keeps the decision facts visible without
+ * turning a phone row into a dense table.
  */
 export function OpportunityList({
   rows,
   rules,
-  coverage: _coverage,
+  coverage,
   owners,
   viewerId,
   nextAction,
@@ -35,8 +41,6 @@ export function OpportunityList({
   members?: Owner[];
   peekHrefFor?: (o: OpportunitySummary) => string;
 }) {
-  void _coverage;
-
   if (rows.length === 0) {
     return (
       <p className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -49,6 +53,8 @@ export function OpportunityList({
     <ul className="divide-y divide-border/50 overflow-hidden rounded-xl bg-surface">
       {rows.map((o) => {
         const action = nextAction?.[o.stage] ?? o.stage.replace(/_/g, " ");
+        const owner = owners.get(o.id) ?? null;
+        const tradeCoverage = coverage.get(o.id);
         return (
           <li key={o.id} className={o.human_action_required ? "bg-accent/[0.035]" : ""}>
             <Link
@@ -74,6 +80,18 @@ export function OpportunityList({
                   {o.human_action_required ? "Needs you" : action}
                 </span>
               </div>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
+                <EstimatedValue
+                  value={o.value_estimated}
+                  source={o.value_estimated_source}
+                  className="badge bg-surface-raised text-muted-foreground"
+                />
+                <ConfidenceChip breakdown={o.score_breakdown} />
+                <CoverageChip coverage={tradeCoverage} />
+                <OwnerChip owner={owner} viewerId={viewerId} />
+                <BlockerChip flags={o.risk_flags} />
+              </div>
             </Link>
 
             <div className="flex items-center justify-end gap-2 px-4 pb-3">
@@ -98,7 +116,7 @@ export function OpportunityList({
                   { role }
                 )}
                 members={members}
-                owner={owners.get(o.id) ?? null}
+                owner={owner}
                 viewerId={viewerId}
                 recordLabel={o.title ?? "this opportunity"}
                 compact

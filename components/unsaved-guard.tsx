@@ -29,10 +29,13 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
  */
 export function UnsavedGuard({
   when,
+  watchSearch = false,
   message = "You have unsaved changes on this page. Leave without saving?",
 }: {
   /** True while there is work that would be lost. */
   when: boolean;
+  /** Record workspaces change the selected record through query parameters. */
+  watchSearch?: boolean;
   message?: string;
 }) {
   const router = useRouter();
@@ -69,7 +72,7 @@ export function UnsavedGuard({
       if (next.origin !== window.location.origin) return;
       // Staying on the same page (a filter, a drawer, a tab) keeps the form
       // mounted and its state intact, so there is nothing to warn about.
-      if (next.pathname === window.location.pathname) return;
+      if (next.pathname === window.location.pathname && (!watchSearch || next.search === window.location.search)) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -83,7 +86,7 @@ export function UnsavedGuard({
       window.removeEventListener("beforeunload", warn);
       document.removeEventListener("click", onClick, true);
     };
-  }, [when, message, router]);
+  }, [when, message, router, watchSearch]);
 
   return (
     <ConfirmDialog

@@ -35,13 +35,14 @@ describe("the simplified application shell", () => {
   });
 
   it("keeps only the primary work destinations visible at top level", () => {
-    for (const label of ["Today", "Opportunities", "My Work", "Subcontractors", "Inbox"]) {
+    for (const label of ["Today", "Opportunities", "Subcontractors", "Inbox"]) {
       expect(NAVIGATION).toContain(`label: \"${label}\"`);
     }
     const primary = NAVIGATION.slice(
       NAVIGATION.indexOf('key: "primary"'),
       NAVIGATION.indexOf('key: "manage"')
     );
+    expect(primary).not.toContain('label: "My Work"');
     expect(primary).not.toContain('label: "Calls"');
     expect(primary).not.toContain('label: "Review"');
     expect(NAVIGATION).toContain('pathname === "/review"');

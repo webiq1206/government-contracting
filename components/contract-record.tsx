@@ -1,7 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { cloneElement, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { EditorialTabs } from "./editorial-tabs";
+import { UnsavedGuard } from "./unsaved-guard";
 import { refreshPage } from "./refresh-page";
+import { ConfirmDialog } from "./confirm-dialog";
+
+type RecordSection = "milestones" | "modifications" | "invoices" | "issues" | "coordination";
 
 export interface RecordMilestone {
   id: string;
@@ -97,6 +102,7 @@ export function ContractRecordSections({
   issues,
   coordination,
   canEdit,
+  tabs,
 }: {
   contractId: string;
   milestones: RecordMilestone[];
@@ -105,17 +111,32 @@ export function ContractRecordSections({
   issues: RecordIssue[];
   coordination: RecordCoordination[];
   canEdit: boolean;
+  tabs?: { overview: ReactNode; obligations: ReactNode; documents: ReactNode; financials: ReactNode };
 }) {
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ bad: boolean; text: string } | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [messageSection, setMessageSection] = useState<RecordSection | null>(null);
+  const [open, setOpenState] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [replacement, setReplacement] = useState<string | null>(null);
+  function setOpen(next: string | null) {
+    if (pending.current) return;
+    if (next && next !== open && open && dirty) {
+      setReplacement(next);
+      return;
+    }
+    setDirty(false);
+    setOpenState(next);
+  }
 
   async function post(body: Record<string, unknown>) {
     if (pending.current) return false;
     pending.current = true;
     setBusy(true);
     setMessage(null);
+    const action = String(body.action ?? "");
+    setMessageSection(action.includes("milestone") ? "milestones" : action.includes("modification") ? "modifications" : action.includes("invoice") ? "invoices" : action.includes("issue") ? "issues" : "coordination");
     try {
       const res = await fetch(`/api/contracts/${contractId}/record`, {
         method: "POST",
@@ -129,7 +150,8 @@ export function ContractRecordSections({
         return false;
       }
       setMessage({ bad: false, text: data.message ?? "Saved." });
-      setOpen(null);
+      setDirty(false);
+      setOpenState(null);
       refreshPage();
       return true;
     } catch {
@@ -144,13 +166,15 @@ export function ContractRecordSections({
   const openIssues = issues.filter((i) => !i.resolved_at);
   const doneIssues = issues.filter((i) => i.resolved_at);
 
-  return (
-    <div className="space-y-6">
-      <Section
+  const feedback = (section: RecordSection) => message && messageSection === section
+    ? <p role={message.bad ? "alert" : "status"} className={`mt-3 text-sm ${message.bad ? "text-risk" : "text-muted-foreground"}`}>{message.text}</p>
+    : null;
+  const panels: Record<RecordSection, ReactNode> = {
+      milestones: <Section
         id="milestones"
         title="Milestones and deliverables"
         blurb="Track deadlines, deliverables, and what the agency has received."
-        action={canEdit ? { label: "Add one", key: "milestone", open, setOpen } : null}
+        action={canEdit ? { label: "Add one", key: "milestone", open, setOpen, disabled: busy } : null}
         count={milestones.length}
       >
         {milestones.length === 0 ? (
@@ -182,7 +206,7 @@ export function ContractRecordSections({
                     <button
                       type="button"
                       className="tap text-xs text-accent hover:underline"
-                      disabled={busy}
+                      disabled={busy || dirty}
                       onClick={() =>
                         void post({
                           action: "complete_milestone",
@@ -196,7 +220,7 @@ export function ContractRecordSections({
                     <button
                       type="button"
                       className="tap text-xs text-risk hover:underline"
-                      disabled={busy}
+                      disabled={busy || dirty}
                       onClick={() => void post({ action: "remove_milestone", milestone_id: m.id })}
                     >
                       Remove
@@ -210,13 +234,14 @@ export function ContractRecordSections({
         {open === "milestone" && (
           <MilestoneForm busy={busy} onCancel={() => setOpen(null)} onSave={post} />
         )}
-      </Section>
+        {feedback("milestones")}
+      </Section>,
 
-      <Section
+      modifications: <Section
         id="modifications"
         title="Modifications"
         blurb="Post-award changes to scope, value or dates. Each one carries where it came from, so a value change can be checked against paper later."
-        action={canEdit ? { label: "Record one", key: "modification", open, setOpen } : null}
+        action={canEdit ? { label: "Record one", key: "modification", open, setOpen, disabled: busy } : null}
         count={modifications.length}
       >
         {modifications.length === 0 ? (
@@ -247,8 +272,10 @@ export function ContractRecordSections({
                     modification is the thing most likely to be remembered
                     wrong, and the document is what settles it.
                   */}
-                  {m.source_document || m.source_note || "no source recorded"}
+                  {!m.source_document && !m.source_note && "no source recorded"}
                 </p>
+                {m.source_document && <p className="mt-1 break-words text-xs text-muted-foreground">Document: {m.source_document}</p>}
+                {m.source_note && <p className="break-words text-xs text-muted-foreground">Source note: {m.source_note}</p>}
               </li>
             ))}
           </ul>
@@ -261,13 +288,14 @@ export function ContractRecordSections({
             onSave={post}
           />
         )}
-      </Section>
+        {feedback("modifications")}
+      </Section>,
 
-      <Section
+      invoices: <Section
         id="invoices"
         title="Invoices and payments"
         blurb="One row per invoice, with its payment on the same row: they are one fact with two dates."
-        action={canEdit ? { label: "Add an invoice", key: "invoice", open, setOpen } : null}
+        action={canEdit ? { label: "Add an invoice", key: "invoice", open, setOpen, disabled: busy } : null}
         count={invoices.length}
       >
         {invoices.length === 0 ? (
@@ -317,13 +345,14 @@ export function ContractRecordSections({
         {open === "invoice" && (
           <InvoiceForm busy={busy} onCancel={() => setOpen(null)} onSave={post} />
         )}
-      </Section>
+        {feedback("invoices")}
+      </Section>,
 
-      <Section
+      issues: <Section
         id="issues"
         title="Issues"
         blurb="Track problems, their impact, and how they were resolved."
-        action={canEdit ? { label: "Raise one", key: "issue", open, setOpen } : null}
+        action={canEdit ? { label: "Raise one", key: "issue", open, setOpen, disabled: busy } : null}
         count={openIssues.length}
       >
         {issues.length === 0 ? (
@@ -360,13 +389,14 @@ export function ContractRecordSections({
           </ul>
         )}
         {open === "issue" && <IssueForm busy={busy} onCancel={() => setOpen(null)} onSave={post} />}
-      </Section>
+        {feedback("issues")}
+      </Section>,
 
-      <Section
+      coordination: <Section
         id="coordination"
         title="Coordination log"
         blurb="Record discussions, decisions, and follow-ups with the people delivering this work."
-        action={canEdit ? { label: "Log a contact", key: "coordination", open, setOpen } : null}
+        action={canEdit ? { label: "Log a contact", key: "coordination", open, setOpen, disabled: busy } : null}
         count={coordination.length}
       >
         {coordination.length === 0 ? (
@@ -394,13 +424,34 @@ export function ContractRecordSections({
         {open === "coordination" && (
           <CoordinationForm busy={busy} onCancel={() => setOpen(null)} onSave={post} />
         )}
-      </Section>
-
-      {message && (
-        <p role="status" className={`text-xs ${message.bad ? "text-risk" : "text-muted-foreground"}`}>
-          {message.text}
-        </p>
-      )}
+        {feedback("coordination")}
+      </Section>,
+  };
+  const group = (first: ReactNode, second: ReactNode) => <div className="space-y-6 py-5">{first}{second}</div>;
+  return (
+    <div className="space-y-6" onChangeCapture={() => { if (open) setDirty(true); }}>
+      <UnsavedGuard when={dirty} watchSearch />
+      <ConfirmDialog
+        open={replacement !== null}
+        title="Discard the current contract draft?"
+        body="Opening another form will discard the entries in your current form. Switching tabs keeps your draft."
+        confirmLabel="Discard and open the form"
+        cancelLabel="Keep the current draft"
+        danger
+        onCancel={() => setReplacement(null)}
+        onConfirm={() => { setDirty(false); setOpenState(replacement); setReplacement(null); }}
+      />
+      {tabs ? <EditorialTabs
+        ariaLabel="Contract sections"
+        hashAliases={{ milestones: "obligations", modifications: "documents", invoices: "financials", issues: "activity", coordination: "activity" }}
+        tabs={[
+          { id: "overview", label: "Overview", content: tabs.overview },
+          { id: "obligations", label: "Obligations", content: group(tabs.obligations, panels.milestones) },
+          { id: "documents", label: "Documents", content: group(tabs.documents, panels.modifications) },
+          { id: "financials", label: "Financials", content: group(tabs.financials, panels.invoices) },
+          { id: "activity", label: "Activity", content: group(panels.issues, panels.coordination) },
+        ]}
+      /> : Object.entries(panels).map(([key, panel]) => <div key={key}>{panel}</div>)}
     </div>
   );
 }
@@ -411,7 +462,7 @@ function Section({
   id: string;
   title: string;
   blurb: string;
-  action: { label: string; key: string; open: string | null; setOpen: (v: string | null) => void } | null;
+  action: { label: string; key: string; open: string | null; setOpen: (v: string | null) => void; disabled?: boolean } | null;
   count: number;
   children: React.ReactNode;
 }) {
@@ -426,6 +477,7 @@ function Section({
           <button
             type="button"
             className="tap text-xs text-accent hover:underline"
+            disabled={action.disabled}
             aria-expanded={action.open === action.key}
             onClick={() => action.setOpen(action.open === action.key ? null : action.key)}
           >
@@ -443,12 +495,13 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactElement<{ id?: string; "aria-labelledby"?: string; "aria-describedby"?: string }> }) {
+  const id = useId();
   return (
-    <label className="block">
-      <span className="label mb-1 block">{label}</span>
-      {children}
-      {hint && <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span>}
+    <label className="block" htmlFor={`${id}-control`}>
+      <span id={`${id}-label`} className="label mb-1 block">{label}</span>
+      {cloneElement(children, { id: `${id}-control`, "aria-labelledby": `${id}-label`, "aria-describedby": hint ? `${id}-hint` : undefined })}
+      {hint && <span id={`${id}-hint`} className="mt-0.5 block text-xs text-muted-foreground">{hint}</span>}
     </label>
   );
 }
@@ -542,8 +595,15 @@ function ModificationForm({
   const [doc, setDoc] = useState("");
   const [note, setNote] = useState("");
   const [supersedes, setSupersedes] = useState("");
+  const [reviewing, setReviewing] = useState(false);
   const sourced = Boolean(doc.trim() || note.trim());
-  const valued = kind !== "value" || delta.trim() !== "";
+  const amount = delta.replace(/[$,\s]/g, "");
+  const deltaCents = /^-?(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(amount)
+    ? Math.round(Number(amount) * 100) : null;
+  const validAmount = !amount || (deltaCents !== null && Number.isSafeInteger(deltaCents));
+  const valued = kind !== "value" || (amount !== "" && validAmount);
+  const valid = Boolean(modNumber.trim() && summary.trim() && sourced && valued && validAmount);
+  const correction = existing.find(m => m.id === supersedes);
 
   return (
     <Panel>
@@ -603,19 +663,43 @@ function ModificationForm({
       {!valued && (
         <p className="text-xs text-muted-foreground">A value change needs the amount it changed by.</p>
       )}
+      {!validAmount && <p role="alert" className="text-xs text-risk">Enter a dollar amount with at most two decimal places.</p>}
       <Buttons
         busy={busy}
-        disabled={!modNumber.trim() || !summary.trim() || !sourced || !valued}
+        disabled={!valid}
         onCancel={onCancel}
-        label="Record"
-        onSave={() =>
-          void onSave({
+        label="Review modification"
+        onSave={() => setReviewing(true)}
+      />
+      <ConfirmDialog
+        open={reviewing}
+        title="Review contract modification"
+        confirmLabel="Record modification"
+        cancelLabel="Keep editing"
+        busy={busy}
+        confirmDisabled={!valid}
+        onCancel={() => setReviewing(false)}
+        onConfirm={async () => {
+          const saved = await onSave({
             action: "modification", mod_number: modNumber, kind, summary,
-            value_delta_cents: delta.trim() ? Math.round(Number(delta.replace(/[$,\s]/g, "")) * 100) : null,
+            value_delta_cents: amount ? deltaCents : null,
             new_end_date: newEnd || null, effective_at: effective || null,
             source_document: doc, source_note: note, supersedes: supersedes || null,
-          })
-        }
+          });
+          if (!saved) setReviewing(false);
+        }}
+        body={<div className="space-y-3 text-sm">
+          <p><strong>{modNumber}</strong>: {summary}</p>
+          <dl className="space-y-2">
+            <div><dt className="font-medium">Value change</dt><dd>{deltaCents === null ? "No value change entered" : (deltaCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}</dd></div>
+            <div><dt className="font-medium">Effective date</dt><dd>{effective || "Not entered"}</dd></div>
+            <div><dt className="font-medium">New end date</dt><dd>{newEnd || "Unchanged"}</dd></div>
+            {doc.trim() && <div><dt className="font-medium">Document</dt><dd className="break-words">{doc}</dd></div>}
+            {note.trim() && <div><dt className="font-medium">Source note</dt><dd className="break-words">{note}</dd></div>}
+          </dl>
+          {correction && <p>This replaces {correction.mod_number}. The earlier record stays visible and its value change stops counting.</p>}
+          <p>Recording this updates the contract record. Confirm the details against the source before saving.</p>
+        </div>}
       />
     </Panel>
   );
@@ -822,5 +906,5 @@ function money(cents: string | number | null | undefined): string {
   const n = Number(cents);
   if (!Number.isFinite(n)) return "Not on file";
   const sign = n < 0 ? "-" : "";
-  return `${sign}$${Math.abs(Math.round(n / 100)).toLocaleString("en-US")}`;
+  return `${sign}$${(Math.abs(n) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }

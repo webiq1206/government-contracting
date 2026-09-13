@@ -2,9 +2,9 @@
 
 This branch implements a new visual system, simpler workspaces, and a rebuilt public homepage. It preserves the existing application and its domain behavior. It is ready for design and code review; it is **not a production release or a certificate that every requirement in the master brief is complete**.
 
-Base: `4a5461b` on `main`. Working branch: `redesign/complete-platform`. The separate page-loading checkout was not modified.
+The redesign has continued on `implementation/connected-workflows`. Earlier evidence below describes the original `redesign/complete-platform` checkpoint, based on `4a5461b`.
 
-The latest automated check status is recorded on [draft PR #132](https://github.com/webiq1206/government-contracting/pull/132). Committed evidence files describe their named checkpoints.
+Current source and automated checks are on [PR #137](https://github.com/webiq1206/government-contracting/pull/137). See [the continuation status](../releases/connected-workspace-status.md) for the current scope, verification, and Replit release blocker. Committed evidence files describe their named checkpoints.
 
 ## Review the result
 
@@ -15,7 +15,7 @@ The homepage implementation is in `components/marketing/landing-page.tsx`. All s
 ## What changed and why
 
 - A consistent blue, white, navy, and teal palette replaces the gold editorial treatment. DM Sans carries readable headings and body text; dark mode uses the same semantic system.
-- Compact navigation uses work-oriented labels: Today, My Work, Opportunities, Calls, Inbox, Reports, Automation, and AI usage. Existing routes and access rules remain.
+- Primary navigation contains Today, Opportunities, Contracts, Subcontractors, and Inbox. Workspace and Account controls retain the remaining destinations and their access rules.
 - Today puts a compact count summary and actionable queue ahead of repeated decision lists, detailed setup, and pipeline analysis. Repeated blockers can be expanded to inspect the affected work.
 - Opportunity records have a clear identity, deadline, owner, and next step. Readiness, the complete workflow, and pursuit controls expand on demand. Deep links reveal their containing disclosure.
 - The list/detail workspace retains more room for the selected record. Secondary context moves below the record before the primary pane becomes too narrow.

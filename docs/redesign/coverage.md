@@ -2,7 +2,7 @@
 
 The repository contains 58 page routes excluding theme QA, including 44 dashboard/account entries. Five application entries are compatibility redirects. An HTTP render confirms server behavior for the tested fixture state; it does not certify usability or every modal/tab. The portable review includes 48 content/public screens.
 
-Every route below receives the shared theme where it uses the existing interface components. "Shared refresh" means its existing feature structure remains. Individual master-brief requirements still need interactive acceptance. All local live-application interaction checks remain pending CI because the managed preview client bundles were mismatched.
+Every route below receives the shared theme where it uses the existing interface components. "Shared refresh" means its existing feature structure remains. This table records the original static/HTTP checkpoint. Later hydrated desktop, tablet, and mobile audits supersede the early browser blocker; see [the continuation status](../releases/connected-workspace-status.md) and current PR checks. Passing those scenarios does not certify every possible state or third-party integration.
 
 | Route | Tested role/state | Implementation disposition | HTTP / redirect | Portable static screen |
 | --- | --- | --- | --- | --- |
@@ -26,8 +26,8 @@ Every route below receives the shared theme where it uses the existing interface
 | `/call-queue` | Fixture owner; platform admin on admin routes | Calls naming; full-screen phone call workspace and one bottom layer | 200 | Included |
 | `/communications` | Fixture owner; platform admin on admin routes | Inbox naming; shared panes and controls | 200 | Included |
 | `/compliance` | Fixture owner; platform admin on admin routes | Shared refresh; existing workflow structure retained | 200 | Included |
-| `/contracts/[id]` | Fixture owner; platform admin on admin routes | Shared refresh; existing workflow structure retained | 200 | Included |
-| `/contracts` | Fixture owner; platform admin on admin routes | Shared refresh; existing workflow structure retained | 200 | Included |
+| `/contracts/[id]` | Fixture owner; platform admin on admin routes | Five record tabs, reviewed modifications, source notes, protected drafts, and authorized AI questions | 200 | Earlier layout only; current screenshots in CI |
+| `/contracts` | Fixture owner; platform admin on admin routes | Primary destination; selected contract uses the same record tabs and guards query-based navigation | 200 | Earlier layout only; current screenshots in CI |
 | `/email-log` | Fixture owner; platform admin on admin routes | Compatibility entry retained; no duplicate content screen | 200 → /communications | Not included; state explained in this row |
 | `/feedback` | Fixture owner; platform admin on admin routes | Shared refresh; existing workflow structure retained | 200 | Included |
 | `/how-it-works` | Fixture owner; platform admin on admin routes | Help center naming; shared readable content | 200 | Included |

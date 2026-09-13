@@ -88,7 +88,10 @@ describe("the three surfaces cannot diverge", () => {
 
   it("does not lead the home screen with a bare integer", () => {
     const src = readFileSync("components/today-greeting.tsx", "utf8");
-    const headline = src.slice(src.indexOf("{settingUp ?"), src.indexOf("Work the queue"));
-    expect(headline.indexOf("{parts.greeting}")).toBeLessThan(headline.indexOf("{actionCount}"));
+    const heading = src.indexOf(">Today</h1>");
+    const countSentence = src.indexOf("`${actionCount} ${actionCount");
+    expect(heading).toBeGreaterThan(-1);
+    expect(countSentence).toBeGreaterThan(heading);
+    expect(src).toContain('"action needs" : "actions need"');
   });
 });

@@ -4,7 +4,7 @@ import Link from "next/link";
 
 type Source = { label: string; href: string };
 /** Read-only questions, loaded on request and grounded by the server. */
-export function ContextualQuestion({ path }: { path: string }) {
+export function ContextualQuestion({ path, subject = "opportunity" }: { path: string; subject?: "opportunity" | "contract" }) {
   const id = useId();
   const request = useRef<AbortController | null>(null);
   const [question, setQuestion] = useState("");
@@ -46,17 +46,17 @@ export function ContextualQuestion({ path }: { path: string }) {
   return (
     <section className="rounded-xl border border-border bg-surface p-4 sm:p-5" aria-labelledby={`${id}-title`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={`${id}-title`} className="font-display text-lg">Ask about this opportunity</h2>
+        <h2 id={`${id}-title`} className="font-display text-lg">Ask about this {subject}</h2>
         <span className="rounded-full bg-automation-soft px-2 py-1 text-xs font-medium text-automation-foreground">AI assistance · Read only</span>
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">Get help with the current status, blockers, and next step. Check the source documents for exact solicitation terms.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Get help with the current status, blockers, and next step. Check the source documents for exact requirements.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {["What needs my attention?", "Why is this blocked?", "What is the next step?"].map(prompt => (
           <button key={prompt} type="button" className="btn-secondary text-sm" disabled={busy} onClick={() => void ask(prompt)}>{prompt}</button>
         ))}
       </div>
       <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={event => { event.preventDefault(); void ask(question); }}>
-        <label className="sr-only" htmlFor={`${id}-question`}>Question about this opportunity</label>
+        <label className="sr-only" htmlFor={`${id}-question`}>Question about this {subject}</label>
         <input id={`${id}-question`} className="input min-w-0 flex-1" placeholder="Ask a question about this work" value={question} maxLength={500} onChange={event => setQuestion(event.target.value)} disabled={busy} />
         <button className="btn-primary" disabled={busy || !question.trim()}>{busy ? "Checking the record…" : "Ask BrostCo"}</button>
       </form>

@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useKeyboardViewport } from "./use-keyboard-viewport";
+import { SearchIcon } from "./tab-icons";
 import {
   groupResults,
   highlight,
@@ -545,7 +546,7 @@ export function SearchButton({
       aria-label="Search everything"
       title="Search everything (⌘K)"
     >
-      <span aria-hidden>⌕</span>
+      <SearchIcon />
       {!iconOnly && (
         <>
           {" "}

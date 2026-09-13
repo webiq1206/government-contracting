@@ -13,11 +13,10 @@ import {
   NAVIGATION_SECTIONS,
   navigationMatches,
   type NavigationItem,
-  type NavigationSection,
 } from "@/lib/navigation";
 import type { AutomationState } from "@/lib/domain/automation-health";
 
-const STATE_GLYPH: Record<AutomationState, string> = {
+const CHIP_GLYPH: Record<AutomationState, string> = {
   healthy: "●",
   degraded: "▲",
   blocked: "×",
@@ -49,7 +48,7 @@ function NavLink({
       onClick={onNavigate}
       className={`flex min-h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors ${
         active
-          ? "bg-accent text-white"
+          ? "bg-accent text-on-accent"
           : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
       }`}
     >
@@ -58,35 +57,6 @@ function NavLink({
   );
 }
 
-function NavGroup({
-  section,
-  pathname,
-  onNavigate,
-}: {
-  section: NavigationSection;
-  pathname: string;
-  onNavigate: () => void;
-}) {
-  const active = section.items.some((item) => navigationMatches(pathname, item.href));
-  return (
-    <details className="group" open={active || undefined}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground [&::-webkit-details-marker]:hidden">
-        <span>{section.label}</span>
-        <span aria-hidden className="text-xs transition-transform group-open:rotate-180">⌄</span>
-      </summary>
-      <div className="mt-1 space-y-0.5 border-l border-white/10 pl-2">
-        {section.items.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            active={navigationMatches(pathname, item.href)}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </div>
-    </details>
-  );
-}
 
 export function Nav({
   email,
@@ -115,6 +85,7 @@ export function Nav({
   const router = useRouter();
   const drawerRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [ready, setReady] = useState(false);
   const [localPaused, setLocalPaused] = useState(automationPaused);
@@ -135,7 +106,7 @@ export function Nav({
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => { setOpen(false); setAccountOpen(false); }, [pathname]);
 
   useEffect(() => {
     isolateBackground(open && isMobile);
@@ -146,13 +117,15 @@ export function Nav({
     if (!open || !isMobile) return;
     const panel = drawerRef.current;
     const opener = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
 
     const focusable = () =>
       Array.from(
         panel?.querySelectorAll<HTMLElement>(
-          "button:not([disabled]), a[href], input:not([disabled]), [tabindex='0']"
+          "button:not([disabled]), a[href], summary, input:not([disabled]), [tabindex='0']"
         ) ?? []
       ).filter((node) => node.getClientRects().length > 0);
 
@@ -179,7 +152,8 @@ export function Nav({
 
     document.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
       document.removeEventListener("keydown", onKey);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
@@ -237,12 +211,41 @@ export function Nav({
     }
   }
 
+  const togglePending = localPaused !== automationPaused;
+  const mobileState: AutomationState = togglePending && localPaused
+    ? "paused"
+    : automationState ?? (localPaused ? "paused" : "not_configured");
+  const mobileHeadline = togglePending
+    ? localPaused
+      ? "Pausing automation"
+      : "Resuming automation"
+    : automationHeadline ??
+      (mobileState === "healthy"
+        ? "Automation healthy"
+        : mobileState === "degraded"
+          ? "Automation needs attention"
+          : mobileState === "blocked"
+            ? "Automation is blocked"
+            : mobileState === "paused"
+              ? "Automation paused"
+              : "Automation not configured");
+  const mobileDetail = togglePending
+    ? "Saving this change now."
+    : automationDetail ??
+      (mobileState === "healthy"
+        ? "Agents and scheduled work are running."
+        : mobileState === "degraded"
+          ? "Some automated work needs review."
+          : mobileState === "blocked"
+            ? "Open Automation to see what is stopping work."
+            : mobileState === "paused"
+              ? "Automated work is paused for this account."
+              : "Finish setup before automated work can run.");
+
   const sections = NAVIGATION_SECTIONS.filter(
     (section) => !section.adminOnly || isPlatformAdmin
   );
   const primary = sections.find((section) => section.key === "primary")!;
-  const secondary = sections.filter((section) => section.key !== "primary");
-  const state: AutomationState = automationState ?? (localPaused ? "paused" : "not_configured");
   const initials =
     email
       .split("@")[0]
@@ -254,31 +257,11 @@ export function Nav({
       .slice(0, 2) || "BC";
 
   const navBody = (
-    <>
-      <div className="space-y-0.5">
-        {primary.items.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            active={navigationMatches(pathname, item.href)}
-            onNavigate={() => setOpen(false)}
-          />
-        ))}
-      </div>
-
-      <div className="my-4 border-t border-white/10" />
-
-      <div className="space-y-1">
-        {secondary.map((section) => (
-          <NavGroup
-            key={section.key}
-            section={section}
-            pathname={pathname}
-            onNavigate={() => setOpen(false)}
-          />
-        ))}
-      </div>
-    </>
+    <div data-primary-navigation className="space-y-2">
+      {primary.items.map(item => (
+        <NavLink key={item.href} item={item} active={navigationMatches(pathname, item.href)} onNavigate={() => setOpen(false)} />
+      ))}
+    </div>
   );
 
   return (
@@ -319,7 +302,7 @@ export function Nav({
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
         inert={isMobile && !open ? true : undefined}
-        className={`app-navigation fixed inset-y-0 right-0 z-[71] flex w-[min(88vw,360px)] flex-col border-l border-white/10 bg-shell transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:border-l-0 lg:border-r ${
+        className={`app-navigation fixed inset-y-0 right-0 z-[71] flex h-dvh w-[min(88vw,320px)] flex-col border-l border-white/10 bg-shell transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:border-l-0 lg:border-r ${
           open ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
@@ -337,52 +320,40 @@ export function Nav({
           </button>
         </div>
 
-        <div className="scroll-thin flex-1 overflow-y-auto px-3 py-3 lg:px-3 lg:pt-1">
-          {navBody}
+        <div className="drawer-scroll scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-5">
+          <SearchButton className="mb-6 hidden min-h-11 w-full items-center gap-2 rounded-lg border border-white/15 px-3 text-sm text-muted-foreground lg:flex" />
+          {accountOpen ? (
+            <section aria-label="Account controls" className="space-y-5">
+              <button type="button" onClick={() => setAccountOpen(false)} className="min-h-11 text-sm text-muted-foreground">← Back to menu</button>
+              <h2 className="font-display text-xl text-foreground">Your account</h2>
+              <p className="break-all text-sm text-muted-foreground">{email}</p>
+              <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
+              <Link href="/settings/account" onClick={() => setOpen(false)} className="flex min-h-11 items-center text-sm text-foreground">Account settings</Link>
+              <Link href="/how-it-works" onClick={() => setOpen(false)} className="flex min-h-11 items-center text-sm text-foreground">Help</Link>
+              <Link href="/agents" onClick={() => setOpen(false)} title={mobileDetail} className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground">
+                <span aria-hidden className={STATE_TONE[mobileState]}>{CHIP_GLYPH[mobileState]}</span>{mobileHeadline}
+              </Link>
+              {canPauseAutomation && automationPaused !== undefined && (
+                <button type="button" onClick={handleToggleAutomation} disabled={togglingAutomation} className="min-h-11 w-full rounded-lg border border-white/15 px-3 text-sm text-foreground disabled:opacity-50">
+                  {togglingAutomation ? "Saving…" : localPaused ? "Resume automation" : "Pause automation"}
+                </button>
+              )}
+              {automationError && <p role="alert" className="text-sm text-risk">{automationError}</p>}
+              <button type="button" onClick={logout} disabled={loggingOut} className="min-h-11 text-sm text-muted-foreground disabled:opacity-50">{loggingOut ? "Signing out…" : "Sign out"}</button>
+              {logoutError && <p role="alert" className="text-sm text-risk">{logoutError}</p>}
+            </section>
+          ) : navBody}
         </div>
-
-        <div className="shrink-0 space-y-3 border-t border-white/10 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
-          <Link
-            href="/agents"
-            onClick={() => setOpen(false)}
-            title={automationDetail}
-            className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground"
-          >
-            <span aria-hidden className={STATE_TONE[state]}>{STATE_GLYPH[state]}</span>
-            <span className="min-w-0 flex-1 truncate">{automationHeadline ?? "Automation"}</span>
+        {!accountOpen && <div className="shrink-0 space-y-2 border-t border-white/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <Link href="/more" onClick={() => setOpen(false)} aria-current={pathname === "/more" ? "page" : undefined} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground">
+            Workspace<span aria-hidden>↗</span>
           </Link>
-
-          {canPauseAutomation && automationPaused !== undefined && (
-            <button
-              type="button"
-              onClick={handleToggleAutomation}
-              disabled={togglingAutomation}
-              className="min-h-11 w-full rounded-lg border border-white/15 px-3 text-sm text-foreground hover:bg-white/5 disabled:opacity-50"
-            >
-              {togglingAutomation ? "Saving…" : localPaused ? "Resume automation" : "Pause automation"}
-            </button>
-          )}
-          {automationError && <p role="alert" className="px-1 text-xs text-risk">{automationError}</p>}
-
-          <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
-
-          <div className="flex items-center gap-3 px-1">
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 text-xs font-medium text-foreground">
-              {initials}
-            </span>
-            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{email}</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            disabled={loggingOut}
-            className="min-h-11 w-full rounded-lg px-3 text-left text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground disabled:opacity-50"
-          >
-            {loggingOut ? "Signing out…" : "Sign out"}
+          <button type="button" onClick={() => setAccountOpen(true)} aria-expanded={accountOpen} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground">
+            <span aria-hidden className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs text-foreground">{initials}</span>
+            <span>Account</span>
           </button>
-          {logoutError && <p role="alert" className="px-1 text-xs text-risk">{logoutError}</p>}
-        </div>
+        </div>}
+
       </nav>
     </>
   );

@@ -46,11 +46,12 @@ describe("dashboard tables become cards on a phone", () => {
     expect(docs).not.toContain("md:block");
   });
 
-  it("gives settings a labelled section picker on a phone", () => {
+  it("gives settings one labelled section picker on every device", () => {
     const src = readFileSync("components/settings-nav.tsx", "utf8");
     expect(src).toContain("<select");
     expect(src).toContain('aria-label="Settings section"');
-    expect(src).toContain("lg:hidden");
-    expect(src).toContain("lg:flex");
+    expect(src).not.toContain("lg:hidden");
+    expect(src).not.toContain("lg:flex");
+    expect(src).toContain("links.current.get(destination)?.click()");
   });
 });
