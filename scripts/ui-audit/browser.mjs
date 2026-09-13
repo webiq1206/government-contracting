@@ -441,7 +441,10 @@ try {
   assert.equal(await v.getByRole('link',{name:'Quick look',exact:true}).count(),0,'Viewer cannot inspect platform accounts');
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
   await v.goto(base+'/more',{waitUntil:'networkidle'});
-  await v.getByRole('button',{name:'Sign out',exact:true}).last().click();
+  if(device!=='desktop') await v.getByRole('button',{name:'Open menu',exact:true}).click();
+  const viewerMenu=v.getByRole('navigation',{name:'Main',exact:true});
+  await viewerMenu.getByRole('button',{name:'Account',exact:true}).click();
+  await viewerMenu.getByRole('button',{name:'Sign out',exact:true}).click();
   await v.waitForURL('**/login',{waitUntil:'domcontentloaded'});
   await v.goto(base+'/today',{waitUntil:'domcontentloaded'});
   assert.equal(new URL(v.url()).pathname,'/login','Signing out removes authenticated access');

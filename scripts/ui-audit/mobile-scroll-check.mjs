@@ -30,7 +30,10 @@ try {
     assert(after > before.y + 20, `${label}: document did not scroll`);
   }
 
-  await assertDocumentScrolls("Today initial");
+  // A focused Today can fit on a tablet. Expand its real task sections to
+  // verify scrolling with content that actually requires it.
+  await page.locator('[data-today-details] > summary').click();
+  await assertDocumentScrolls("Today task views");
 
   const menuButton = page.getByRole("button", { name: "Open menu", exact: true });
   await menuButton.click();
@@ -48,6 +51,7 @@ try {
   assert.notEqual(await page.evaluate(() => document.body.style.overflow), "hidden", "Drawer close stranded body overflow lock");
 
   await page.goto(base + "/today", { waitUntil: "networkidle" });
+  await page.locator('[data-today-details] > summary').click();
   await assertDocumentScrolls("Today after drawer close");
   console.log(JSON.stringify({ device, status: "document scrolling and overlay recovery verified" }));
   await context.close();

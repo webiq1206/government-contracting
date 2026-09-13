@@ -21,6 +21,20 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     }
     checkpoint();
   };
+  await check('/today', 'focused-today-disclosure-and-saved-links', async () => {
+    const details = page.locator('[data-today-details]');
+    assert.equal(await details.evaluate(node => node.open), false, 'Full task views start collapsed');
+    assert.equal(await page.locator('[data-next-task]').count(), 1, 'Today has one next task');
+    assert(await page.locator('[data-upcoming-task]').count() <= 3, 'Upcoming work stays focused');
+    await details.locator('summary').first().click();
+    assert.equal(await details.evaluate(node => node.open), true);
+    await page.goto(base + '/today#calls', { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelector('[data-today-details]')?.open);
+    assert(await page.locator('#calls').isVisible(), 'Saved task links reveal their original section');
+    await page.goto(base + '/today?due=overdue#queue', { waitUntil: 'networkidle' });
+    assert.equal(await details.evaluate(node => node.open), true, 'Active queue filters remain visible');
+    assert(await page.locator('#queue').isVisible());
+  });
   if (device === 'desktop') await check('/agents', 'latest-navigation-replaces-stalled-link', async () => {
     let releaseToday, releasePipeline;
     const todayGate = new Promise(resolve => { releaseToday = resolve; });

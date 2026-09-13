@@ -159,8 +159,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           <option value="month">This month</option><option value="today">Today</option><option value="week">Past 7 days</option>
           {!["month","today","week"].includes(filters.period) && <option value={filters.period}>{filters.period === "billing" ? "Billing period" : "Custom dates"}</option>}
         </select></label>
-        <button type="button" className="inline-flex coarse:min-h-11 items-center text-sm underline" aria-expanded={moreFilters} onClick={()=>setMoreFilters(!moreFilters)}>{moreFilters ? "Hide filters" : "More filters"}</button>
-        {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="inline-flex coarse:min-h-11 items-center text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
+        <button type="button" className="inline-flex min-h-11 items-center text-sm underline" aria-expanded={moreFilters} onClick={()=>setMoreFilters(!moreFilters)}>{moreFilters ? "Hide filters" : "More filters"}</button>
+        {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="inline-flex min-h-11 items-center text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
       </div>
       {moreFilters && <form
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"

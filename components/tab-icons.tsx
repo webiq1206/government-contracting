@@ -24,6 +24,10 @@
  * does not.
  */
 
+export function SearchIcon() {
+  return <Icon><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></Icon>;
+}
+
 function Icon({ children }: { children: React.ReactNode }) {
   return (
     <svg

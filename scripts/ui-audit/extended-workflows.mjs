@@ -77,6 +77,9 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
   for (const route of ['/pipeline', '/pipeline?view=list', '/pipeline?view=stages', '/pipeline?view=table', '/subs', '/communications', '/today', '/workbench', '/call-queue', '/search?q=Facility', '/recap']) {
     const viewName = route.slice(1).replace(/[?=]/g, '-');
     await check(route, `${viewName}-quick-view-and-history`, async () => {
+      if (route === '/today') {
+        await page.locator('[data-today-details] > summary').click();
+      }
       if (route === '/pipeline?view=stages' && device !== 'desktop') {
         await page.getByRole('tablist', { name: 'Pipeline stages', exact: true }).getByRole('tab', { name: /^Scoring/ }).click();
       }
