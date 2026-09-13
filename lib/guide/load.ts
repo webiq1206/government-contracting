@@ -20,6 +20,8 @@ import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 import { query, queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { contractRecord } from "@/lib/contract-record";
+import { buildContractGuide, contractIdFromPath } from "@/lib/domain/contract-guide";
 
 import type { PageGuide } from "@/lib/domain/page-guide";
 
@@ -45,6 +47,21 @@ export async function loadGuideBundle(
   auth: SetupUser,
   pathname: string
 ): Promise<GuideBundle> {
+  const contractId = contractIdFromPath(pathname);
+  if (pathname.startsWith("/contracts/") && !contractId) throw new Error("Invalid contract record path");
+  if (contractId) {
+    const orgId = await tryResolveTenantOrgId();
+    if (!orgId) throw new Error("Contract account scope could not be verified");
+    const record = await contractRecord(orgId, contractId);
+    if (!record) throw new Error("Contract record is unavailable in this account");
+    const guide = buildContractGuide(record);
+    return { guide, adapters: {}, fingerprint: JSON.stringify(guide), sources: [
+      { label: "Contract record", href: `/contracts/${contractId}#overview` },
+      { label: "Recorded obligations", href: `/contracts/${contractId}#obligations` },
+      { label: "Modifications and stated sources", href: `/contracts/${contractId}#documents` },
+      { label: "Recorded financials", href: `/contracts/${contractId}#financials` },
+    ] };
+  }
   const pageKey = pageKeyFromPath(pathname);
   const sources = [{ label: "Current account workload", href: "/today" }];
 

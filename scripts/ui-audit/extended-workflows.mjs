@@ -177,6 +177,8 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
   });
 
   await check(`/contracts/${ids.contract}`, 'contract-milestone-issue-and-coordination', async () => {
+    const tabs = page.getByRole('tablist', { name: 'Contract sections', exact: true });
+    await tabs.getByRole('tab', { name: 'Obligations', exact: true }).click();
     const milestones = page.locator('#milestones');
     await milestones.getByRole('button', { name: 'Add one', exact: true }).click();
     await milestones.getByLabel('What is it', { exact: true }).fill(`Electrical inspection ${device}`);
@@ -187,6 +189,7 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await milestones.getByRole('button', { name: 'Mark outstanding', exact: true }).waitFor();
     await milestones.getByRole('button', { name: 'Mark outstanding', exact: true }).click();
     await milestones.getByRole('button', { name: 'Mark delivered', exact: true }).waitFor();
+    await tabs.getByRole('tab', { name: 'Activity', exact: true }).click();
     const issues = page.locator('#issues');
     await issues.getByRole('button', { name: 'Raise one', exact: true }).click();
     await issues.getByLabel('What happened', { exact: true }).fill(`Access gate locked ${device}`);
@@ -202,8 +205,99 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await contacts.getByRole('button', { name: 'Log it', exact: true }).click();
     await contacts.getByText('Confirmed inspection access and timing.', { exact: true }).waitFor();
     await page.reload({ waitUntil: 'networkidle' });
-    await milestones.getByRole('button', { name: 'Mark delivered', exact: true }).waitFor();
     await issues.getByText('Resolved: Agency supplied a temporary access code.', { exact: true }).waitFor();
+    await tabs.getByRole('tab', { name: 'Obligations', exact: true }).click();
+    await milestones.getByRole('button', { name: 'Mark delivered', exact: true }).waitFor();
+  });
+
+  await check(`/contracts/${ids.contract}#modifications`, 'contract-tabs-drafts-modification-review', async () => {
+    const tabs = page.getByRole('tablist', { name: 'Contract sections', exact: true });
+    const changes = page.locator('#modifications');
+    await changes.waitFor();
+    assert.equal(await tabs.getByRole('tab', { name: 'Documents', exact: true }).getAttribute('aria-selected'), 'true');
+    assert.equal(await page.getByRole('link', { name: 'Open opportunity documents', exact: true }).getAttribute('href'), `/opportunity/${ids.opportunity}#documents`);
+    await tabs.getByRole('tab', { name: 'Financials', exact: true }).click();
+    const contractValue = page.getByText('Contract value', { exact: true }).locator('..').locator('dd');
+    const before = Number((await contractValue.innerText()).replace(/[$,]/g, ''));
+    await tabs.getByRole('tab', { name: 'Documents', exact: true }).click();
+    await changes.getByRole('button', { name: 'Record one', exact: true }).click();
+    const modNumber = `UI-${device}-${Date.now()}`;
+    const documentName = `Signed ${modNumber}.pdf`;
+    const sourceNote = `Page 2, approved adjustment ${modNumber}`;
+    await changes.getByLabel('Modification number', { exact: true }).fill(modNumber);
+    await changes.getByLabel('What kind', { exact: true }).selectOption('value');
+    await changes.getByLabel('What it changed', { exact: true }).fill('Approved fixture scope adjustment');
+    await changes.getByLabel('Value change', { exact: true }).fill('100.25');
+    const review = changes.getByRole('button', { name: 'Review modification', exact: true });
+    assert(await review.isDisabled(), 'A source is required before review');
+    await changes.getByLabel('Document', { exact: true }).fill(documentName);
+    await changes.getByLabel('Or where it came from', { exact: true }).fill(sourceNote);
+    await changes.getByLabel('Value change', { exact: true }).fill('100.251');
+    assert(await review.isDisabled(), 'Do not silently round an invalid amount');
+    await changes.getByLabel('Value change', { exact: true }).fill('100.25');
+    await tabs.getByRole('tab', { name: 'Financials', exact: true }).click();
+    await page.locator('#invoices').getByRole('button', { name: 'Add an invoice', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Discard the current contract draft?', exact: true }).getByRole('button', { name: 'Keep the current draft', exact: true }).click();
+    await tabs.getByRole('tab', { name: 'Documents', exact: true }).click();
+    assert.equal(await changes.getByLabel('Modification number', { exact: true }).inputValue(), modNumber);
+    let writes = 0;
+    const endpoint = `**/api/contracts/${ids.contract}/record`;
+    await page.route(endpoint, route => { writes++; return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Fixture save unavailable. Your changes are still here.' }) }); });
+    try {
+      await review.click();
+      const dialog = page.getByRole('dialog', { name: 'Review contract modification', exact: true });
+      await dialog.getByText('$100.25', { exact: true }).waitFor();
+      await dialog.getByText(documentName, { exact: true }).waitFor();
+      await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
+      assert.equal(writes, 0, 'Review and cancellation must not write');
+      await review.click();
+      await dialog.getByRole('button', { name: 'Record modification', exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await page.getByRole('alert').filter({ hasText: 'Fixture save unavailable' }).waitFor();
+      assert.equal(writes, 1);
+      assert.equal(await changes.getByLabel('Modification number', { exact: true }).inputValue(), modNumber);
+    } finally { await page.unroute(endpoint); }
+    await review.click();
+    const dialog = page.getByRole('dialog', { name: 'Review contract modification', exact: true });
+    await page.screenshot({ path: join(out, `${device}-contract-modification-review.png`) });
+    await dialog.getByRole('button', { name: 'Record modification', exact: true }).click();
+    await changes.getByText(`Document: ${documentName}`, { exact: true }).waitFor();
+    await changes.getByText(`Source note: ${sourceNote}`, { exact: true }).waitFor();
+    await tabs.getByRole('tab', { name: 'Financials', exact: true }).click();
+    assert.equal(Number((await contractValue.innerText()).replace(/[$,]/g, '')), Math.round((before + 100.25) * 100) / 100);
+    await page.goto(`${base}/contracts?c=${ids.contract}#documents`, { waitUntil: 'networkidle' });
+    await changes.getByRole('button', { name: 'Record one', exact: true }).click();
+    await changes.getByLabel('Modification number', { exact: true }).fill('Keep this workspace draft');
+    if (device !== 'desktop') await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Contracts', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Leave without saving?', exact: true }).getByRole('button', { name: 'Stay here', exact: true }).click();
+    if (device !== 'desktop') await page.keyboard.press('Escape');
+    assert.equal(new URL(page.url()).searchParams.get('c'), ids.contract);
+    assert.equal(await changes.getByLabel('Modification number', { exact: true }).inputValue(), 'Keep this workspace draft');
+    await changes.getByRole('button', { name: 'Cancel', exact: true }).click();
+    for (const [hash, tab] of [['milestones', 'Obligations'], ['invoices', 'Financials'], ['issues', 'Activity'], ['coordination', 'Activity']]) {
+      await page.goto(`${base}/contracts/${ids.contract}#${hash}`, { waitUntil: 'networkidle' });
+      await page.locator(`#${hash}`).waitFor();
+      assert.equal(await tabs.getByRole('tab', { name: tab, exact: true }).getAttribute('aria-selected'), 'true');
+    }
+    await tabs.getByRole('tab', { name: 'Overview', exact: true }).click();
+    const factsResponse = await page.evaluate(async path => {
+      const response = await fetch(`/api/guide?path=${encodeURIComponent(path)}`);
+      return { status: response.status, body: await response.json() };
+    }, `/contracts/${ids.contract}`);
+    assert.equal(factsResponse.status, 200);
+    const facts = factsResponse.body;
+    assert.equal(facts.guide.pathname, `/contracts/${ids.contract}`);
+    assert(facts.guide.situation.includes(modNumber));
+    await page.route('**/api/guide/ask', route => {
+      assert.equal(route.request().postDataJSON().path, `/contracts/${ids.contract}`);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answer: 'Fixture answer using the recorded contract facts.', sources: facts.sources }) });
+    });
+    try {
+      await page.getByRole('button', { name: 'What needs my attention?', exact: true }).click();
+      await page.getByText('Fixture answer using the recorded contract facts.', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('link', { name: 'Recorded financials', exact: true }).getAttribute('href'), `/contracts/${ids.contract}#financials`);
+    } finally { await page.unroute('**/api/guide/ask'); }
   });
 
   await check('/settings/rules', 'rules-tabs-preview-save-and-reload', async () => {

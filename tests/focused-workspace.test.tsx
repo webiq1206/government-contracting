@@ -8,8 +8,8 @@ import { TodayDetails } from "@/components/today-details";
 import type { WorkItem } from "@/lib/domain/work-queue";
 const item = (i: number, extra: Partial<WorkItem> = {}): WorkItem => ({key:`call:${i}`,kind:"call",title:`Call company ${i}`,context:"Sample opportunity",href:`/workbench?item=call:${i}`,recordHref:"/call-queue",actionLabel:"Open call",...extra});
 describe("focused workspace release", () => {
-  it("shows exactly four primary choices on every device", () => {
-    expect(NAVIGATION_SECTIONS.find(s => s.key === "primary")?.items.map(i => i.label)).toEqual(["Today","Opportunities","Subcontractors","Inbox"]);
+  it("shows the five primary destinations on every device", () => {
+    expect(NAVIGATION_SECTIONS.find(s => s.key === "primary")?.items.map(i => i.label)).toEqual(["Today","Opportunities","Contracts","Subcontractors","Inbox"]);
     const nav = readFileSync("components/nav.tsx", "utf8");
     expect(nav).toContain("data-primary-navigation");
     expect(nav).not.toContain("<NavGroup");

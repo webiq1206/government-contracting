@@ -24,6 +24,7 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
     items: [
       { href: "/today", label: "Today" },
       { href: "/pipeline", label: "Opportunities" },
+      { href: "/contracts", label: "Contracts" },
       { href: "/subs", label: "Subcontractors" },
       { href: "/communications", label: "Inbox" },
     ],
@@ -35,7 +36,6 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
       { href: "/workbench", label: "All tasks", hint: "Work through the full queue" },
       { href: "/review", label: "Review", hint: "Decide which opportunities to pursue" },
       { href: "/call-queue", label: "Calls", hint: "Prepared calls and follow-ups" },
-      { href: "/contracts", label: "Contracts" },
       { href: "/compliance", label: "Compliance" },
     ],
   },
