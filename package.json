@@ -79,7 +79,7 @@
     "@electric-sql/pglite-socket": "^0.2.11",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.5.24",
-    "linkedom": "^0.18.12",
+    "linkedom": "^0.18.13",
     "vitest": "^3.2.7"
   },
   "overrides": {
