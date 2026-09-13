@@ -91,6 +91,10 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
       await page.getByRole('link', { name: 'Quick look', exact: true }).filter({ visible: true }).first().click();
       const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
       await drawer.waitFor();
+      await page.waitForFunction(() => {
+        const rect = document.querySelector('[aria-label="Record details"]')?.getBoundingClientRect();
+        return rect && rect.height > 100 && rect.top >= 0 && rect.bottom <= innerHeight + 2;
+      });
       await page.screenshot({ path: join(out, `${device}-${viewName}-quick-view.png`) });
       await drawer.getByRole('link', { name: 'Close details', exact: true }).click();
       await drawer.waitFor({ state: 'hidden' });

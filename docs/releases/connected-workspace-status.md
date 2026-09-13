@@ -25,6 +25,11 @@ Usage filter controls now keep a 44px minimum height. The comprehensive audit
 also opens Today task details before using Quick look and follows Account
 controls to sign out, matching the redesigned navigation.
 
+Today now places its desktop Quick look panel beside the page content. The
+previous nesting left it below the full task list, outside the viewport.
+The responsive audit checks every Quick look panel for visible height and
+viewport containment before exercising close and browser-history recovery.
+
 ## Verification
 
 - Standalone TypeScript check passed on the recovered source.
@@ -45,6 +50,10 @@ controls to sign out, matching the redesigned navigation.
   branch head. The local portable browser rendered 45 routes without a page
   failure before its single-process runtime closed while disposing a public
   browser context; that incomplete sweep is not a full responsive pass.
+- GitHub CI passed on `0d6d622ea394264c899974b0be265afb233d35d4`. Its
+  comprehensive mobile and tablet audits passed. The desktop audit identified
+  the Today panel placement corrected in this revision; final evidence belongs
+  in the pull request checks and must include the current application source.
 
 ## Reconciliation and scope still open
 
@@ -56,8 +65,12 @@ preserved during any future merge. Replit main was still
 `b36be34a0a27875055ed58510792bd9d93ac6aed`. A successful deployment status
 does not prove that it contains this continuation's changes.
 
-The linked September 12 ChatGPT conversation could not be retrieved through
-the available conversation search or URL lookup. The newer PR description
+Conversation search recovered the redesign brief and prior decisions: direct
+Git authoring and Replit synchronization, the cool gray palette, a focused
+workspace, mobile document scrolling, AI-led homepage messaging, free-trial
+actions, and looping hero media with accessible fallbacks. The full final
+transcript of the linked September 12 conversation remains unavailable.
+The newer PR description
 lists connected records, reviewed modifications with source evidence,
 reusable knowledge, source-grounded AI, requirement-to-response coverage,
 pricing coverage, saved views, and reusable review procedures. These are not

@@ -821,7 +821,7 @@ export default async function TodayPage(
   const clear = totalActions === 0 && setup.complete && loadWarnings.length === 0 && pulse.length === 0 && !automation.paused && !health?.interrupt;
 
   return (
-    <div className="flex page-shell bg-background text-foreground">
+    <div className="flex page-shell bg-background text-foreground lg:flex-row">
       <TodayLive />
       <div className="min-w-0 flex-1">
       <div className="min-w-0">
@@ -1445,6 +1445,7 @@ export default async function TodayPage(
           </TodayDetails>
         </div>
       </div>
+      </div>
       {peekView && (
         <QuickViewDrawer
           documentNavigation
@@ -1461,7 +1462,6 @@ export default async function TodayPage(
           }}
         />
       )}
-      </div>
     </div>
   );
 }
