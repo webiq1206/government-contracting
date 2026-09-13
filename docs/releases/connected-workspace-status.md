@@ -44,10 +44,12 @@ The contract continuation has passed 54 focused tests across contract money, sco
 
 The final local production build passed. The contract browser scenario passed at 360x640, 390x844, 820x1180 and 1440x1000 with no page errors or page-wide horizontal overflow. All five tabs were captured; phone Overview and modification-review screenshots were visually inspected. Contract fields now expose explicit accessible names with separately associated help text. These local results supplement the required full CI and responsive audit on the published branch commit.
 
+Contract checkpoint `ec53a8a79423b89cb24a3d9642eba2f6be0ad2b0` passed all three [responsive audit jobs](https://github.com/webiq1206/government-contracting/actions/runs/34733881161), with 177 desktop and 178 tablet/mobile result entries and zero flagged review items. Its PostgreSQL gate passed all 798 tests. One source-label check failed because it did not recognize the cloned input inside the field wrapper. The follow-up explicitly associates each label with its control ID; the label tests, production build and phone contract workflow passed locally. The full checks on the follow-up commit remain the merge gate, as shown in PR #137.
+
 ## Replit reconciliation and release
 
 The last available read-only Replit inspection reported a clean tree at `24bb077f91fc45a53210b4325b79282149362c57` on `fix/mobile-scroll-homepage`, with local commits ahead of its remote. Its dependency/lockfile and closed-work test changes must be preserved. Replit main was `b36be34a0a27875055ed58510792bd9d93ac6aed`. An earlier successful deployment does not establish that it contains this continuation.
 
 Browser access stopped at Replit's security-verification screen after one reload. No challenge bypass or Replit Agent fallback is authorized. No new production publish has started.
 
-The remaining release sequence is: verify final GitHub CI and responsive evidence, merge validated source to main, reconcile and synchronize Replit without discarding local commits, verify the synchronized source revision, then republish and perform read-only production smoke checks. Current source, merge state, Replit synchronization and published revision must be reported separately.
+The required release sequence is: verify final GitHub CI and responsive evidence, merge validated source to main, reconcile and synchronize Replit without discarding local commits, verify the synchronized source revision, then republish and perform read-only production smoke checks. Current source, merge state, Replit synchronization and published revision must be reported separately; PR #137 records the latest state beyond this source checkpoint.

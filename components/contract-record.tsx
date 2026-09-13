@@ -495,12 +495,12 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactElement<{ "aria-labelledby"?: string; "aria-describedby"?: string }> }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactElement<{ id?: string; "aria-labelledby"?: string; "aria-describedby"?: string }> }) {
   const id = useId();
   return (
-    <label className="block">
+    <label className="block" htmlFor={`${id}-control`}>
       <span id={`${id}-label`} className="label mb-1 block">{label}</span>
-      {cloneElement(children, { "aria-labelledby": `${id}-label`, "aria-describedby": hint ? `${id}-hint` : undefined })}
+      {cloneElement(children, { id: `${id}-control`, "aria-labelledby": `${id}-label`, "aria-describedby": hint ? `${id}-hint` : undefined })}
       {hint && <span id={`${id}-hint`} className="mt-0.5 block text-xs text-muted-foreground">{hint}</span>}
     </label>
   );
