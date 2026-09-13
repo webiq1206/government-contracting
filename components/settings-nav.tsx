@@ -12,7 +12,7 @@ export function SettingsNav() {
 
   return (
     <div className="shrink-0 border-b border-border/60 bg-surface px-4 py-2 sm:px-6">
-      <label className="flex items-center gap-3 text-sm lg:hidden">
+      <label className="flex max-w-md items-center gap-3 text-sm">
         <span className="font-medium">Settings</span>
         <select
           aria-label="Settings section"
@@ -20,7 +20,9 @@ export function SettingsNav() {
           onChange={(event) => {
             // Reuse real navigation links so UnsavedGuard can intercept the
             // change before an editor's draft is lost, including on phones.
-            links.current.get(event.target.value)?.click();
+            const destination = event.currentTarget.value;
+            event.currentTarget.value = active?.href ?? "";
+            links.current.get(destination)?.click();
           }}
           className="input min-h-11 min-w-0 flex-1"
         >
@@ -29,7 +31,7 @@ export function SettingsNav() {
           ))}
         </select>
       </label>
-      <nav aria-label="Settings sections" className="hidden items-center gap-1 overflow-x-auto lg:flex">
+      <nav aria-label="Settings sections" className="hidden">
         {SETTINGS_DESTINATIONS.map((item) => (
           <Link
             key={item.href}

@@ -9,6 +9,32 @@ export function DetailDrawerFrame({ children, closeHref, navigate, documentNavig
   const router = useRouter();
   const close = () => navigate ? navigate(closeHref) : documentNavigation ? window.location.assign(closeHref) : router.push(closeHref, { scroll: false });
   const [modal, setModal] = useState(false);
+  const [availableHeight, setAvailableHeight] = useState<number>();
+  useEffect(() => {
+    if (modal) return;
+    const dialog = panel.current;
+    if (!dialog) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        // The list header is in document flow. Reserve only the space below
+        // the drawer's actual position, including after scrolling or resizing.
+        setAvailableHeight(Math.max(0, window.innerHeight - Math.max(0, dialog.getBoundingClientRect().top)));
+      });
+    };
+    const observer = new ResizeObserver(measure);
+    if (dialog.parentElement) observer.observe(dialog.parentElement);
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [modal]);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1023px)");
     const update = () => setModal(media.matches);
@@ -43,7 +69,8 @@ export function DetailDrawerFrame({ children, closeHref, navigate, documentNavig
       if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
     }}
-    className="fixed inset-0 z-[65] m-0 flex h-full w-full max-h-none max-w-none flex-col overflow-hidden border-0 border-border/55 bg-background p-0 text-foreground backdrop:bg-black/40 lg:static lg:inset-auto lg:h-auto lg:z-auto lg:w-[340px] lg:shrink-0 lg:border-l dark:border-white/10">
+    style={{ maxHeight: modal ? undefined : availableHeight }}
+    className="fixed inset-0 z-[65] m-0 flex h-full w-full max-h-none max-w-none flex-col overflow-hidden border-0 border-border/55 bg-background p-0 text-foreground backdrop:bg-black/40 lg:sticky lg:inset-auto lg:top-0 lg:h-auto lg:self-start lg:z-auto lg:w-[340px] lg:shrink-0 lg:border-l dark:border-white/10">
     {children}
   </dialog>;
 }

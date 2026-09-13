@@ -1,3 +1,5 @@
+import { FocusedToday } from "@/components/focused-today";
+import { TodayDetails } from "@/components/today-details";
 import { can } from "@/lib/domain/roles";
 import { PendingLink as Link } from "@/components/pending-link";
 import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
@@ -856,6 +858,8 @@ export default async function TodayPage(
             setupRemaining={setup.total - setup.done}
           />
 
+          <FocusedToday items={actionable} overdue={counts.overdue} dueToday={counts.dueToday} completed={done.total} activity={digestParts} incomplete={loadWarnings.length > 0} setupRemaining={setup.requiredRemaining} />
+          <TodayDetails defaultOpen={Object.keys(searchParams ?? {}).some(key => ["due", "kind", "q", "owner", "peek", "details", "guide"].includes(key))}>
           <div className="mt-2 flex gap-6">
             <div className="min-w-0 flex-1 space-y-5">
               <AutomationPausedBanner state={automation} editable={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))} />
@@ -1438,6 +1442,7 @@ export default async function TodayPage(
               callsEnabled={rules.calls_enabled}
             />
           </div>
+          </TodayDetails>
         </div>
       </div>
       {peekView && (

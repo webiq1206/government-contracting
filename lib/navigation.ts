@@ -24,15 +24,17 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
     items: [
       { href: "/today", label: "Today" },
       { href: "/pipeline", label: "Opportunities" },
-      { href: "/workbench", label: "My Work" },
       { href: "/subs", label: "Subcontractors" },
       { href: "/communications", label: "Inbox" },
     ],
   },
   {
     key: "manage",
-    label: "Manage",
+    label: "Work",
     items: [
+      { href: "/workbench", label: "All tasks", hint: "Work through the full queue" },
+      { href: "/review", label: "Review", hint: "Decide which opportunities to pursue" },
+      { href: "/call-queue", label: "Calls", hint: "Prepared calls and follow-ups" },
       { href: "/contracts", label: "Contracts" },
       { href: "/compliance", label: "Compliance" },
     ],
@@ -89,15 +91,17 @@ export const SETTINGS_DESTINATIONS: NavigationItem[] = [
 /** Record pages retain their parent destination; aliases share one selection. */
 export function navigationMatches(pathname: string, href: string): boolean {
   if (href === "/pipeline" && (pathname === "/opportunities" || pathname.startsWith("/opportunity/") || pathname === "/review")) return true;
+  if (href === "/today" && (pathname === "/workbench" || pathname === "/call-queue")) return true;
   if (href === "/workbench" && pathname === "/call-queue") return true;
   if (href === "/agents" && pathname === "/automation") return true;
   if (href === "/communications" && pathname === "/email-log") return true;
-  if (href === "/settings/profile" && pathname.startsWith("/settings/")) return true;
+
   return pathname === href || pathname.startsWith(href + "/");
 }
 
 /** Kept for compatibility with older links. The persistent mobile tab bar is no longer used. */
 export function mobileDestination(pathname: string): string {
+  if (pathname === "/call-queue") return "/workbench";
   for (const href of ["/today", "/pipeline", "/workbench", "/subs", "/communications"]) {
     if (navigationMatches(pathname, href)) return href;
   }
@@ -110,4 +114,10 @@ export function recordParent(path: string): { href: string; label: string } | nu
   if (path.startsWith("/contracts/")) return { href: "/contracts", label: "Contracts" };
   if (path.startsWith("/admin/accounts/")) return { href: "/admin/accounts", label: "Accounts" };
   return null;
+}
+
+/** Utilities live in a directory, not a second expanded menu. */
+export const WORKSPACE_DESTINATION = { href: "/more", label: "Workspace" };
+export function workspaceSections(isAdmin: boolean) {
+  return NAVIGATION_SECTIONS.filter(section => section.key !== "primary" && (!section.adminOnly || isAdmin));
 }

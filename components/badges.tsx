@@ -62,9 +62,10 @@ export function PageHeader({
           </div>
         )}
         {subtitle != null && subtitle !== "" && (
-          <div className="page-description mt-1 text-muted-foreground">
-            {subtitle}
-          </div>
+          <details className="page-context mt-2 text-sm text-muted-foreground">
+            <summary className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-xs">About this page <span aria-hidden>⌄</span></summary>
+            <div className="page-description mt-2">{subtitle}</div>
+          </details>
         )}
       </div>
       {children && (
