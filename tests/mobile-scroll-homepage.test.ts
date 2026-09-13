@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 const shell = readFileSync("app/simplified-shell.css", "utf8");
 const globals = readFileSync("app/globals.css", "utf8");
 const landing = readFileSync("components/marketing/landing-page.tsx", "utf8");
-const hero = readFileSync("components/marketing/hero-background-video.tsx", "utf8");
-const homeCss = readFileSync("components/marketing/homepage-v2.css", "utf8");
+
+const homeCss = readFileSync("components/marketing/site.css", "utf8");
 
 describe("mobile dashboard scrolling", () => {
   it("overrides the legacy authenticated html/body lock with document scrolling", () => {
@@ -24,20 +24,16 @@ describe("mobile dashboard scrolling", () => {
 });
 
 describe("AI-first homepage", () => {
-  it("leads with a concrete AI value proposition and free trial CTA", () => {
-    expect(landing).toContain("AI infrastructure for government contractors");
-    expect(landing).toContain("BrostCo is an AI platform");
-    expect(landing).toContain("Start your free trial");
+  it("leads with the audience, concrete outcome, and free trial CTA", () => {
+    expect(landing).toContain("AI for federal services contractors");
+    expect(landing).toContain("Find the right contracts.");
+    expect(landing).toContain("Get bids ready faster.");
+    expect(landing).toContain("Start free trial");
   });
-
-  it("uses resilient muted looping product motion with reduced-motion fallback", () => {
-    expect(hero).toContain("autoPlay");
-    expect(hero).toContain("muted");
-    expect(hero).toContain("loop");
-    expect(hero).toContain("playsInline");
-    expect(hero).toContain("prefers-reduced-motion: reduce");
-    expect(hero).toContain("/demos/hero-preview.mp4");
-    expect(homeCss).toContain("prefers-reduced-motion: reduce");
-    expect(homeCss).toContain("/demos/today-desktop.jpg");
+  it("uses an on-demand product illustration and reduced-motion transitions", () => {
+    expect(landing).toContain("OpportunityPreview");
+    expect(landing).toContain("WorkflowDemo");
+    expect(landing).not.toContain("HeroBackgroundVideo");
+    expect(homeCss).toMatch(/prefers-reduced-motion:\s*reduce/);
   });
 });

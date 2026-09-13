@@ -9,71 +9,104 @@ import {
 
 export const metadata: Metadata = {
   title: "Terms of Service | Brost Co",
-  description: "Terms governing use of the Brost Co government contracting platform.",
+  description:
+    "Terms governing use of the Brost Co government contracting platform.",
   alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="bco-site">
+      <a href="#main-content" className="bco-skip">
+        Skip to content
+      </a>
       <MarketingNav loginHref="/login" signupHref="/signup" />
-      <main className="mx-auto max-w-3xl px-5 py-16">
+      <main id="main-content" className="bco-container bco-legal">
         <p className="eyebrow">Legal</p>
-        <h1 className="mt-2 font-display text-4xl text-foreground">Terms of Service</h1>
-        <p className="mt-3 text-sm text-slate-500">Last updated: August 11, 2026</p>
+        <h1 className="mt-2 font-display text-4xl text-foreground">
+          Terms of Service
+        </h1>
+        <p className="mt-3 text-sm text-slate-500">
+          Last updated: September 13, 2026
+        </p>
         <div className="mt-8 space-y-5 text-sm leading-relaxed text-slate-700">
           <p>
-            These Terms govern access to Brost Co, a software service operated by BROSTCO
-            HOLDINGS LLC (&quot;Brost Co&quot;). By creating an account or subscribing, you agree
-            to these Terms.
+            These Terms govern access to Brost Co, a software service operated
+            by BROSTCO HOLDINGS LLC (&quot;Brost Co&quot;). By creating an
+            account or subscribing, you agree to these Terms.
           </p>
           <h2 className="font-display text-2xl text-foreground">The service</h2>
           <p>
-            Brost Co helps subscribers find, evaluate, pursue, and manage government contracting
-            opportunities. Brost Co does not guarantee contract awards, does not replace SAM.gov
-            or agency portals, and does not submit bids without your review and action.
+            Brost Co helps subscribers find, evaluate, pursue, and manage
+            government contracting opportunities. Brost Co does not guarantee
+            contract awards, does not replace SAM.gov or agency portals, and
+            does not submit bids. Your team handles final review, signatures,
+            attestations, and submission.
           </p>
-          <h2 className="font-display text-2xl text-foreground">Accounts and organizations</h2>
+          <h2 className="font-display text-2xl text-foreground">
+            Accounts and organizations
+          </h2>
           <p>
-            You are responsible for safeguarding login credentials and for activity under your
-            organization. You must provide accurate company registration information when using
-            federal bidding features.
+            You are responsible for safeguarding login credentials and for
+            activity under your organization. You must provide accurate company
+            registration information when using federal bidding features.
           </p>
-          <h2 className="font-display text-2xl text-foreground">Fees and founding pricing</h2>
+          <h2 className="font-display text-2xl text-foreground">
+            Fees and subscription pricing
+          </h2>
           <p>
-            Standard subscription pricing is ${STANDARD_MONTHLY_USD.toLocaleString()} per month
-            unless a different rate is agreed in writing. During the limited founding promotion,
-            new subscribers may lock in ${FOUNDING_MONTHLY_USD.toLocaleString()} per month for the
-            life of that active subscription. New accounts start with a free 7-day trial that
-            requires no payment method; nothing is charged during the trial. Paid access begins
-            only when you select a plan and complete checkout, at which point billing recurs
-            automatically each period until you cancel. If the subscription is canceled and later
-            renewed after the promotion ends, standard pricing applies. Prices are billed in
-            advance via Stripe. Taxes may apply.
+            Standard subscription pricing is $
+            {STANDARD_MONTHLY_USD.toLocaleString()} per month unless a different
+            rate is agreed in writing. Eligible subscribers enrolled during a
+            founding promotion may retain $
+            {FOUNDING_MONTHLY_USD.toLocaleString()} per month for the life of
+            that active subscription. New accounts start with a free 7-day trial
+            that requires no payment method; nothing is charged during the
+            trial. Paid access begins only when you select a plan and complete
+            checkout, at which point billing recurs automatically each period
+            until you cancel. If the subscription is canceled and later renewed
+            after the promotion ends, standard pricing applies. Subscription
+            fees are billed in advance via Stripe. Service usage is separate:
+            supported platform services are billed at confirmed provider cost
+            plus 25% after you accept usage billing, or eligible services use
+            your own keys and are billed by those providers. Available plans,
+            intervals, and payment dates are confirmed at checkout. Taxes may
+            apply.
           </p>
-          <h2 className="font-display text-2xl text-foreground">Cancellation</h2>
+          <h2 className="font-display text-2xl text-foreground">
+            Cancellation
+          </h2>
           <p>
-            You may cancel at any time from Billing settings. During a free trial, cancel before
-            the trial ends to avoid the first charge. After you are billed, access continues
-            through the end of the paid period unless otherwise stated in Stripe. Founding rates
-            are not transferable between organizations.
+            You may cancel a paid subscription at any time from Billing
+            settings. A no-card trial does not automatically become a paid
+            subscription. If you choose a plan and complete checkout, the
+            payment schedule shown at checkout applies. After you are billed,
+            access continues through the end of the paid period unless otherwise
+            stated in Stripe. Founding rates are not transferable between
+            organizations.
           </p>
-          <h2 className="font-display text-2xl text-foreground">Acceptable use</h2>
+          <h2 className="font-display text-2xl text-foreground">
+            Acceptable use
+          </h2>
           <p>
-            You may not misuse the service, attempt to access other customers&apos; data, reverse
-            engineer the platform except where permitted by law, or use Brost Co for unlawful
-            procurement activity.
+            You may not misuse the service, attempt to access other
+            customers&apos; data, reverse engineer the platform except where
+            permitted by law, or use Brost Co for unlawful procurement activity.
           </p>
           <h2 className="font-display text-2xl text-foreground">Disclaimer</h2>
           <p>
-            The service is provided &quot;as is.&quot; Brost Co is not a law firm, broker, or
-            contracting officer. You remain responsible for compliance with FAR/DFARS, solicitation
-            instructions, and representations you submit.
+            The service is provided &quot;as is.&quot; Brost Co is not a law
+            firm, broker, or contracting officer. You remain responsible for
+            compliance with FAR/DFARS, solicitation instructions, and
+            representations you submit.
           </p>
           <h2 className="font-display text-2xl text-foreground">Contact</h2>
           <p>
             Questions:{" "}
-            <a className="text-accent hover:underline" href="mailto:hello@brostco.com">
+            <a
+              className="text-accent hover:underline"
+              href="mailto:hello@brostco.com"
+            >
               hello@brostco.com
             </a>
             . Privacy details are in our{" "}

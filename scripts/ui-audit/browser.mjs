@@ -489,10 +489,10 @@ try {
   // different page. No signup or other write is performed here.
   await v.unroute('**/api/auth/signup');
   await v.goto(base+'/privacy',{waitUntil:'networkidle'});
-  await v.getByRole('navigation',{name:'Product',exact:true}).getByRole('link',{name:'How it works',exact:true}).click();
-  await v.waitForURL('**/#workflow');
-  await v.locator('#workflow').waitFor();
-  results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to workflow checked'});
+  await v.getByRole('navigation',{name:'Platform',exact:true}).getByRole('link',{name:'Platform overview',exact:true}).click();
+  await v.waitForURL('**/platform');
+  await v.getByRole('heading',{level:1,name:'One pursuit. All the working context.'}).waitFor();
+  results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to platform overview checked'});
   if(device!=='desktop') {
     for(const route of ['/', '/privacy']) {
       await v.goto(base+route,{waitUntil:'networkidle'});
@@ -511,8 +511,8 @@ try {
       assert(await trigger.evaluate(el=>document.activeElement===el));
       await trigger.click();
       await menu.getByRole('link',{name:'Pricing',exact:true}).click();
-      await v.waitForURL('**/#pricing');
-      await v.locator('#pricing').waitFor();
+      await v.waitForURL('**/pricing-guide');
+      await v.locator('#usage').waitFor();
       await menu.waitFor({state:'hidden'});
       await v.goBack({waitUntil:'networkidle'});
       assert.equal(new URL(v.url()).pathname,route);

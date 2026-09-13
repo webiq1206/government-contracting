@@ -1,96 +1,44 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
 import { MarketingMobileMenu } from "./mobile-menu";
-
-const LINKS = [
-  { id: "platform", label: "Product" },
-  { id: "workflow", label: "How it works" },
-  { id: "pricing", label: "Pricing" },
-] as const;
-
-interface MarketingNavProps {
-  loginHref?: string;
-  signupHref: string;
-  /** When true, section links use same-page hashes. Otherwise they point to /#section. */
-  onLanding?: boolean;
-  /** Dark chrome for the redesign landing hero. */
-  variant?: "light" | "dark";
-}
-
-function sectionHref(id: string, onLanding: boolean) {
-  return onLanding ? `#${id}` : `/#${id}`;
-}
+import { MARKETING_LINKS } from "./site-content";
+import "./site.css";
 
 export function MarketingNav({
   loginHref = "/login",
   signupHref,
-  onLanding = false,
-  variant = "dark",
-}: MarketingNavProps) {
-  const dark = variant === "dark";
-
+}: {
+  loginHref?: string;
+  signupHref: string;
+  onLanding?: boolean;
+  variant?: "light" | "dark";
+}) {
   return (
-    <header
-      className={`relative z-50 backdrop-blur-md ${
-        dark
-          ? "border-b border-white/10 bg-ink/85"
-          : "border-b border-border bg-background/95"
-      }`}
-    >
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:h-16 sm:px-6">
-        <Link
-          href="/"
-          className="inline-flex shrink-0 items-center coarse:min-h-11"
-          aria-label="Brost Co home"
-        >
-          <Wordmark
-            variant={dark ? "light" : "dark"}
-            className="h-6 sm:h-7"
-            priority
-          />
+    <header className="bco-nav">
+      <div className="bco-container bco-nav-inner">
+        <Link href="/" aria-label="BrostCo home" className="bco-brand-link">
+          <Wordmark variant="dark" priority className="h-7 w-auto" />
         </Link>
-
-        <nav
-          className="hidden items-center gap-8 lg:flex"
-          aria-label="Marketing sections"
-        >
-          {LINKS.map((link) => (
-            <a
-              key={link.id}
-              href={sectionHref(link.id, onLanding)}
-              className={`inline-flex items-center text-sm transition-colors coarse:min-h-11 ${
-                dark
-                  ? "text-white/65 hover:text-white"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+        <nav aria-label="Primary navigation" className="bco-desktop-nav">
+          {MARKETING_LINKS.map((link) => (
+            <Link key={link.href} href={link.href}>
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
-
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <Link
-            href={loginHref}
-            className={`hidden text-sm sm:inline-flex ${
-              dark
-                ? "rounded-md border border-white/20 px-3.5 py-2 text-white hover:bg-white/5"
-                : "btn-ghost"
-            }`}
-          >
+        <div className="bco-nav-actions">
+          <Link href={loginHref} className="bco-login">
             Log in
           </Link>
-          <Link
-            href={signupHref}
-            className={`inline-flex min-h-11 items-center justify-center rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${
-              dark
-                ? "bg-gold text-on-accent hover:bg-accent-strong"
-                : "btn-primary"
-            }`}
-          >
+          <Link href={signupHref} className="bco-button">
             Start free trial
           </Link>
-          <div className="lg:hidden"><MarketingMobileMenu signupHref={signupHref} loginHref={loginHref} onLanding={onLanding} dark={dark} /></div>
+          <div className="bco-mobile-trigger">
+            <MarketingMobileMenu
+              signupHref={signupHref}
+              loginHref={loginHref}
+            />
+          </div>
         </div>
       </div>
     </header>
