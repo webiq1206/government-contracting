@@ -1433,14 +1433,14 @@ export default async function TodayPage(
 
             </div>
 
-            <PipelineHealthRail
+            {!peekView && <PipelineHealthRail
               stageCounts={data.stageCounts}
               totalActions={totalActions}
               actionHeadline={ledgerHeadline(totalActions)}
               actionBreakdown={summarizeQueue(actionable)}
               digestParts={digestParts}
               callsEnabled={rules.calls_enabled}
-            />
+            />}
           </div>
           </TodayDetails>
         </div>

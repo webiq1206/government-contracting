@@ -32,6 +32,8 @@ viewport containment before exercising close and browser-history recovery.
 The shell now clips horizontal overflow without creating an extra vertical
 scroll container on the body or main element, so desktop side panels remain
 visible when a task opens after scrolling down the document.
+While Quick look is open, its detail panel replaces the optional pipeline
+summary rail, keeping the task list readable on narrow desktop windows.
 
 ## Verification
 
