@@ -31,6 +31,7 @@ async function settingsOrg(): Promise<string> {
 export const ALLOWED_ENV_KEYS = [
   "SAM_API_KEY",
   "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
   "GOOGLE_MAPS_API_KEY",
   "HUNTER_API_KEY",
   "BLS_API_KEY",

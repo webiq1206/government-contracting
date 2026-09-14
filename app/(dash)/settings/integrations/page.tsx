@@ -20,7 +20,7 @@ import { queryOne } from "@/lib/db";
 import { currentOrg } from "@/lib/data";
 import { ShellDataWarning } from "@/components/shell-data-warning";
 
-const CORE_IDS = new Set(["sam", "claude"]);
+const CORE_IDS = new Set(["sam", "claude", "openai"]);
 const OUTREACH_IDS = new Set(["gmail", "twilio", "hunter"]);
 const DATA_IDS = new Set([
   "googleMaps",
@@ -40,7 +40,7 @@ export default async function IntegrationsPage(
   const searchParams = await props.searchParams;
   await hydrateIntegrationEnv();
   const loadWarnings: string[] = [];
-  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed] = await Promise.all([
+  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed, openAiTrouble] = await Promise.all([
     settingSources(),
     gmail
       .connection()
@@ -58,7 +58,7 @@ export default async function IntegrationsPage(
     // "Connected" here has only ever meant "a key is saved". It said so
     // through a day in which Anthropic refused every request for want of
     // credits, which is the one day it mattered.
-    recentAiTrouble().catch(() => {
+    recentAiTrouble(undefined, "Anthropic").catch(() => {
       loadWarnings.push("Recent AI failures could not be checked.");
       return { count: 0, reason: null, lastAt: null };
     }),
@@ -82,6 +82,10 @@ export default async function IntegrationsPage(
     lastPricingSuccess().catch(() => {
       loadWarnings.push("The most recent pricing data run could not be checked.");
       return null;
+    }),
+    recentAiTrouble(undefined, "OpenAI").catch(() => {
+      loadWarnings.push("Recent OpenAI failures could not be checked.");
+      return { count: 0, reason: null, lastAt: null };
     }),
   ]);
   const gmailConnected = inbox.connected;
@@ -141,7 +145,7 @@ export default async function IntegrationsPage(
       configured: def.id === "gmail" ? gmailConnected || configured : configured,
       gmailConnected: def.id === "gmail" ? gmailConnected : undefined,
       last_error:
-        (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
+        (def.id === "claude" ? troubleSummary(aiTrouble) : def.id === "openai" ? troubleSummary(openAiTrouble) : null) ??
         fields.map((f) => f.last_error).find(Boolean) ??
         null,
       /*
@@ -194,7 +198,7 @@ export default async function IntegrationsPage(
         lastSuccessAt:
           def.id === "gmail"
             ? (def.last_success_at ?? gmailUsed?.at ?? null)
-            : def.id === "claude"
+            : def.id === "claude" || def.id === "openai"
               ? (def.last_success_at ?? claudeUsed ?? null)
               : def.id === "usaspending"
                 ? (def.last_success_at ?? pricingUsed ?? null)
@@ -286,6 +290,7 @@ export default async function IntegrationsPage(
         hashAliases={{
           sam: "core",
           claude: "core",
+          openai: "core",
           gmail: "outreach",
           twilio: "outreach",
           hunter: "outreach",

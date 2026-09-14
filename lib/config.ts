@@ -7,6 +7,7 @@
  * must boot even with a partially-filled .env and degrade gracefully.
  */
 import "./env";
+import { parseProvider } from "./ai/routing";
 
 function str(key: string, fallback = ""): string {
   const v = process.env[key];
@@ -248,6 +249,38 @@ export const config = {
     },
   },
 
+  // The second AI provider. Same two tiers as Claude, so the routing in
+  // lib/ai/routing.ts can serve either tier from either provider.
+  openai: {
+    get apiKey() { return str("OPENAI_API_KEY"); },
+    // Routine tier. gpt-5.6-luna is OpenAI's cost-optimised model: about a
+    // fifth of Haiku 4.5's price per token, with a 1M context window.
+    model: str("OPENAI_MODEL", "gpt-5.6-luna"),
+    // Complex tier, used when Claude is unavailable or when an operator
+    // points the complex tier here. Priced close to Sonnet 5.
+    modelSmart: str("OPENAI_MODEL_SMART", "gpt-5.6-terra"),
+    // Reasoning effort per tier. "none" keeps routine calls fast and cheap;
+    // reasoning tokens are billed as output, so "medium" on the complex tier
+    // is a deliberate spend on the bid-critical path.
+    reasoningRoutine: str("OPENAI_REASONING_ROUTINE", "none"),
+    reasoningComplex: str("OPENAI_REASONING_COMPLEX", "medium"),
+    // Extra output tokens allowed when reasoning is on, so thinking does not
+    // eat the budget the caller set aside for the answer.
+    reasoningHeadroom: Number(str("OPENAI_REASONING_HEADROOM", "4096")),
+    get enabled() {
+      return Boolean(this.apiKey);
+    },
+  },
+
+  // Which provider serves each tier when an organization holds keys for
+  // both. Availability always wins: an organization with one key uses it
+  // for everything. Cross-provider fallback is on unless switched off.
+  ai: {
+    routineProvider: parseProvider(str("AI_ROUTINE_PROVIDER"), "OpenAI"),
+    complexProvider: parseProvider(str("AI_COMPLEX_PROVIDER"), "Anthropic"),
+    fallback: bool("AI_FALLBACK", true),
+  },
+
   sam: {
     get apiKey() { return str("SAM_API_KEY"); },
     get enabled() {
@@ -363,6 +396,7 @@ export function integrationStatus() {
   return {
     database: Boolean(config.database.url),
     claude: config.claude.enabled,
+    openai: config.openai.enabled,
     sam: config.sam.enabled,
     ahrefs: config.ahrefs.enabled,
     usaspending: true, // public API, always available

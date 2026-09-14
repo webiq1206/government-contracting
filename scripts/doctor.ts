@@ -163,10 +163,15 @@ async function main() {
   }
 
   // ---- 4. Required external credentials ----
+  const aiKeys = [config.claude.enabled ? "Anthropic" : null, config.openai.enabled ? "OpenAI" : null].filter(Boolean);
   check(
-    config.claude.enabled ? "PASS" : "FAIL",
-    config.claude.enabled ? "Anthropic (AI) key present" : "ANTHROPIC_API_KEY missing",
-    config.claude.enabled ? undefined : "Set ANTHROPIC_API_KEY and restart. Without it, discovery still runs but nothing gets scored, analysed, or drafted, so no email is ever written."
+    aiKeys.length > 0 ? "PASS" : "FAIL",
+    aiKeys.length > 0 ? `AI provider key present (${aiKeys.join(", ")})` : "ANTHROPIC_API_KEY and OPENAI_API_KEY both missing",
+    aiKeys.length > 0
+      ? aiKeys.length === 1
+        ? `Only ${aiKeys[0]} is set, so there is no second provider to fall back to when it refuses a request.`
+        : undefined
+      : "Set ANTHROPIC_API_KEY or OPENAI_API_KEY and restart. Without one, discovery still runs but nothing gets scored, analysed, or drafted, so no email is ever written."
   );
 
   // ---- 5. Worker liveness (the process that runs every cron) ----
@@ -465,12 +470,14 @@ async function main() {
      * happened in the last six hours instead.
      */
     const hasClaude = await orgHasKey("ANTHROPIC_API_KEY", org.id).catch(() => false);
-    if (!hasClaude) {
-      check("FAIL", `[${org.name}] No Anthropic API key`, "Add the Anthropic key in Settings → Integrations. Deals are still found without it, but nothing is scored, analysed, or drafted, so they pile up unworked.");
+    const hasOpenAi = await orgHasKey("OPENAI_API_KEY", org.id).catch(() => false);
+    const aiNames = [hasClaude ? "Anthropic" : null, hasOpenAi ? "OpenAI" : null].filter(Boolean).join(" and ");
+    if (!hasClaude && !hasOpenAi) {
+      check("FAIL", `[${org.name}] No AI provider key`, "Add an Anthropic or OpenAI key in Settings → Integrations. Deals are still found without one, but nothing is scored, analysed, or drafted, so they pile up unworked.");
     } else {
       const ai = await recentAiTrouble(org.id).catch(() => ({ count: 0, reason: null, lastAt: null }));
       if (ai.count === 0) {
-        check("PASS", `[${org.name}] Anthropic key present, no refusals in the last 6h`);
+        check("PASS", `[${org.name}] ${aiNames} key present, no refusals in the last 6h`);
       } else if (troubleHasStopped(ai) && ai.lastAt) {
         /*
          * The count is a six-hour history, not a live probe, and the two look
@@ -492,7 +499,7 @@ async function main() {
         check(
           "FAIL",
           `[${org.name}] The AI is refusing requests (${ai.count} failed job(s) in 6h, most recent ${ai.lastAt ? `${agoInWords(ai.lastAt)} ago` : "at an unknown time"})`,
-          ai.reason ?? "Anthropic refused the request. Test the key in Settings → Integrations."
+          ai.reason ?? "The AI provider refused the request. Test the key in Settings → Integrations."
         );
       }
     }

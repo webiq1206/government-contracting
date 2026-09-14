@@ -5,6 +5,9 @@
  * before saving a new key and to re-check an existing one.
  */
 
+import { config } from "./config";
+import { buildOpenAiBody } from "./ai/openai";
+
 export interface ValidationResult {
   ok: boolean;
   message: string;
@@ -28,6 +31,7 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     const u = new URL(url);
     const headers = new Headers(init?.headers);
     const keyInfo = u.hostname === 'api.anthropic.com' ? {provider:'Anthropic',envKey:'ANTHROPIC_API_KEY',value:headers.get('x-api-key') ?? ''}
+      : u.hostname === 'api.openai.com' ? {provider:'OpenAI',envKey:'OPENAI_API_KEY',value:(headers.get('authorization') ?? '').replace(/^Bearer\s+/i,'')}
       : u.hostname === 'maps.googleapis.com' ? {provider:'Google Maps',envKey:'GOOGLE_MAPS_API_KEY',value:u.searchParams.get('key') ?? ''}
       : u.hostname === 'api.hunter.io' ? {provider:'Hunter',envKey:'HUNTER_API_KEY',value:u.searchParams.get('api_key') ?? ''}
       : null;
@@ -186,6 +190,51 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
     };
   },
 
+  openai: async (v) => {
+    const key = v.OPENAI_API_KEY;
+    if (!key) return { ok: false, message: "Enter your OpenAI API key first." };
+    // A real request for the same reason as Claude's: listing models answers
+    // 200 for a key on an account with no credit, and only a billed request
+    // tells "the key is valid" from "the key works". Sixteen output tokens is
+    // the smallest budget the API accepts.
+    const res = await timedFetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(
+        buildOpenAiBody({ apiKey: key, model: config.openai.model, instructions: null, prompt: "hi", maxTokens: 16, effort: "none" })
+      ),
+    });
+    if (res.ok) return { ok: true, message: `Connected. OpenAI answered a live request on ${config.openai.model}.` };
+
+    const detail = redactSecret(apiErrorDetail(await res.text().catch(() => "")), key);
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, message: "OpenAI rejected this key. Copy it again from platform.openai.com." };
+    // An exhausted billing quota arrives as a 429 with code insufficient_quota.
+    // Waiting fixes nothing, so name it before the rate-limit case.
+    if (/insufficient_quota|exceeded your current quota|billing/i.test(detail))
+      return {
+        ok: false,
+        message:
+          "The key works, but the OpenAI account has insufficient credit, so every request is refused. " +
+          "Add credit at platform.openai.com under Billing.",
+      };
+    if (res.status === 429)
+      return { ok: false, message: "OpenAI is rate limiting this account right now. Try again shortly." };
+    if (res.status === 404 || /model/i.test(detail) && res.status === 400)
+      return {
+        ok: false,
+        message: `OpenAI does not offer the model this deployment is set to (${config.openai.model}). Set OPENAI_MODEL to a current model id. ${detail}`.trim(),
+      };
+    return {
+      ok: false,
+      message: detail
+        ? `OpenAI returned an error (HTTP ${res.status}): ${detail}`
+        : `OpenAI returned an error (HTTP ${res.status}).`,
+    };
+  },
   googleMaps: async (v) => {
     const key = v.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
     if (!key) return { ok: false, message: "Enter your Google Maps API key first." };

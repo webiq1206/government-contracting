@@ -6,6 +6,7 @@ export type BillableProvider = {
 };
 export const BILLABLE_PROVIDERS: BillableProvider[] = [
   { provider: "Anthropic", key: "ANTHROPIC_API_KEY", validator: "claude" },
+  { provider: "OpenAI", key: "OPENAI_API_KEY", validator: "openai" },
   {
     provider: "Google Maps",
     key: "GOOGLE_MAPS_API_KEY",

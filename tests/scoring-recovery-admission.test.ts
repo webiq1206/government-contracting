@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ query: vi.fn(), enqueue: vi.fn(), log: vi.fn(), spending: vi.fn() }));
-vi.mock("../lib/api-usage/check-spending", () => ({ checkClaudeSpending: mocks.spending }));
+// The sweep preflights against the tier the router would serve, not a
+// named model, so it is checkAiSpending it reaches for now.
+vi.mock("../lib/api-usage/check-spending", () => ({ checkClaudeSpending: mocks.spending, checkAiSpending: mocks.spending }));
 vi.mock("../lib/db", () => ({ query: mocks.query, queryOne: vi.fn(), transaction: vi.fn() }));
 vi.mock("../lib/queue", () => ({ enqueue: mocks.enqueue }));
 vi.mock("../lib/logger", () => ({ logAgent: mocks.log }));

@@ -165,7 +165,7 @@ export default async function PricingGuidePage() {
           <div className="bco-note" style={{ marginTop: 28 }}>
             <strong>Which services affect the total?</strong>
             <p>
-              AI analysis uses Anthropic Claude. Subcontractor discovery and
+              AI analysis uses Anthropic Claude and OpenAI models. Subcontractor discovery and
               verification can use lookup services such as Google Maps. Other
               connected services may have their own charges. Your usage depends
               on the work run, the selected connection, and provider pricing.

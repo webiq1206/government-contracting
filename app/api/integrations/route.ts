@@ -21,7 +21,8 @@ async function assemble() {
   const gmailConnected = await gmail.isConnected();
   // A stored key says nothing about whether the service behind it still
   // answers. This is what happened when we last used it.
-  const aiTrouble = await recentAiTrouble();
+  const aiTrouble = await recentAiTrouble(undefined, "Anthropic");
+  const openAiTrouble = await recentAiTrouble(undefined, "OpenAI");
   return INTEGRATION_DEFS.map((def) => {
     const fields = def.fields.map((f) => ({
       ...f,
@@ -32,7 +33,7 @@ async function assemble() {
       def.id === "usaspending" ||
       (required.length > 0 && required.every((f) => f.source !== "none"));
     const lastError =
-      (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
+      (def.id === "claude" ? troubleSummary(aiTrouble) : def.id === "openai" ? troubleSummary(openAiTrouble) : null) ??
       fields.map((f) => f.last_error).find(Boolean) ??
       null;
     const newest = (pick: (f: (typeof fields)[number]) => string | null | undefined) =>

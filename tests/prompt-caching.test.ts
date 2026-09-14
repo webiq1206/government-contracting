@@ -34,9 +34,12 @@ vi.mock("@anthropic-ai/sdk", () => ({
 vi.mock("../lib/ai/companyProfile", () => ({
   getProfileSystemText: async () => profileText,
 }));
+// Only the Anthropic key exists here: with an OpenAI key as well, routine
+// calls would route there and these Anthropic request shapes would not be
+// exercised at all. The routing has its own suite.
 vi.mock("../lib/integration-keys", () => ({
-  orgApiKey: async () => "sk-test",
-  orgHasKey: async () => true,
+  orgApiKey: async (key: string) => (key === "ANTHROPIC_API_KEY" ? "sk-test" : ""),
+  orgHasKey: async (key: string) => key === "ANTHROPIC_API_KEY",
   clearIntegrationKeyCache: () => {},
 }));
 

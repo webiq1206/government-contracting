@@ -266,7 +266,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     automatic: "All of it. Every new opportunity is scored, tiered, and given a per-factor breakdown without being asked.",
     manual: "Nothing here. Borderline work is where a person is asked, and that is the next step.",
     blockers: [
-      "An Anthropic key that is missing or refusing, which drops scoring back to basic rules. Overview still shows a notice-and-score brief until the document read can run.",
+      "An AI key (Anthropic or OpenAI) that is missing or refusing, which drops scoring back to basic rules. Overview still shows a notice-and-score brief until the document read can run.",
       "A profile with no service areas or certifications, which leaves several factors with nothing to judge.",
     ],
     recovery:
@@ -318,7 +318,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     automatic: "All of it, including reading scanned attachments rather than skipping them.",
     manual: "Nothing, unless a document cannot be fetched from the agency's site, in which case it has to be added by hand.",
     blockers: [
-      "An Anthropic key that is missing or refusing, which leaves the notice-and-score brief in place until the document read can run.",
+      "An AI key (Anthropic or OpenAI) that is missing or refusing, which leaves the notice-and-score brief in place until the document read can run.",
       "An attachment the agency's site will not serve to an automated fetch.",
       "A solicitation that names a document it does not attach, which is recorded as a gap rather than invented.",
     ],

@@ -99,6 +99,28 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     },
   },
   {
+    id: "openai",
+    name: "OpenAI",
+    what: "A second AI provider. With both keys saved, routine scoring, outreach drafts, call prep and reply reading run here at lower cost, and either provider covers for the other when one refuses a request.",
+    without: "Everything runs on Claude alone, with nothing to fall back to if Anthropic refuses a request.",
+    where: "platform.openai.com → API keys.",
+    fields: [{ env: "OPENAI_API_KEY", label: "API key", secret: true }],
+    testable: true,
+    guide: {
+      cost: "Pay only for what you use. Routine calls cost a fraction of a cent; add a small credit (about $5-10) to start.",
+      steps: [
+        "Open the OpenAI platform and sign in or sign up.",
+        "Go to API keys and click Create new secret key. Give it a name.",
+        "Copy the key immediately (it is only shown once) and paste it above.",
+        "Open Billing and add a little credit so the key can be used.",
+      ],
+      links: [
+        { label: "Create an API key", url: "https://platform.openai.com/api-keys" },
+        { label: "Add billing credit", url: "https://platform.openai.com/settings/organization/billing" },
+      ],
+    },
+  },
+  {
     id: "ahrefs",
     platformOnly: true,
     name: "Ahrefs (Site Authority)",

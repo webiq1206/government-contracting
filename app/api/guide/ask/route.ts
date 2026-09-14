@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { complete, ClaudeNotConfiguredError, claudeEnabled } from "@/lib/ai/claude";
-import { config } from "@/lib/config";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import {
   buildAskUserPrompt,
@@ -80,7 +79,6 @@ export async function POST(req: Request) {
       {
         feature: "Page questions",
         system: GUIDE_ASK_SYSTEM,
-        model: config.claude.model,
         maxTokens: 400,
         temperature: 0.2,
         injectProfile: false,

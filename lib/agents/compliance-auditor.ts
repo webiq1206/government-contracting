@@ -14,7 +14,6 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError, claudeEnabled } from "../ai/claude";
-import { config } from "../config";
 import { logAgent } from "../logger";
 import { noEmDash } from "../sanitize";
 import {
@@ -220,7 +219,7 @@ export const complianceAuditor: AgentDefinition = {
     try {
       const { data, usage } = await completeJson(
         buildAuditPrompt(opp, solText, matrix, profile),
-        { schema: FindingsSchema, model: config.claude.modelSmart, maxTokens: 4096 }
+        { schema: FindingsSchema, complexity: "complex", maxTokens: 4096 }
       );
       const aiFindings: AuditFinding[] = data.findings.map((f, i) => ({
         id: `af_${i + 1}`,

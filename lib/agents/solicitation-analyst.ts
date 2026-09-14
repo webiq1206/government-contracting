@@ -765,7 +765,7 @@ async function processAttachment(
       // built from the portal blurb. The transcript is labelled so nothing
       // downstream, and nobody reading the brief, mistakes a machine reading
       // of a photocopy for the document's own text.
-      const ocr = await ocrPdf(buf, { label, model: config.claude.modelSmart });
+      const ocr = await ocrPdf(buf, { label, complexity: "complex" });
       if (ocr.text) {
         const truncNote = ocr.truncated
           ? `\n[only the first ${ocr.pagesRead} of ${ocr.pagesTotal} pages were transcribed]`
@@ -977,7 +977,7 @@ async function processStoredAnalysisSource(
         },
       };
     }
-    const ocr = await ocrPdf(buf, { label: source.name, model: config.claude.modelSmart });
+    const ocr = await ocrPdf(buf, { label: source.name, complexity: "complex" });
     if (ocr.text) {
       return {
         context: `- ${source.name} (${ocr.pagesTotal} pp, OPERATOR REPLACEMENT, SCANNED DOCUMENT):\n${ocr.text}${
@@ -1454,8 +1454,8 @@ export const solicitationAnalyst: AgentDefinition = {
     // Do not repeatedly download and OCR the same documents while spending
     // is paused or this model has no price ceiling. The real call still makes
     // its atomic reservation, so this check cannot bypass concurrent limits.
-    const { checkClaudeSpending } = await import("../api-usage/check-spending");
-    await checkClaudeSpending(opp.org_id, config.claude.modelSmart, "solicitation-analyst");
+    const { checkAiSpending } = await import("../api-usage/check-spending");
+    await checkAiSpending(opp.org_id, "complex", "solicitation-analyst");
 
     // Download, store, and extract text from solicitation attachments (PDFs parsed).
     const attachments: Attachment[] = Array.isArray(opp.attachments_json)
@@ -1634,7 +1634,7 @@ export const solicitationAnalyst: AgentDefinition = {
     try {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
-        model: config.claude.modelSmart, // bid-critical extraction, never omit a requirement
+        complexity: "complex", // bid-critical extraction, never omit a requirement
         maxTokens: JSON_RETRY_TOKEN_CAP,
         retries: 2,
       });

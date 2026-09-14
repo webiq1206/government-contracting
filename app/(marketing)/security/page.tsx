@@ -63,7 +63,7 @@ export default function SecurityPage() {
               <p>
                 BrostCo sends relevant company and task context to its
                 configured model provider to analyze opportunities and prepare
-                work. The platform uses Anthropic Claude for AI tasks.
+                work. The platform uses Anthropic Claude and OpenAI models for AI tasks.
               </p>
               <p>
                 Check your organization's data requirements before uploading

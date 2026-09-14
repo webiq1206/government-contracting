@@ -153,7 +153,7 @@ async function learnForOrg(orgId: string): Promise<LearningOrgResult> {
     try {
       const { data, usage } = await completeJson(prompt, {
         schema: AnalysisSchema,
-        model: config.claude.modelSmart, // rubric-weight reasoning, worth the stronger model
+        complexity: "complex", // rubric-weight reasoning, worth the stronger model
         maxTokens: 2000,
       });
       analysis = data;

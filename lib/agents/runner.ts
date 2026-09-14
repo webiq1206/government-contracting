@@ -579,7 +579,7 @@ export async function runAgent(
     if (orgId !== null && !(await inOrg(() => claudeEnabled())) && !def.worksWithoutClaude) {
       const result: AgentResult = {
         ok: true,
-        summary: `${def.name} skipped: ANTHROPIC_API_KEY not set`,
+        summary: `${def.name} skipped: no AI provider key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)`,
       };
       await inOrg(() =>
         logAgent({

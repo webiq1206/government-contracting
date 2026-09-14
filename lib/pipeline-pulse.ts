@@ -30,7 +30,10 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       [orgId]
     ),
     orgHasKey("SAM_API_KEY", orgId),
-    orgHasKey("ANTHROPIC_API_KEY", orgId),
+    // Either provider serves every tier on its own, so either key counts.
+    Promise.all([orgHasKey("ANTHROPIC_API_KEY", orgId), orgHasKey("OPENAI_API_KEY", orgId)]).then(
+      ([anthropic, openai]) => anthropic || openai
+    ),
     // The monitor logs poll-sam at error level when SAM answers with a
     // failure. Two cron cycles is the honesty window: a fixed key stops
     // producing errors and the banner clears itself on the next clean run.
@@ -69,7 +72,7 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
      * Two screens, two selectors, one of them wrong.
      */
     listActiveOrganizations().then((orgs) => orgs.length),
-    // Did Anthropic actually refuse us recently? A configured key cannot
+    // Did a provider actually refuse us recently? A configured key cannot
     // answer that; only what happened when we used it can.
     recentAiTrouble(orgId),
   ]);

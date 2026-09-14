@@ -118,7 +118,15 @@ export async function lastPricingSuccess(orgId?: string): Promise<Date | null> {
   return lastAgentSuccess(["pricing-research"], orgId);
 }
 
-export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {
+/**
+ * Optionally narrowed to one provider. Every refusal names the provider that
+ * refused (and a failed fallback names both), so the Anthropic card does not
+ * report OpenAI's outage as its own, and vice versa.
+ */
+export async function recentAiTrouble(
+  orgId?: string,
+  provider?: "Anthropic" | "OpenAI"
+): Promise<ServiceTrouble> {
   const org = orgId ?? (await resolveTenantOrgId());
   const row = await queryOne<{ n: number; message: string | null; last_at: Date | null }>(
     `select count(*)::int as n,
@@ -127,8 +135,9 @@ export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {
        from agent_logs
       where level = 'error' and org_id = $1
         and message like $2
+        and ($3::text is null or message like '%' || $3::text || '%')
         and created_at > now() - interval '${WINDOW}'`,
-    [org, `%${AI_UNAVAILABLE_PREFIX}%`]
+    [org, `%${AI_UNAVAILABLE_PREFIX}%`, provider ?? null]
   );
   if (!row) {
     throw new Error("Recent AI integration health could not be measured.");

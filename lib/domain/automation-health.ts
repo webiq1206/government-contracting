@@ -99,7 +99,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     title: "The AI account is out of credit",
     effect:
       "Nothing is being scored, analysed, drafted or read. Opportunities keep arriving and keep piling up unprocessed.",
-    repair: "Add credit to the Anthropic account at console.anthropic.com under Billing.",
+    repair: "Add credit to the AI provider account: Anthropic at console.anthropic.com under Billing, or OpenAI at platform.openai.com under Billing. The failure names which one.",
     repairHref: "/settings/integrations#claude",
     blocking: true,
   },
@@ -107,14 +107,14 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     title: "The AI key was rejected",
     effect:
       "Nothing is being scored, analysed, drafted or read. The key was deleted, revoked, or pasted incompletely.",
-    repair: "Create a new key at console.anthropic.com and save it under Settings, Integrations.",
+    repair: "Create a new key at the provider named in the failure (console.anthropic.com or platform.openai.com) and save it under Settings, Integrations.",
     repairHref: "/settings/integrations#claude",
     blocking: true,
   },
   provider_rate_limit: {
     title: "The AI account is being rate limited",
     effect: "Work is running slower than usual and some jobs are being retried.",
-    repair: "This usually clears itself. If it lasts more than an hour, ask Anthropic to raise the account limits.",
+    repair: "This usually clears itself. If it lasts more than an hour, ask the provider named in the failure to raise the account limits.",
     blocking: false,
   },
   mailbox_rate_limit: {

@@ -72,7 +72,7 @@ export async function accountSetup(
   const [orgKeys, inbox] = await Promise.all([
     orgIntegrationStatus().catch(() => {
       warnings.push(
-        "SAM.gov, Anthropic, and Google Maps connection status could not be verified. Do not add or replace keys based only on this checklist."
+        "SAM.gov, AI provider, and Google Maps connection status could not be verified. Do not add or replace keys based only on this checklist."
       );
       return null;
     }),
@@ -90,7 +90,8 @@ export async function accountSetup(
   ]);
   const integrations = {
     sam: orgKeys?.sam ?? false,
-    claude: orgKeys?.claude ?? false,
+    // Either AI provider satisfies the step; the label names both.
+    claude: (orgKeys?.claude || orgKeys?.openai) ?? false,
     googleMaps: orgKeys?.googleMaps ?? false,
     gmail: inbox?.connected ?? false,
   };

@@ -112,10 +112,12 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
       [org]
     ).then((r) => r[0]?.n ?? 0),
     // "Has automation ever been set up" is a question about credentials, and
-    // the AI key is the one every core agent needs. Without it nothing scores,
+    // an AI key is the one every core agent needs. Without one nothing scores,
     // analyses or drafts, so its absence is the honest definition of "not
-    // configured" rather than a fault to report.
-    orgHasKey("ANTHROPIC_API_KEY", org),
+    // configured" rather than a fault to report. Either provider will do.
+    Promise.all([orgHasKey("ANTHROPIC_API_KEY", org), orgHasKey("OPENAI_API_KEY", org)]).then(
+      ([anthropic, openai]) => anthropic || openai
+    ),
     queueBacklogDepth(org),
     getPlatformAutomationState(),
     query<{ cause: IncidentCause; recovered_at: string }>(

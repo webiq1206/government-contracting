@@ -47,6 +47,12 @@ export const LENDABLE_KEYS: {
     powers: "Opportunity scoring, solicitation analysis, bid briefs, reply reading.",
   },
   {
+    key: "OPENAI_API_KEY",
+    label: "OpenAI",
+    powers:
+      "Routine scoring, outreach drafts and reply reading at lower cost, and cover for Anthropic when it refuses a request.",
+  },
+  {
     key: "GOOGLE_MAPS_API_KEY",
     label: "Google Maps (Places)",
     powers: "Finding and enriching subcontractors.",

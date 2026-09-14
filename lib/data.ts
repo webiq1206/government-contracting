@@ -1749,8 +1749,10 @@ export async function providerUsage(): Promise<{
   const orgId = await currentOrg();
   const KEY = "ANTHROPIC_API_KEY";
   const [own, grant, meter, usageRows, preference] = await Promise.all([
+    // Either provider's own key counts: an organization on OpenAI alone is
+    // spending its own money just as surely as one on Anthropic alone.
     queryOne<{ ok: boolean }>(
-      `select true as ok from integration_settings where env_key = $1 and org_id = $2`,
+      `select true as ok from integration_settings where env_key in ($1, 'OPENAI_API_KEY') and org_id = $2 limit 1`,
       [KEY, orgId]
     ),
     queryOne<{ expires_at: Date | null }>(
@@ -1789,7 +1791,10 @@ export async function providerUsage(): Promise<{
   // organization falls back to the environment. Omitting this branch reported
   // "no AI credential" on the one account where every agent was in fact
   // running, which is a worse answer than none.
-  else if (orgId === LEGACY_ORG_ID && (process.env.ANTHROPIC_API_KEY ?? "").trim())
+  else if (
+    orgId === LEGACY_ORG_ID &&
+    ((process.env.ANTHROPIC_API_KEY ?? "").trim() || (process.env.OPENAI_API_KEY ?? "").trim())
+  )
     source = "environment";
   else source = "none";
 

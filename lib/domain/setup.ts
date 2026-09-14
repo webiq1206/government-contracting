@@ -481,8 +481,8 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     key: "claude",
     stage: "ai",
     label: i.onTrial
-      ? "Add your Anthropic (Claude) key before the trial ends"
-      : "Add your Anthropic (Claude) key",
+      ? "Add your AI key (Anthropic or OpenAI) before the trial ends"
+      : "Add your AI key (Anthropic or OpenAI)",
     hint:
       claude.note ??
       integrationHint("claude", "Powers scoring, plain-English bid briefs, and call scripts."),

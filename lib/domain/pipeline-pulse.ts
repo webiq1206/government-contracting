@@ -78,11 +78,11 @@ export interface PulseInput {
    * pulse never mentioned it.
    */
   automationPaused?: boolean;
-  /** Whether an Anthropic key is configured. Without it nothing gets scored,
+  /** Whether an AI provider key is configured. Without one nothing gets scored,
    *  analysed, or drafted, so discovery piles up and never advances. */
   claudeConfigured?: boolean;
   /**
-   * Recent agent failures whose cause was Anthropic refusing the request:
+   * Recent agent failures whose cause was an AI provider refusing the request:
    * how many, and the plain-English reason from the newest one.
    *
    * A configured key told us nothing about whether the account behind it can
@@ -215,7 +215,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
             severity: "down",
             title: `${n} AI job${n === 1 ? " has" : "s have"} failed recently.`,
             detail:
-              `${input.claudeFailures.reason ?? "Anthropic refused the request."} ` +
+              `${input.claudeFailures.reason ?? "The AI provider refused the request."} ` +
               "Scoring, analysis, or drafting may be delayed. Open Integrations to check the connection and recovery steps.",
             href: "/settings/integrations",
             cta: "Open Integrations",

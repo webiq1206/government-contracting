@@ -11,7 +11,7 @@ const now = new Date("2026-08-25T12:00:00Z");
 
 describe("credentialView", () => {
   it("says who pays for each source", () => {
-    expect(credentialView("own_key", null, now).explanation).toContain("your Anthropic account");
+    expect(credentialView("own_key", null, now).explanation).toContain("your own provider account");
     expect(credentialView("granted", null, now).explanation).toContain("billed to us");
     expect(credentialView("trial", null, now).explanation).toContain("call allowance");
     expect(credentialView("none", null, now).label).toBe("No AI credential");

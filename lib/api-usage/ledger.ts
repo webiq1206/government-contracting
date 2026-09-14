@@ -211,8 +211,12 @@ export async function finishUsage(
   await query(
     `update api_usage_events e set finished_at=now(), outcome=$2, provider_request_id=$3,
     usage=$4::jsonb,provider_cost=$5::numeric,evidence=$6,error_code=$7,
-    budget_cost=case when e.provider='Anthropic' and not $8::boolean then api_message_estimate($4::jsonb,e.price_snapshot)*1.1 else null end,
-    estimated_cost=case when e.provider='Anthropic' then api_message_estimate($4::jsonb,e.price_snapshot) else (select sum((u.value::text)::numeric * (r.rates->>u.key)::numeric / 1000000)
+    budget_cost=case when $8::boolean then null
+      when e.provider='Anthropic' then api_message_estimate($4::jsonb,e.price_snapshot)*1.1
+      when e.provider='OpenAI' then api_token_estimate($4::jsonb,e.price_snapshot)*1.1 else null end,
+    estimated_cost=case when e.provider='Anthropic' then api_message_estimate($4::jsonb,e.price_snapshot)
+      when e.provider='OpenAI' then api_token_estimate($4::jsonb,e.price_snapshot)
+      else (select sum((u.value::text)::numeric * (r.rates->>u.key)::numeric / 1000000)
       from api_usage_rates r,jsonb_each($4::jsonb) u where r.provider=e.provider and r.service=e.service) end,
     billing_status=case when credential_source='tenant' then 'not_billable'
       when $5::numeric is not null and billing_accepted then 'unbilled' else 'review' end

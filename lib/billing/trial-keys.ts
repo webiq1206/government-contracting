@@ -31,6 +31,9 @@ import type { AllowedEnvKey } from "../integration-settings";
  */
 export const TRIAL_PLATFORM_KEY_BUDGET: Partial<Record<AllowedEnvKey, number>> = {
   ANTHROPIC_API_KEY: 250,
+  // Routine work routes here first when both keys are lent, and its calls
+  // cost a fraction of Claude's, so the same count buys more trial work.
+  OPENAI_API_KEY: 250,
   GOOGLE_MAPS_API_KEY: 300,
 };
 
@@ -41,7 +44,7 @@ export function isLendableDuringTrial(key: AllowedEnvKey): boolean {
 /** What the customer is told once a borrowed key is used up. */
 export function trialKeyExhaustedCopy(key: AllowedEnvKey): string {
   const what =
-    key === "ANTHROPIC_API_KEY"
+    key === "ANTHROPIC_API_KEY" || key === "OPENAI_API_KEY"
       ? "AI scoring and bid briefs"
       : key === "GOOGLE_MAPS_API_KEY"
         ? "finding subcontractors"

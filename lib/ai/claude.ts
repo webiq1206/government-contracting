@@ -1,11 +1,19 @@
 /**
- * Claude API client. The Company Profile is injected as system context on every
- * call (architecture principle). Two entry points:
+ * The AI choke point. The Company Profile is injected as system context on
+ * every call (architecture principle). Two entry points:
  *   - complete(): free-form text completion
  *   - completeJson(): forces a JSON object back, validated with an optional Zod schema
  *
- * Degrades gracefully: if ANTHROPIC_API_KEY is missing, calls throw a typed
- * error that agents catch and log as "skipped" so the pipeline keeps flowing.
+ * Two providers sit behind it, Anthropic and OpenAI, chosen per call by
+ * lib/ai/routing.ts: routine work goes to whichever provider the operator
+ * prefers for volume (OpenAI by default, being cheaper), the bid-critical
+ * path to whichever they prefer for accuracy (Claude by default), and an
+ * organization holding one key uses it for everything. When the chosen
+ * provider refuses a request for an account or service reason, the call is
+ * made once more on the other provider, and both attempts show in the ledger.
+ *
+ * Degrades gracefully: if no provider key is set, calls throw a typed error
+ * that agents catch and log as "skipped" so the pipeline keeps flowing.
  *
  * A key that EXISTS but no longer works is a different animal and gets its own
  * error, ClaudeUnavailableError. Nothing degrades gracefully there: an account
@@ -17,13 +25,29 @@ import { z } from "zod";
 import { config } from "../config";
 import { getProfileSystemText } from "./companyProfile";
 import { noEmDash, deepNoEmDash } from "../sanitize";
+import {
+  chooseRoute,
+  type AiProvider,
+  type AiRoute,
+  type AiEnvKey,
+  type RoutingConfig,
+} from "./routing";
+import { openAiResponse, describeOpenAiFailure } from "./openai";
 
+export type { AiProvider, AiRoute } from "./routing";
+
+/**
+ * No provider key at all for this organization. The name is historical: it
+ * is caught in a dozen agents as "no AI configured, skip this step", and that
+ * meaning is unchanged now that either key satisfies it.
+ */
 export class ClaudeNotConfiguredError extends Error {
   constructor() {
-    super("ANTHROPIC_API_KEY is not set, Claude-dependent step skipped.");
+    super("No AI provider key is set (ANTHROPIC_API_KEY or OPENAI_API_KEY), AI-dependent step skipped.");
     this.name = "ClaudeNotConfiguredError";
   }
 }
+export { ClaudeNotConfiguredError as AiNotConfiguredError };
 
 /**
  * Stable marker on the front of every AI-outage message.
@@ -44,20 +68,59 @@ export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
  * quietly skip its actual work while the dashboard reported a healthy engine,
  * which is the failure this class exists to make impossible.
  */
-export class ClaudeUnavailableError extends Error {
+export class AiUnavailableError extends Error {
+  readonly provider: AiProvider;
   /** Plain English, safe to show an operator. Never contains the key. */
   readonly reason: string;
   readonly status: number | null;
-  /** True when waiting is a plausible fix (rate limit, Anthropic outage). */
+  /** True when waiting is a plausible fix (rate limit, provider outage). */
   readonly retryable: boolean;
 
-  constructor(reason: string, status: number | null, retryable: boolean) {
+  constructor(provider: AiProvider, reason: string, status: number | null, retryable: boolean) {
     super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
-    this.name = "ClaudeUnavailableError";
+    this.name = "AiUnavailableError";
+    this.provider = provider;
     this.reason = reason;
     this.status = status;
     this.retryable = retryable;
   }
+}
+
+export class ClaudeUnavailableError extends AiUnavailableError {
+  constructor(reason: string, status: number | null, retryable: boolean) {
+    super("Anthropic", reason, status, retryable);
+    this.name = "ClaudeUnavailableError";
+  }
+}
+
+export class OpenAiUnavailableError extends AiUnavailableError {
+  constructor(reason: string, status: number | null, retryable: boolean) {
+    super("OpenAI", reason, status, retryable);
+    this.name = "OpenAiUnavailableError";
+  }
+}
+
+function unavailable(provider: AiProvider, reason: string, status: number | null, retryable: boolean): AiUnavailableError {
+  return provider === "Anthropic"
+    ? new ClaudeUnavailableError(reason, status, retryable)
+    : new OpenAiUnavailableError(reason, status, retryable);
+}
+
+/**
+ * Describe any failure that came out of complete(), whichever provider raised
+ * it. An error the choke point already classified carries its own reason;
+ * anything rawer is tried against both providers' vocabularies.
+ */
+export function describeAiFailure(
+  err: unknown
+): { reason: string; status: number | null; retryable: boolean; provider: AiProvider | null } | null {
+  if (err instanceof AiUnavailableError) {
+    return { reason: err.reason, status: err.status, retryable: err.retryable, provider: err.provider };
+  }
+  const claude = describeClaudeFailure(err);
+  if (claude) return { ...claude, provider: null };
+  const openai = describeOpenAiFailure(err);
+  return openai ? { ...openai, provider: null } : null;
 }
 
 /**
@@ -131,29 +194,55 @@ export function describeClaudeFailure(
 }
 
 /** Stamp the Integrations card with the org that actually made the call. */
-function recordClaudeUse(outcome: { ok: boolean; error?: string }): void {
+function recordProviderUse(envKey: AiEnvKey, outcome: { ok: boolean; error?: string }): void {
   void Promise.all([import("../tenant"), import("../integration-settings")])
     .then(async ([{ resolveTenantOrgId }, settings]) => {
       const orgId = await resolveTenantOrgId();
-      await settings.recordIntegrationUse("ANTHROPIC_API_KEY", { ...outcome, orgId });
+      await settings.recordIntegrationUse(envKey, { ...outcome, orgId });
     })
     .catch(() => undefined);
 }
 
-async function client(): Promise<{ sdk: Anthropic; identity: import('../api-usage/ledger').RequestIdentity }> {
-  const { orgApiKey } = await import('../integration-keys');
-  const { requestIdentity } = await import('../api-usage/ledger');
-  const apiKey = await orgApiKey("ANTHROPIC_API_KEY");
-  if (!apiKey) throw new ClaudeNotConfiguredError();
-  const identity = await requestIdentity('ANTHROPIC_API_KEY', apiKey);
-  // No retained credentials and no hidden SDK retries. Every execution is metered.
-  return { sdk: new Anthropic({ apiKey, maxRetries: 0 }), identity };
+function routingConfig(): RoutingConfig {
+  return {
+    anthropic: { model: config.claude.model, modelSmart: config.claude.modelSmart },
+    openai: { model: config.openai.model, modelSmart: config.openai.modelSmart },
+    routineProvider: config.ai.routineProvider,
+    complexProvider: config.ai.complexProvider,
+    fallback: config.ai.fallback,
+  };
 }
 
-/** Whether the CURRENT organization has AI configured. */
-export async function claudeEnabled(): Promise<boolean> {
+/** Which providers the CURRENT (or named) organization holds a key for. */
+export async function aiProviderAvailability(orgId?: string): Promise<Record<AiProvider, boolean>> {
   const { orgHasKey } = await import("../integration-keys");
-  return orgHasKey("ANTHROPIC_API_KEY");
+  const [Anthropic, OpenAI] = await Promise.all([
+    orgHasKey("ANTHROPIC_API_KEY", orgId),
+    orgHasKey("OPENAI_API_KEY", orgId),
+  ]);
+  return { Anthropic, OpenAI };
+}
+
+/**
+ * Whether the CURRENT organization has AI configured: either provider will
+ * do, since either serves every tier on its own.
+ */
+export async function claudeEnabled(): Promise<boolean> {
+  const a = await aiProviderAvailability();
+  return a.Anthropic || a.OpenAI;
+}
+export const aiEnabled = claudeEnabled;
+
+/**
+ * The route a call with these options would take right now, for preflight
+ * checks that want to reserve against the model that will actually run.
+ */
+export async function planRoute(
+  opts: Pick<CompleteOptions, "complexity" | "model" | "fallback">,
+  orgId?: string
+): Promise<{ primary: AiRoute; fallback: AiRoute | null } | null> {
+  const available = await aiProviderAvailability(orgId);
+  return chooseRoute({ complexity: opts.complexity, model: opts.model, fallback: opts.fallback, available, cfg: routingConfig() });
 }
 
 export interface ClaudeUsage {
@@ -170,6 +259,12 @@ export interface ClaudeUsage {
    */
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  /** Which provider answered. Absent on usage assembled before routing existed. */
+  provider?: AiProvider;
+  /** OpenAI reasoning tokens, already included in output_tokens. */
+  reasoning_tokens?: number;
+  /** Set when the primary provider refused and this answer came from the other. */
+  fallback_from?: AiProvider;
 }
 
 export interface CompleteOptions {
@@ -186,6 +281,13 @@ export interface CompleteOptions {
   complexity?: "routine" | "complex";
   /** Set false to skip Company Profile injection (rarely needed). */
   injectProfile?: boolean;
+  /**
+   * The caller wants a JSON object. Providers with a native JSON mode
+   * (OpenAI) get it switched on; the prompt must still ask for JSON.
+   */
+  json?: boolean;
+  /** Set false to refuse the cross-provider fallback for this call. */
+  fallback?: boolean;
   /**
    * PDFs to send with the prompt as native document blocks.
    *
@@ -275,19 +377,117 @@ async function buildSystem(opts: CompleteOptions): Promise<SystemBlock[]> {
   return blocks;
 }
 
-export async function complete(
-  prompt: string,
-  opts: CompleteOptions = {}
-): Promise<{ text: string; usage: ClaudeUsage; stopReason: string | null }> {
+export interface Completion {
+  text: string;
+  usage: ClaudeUsage;
+  stopReason: string | null;
+}
+
+export async function complete(prompt: string, opts: CompleteOptions = {}): Promise<Completion> {
   const system = await buildSystem(opts);
-  const model = opts.model ?? (opts.complexity === "complex" ? config.claude.modelSmart : config.claude.model);
-  const complex = opts.complexity === "complex" || model !== config.claude.model;
+  const plan = await planRoute(opts);
+  if (!plan) throw new ClaudeNotConfiguredError();
+
+  let primaryFailure: AiUnavailableError;
+  try {
+    return await runRoute(plan.primary, system, prompt, opts);
+  } catch (err) {
+    // A local spending hold never reached a provider; it is not the
+    // provider's fault and the other provider would be held just the same.
+    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+    // Anything but a provider refusing us is our own bug (or a parse
+    // problem downstream). Switching providers would not fix a bad request.
+    if (!(err instanceof AiUnavailableError)) throw err;
+    primaryFailure = err;
+  }
+
+  if (!plan.fallback) throw primaryFailure;
+
+  console.warn(
+    `[ai] ${plan.primary.provider} (${plan.primary.model}) refused: ${primaryFailure.reason.slice(0, 160)} ` +
+      `Retrying once on ${plan.fallback.provider} (${plan.fallback.model}).`
+  );
+  try {
+    const res = await runRoute(plan.fallback, system, prompt, opts);
+    return { ...res, usage: { ...res.usage, fallback_from: plan.primary.provider } };
+  } catch (err) {
+    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+    const second = err instanceof AiUnavailableError ? err.reason : (err as Error).message;
+    // Named after the primary so the incident classifies as the primary's
+    // problem (credit, key, rate limit), with the fallback's story attached.
+    throw unavailable(
+      plan.primary.provider,
+      `${primaryFailure.reason} The ${plan.fallback.provider} fallback also failed: ${second}`,
+      primaryFailure.status,
+      primaryFailure.retryable
+    );
+  }
+}
+
+/**
+ * One metered attempt on one provider. Every failure that means "the
+ * provider refused us" leaves here as an AiUnavailableError, in words an
+ * owner can act on, instead of a raw SDK string in thirty agent logs.
+ */
+async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, opts: CompleteOptions): Promise<Completion> {
+  const { orgApiKey } = await import("../integration-keys");
+  const { requestIdentity, metered } = await import("../api-usage/ledger");
+  // Both spelled out: a source scan pins the literal Anthropic lookup so the
+  // per-organization key can never be replaced by a process-wide one again.
+  const apiKey = route.provider === "Anthropic"
+    ? await orgApiKey("ANTHROPIC_API_KEY")
+    : await orgApiKey("OPENAI_API_KEY");
+  if (!apiKey) throw new ClaudeNotConfiguredError();
+  const identity = await requestIdentity(route.envKey, apiKey);
+  const feature = opts.feature ?? "AI assistance";
+
+  try {
+    const out = route.provider === "Anthropic"
+      ? await runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
+      : await runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature);
+    /*
+     * Every AI call passes through here, so it is the one place that can
+     * record whether the provider is actually working for this account. The
+     * Integrations page claimed to show that and showed the last Test press
+     * instead, which on the day Anthropic refused for want of credit left the
+     * card reading as verified that morning.
+     *
+     * Imported lazily: integration-settings reaches the database, and this
+     * module is imported by code paths that must not pull a connection in
+     * just by being loaded.
+     */
+    void recordProviderUse(route.envKey, { ok: true });
+    return out;
+  } catch (err) {
+    // A local spending hold never reached the provider and must not mark its key as broken.
+    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+    const cause = route.provider === "Anthropic" ? describeClaudeFailure(err) : describeOpenAiFailure(err);
+    void recordProviderUse(route.envKey, { ok: false, error: cause?.reason ?? (err as Error).message });
+    if (cause) throw unavailable(route.provider, cause.reason, cause.status, cause.retryable);
+    throw err;
+  }
+}
+
+type Metered = typeof import("../api-usage/ledger").metered;
+type Identity = import("../api-usage/ledger").RequestIdentity;
+
+async function runAnthropic(
+  apiKey: string,
+  identity: Identity,
+  route: AiRoute,
+  system: SystemBlock[],
+  prompt: string,
+  opts: CompleteOptions,
+  metered: Metered,
+  feature: string
+): Promise<Completion> {
+  const model = route.model;
+  // No retained credentials and no hidden SDK retries. Every execution is metered.
+  const anthropic = new Anthropic({ apiKey, maxRetries: 0 });
 
   // Built as a loose object so we can conditionally include params by model
   // family without fighting the (older) SDK's request types. The model string
   // itself is sent verbatim, so newer model ids work regardless of SDK version.
-  // Document blocks go ahead of the prompt text; a plain string is still sent
-  // when there are none so every existing call site is byte-for-byte unchanged.
   /*
    * Document blocks go ahead of the prompt text; a plain string is still sent
    * when there are none so every existing call site is byte-for-byte unchanged.
@@ -326,53 +526,24 @@ export async function complete(
     body.thinking = { type: "disabled" };
   }
 
-  const { sdk: anthropic, identity } = await client();
-  const { metered } = await import('../api-usage/ledger');
-  // Every Claude call in the system passes through here, so this is the one
-  // place that can name "the AI is refusing us" once, in words an owner can
-  // act on, instead of leaving a raw SDK string in thirty agent logs.
-  let res: Anthropic.Messages.Message;
-  try {
-    res = await metered(identity, 'Anthropic', model, opts.feature ?? 'AI assistance',
-      () => anthropic.messages.create(
-        body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
-        { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
-          maxRetries: 0 }
-      ),
-      value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex });
-  } catch (err) {
-    // A local spending hold never reached the provider and must not mark its key as broken.
-    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
-    const cause = describeClaudeFailure(err);
-    /*
-     * Every Claude call passes through here, so it is the one place that can
-     * record whether the provider is actually working for this account. The
-     * Integrations page claimed to show that and showed the last Test press
-     * instead, which on the day Anthropic refused for want of credit left the
-     * card reading as verified that morning.
-     *
-     * Imported here rather than at the top: integration-settings reaches the
-     * database, and this module is imported by code paths that must not pull
-     * a connection in just by being loaded.
-     */
-    void recordClaudeUse({
-      ok: false,
-      error: cause?.reason ?? (err as Error).message,
-    });
-    if (cause) throw new ClaudeUnavailableError(cause.reason, cause.status, cause.retryable);
-    throw err;
-  }
-  void recordClaudeUse({ ok: true });
+  const res: Anthropic.Messages.Message = await metered(identity, "Anthropic", model, feature,
+    () => anthropic.messages.create(
+      body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
+      { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
+        maxRetries: 0 }
+    ),
+    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
+
   const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
-  // Single choke point: EVERY Claude call, in every agent, present and
-  // future, comes through here. Sanitizing once at the source is the only
-  // way to actually guarantee "never any em dashes on the site", rather than
-  // relying on each of the dozen call sites to remember to do it (several
-  // didn't). Safe to run before JSON parsing downstream: the regex only
-  // touches em/en dash characters, never JSON syntax.
+  // Single choke point: EVERY AI call, in every agent, present and future,
+  // comes through here (the OpenAI leg does the same). Sanitizing once at
+  // the source is the only way to actually guarantee "never any em dashes on
+  // the site", rather than relying on each of the dozen call sites to
+  // remember to do it (several didn't). Safe to run before JSON parsing
+  // downstream: the regex only touches em/en dash characters, never JSON syntax.
   const text = noEmDash(rawText);
   return {
     text,
@@ -380,12 +551,60 @@ export async function complete(
       input_tokens: res.usage.input_tokens,
       output_tokens: res.usage.output_tokens,
       model,
+      provider: "Anthropic",
       cache_creation_input_tokens: (res.usage as { cache_creation_input_tokens?: number })
         .cache_creation_input_tokens,
       cache_read_input_tokens: (res.usage as { cache_read_input_tokens?: number })
         .cache_read_input_tokens,
     },
     stopReason: (res as { stop_reason?: string | null }).stop_reason ?? null,
+  };
+}
+
+async function runOpenAi(
+  apiKey: string,
+  identity: Identity,
+  route: AiRoute,
+  system: SystemBlock[],
+  prompt: string,
+  opts: CompleteOptions,
+  metered: Metered,
+  feature: string
+): Promise<Completion> {
+  const model = route.model;
+  // The same system prompt Claude sees, as one instructions string. The
+  // stable profile still leads, which is the prefix OpenAI's automatic
+  // prompt cache matches on.
+  const instructions = system.map((b) => b.text).join("\n\n") || null;
+  const res = await metered(identity, "OpenAI", model, feature,
+    () => openAiResponse({
+      apiKey,
+      model,
+      instructions,
+      prompt,
+      documents: opts.documents,
+      maxTokens: opts.maxTokens ?? 2048,
+      json: opts.json,
+      effort: route.complex ? config.openai.reasoningComplex : config.openai.reasoningRoutine,
+      reasoningHeadroom: config.openai.reasoningHeadroom,
+      temperature: opts.temperature ?? 0.2,
+      timeoutMs: opts.timeoutMs,
+      cacheKey: `brostco:${identity.orgId}`,
+    }),
+    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
+
+  return {
+    text: noEmDash(res.text),
+    usage: {
+      // Same convention as Anthropic: input_tokens excludes cache reads.
+      input_tokens: res.usage.input_tokens,
+      output_tokens: res.usage.output_tokens,
+      model,
+      provider: "OpenAI",
+      cache_read_input_tokens: res.usage.cached_input_tokens,
+      reasoning_tokens: res.usage.reasoning_tokens,
+    },
+    stopReason: res.stopReason,
   };
 }
 
@@ -424,6 +643,7 @@ export async function completeJson<T = unknown>(
     const { text, usage, stopReason } = await complete(prompt + jsonInstruction + extra, {
       ...opts,
       maxTokens,
+      json: true,
     });
     totalIn += usage.input_tokens;
     totalOut += usage.output_tokens;
@@ -432,7 +652,13 @@ export async function completeJson<T = unknown>(
       const data = opts.schema ? opts.schema.parse(obj) : (obj as T);
       return {
         data,
-        usage: { input_tokens: totalIn, output_tokens: totalOut, model: usage.model },
+        usage: {
+          input_tokens: totalIn,
+          output_tokens: totalOut,
+          model: usage.model,
+          provider: usage.provider,
+          fallback_from: usage.fallback_from,
+        },
       };
     } catch (err) {
       lastErr = err;

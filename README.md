@@ -15,7 +15,7 @@ Built to the BROSTCO System Design & Build Brief (SYS-01 … SYS-12).
 ```
 Presentation   Next.js 15 (App Router) + Tailwind, dashboard (7 views), mobile-ready Call Queue
 Agents         13 isolated modules + maintenance jobs, run by a worker via a job queue
-AI             Anthropic Claude (claude-sonnet-4-6). Company Profile injected as system context on EVERY call
+AI             Anthropic Claude (bid-critical tier) and OpenAI (routine tier, fallback). Company Profile injected as system context on EVERY call
 Integrations   SAM.gov · USASpending · BLS CPI · Google Places · Hunter.io · Gmail OAuth · Twilio · Supabase Storage · Playwright scrapers
 Data           PostgreSQL (Supabase). Single source of truth. Versioned company_profile + scoring_weights
 Queue          pg-boss (Postgres-backed, default) or BullMQ (set REDIS_URL)
@@ -61,7 +61,7 @@ Open http://localhost:3000 and sign in with `OPERATOR_EMAIL` / your password.
 ### The only truly required env vars
 
 - `DATABASE_URL`, Postgres/Supabase connection string
-- `ANTHROPIC_API_KEY`, for the AI agents
+- `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`, for the AI agents (one is enough; both gives cheaper routine work and a fallback)
 - `AUTH_SECRET`, `OPERATOR_EMAIL`, `OPERATOR_PASSWORD_HASH`, to log in
 
 **Everything else is optional.** Each integration degrades gracefully: a missing

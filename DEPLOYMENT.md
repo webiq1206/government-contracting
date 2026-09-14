@@ -32,7 +32,8 @@ Open the **Secrets** panel (lock icon) and add, at minimum:
 | Secret | Value |
 |---|---|
 | `DATABASE_URL` | your Postgres/Supabase URI |
-| `ANTHROPIC_API_KEY` | your Claude API key |
+| `ANTHROPIC_API_KEY` | your Claude API key (bid-critical analysis) |
+| `OPENAI_API_KEY` | your OpenAI API key (routine work at lower cost, and fallback); optional if Anthropic is set |
 | `AUTH_SECRET` | a long random string |
 | `OPERATOR_EMAIL` | your login email |
 | `OPERATOR_PASSWORD_HASH` | run `npm run agent -- hash-password 'yourpassword'` in the Shell and paste the output |
@@ -224,6 +225,10 @@ The Integrations settings page shows exactly which keys are wired up.
   with its owner-only secret, then start the runtime services again.
 - **Login fails**, ensure `OPERATOR_EMAIL` + `OPERATOR_PASSWORD_HASH` are set
   (hash generated with `npm run agent -- hash-password`), or seed a user.
-- **Agents log "skipped: ANTHROPIC_API_KEY not set"**, add the Claude key.
+- **Agents log "skipped: no AI provider key set"**, add the Claude key or the OpenAI key.
+- **AI routing**: with both keys, routine work runs on `OPENAI_MODEL` and the
+  bid-critical path on `CLAUDE_MODEL_SMART`; either falls back to the other
+  when refused. Override with `AI_ROUTINE_PROVIDER` / `AI_COMPLEX_PROVIDER`
+  (`anthropic` or `openai`) and `AI_FALLBACK=false` to disable fallback.
 - **TLS errors to Postgres**, the pool already relaxes TLS for managed hosts;
   ensure the URI is the pooler/connection string from your provider.

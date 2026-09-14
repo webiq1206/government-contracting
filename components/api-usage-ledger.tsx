@@ -1079,7 +1079,7 @@ function LimitSettings({
           Provider
           <select name="provider" className={`${field} w-full`}>
             <option value="*">All providers</option>
-            {["Anthropic", "Google Maps", "Hunter", "Ahrefs", "Twilio"].map(
+            {["Anthropic", "OpenAI", "Google Maps", "Hunter", "Ahrefs", "Twilio"].map(
               (p) => (
                 <option key={p}>{p}</option>
               ),

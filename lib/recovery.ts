@@ -57,12 +57,17 @@ export interface ProviderTest {
  * instead of sending somebody to top up an account that was never the problem.
  */
 export async function testProvider(): Promise<ProviderTest> {
-  const model = config.claude.modelSmart;
+  // The complex tier is what a bid depends on, so that is what gets tested,
+  // on whichever provider the router would give it. No fallback: a test that
+  // quietly succeeded on the other provider would hide the very fault it
+  // exists to find.
+  let model = config.ai.complexProvider === "OpenAI" ? config.openai.modelSmart : config.claude.modelSmart;
   try {
-    const { text } = await complete(
+    const { text, usage } = await complete(
       "Reply with the single word: ready. Nothing else.",
-      { model, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
+      { complexity: "complex", fallback: false, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
     );
+    model = usage?.model ?? model;
     const got = text.trim().toLowerCase();
     if (!got) {
       return {
@@ -79,7 +84,14 @@ export async function testProvider(): Promise<ProviderTest> {
       model,
     };
   } catch (err) {
-    const described = describeClaudeFailure(err);
+    // The choke point already put a plain-English reason on a provider
+    // refusal, from whichever provider it was. Anything rawer is read the
+    // old way.
+    const own = err as { reason?: unknown; retryable?: unknown };
+    const described =
+      typeof own?.reason === "string" && typeof own?.retryable === "boolean"
+        ? { reason: own.reason }
+        : describeClaudeFailure(err);
     return {
       passed: false,
       detail:

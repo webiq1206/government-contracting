@@ -88,6 +88,7 @@ beforeAll(async () => {
   );
   await state.db.exec(readFileSync("db/migrations/113_api_spending_controls.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/116_api_safe_defaults.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/118_openai_provider.sql", "utf8"));
   await state.db.query(
     "insert into organizations(id,name) values($1,$2),($3,$4)",
     [org, "Test account", other, "Other account"],

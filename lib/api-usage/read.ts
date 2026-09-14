@@ -1,6 +1,7 @@
 import { query } from "../db";
 export const PROVIDERS = [
   "Anthropic",
+  "OpenAI",
   "Google Maps",
   "Hunter",
   "Ahrefs",

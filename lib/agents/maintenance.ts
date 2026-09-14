@@ -1738,14 +1738,16 @@ export const scoringRecoverySweep: AgentDefinition = {
     // A later scheduled sweep rechecks current limits; operator recovery uses
     // the same gate, so budgets are never removed to make a retry succeed.
     const admissions = new Map<string, Promise<boolean>>();
-    function canRecover(orgId: string, model: string, feature: string): Promise<boolean> {
-      const key = `${orgId}:${model}`;
+    function canRecover(orgId: string, tier: "routine" | "complex", feature: string): Promise<boolean> {
+      const key = `${orgId}:${tier}`;
       const existing = admissions.get(key);
       if (existing) return existing;
       const check = runWithOrg(orgId, async () => {
         try {
-          const { checkClaudeSpending } = await import("../api-usage/check-spending");
-          await checkClaudeSpending(orgId, model, feature);
+          // Against whichever provider and model the router would pick now,
+          // so the sweep never reserves against a model that will not run.
+          const { checkAiSpending } = await import("../api-usage/check-spending");
+          await checkAiSpending(orgId, tier, feature);
           return true;
         } catch (error) {
           if (!(error instanceof Error) || error.name !== "ApiUsageBlockedError") throw error;
@@ -1819,7 +1821,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     let analysisQueued = 0;
     for (const o of unbriefed) {
       try {
-        if (!(await canRecover(o.orgId, config.claude.modelSmart, "solicitation-analyst"))) { deferred++; continue; }
+        if (!(await canRecover(o.orgId, "complex", "solicitation-analyst"))) { deferred++; continue; }
         const queuedId = await runWithOrg(o.orgId, () =>
           enqueue(
             "solicitation-analyst",

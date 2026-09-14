@@ -241,6 +241,7 @@ export async function orgHasKey(key: AllowedEnvKey, orgId?: string): Promise<boo
  */
 export async function orgIntegrationStatus(orgId?: string): Promise<{
   claude: boolean;
+  openai: boolean;
   sam: boolean;
   googleMaps: boolean;
   hunter: boolean;
@@ -248,9 +249,10 @@ export async function orgIntegrationStatus(orgId?: string): Promise<{
   twilio: boolean;
 }> {
   const org = orgId ?? (await owningOrg());
-  const [claude, sam, googleMaps, hunter, ahrefs, twilioSid, twilioToken, twilioFrom] =
+  const [claude, openai, sam, googleMaps, hunter, ahrefs, twilioSid, twilioToken, twilioFrom] =
     await Promise.all([
       orgApiKey("ANTHROPIC_API_KEY", org),
+      orgApiKey("OPENAI_API_KEY", org),
       orgApiKey("SAM_API_KEY", org),
       orgApiKey("GOOGLE_MAPS_API_KEY", org),
       orgApiKey("HUNTER_API_KEY", org),
@@ -261,6 +263,7 @@ export async function orgIntegrationStatus(orgId?: string): Promise<{
     ]);
   return {
     claude: claude.length > 0,
+    openai: openai.length > 0,
     sam: sam.length > 0,
     googleMaps: googleMaps.length > 0,
     hunter: hunter.length > 0,

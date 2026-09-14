@@ -64,6 +64,8 @@ export interface PdfOcrResult {
   truncated: boolean;
   /** Populated when OCR could not run at all. */
   error?: string;
+  /** The model that did the reading, when any batch succeeded. */
+  model?: string;
 }
 
 /** Split a PDF into batches of at most `size` pages, each a standalone PDF. */
@@ -94,7 +96,7 @@ async function splitPages(
  */
 export async function ocrPdf(
   data: Uint8Array | Buffer,
-  opts: { label?: string; maxPages?: number; model?: string } = {}
+  opts: { label?: string; maxPages?: number; model?: string; complexity?: "routine" | "complex" } = {}
 ): Promise<PdfOcrResult> {
   const bytes = data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
   const limit = opts.maxPages ?? MAX_OCR_PAGES;
@@ -114,10 +116,11 @@ export async function ocrPdf(
   const parts: string[] = [];
   let failures = 0;
   let partialBatches = 0;
+  let modelUsed: string | undefined;
   for (let i = 0; i < split.batches.length; i++) {
     const firstPage = i * PAGES_PER_BATCH + 1;
     try {
-      const { text, stopReason } = await complete(
+      const { text, stopReason, usage } = await complete(
         `${TRANSCRIBE_PROMPT}\n\nThese are pages ${firstPage} to ${Math.min(
           firstPage + PAGES_PER_BATCH - 1,
           split.pagesRead
@@ -131,8 +134,10 @@ export async function ocrPdf(
           // "recognize" our own boilerplate on a page that does not contain it.
           injectProfile: false,
           model: opts.model,
+          complexity: opts.complexity,
         }
       );
+      modelUsed = usage?.model ?? modelUsed;
       if (text.trim()) parts.push(text.trim());
       if (stopReason === "max_tokens") {
         partialBatches++;
@@ -174,6 +179,7 @@ export async function ocrPdf(
     text: readable ? text : "",
     pagesRead: readable ? split.pagesRead : 0,
     pagesTotal: split.pagesTotal,
+    model: readable ? modelUsed : undefined,
     truncated: split.pagesRead < split.pagesTotal || failures > 0 || partialBatches > 0,
     error: readable
       ? undefined
