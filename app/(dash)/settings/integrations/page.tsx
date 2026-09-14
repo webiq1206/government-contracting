@@ -13,6 +13,7 @@ import {
   lastPricingSuccess,
   recentAiTrouble,
   troubleSummary,
+  lastProviderSuccess,
 } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 import { integrationState } from "@/lib/domain/integration-state";
@@ -40,7 +41,7 @@ export default async function IntegrationsPage(
   const searchParams = await props.searchParams;
   await hydrateIntegrationEnv();
   const loadWarnings: string[] = [];
-  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed, openAiTrouble] = await Promise.all([
+  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed, openAiTrouble, openAiUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
@@ -86,6 +87,10 @@ export default async function IntegrationsPage(
     recentAiTrouble(undefined, "OpenAI").catch(() => {
       loadWarnings.push("Recent OpenAI failures could not be checked.");
       return { count: 0, reason: null, lastAt: null };
+    }),
+    lastProviderSuccess("OpenAI").catch(() => {
+      loadWarnings.push("The most recent successful OpenAI call could not be checked.");
+      return null;
     }),
   ]);
   const gmailConnected = inbox.connected;
@@ -198,8 +203,13 @@ export default async function IntegrationsPage(
         lastSuccessAt:
           def.id === "gmail"
             ? (def.last_success_at ?? gmailUsed?.at ?? null)
-            : def.id === "claude" || def.id === "openai"
+            : def.id === "claude"
               ? (def.last_success_at ?? claudeUsed ?? null)
+              // OpenAI has no agent history of its own to borrow: the AI
+              // agents' last success is Claude's, and lending it here made
+              // a never-used OpenAI key read as recently working.
+              : def.id === "openai"
+                ? (def.last_success_at ?? openAiUsed ?? null)
               : def.id === "usaspending"
                 ? (def.last_success_at ?? pricingUsed ?? null)
                 : def.last_success_at,

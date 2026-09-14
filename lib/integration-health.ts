@@ -113,6 +113,28 @@ export async function lastAiSuccess(orgId?: string): Promise<Date | null> {
   );
 }
 
+/**
+ * When a named AI provider last answered a metered call for this account.
+ *
+ * Read from the usage ledger rather than agent logs: every call names its
+ * provider there, whereas an agent's success says only that some provider
+ * answered. Without this the OpenAI card borrowed Claude's history and read
+ * as working before it had ever been used.
+ */
+export async function lastProviderSuccess(
+  provider: "Anthropic" | "OpenAI",
+  orgId?: string
+): Promise<Date | null> {
+  const org = orgId ?? (await resolveTenantOrgId());
+  const row = await queryOne<{ at: Date | null }>(
+    `select max(finished_at) as at
+       from api_usage_events
+      where org_id = $1 and provider = $2 and outcome = 'success'`,
+    [org, provider]
+  );
+  return row?.at ?? null;
+}
+
 /** When pricing comps last came back from USASpending for this account. */
 export async function lastPricingSuccess(orgId?: string): Promise<Date | null> {
   return lastAgentSuccess(["pricing-research"], orgId);
