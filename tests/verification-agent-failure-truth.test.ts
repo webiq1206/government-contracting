@@ -49,7 +49,7 @@ vi.mock("../lib/integrations/website-finder", () => ({
 vi.mock("../lib/integrations/sam", () => ({
   sam: { isExcluded: mocks.samExcluded },
 }));
-vi.mock("../lib/app-settings", () => ({ areCallsEnabled: mocks.areCallsEnabled }));
+vi.mock("../lib/app-settings", () => ({ areCallsEnabled: mocks.areCallsEnabled, getWorkExecution: async () => "sub" }));
 vi.mock("../lib/integrations/contact-finder", () => ({ findContact: mocks.findContact }));
 vi.mock("../lib/integrations/ahrefs", () => ({
   ahrefs: {

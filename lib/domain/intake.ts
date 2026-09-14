@@ -43,6 +43,14 @@ export interface AutomationRules {
    */
   calls_enabled: boolean;
   /**
+   * How this company performs the work it wins: with subcontractors, its own
+   * crews, or both. "self" turns subcontractor sourcing, outreach and
+   * follow-ups off for every opportunity that does not override it; pricing,
+   * documents, deadlines and the bid itself are untouched. Defaults to "sub",
+   * which is what every account had before the setting existed.
+   */
+  work_execution: "sub" | "self" | "mixed";
+  /**
    * Hours to wait after the first outreach email before following up.
    *
    * Was hardcoded at 48 in the outreach agent. It is a rule about how often
@@ -138,6 +146,7 @@ export const DEFAULT_RULES: AutomationRules = {
   auto_dismiss_review: false,
   auto_dismiss_warn_hours: 24,
   calls_enabled: true, // calling is part of the pipeline unless the operator turns it off
+  work_execution: "sub", // subcontracted, which is what every account did before the setting existed
   // Every default below reproduces what the code already did, so turning these
   // into settings changes nothing until somebody changes one.
   followup_hours: 48,
@@ -171,6 +180,7 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // Only an explicit false turns calling off. A stored config written before
     // this setting existed has no key at all, and must keep its calls.
     calls_enabled: v?.calls_enabled !== false,
+    work_execution: v?.work_execution === "self" || v?.work_execution === "mixed" ? v.work_execution : "sub",
     /*
      * Only an explicit true turns it on, which is the opposite of the calls
      * rule above and deliberately so. A config written before this setting

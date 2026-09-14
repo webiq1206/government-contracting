@@ -8,6 +8,8 @@
  * closes + logs.
  */
 import { z } from "zod";
+import { outreachAllowed } from "../domain/work-mode";
+import { ensureNoticeDescription } from "../opportunity-description";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
@@ -76,6 +78,11 @@ export const scoringEngine: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    // SAM's results carry a link to the notice text, not the text. Read the
+    // text once before anything reasons about "the description".
+    if (opp.org_id) {
+      opp.description = (await ensureNoticeDescription(opp.org_id, opp).catch(() => null)) ?? opp.description;
+    }
 
     /**
      * The opportunity's org is the scope for everything below.
@@ -482,6 +489,12 @@ async function scoreOpportunity(
     if (preserveLifecycle) {
       stage = opp.stage;
       humanAction = opp.human_action_required;
+    } else if (scoringFromDocuments && !outreachAllowed(rules.work_execution, opp)) {
+      // Self-performed: there is nobody to source. Pricing comps still run;
+      // a person enters the company's own pricing next.
+      stage = "quote_entry";
+      humanAction = true;
+      enqueued.push({ agent: "pricing-research", payload: { opportunityId } });
     } else if (scoringFromDocuments) {
       stage = "sub_research";
       humanAction = false;

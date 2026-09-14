@@ -63,6 +63,7 @@ const WIDTHS = [
 ];
 
 const ROUTES = [
+  "/opportunity/new",
   "/today",
   "/workbench",
   "/pipeline",

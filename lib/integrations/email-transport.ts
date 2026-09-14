@@ -11,6 +11,7 @@
  * dropped and never goes out as somebody else.
  */
 import { gmail } from "./gmail";
+import { opportunityOutreachAllowed } from "../work-mode";
 import { config } from "../config";
 import { normalizeAttachmentMeta } from "../domain/attachment-meta";
 import {
@@ -142,6 +143,16 @@ export async function sendOutreachEmail(
         disabled: true,
         retryable: pursuit.retryable,
         error: pursuit.reason ?? "This pursuit is stopped.",
+      };
+    }
+    // The last check before the provider: a switch flipped while this job
+    // was assembling attachments must still stop the send.
+    if (!(await opportunityOutreachAllowed(params.opportunityId))) {
+      return {
+        provider: null,
+        disabled: true,
+        retryable: false,
+        error: "Subcontractor outreach is off for this opportunity (it is self-performed). Nothing was sent.",
       };
     }
   }

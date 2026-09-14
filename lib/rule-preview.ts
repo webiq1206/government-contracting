@@ -19,7 +19,7 @@ export async function ruleFacts(
   const orgId = await currentOrg();
   const r = await queryOne<Record<string, unknown>>(
     `with open_opps as (
-       select o.id, o.deadline, o.created_at, o.tier, o.stage, o.pursuit_changed_at
+       select o.id, o.deadline, o.created_at, o.tier, o.stage, o.pursuit_changed_at, o.work_mode
          from opportunities o
         where o.org_id = $1
           and o.status = 'open'
@@ -92,7 +92,9 @@ export async function ruleFacts(
          where os.removed_at is null and os.outreach_state = 'contacted'
            and o3.stage = 'call_queue')::int as calls_pending,
        (select count(*) from open_opps
-         where tier = 'review' and pursuit_changed_at is null)::int as review_undecided`,
+         where tier = 'review' and pursuit_changed_at is null)::int as review_undecided,
+       (select count(*) from open_opps
+         where work_mode is null and stage in ('sub_research','outreach','call_queue'))::int as outreach_in_flight`,
     [
       orgId,
       proposed.min_lead_days,
@@ -130,5 +132,6 @@ export async function ruleFacts(
     atProposedFollowUpCap: n(r.at_proposed_followup_cap),
     callsPending: n(r.calls_pending),
     reviewUndecided: n(r.review_undecided),
+    outreachInFlight: n(r.outreach_in_flight),
   };
 }

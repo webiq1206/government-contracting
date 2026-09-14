@@ -39,6 +39,8 @@ export interface RuleFacts {
   callsPending: number;
   /** Review-tier opportunities with no decision recorded. */
   reviewUndecided: number;
+  /** Open records following the company default that are mid-sourcing or mid-outreach. */
+  outreachInFlight: number;
 }
 
 export type ImpactSeverity = "removes" | "changes" | "none";
@@ -139,6 +141,23 @@ export function ruleImpacts(
        * the save rather than in a log afterwards.
        */
       irreversible: shorter && newlyEligible > 0,
+    });
+  }
+
+  if (after.work_execution !== before.work_execution) {
+    const toSelf = after.work_execution === "self";
+    out.push({
+      key: "work_execution",
+      summary: toSelf
+        ? facts.outreachInFlight === 0
+          ? "No opportunity is mid-outreach, so nothing is stopped. New opportunities skip subcontractor sourcing and go straight to your own pricing."
+          : `${plural(facts.outreachInFlight, "opportunity that follows the company default stops", "opportunities that follow the company default stop")} sourcing and outreach: scheduled follow-ups are cancelled and prepared calls cleared. Messages already sent, replies and quotes are kept. Opportunities with their own setting are not touched.`
+        : before.work_execution === "self"
+          ? "Subcontractor sourcing returns for new opportunities. Nothing is sent for existing ones until somebody asks for subcontractors on the record."
+          : "Changes how scopes are treated by default. Existing opportunities keep their current subcontractor work.",
+      affected: toSelf ? facts.outreachInFlight : null,
+      severity: toSelf && facts.outreachInFlight > 0 ? "removes" : "changes",
+      irreversible: false,
     });
   }
 

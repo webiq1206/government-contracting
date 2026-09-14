@@ -7,6 +7,7 @@
  * and simply enqueues jobs, so it is backend-agnostic.
  */
 import { config } from "../config";
+import { OUTREACH_JOBS } from "../domain/work-mode";
 
 export type JobPayload = Record<string, unknown>;
 export type JobHandler = (payload: JobPayload) => Promise<void>;
@@ -187,6 +188,18 @@ export async function enqueue(
       [PURSUIT_VERSION_KEY]: pursuit.version,
       ...(mayRunAfterClose ? { [CLOSED_OPPORTUNITY_JOB_KEY]: true } : {}),
     };
+  }
+  /*
+   * Subcontractor work for a record the company performs itself. Same shape
+   * as the pursuit check above: refusing the job here stops it being created,
+   * and the agent refuses it again at run time in case it was queued first.
+   */
+  if (oppId && OUTREACH_JOBS.has(name)) {
+    const { opportunityOutreachAllowed } = await import("../work-mode");
+    if (!(await opportunityOutreachAllowed(oppId))) {
+      console.warn(`[queue] enqueue skipped (subcontractor outreach is off for this opportunity): ${name} for ${oppId}`);
+      return null;
+    }
   }
   if (opts?.recoveryRequeueId) {
     queuedPayload = { ...queuedPayload, [RECOVERY_REQUEUE_KEY]: opts.recoveryRequeueId };

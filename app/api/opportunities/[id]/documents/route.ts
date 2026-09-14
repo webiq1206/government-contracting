@@ -5,6 +5,8 @@ import { storage } from "@/lib/integrations/storage";
 import { logAgent } from "@/lib/logger";
 import { attachToRequirement } from "@/lib/bid-package-state";
 import { RESERVED_KINDS } from "@/lib/domain/package";
+import { classifyDocumentName } from "@/lib/domain/document-inventory";
+import { enqueue } from "@/lib/queue";
 import { createHash } from "node:crypto";
 
 export const runtime = "nodejs";
@@ -57,8 +59,15 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     (typeof form.get("name") === "string" && String(form.get("name")).trim()) ||
     file.name ||
     "Operator upload";
+  /*
+   * "analyze" means this file IS the solicitation (or part of it) and the
+   * analyst should read it. Without it an upload is a proof or a form: kept,
+   * listed, never read, which is what every upload used to be, including
+   * the solicitation PDF somebody added because the agency's link was dead.
+   */
+  const analyze = form.get("analyze") === "1" || form.get("analyze") === "true";
   const kindRaw = typeof form.get("kind") === "string" ? String(form.get("kind")).trim() : "";
-  const kind = (kindRaw || "operator_upload").replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
+  const kind = (kindRaw || (analyze ? "solicitation" : "operator_upload")).replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
   /*
    * The generated kinds are the package builder's slots, and it clears each
    * one before writing it: `delete from documents where opportunity_id = $1
@@ -125,8 +134,9 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const row = await queryOne<{ id: string }>(
     `insert into documents
        (opportunity_id, kind, name, storage_path, storage_backend, mime, requirement_id,
-        content_hash, byte_size, disposition, extraction_state)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'delivered','not_applicable')
+        content_hash, byte_size, disposition, extraction_state, source_system,
+        original_filename, document_class, access_state, received_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'delivered',$10,'operator_upload',$11,$12,'available',now())
      returning id`,
     [
       params.id,
@@ -138,8 +148,30 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       requirementId || null,
       contentHash,
       buf.length,
+      analyze ? "pending" : "not_applicable",
+      file.name || null,
+      analyze ? classifyDocumentName(file.name || label, mime) : null,
     ]
   );
+
+  let analysisQueued: boolean | null = null;
+  if (analyze) {
+    // The inputs changed, so the current analysis (if any) no longer
+    // describes them. Same bookkeeping as an operator replacement.
+    await query(
+      `update opportunities
+          set analysis_input_hash=null,
+              risk_flags=array(select distinct unnest(coalesce(risk_flags,'{}') || array['awaiting_document_analysis']))
+        where id=$1 and org_id=$2`,
+      [params.id, orgId]
+    );
+    const queued = await enqueue(
+      "solicitation-analyst",
+      { opportunityId: params.id, force: "always", rescoreAfterAnalysis: true, uploadedDocumentId: row?.id },
+      { singletonKey: `analyze-upload:${params.id}`, singletonSeconds: 300, orgId }
+    );
+    analysisQueued = Boolean(queued);
+  }
 
   let packageWarning: string | null = null;
   if (requirementId) {
@@ -190,5 +222,6 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     name: label,
     requirement_id: requirementId || undefined,
     warning: packageWarning,
+    analysis_queued: analysisQueued,
   });
 }

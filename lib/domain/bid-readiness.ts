@@ -68,6 +68,8 @@ export function computeBidReadiness(input: {
   uncoveredTrades?: string[];
   tradeStatuses?: { trade: string; status: string; quotes: number; contacted: number; found: number }[];
   subsFound: number;
+  /** False when the company performs this work itself; subcontractor items are then not asked for. */
+  outreachEnabled?: boolean;
   hasBid: boolean;
   packageReady?: boolean | null;
   humanFlags?: string[] | null;
@@ -137,7 +139,10 @@ export function computeBidReadiness(input: {
 
   if (tradesNeeded > 0) {
     for (const trade of input.requiredTrades) {
-      const done = quotedTradeSet.has(trade.trim());
+      const statusRow = input.tradeStatuses?.find((t) => t.trade === trade);
+      // A scope the company performs itself is complete once it is priced on
+      // the sheet; coverage reports that as "complete" without a quote.
+      const done = quotedTradeSet.has(trade.trim()) || statusRow?.status === "complete";
       checks.push({ key: `trade-${trade}`, done });
       if (done) {
         complete.push({
@@ -349,6 +354,7 @@ export function computeBidReadiness(input: {
   }
 
   if (
+    input.outreachEnabled !== false &&
     ["sub_research", "outreach", "call_queue", "quote_entry"].includes(input.stage) &&
     input.subsFound === 0
   ) {

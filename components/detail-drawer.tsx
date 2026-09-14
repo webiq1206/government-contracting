@@ -125,7 +125,7 @@ export function DetailDrawer({
       </header>
       {/* Native modal isolation keeps the mobile navigation behind this
           surface. Drawer spacing includes the device safe area. */}
-      <div className="scroll-thin drawer-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pt-4">
+      <div className="scroll-thin drawer-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-4 pt-4">
         {children}
       </div>
       {footer && (

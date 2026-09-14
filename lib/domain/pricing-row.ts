@@ -107,6 +107,8 @@ export interface PricingRow {
 
   selectedSubId: string | null;
   selectedSubName?: string | null;
+  /** The company does this scope itself, so no subcontractor is expected on it. */
+  selfPerformed?: boolean;
   backupSubId: string | null;
   backupSubName?: string | null;
 
@@ -305,7 +307,7 @@ export function priceRow(row: PricingRow, ctx: RowContext): PricedRow {
   }
 
   const candidates = row.candidates ?? [];
-  if (candidates.length > 1 && row.baseQuote == null) {
+  if (!row.selfPerformed && candidates.length > 1 && row.baseQuote == null) {
     problems.push({
       code: "competing_quotes_unselected",
       severity: "blocker",
@@ -314,7 +316,7 @@ export function priceRow(row: PricingRow, ctx: RowContext): PricedRow {
     });
   }
 
-  if (row.selectedSubId == null) {
+  if (row.selectedSubId == null && !row.selfPerformed) {
     problems.push({
       code: "no_selected_sub",
       severity: row.baseQuote == null ? "warning" : "blocker",

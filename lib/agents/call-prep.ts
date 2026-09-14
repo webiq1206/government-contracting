@@ -12,11 +12,12 @@
  * accumulates call work it will not do.
  */
 import { z } from "zod";
+import { outreachAllowed } from "../domain/work-mode";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
-import { areCallsEnabled } from "../app-settings";
+import { areCallsEnabled, getWorkExecution } from "../app-settings";
 import { isCallable } from "../domain/sub-contactability";
 import { advancePastCallStep } from "../domain/advance-stage";
 import { CALLS_DISABLED_REASON } from "../domain/call-step";
@@ -104,6 +105,11 @@ export const callPrep: AgentDefinition = {
       [opportunityId, orgId]
     );
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found on this account` };
+    // Read off the row just loaded; a job queued before the switch must not
+    // produce a card when it finally runs.
+    if (!outreachAllowed(await getWorkExecution(), opp)) {
+      return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed), so no call card was prepared.", humanActionRequired: false };
+    }
 
     const sub = await queryOne<Subcontractor>(
       `select * from subcontractors where id = $1 and org_id = $2`,

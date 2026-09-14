@@ -11,6 +11,8 @@
  * when the operator later pursues: skip the model, start the pursue work.
  */
 import { z } from "zod";
+import { opportunityOutreachAllowed } from "../work-mode";
+import { ensureNoticeDescription } from "../opportunity-description";
 import { config } from "../config";
 import { query, queryOne, transaction } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
@@ -890,6 +892,8 @@ async function processAttachment(
 interface StoredAnalysisSource {
   id: string;
   name: string;
+  /** operator_replacement (corrects a source file) or operator_upload (adds one). */
+  source_system?: string | null;
   storage_path: string | null;
   storage_backend: StorageBackend | null;
   mime: string | null;
@@ -897,7 +901,12 @@ interface StoredAnalysisSource {
   source_key: string | null;
 }
 
-/** Read the active operator-supplied replacement bytes, never the superseded URL. */
+/** How a stored operator file is named to the model: what it is, never more. */
+function storedSourceLabel(source: StoredAnalysisSource): string {
+  return source.source_system === "operator_upload" ? "UPLOADED BY OPERATOR" : "OPERATOR REPLACEMENT";
+}
+
+/** Read the active operator-supplied bytes (a replacement or an upload), never a superseded URL. */
 async function processStoredAnalysisSource(
   source: StoredAnalysisSource
 ): Promise<{
@@ -962,7 +971,7 @@ async function processStoredAnalysisSource(
     const text = withPageMarkers(extracted.pages);
     if (text) {
       return {
-        context: `- ${source.name} (${extracted.total} pp, OPERATOR REPLACEMENT, extracted; [p.N] marks the start of page N):\n${text}`,
+        context: `- ${source.name} (${extracted.total} pp, ${storedSourceLabel(source)}, extracted; [p.N] marks the start of page N):\n${text}`,
         parsedChars: text.length,
         documentId: source.id,
         pages: extracted.total,
@@ -980,7 +989,7 @@ async function processStoredAnalysisSource(
     const ocr = await ocrPdf(buf, { label: source.name, complexity: "complex" });
     if (ocr.text) {
       return {
-        context: `- ${source.name} (${ocr.pagesTotal} pp, OPERATOR REPLACEMENT, SCANNED DOCUMENT):\n${ocr.text}${
+        context: `- ${source.name} (${ocr.pagesTotal} pp, ${storedSourceLabel(source)}, SCANNED DOCUMENT):\n${ocr.text}${
           ocr.truncated ? "\n[part of this scan could not be transcribed]" : ""
         }`,
         parsedChars: ocr.text.length,
@@ -1015,7 +1024,7 @@ async function processStoredAnalysisSource(
     const text = decoded.slice(0, 6000);
     const truncated = text.length < decoded.length;
     return {
-      context: `- ${source.name} (OPERATOR REPLACEMENT):\n${text}`,
+      context: `- ${source.name} (${storedSourceLabel(source)}):\n${text}`,
       parsedChars: text.length,
       documentId: source.id,
       pages: null,
@@ -1031,7 +1040,7 @@ async function processStoredAnalysisSource(
 
   if (isArchive(source.name, meta.mime)) {
     return {
-      context: `- ${source.name}: an OPERATOR REPLACEMENT ARCHIVE, stored but never opened. Do NOT assume anything about what is inside it.`,
+      context: `- ${source.name}: an ${storedSourceLabel(source)} ARCHIVE, stored but never opened. Do NOT assume anything about what is inside it.`,
       parsedChars: 0,
       documentId: source.id,
       pages: null,
@@ -1295,6 +1304,12 @@ async function continuePursueFromExistingBrief(
     blockedIncomplete,
   });
 
+  if (route.enqueueSubFinder && !(await opportunityOutreachAllowed(opportunityId))) {
+    // Self-performed: skip sourcing and hand the record to a person to price.
+    route.enqueueSubFinder = false;
+    route.stage = "quote_entry";
+    route.humanAction = true;
+  }
   await query(`update opportunities set stage = $2, human_action_required = $3 where id = $1`, [
     opportunityId,
     route.stage,
@@ -1351,6 +1366,11 @@ export const solicitationAnalyst: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    // SAM's results carry a link to the notice text, not the text. Read the
+    // text once before anything reasons about "the description".
+    if (opp.org_id) {
+      opp.description = (await ensureNoticeDescription(opp.org_id, opp).catch(() => null)) ?? opp.description;
+    }
     if (!opp.org_id) {
       await logAgent({
         agent: "solicitation-analyst",
@@ -1483,7 +1503,7 @@ export const solicitationAnalyst: AgentDefinition = {
 
     const replacements = await query<StoredAnalysisSource>(
       `select r.id::text as id, r.name, r.storage_path,
-              r.storage_backend, r.mime,
+              r.source_system, r.storage_backend, r.mime,
               coalesce(r.source_url, old.source_url) as source_url,
               coalesce(r.meta->>'source_key', old.meta->>'source_key') as source_key
          from documents r
@@ -1495,7 +1515,10 @@ export const solicitationAnalyst: AgentDefinition = {
             limit 1
          ) old on true
         where r.opportunity_id=$1
-          and r.source_system='operator_replacement'
+          and (
+            r.source_system='operator_replacement'
+            or (r.source_system='operator_upload' and r.extraction_state <> 'not_applicable')
+          )
           and r.superseded_by is null
           and r.disposition <> 'excluded'
         order by r.created_at asc`,
@@ -1927,6 +1950,11 @@ export const solicitationAnalyst: AgentDefinition = {
           })
         : null;
     const route = rescoreRoute ?? normalRoute;
+    if (route.enqueueSubFinder && !(await opportunityOutreachAllowed(opportunityId))) {
+      route.enqueueSubFinder = false;
+      route.stage = "quote_entry";
+      route.humanAction = true;
+    }
     const stage = route.stage;
     const humanAction = route.humanAction;
     if (route.enqueueSubFinder) {

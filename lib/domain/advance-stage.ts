@@ -8,6 +8,7 @@
  * real quote, and nothing about the replies may still be in question.
  */
 import { query } from "../db";
+import { tradeSelfPerformed } from "./work-mode";
 import { logAgent } from "../logger";
 import { PRE_QUOTE_STAGES, STAGE_AFTER_CALLS } from "./call-step";
 
@@ -68,7 +69,7 @@ export async function assessQuoteCompleteness(
   );
   const pendingReview = Number(pendingRows[0]?.n ?? 0);
 
-  const trades: TradeCoverage[] = rows.map((r) => {
+  let trades: TradeCoverage[] = rows.map((r) => {
     const quoteCount = Number(r.quote_count);
     return {
       trade: r.trade ?? "(unspecified)",
@@ -78,16 +79,50 @@ export async function assessQuoteCompleteness(
     };
   });
 
+  /*
+   * Scopes the company performs itself are priced on the pricing sheet, not
+   * quoted by a subcontractor, so completeness for them is "a price is
+   * entered". A self-performed job has no subcontractor rows at all, and
+   * used to be held forever on "no subcontractors have been approached".
+   */
+  const { opportunityWorkMode } = await import("../work-mode");
+  const mode = await opportunityWorkMode(opportunityId).catch(() => null);
+  const selfMode = mode?.mode === "self";
+  if (mode && (selfMode || mode.mode === "mixed")) {
+    const priced = await query<{ trade: string | null; base_quote: string | null }>(
+      `select trade, base_quote from trade_pricing_rows where opportunity_id = $1`,
+      [opportunityId]
+    );
+    const isSelf = (trade: string | null) =>
+      tradeSelfPerformed(mode.mode, mode.selfPerformedTrades, trade);
+    trades = trades.filter((t) => !isSelf(t.trade));
+    for (const row of priced) {
+      if (!isSelf(row.trade)) continue;
+      trades.push({
+        trade: row.trade ?? "(unspecified)",
+        covered: row.base_quote != null,
+        exhausted: false,
+        quoteCount: row.base_quote != null ? 1 : 0,
+      });
+    }
+  }
+
   const holds: string[] = [];
   if (trades.length === 0) {
-    // Nothing was ever solicited, so there is no completeness to judge. Silent
-    // advance here would build a bid with no subcontractor pricing at all.
-    holds.push("No subcontractors have been approached yet.");
+    // Nothing was ever solicited (or priced), so there is no completeness to
+    // judge. Silent advance here would build a bid with no pricing at all.
+    holds.push(
+      selfMode
+        ? "No pricing has been entered yet. Enter your own pricing for each scope."
+        : "No subcontractors have been approached yet."
+    );
   }
   const uncovered = trades.filter((t) => !t.covered && !t.exhausted);
   if (uncovered.length > 0) {
     holds.push(
-      `Still waiting on pricing for ${uncovered.map((t) => t.trade).join(", ")}.`
+      selfMode
+        ? `Still need your pricing for ${uncovered.map((t) => t.trade).join(", ")}.`
+        : `Still waiting on pricing for ${uncovered.map((t) => t.trade).join(", ")}.`
     );
   }
   const exhausted = trades.filter((t) => t.exhausted);

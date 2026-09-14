@@ -12,6 +12,8 @@
  * flag the opportunity for human review.
  */
 import { query, queryOne } from "../db";
+import { getWorkExecution } from "../app-settings";
+import { outreachAllowed } from "../domain/work-mode";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { runWithOrg } from "../tenant-context";
@@ -74,6 +76,16 @@ export const subFinder: AgentDefinition = {
       };
     }
     const orgId = opp.org_id;
+    // Enforced here as well as at enqueue: a job queued before the switch
+    // must not source anybody when it finally runs. Read off the row already
+    // loaded, with the company default from this organization's rules.
+    if (!outreachAllowed(await runWithOrg(orgId, () => getWorkExecution()), opp)) {
+      return {
+        ok: true,
+        summary: "Subcontractor outreach is off for this opportunity (it is self-performed), so no subcontractors were sourced.",
+        humanActionRequired: false,
+      };
+    }
     const onlyTrade =
       typeof ctx.payload.trade === "string" ? ctx.payload.trade.trim() : "";
     return runWithOrg(orgId, () => sourceSubs(opp, orgId, onlyTrade));

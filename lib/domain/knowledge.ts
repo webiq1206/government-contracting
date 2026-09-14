@@ -682,6 +682,7 @@ function withinRecent(from: string, now: Date): boolean {
 
 /** True when the calling step is not part of this account's pipeline at all. */
 export function stepSkipped(step: WorkflowStep, rules: AutomationRules): boolean {
+  if (rules.work_execution === "self" && ["subs_found", "emailed", "called"].includes(step.key)) return true;
   return step.key === "called" && !rules.calls_enabled;
 }
 

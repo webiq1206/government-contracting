@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { opportunityWorkMode } from "@/lib/work-mode";
 import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
@@ -50,6 +51,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
 
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
   const requiredTrades = analysis?.required_trades ?? [];
+  const previewWorkMode = await opportunityWorkMode(params.id).catch(() => null);
   const coverage = summarizeTradeCoverage({
     requiredTrades,
     subs: subs.map((s) => ({
@@ -58,6 +60,8 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
       responded_at: s.responded_at,
     })),
     quotes: quotes.map((q) => ({ trade: q.trade, quote_amount: q.quote_amount })),
+    workMode: previewWorkMode?.mode ?? null,
+    selfPerformedTrades: previewWorkMode?.selfPerformedTrades ?? null,
   });
   const required = coverage.trades.filter((t) => requiredTrades.includes(t.trade));
 

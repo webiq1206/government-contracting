@@ -13,6 +13,7 @@
  */
 
 import { currency } from "../format";
+import { usableDescription } from "./solicitation-import";
 import type { Opportunity, ScoreBreakdown, SolicitationAnalysis } from "../types";
 
 const NA = "Not specified in the provided documents";
@@ -64,7 +65,9 @@ export function buildNoticeBrief(input: {
   score?: number | null;
   scoreSummary?: string | null;
 }): SolicitationAnalysis {
-  const desc = noticePlainText(input.description ?? "");
+  // SAM's search results carry the URL of the description, not the text; a
+  // brief that repeats that link as "what this job is" says nothing.
+  const desc = noticePlainText(usableDescription(input.description) ?? "");
   const location =
     [input.locationText, input.locationState].filter(Boolean).join(", ") || NA;
   const fromTitle = [input.title, input.agency ? `for ${input.agency}` : null]

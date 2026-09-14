@@ -13,11 +13,12 @@
  * since a sent email is the whole of the work at this step.
  */
 import { randomUUID } from "node:crypto";
+import { outreachAllowed } from "../domain/work-mode";
 import { runWithOrg } from "../tenant-context";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { areCallsEnabled } from "../app-settings";
+import { areCallsEnabled, getWorkExecution } from "../app-settings";
 import { advancePastCallStep } from "../domain/advance-stage";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
@@ -241,6 +242,11 @@ export const outreach: AgentDefinition = {
       [opportunityId, orgId]
     );
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    // Read off the row just loaded. The provider boundary checks again at
+    // send time; this refuses the job early and says why.
+    if (!outreachAllowed(await getWorkExecution(), opp)) {
+      return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed). Nothing was sent." };
+    }
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };

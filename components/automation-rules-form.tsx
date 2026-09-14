@@ -342,6 +342,8 @@ export function AutomationRulesForm({
       defaultTab="deadlines"
       layout="fill"
       hashAliases={{
+        work: "work",
+        "work-execution": "work",
         deadlines: "deadlines",
         colors: "deadlines",
         lead: "lead-time",
@@ -355,6 +357,57 @@ export function AutomationRulesForm({
         "follow-up": "outreach",
       }}
       tabs={[
+        {
+          id: "work",
+          label: "Who does the work",
+          content: (
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
+              <section className="card">
+                <h2 className="font-display text-xl text-foreground">Who does the work</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  Not every company subcontracts. This is the default for every opportunity; any
+                  opportunity can be set differently on its own record, and a mixed job can mark
+                  the scopes you keep. Turning subcontracting off stops sourcing, outreach emails,
+                  follow-ups and call cards. Pricing, documents, deadlines, requirements and the
+                  bid itself are untouched.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <Choice
+                    name="work_execution"
+                    checked={form.work_execution === "sub"}
+                    onChange={() => setForm((f) => ({ ...f, work_execution: "sub" }))}
+                    label="We subcontract the work (default)"
+                    hint="Brost Co finds, emails and follows up with subcontractors for every scope and builds the bid from their quotes."
+                  />
+                  <Choice
+                    name="work_execution"
+                    checked={form.work_execution === "self"}
+                    onChange={() => setForm((f) => ({ ...f, work_execution: "self" }))}
+                    label="We do the work ourselves"
+                    hint="No subcontractor sourcing, outreach, follow-ups or calls. After analysis each opportunity waits for your own pricing, then the bid is built from that."
+                  />
+                  <Choice
+                    name="work_execution"
+                    checked={form.work_execution === "mixed"}
+                    onChange={() => setForm((f) => ({ ...f, work_execution: "mixed" }))}
+                    label="Some scopes ours, some subcontracted"
+                    hint="Outreach runs for every scope unless you mark it self-performed on the opportunity. Best when it varies job to job."
+                  />
+                </div>
+                {form.work_execution === "self" && (
+                  <p className="mt-4 rounded-md border border-accent/40 bg-accent-soft/40 p-3 text-sm text-slate-700">
+                    Saving this stops outreach automation on opportunities that follow the default:
+                    scheduled follow-ups are cancelled and prepared calls cleared. Emails already
+                    sent, replies and quotes stay on the record. Opportunities with their own
+                    setting are not changed. Requirements the solicitation itself imposes are never
+                    removed.
+                  </p>
+                )}
+              </section>
+              {saveBar}
+            </div>
+          ),
+        },
         {
           id: "deadlines",
           label: "Deadlines",

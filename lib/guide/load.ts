@@ -1,4 +1,5 @@
 import { actionCenter, opportunityDetail, subDetail, recentChanges, queueCounts } from "@/lib/data";
+import { opportunityWorkMode } from "../work-mode";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { accountSetup, type SetupUser } from "@/lib/setup-facts";
@@ -182,6 +183,7 @@ export async function loadGuideBundle(
         quote_amount: Number(q.quote_amount) || null,
         is_out_of_range: Boolean(q.is_out_of_range),
       }));
+      const guideWorkMode = await opportunityWorkMode(opp.id).catch(() => null);
       const coverage = summarizeTradeCoverage({
         requiredTrades: analysis?.required_trades ?? [],
         subs: subs.map((s) => ({
@@ -192,6 +194,8 @@ export async function loadGuideBundle(
           responded_at: s.responded_at,
         })),
         quotes: quoteRows,
+        workMode: guideWorkMode?.mode ?? null,
+        selfPerformedTrades: guideWorkMode?.selfPerformedTrades ?? null,
       });
       const readiness = computeBidReadiness({
         stage: opp.stage,
@@ -211,6 +215,7 @@ export async function loadGuideBundle(
           found: t.found,
         })),
         subsFound: subs.length,
+        outreachEnabled: guideWorkMode?.outreachAllowed ?? true,
         hasBid: Boolean(bid),
         packageReady: bid?.package_ready ?? null,
         humanFlags: (bid?.human_flags as string[] | null) ?? null,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { stopInheritedOutreachForOrg } from "@/lib/work-mode";
 import { requireUser, requireCapability } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
@@ -190,12 +191,21 @@ export async function POST(req: Request) {
   if (before.calls_enabled && !saved.calls_enabled && orgId) {
     cleared = await clearCallWorkForOrg(orgId);
   }
+  // Moving the company to self-performed stops the outreach automation on
+  // every record that follows the default. Records with their own setting
+  // keep it; nothing already sent is touched.
+  let outreachStopped: Awaited<ReturnType<typeof stopInheritedOutreachForOrg>> | null = null;
+  if (before.work_execution !== "self" && saved.work_execution === "self" && orgId) {
+    outreachStopped = await stopInheritedOutreachForOrg(orgId);
+  }
 
   await logAgent({
     agent: "operator",
     action: "automation-rules-updated",
     level: "info",
-    message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}, calls ${saved.calls_enabled ? "on" : "off (email-only workflow)"}.`,
+    message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}, calls ${saved.calls_enabled ? "on" : "off (email-only workflow)"}, work ${saved.work_execution === "self" ? "self-performed" : saved.work_execution === "mixed" ? "mixed" : "subcontracted"}.${
+      outreachStopped ? ` Stopped outreach automation on ${outreachStopped.opportunities} opportunit${outreachStopped.opportunities === 1 ? "y" : "ies"} (${outreachStopped.followUpsStopped} follow-up(s) unscheduled, ${outreachStopped.callsCleared} call(s) cleared).` : ""
+    }`,
   });
   return NextResponse.json({
     ok: true,
@@ -206,5 +216,6 @@ export async function POST(req: Request) {
     // recount.
     preview,
     ...(cleared ? { cleared } : {}),
+    ...(outreachStopped ? { outreachStopped } : {}),
   });
 }

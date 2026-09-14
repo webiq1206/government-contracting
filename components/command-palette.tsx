@@ -369,7 +369,7 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
           role={flat.length > 0 ? "listbox" : undefined}
           aria-label={flat.length > 0 ? "Search results" : undefined}
           aria-busy={searching}
-          className="scroll-thin max-h-[50vh] overflow-y-auto"
+          className="scroll-thin max-h-[50vh] overflow-y-auto overscroll-y-contain"
         >
           {/*
             * The loading state. It was computed and never rendered, so a slow

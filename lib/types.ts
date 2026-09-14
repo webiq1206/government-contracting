@@ -199,6 +199,14 @@ export interface Opportunity {
   pursuit_state?: string | null;
   /** Monotonic generation that fences work queued before an abort or restart. */
   pursuit_version?: number;
+  /** Per-record override of who does the work; null inherits the company rule. */
+  work_mode?: string | null;
+  /** Scopes the company does itself on a mixed job. */
+  self_performed_trades?: string[] | null;
+  /** The original link for a record a person added; null for monitor ingests. */
+  source_url?: string | null;
+  /** How a person-added record arrived; see lib/domain/solicitation-import. */
+  import_meta?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }

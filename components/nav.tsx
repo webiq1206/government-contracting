@@ -320,7 +320,7 @@ export function Nav({
           </button>
         </div>
 
-        <div className="drawer-scroll scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        <div className="drawer-scroll scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-5">
           <SearchButton className="mb-6 hidden min-h-11 w-full items-center gap-2 rounded-lg border border-white/15 px-3 text-sm text-muted-foreground lg:flex" />
           {accountOpen ? (
             <section aria-label="Account controls" className="space-y-5">

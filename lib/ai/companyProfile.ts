@@ -107,7 +107,30 @@ export async function getProfileSystemText(): Promise<string> {
   if (!p) {
     return "No Company Profile is configured yet. Operate conservatively and flag all consequential decisions for human review.";
   }
-  return p.profile_text;
+  return `${p.profile_text}\n\n${await workExecutionNote()}`;
+}
+
+/**
+ * How the company performs work, from the automation rules, stated last so
+ * it overrides any older sentence in the published profile text. Profiles
+ * published before the setting existed say the company never self-performs,
+ * which is wrong for an account that just told us it does.
+ */
+async function workExecutionNote(): Promise<string> {
+  let mode: "sub" | "self" | "mixed" = "sub";
+  try {
+    const { getWorkExecution } = await import("../app-settings");
+    mode = await getWorkExecution();
+  } catch {
+    /* Keep the default wording when the rules cannot be read. */
+  }
+  const line =
+    mode === "self"
+      ? "We perform the work with our own crews. We do not subcontract, source or contact subcontractors unless a scope explicitly requires it; price the work as self-performed."
+      : mode === "mixed"
+        ? "We perform some scopes with our own crews and subcontract others. Treat a scope as self-performed only where the opportunity says so."
+        : "We win contracts and fulfill them through vetted local subcontractors; we do not self-perform.";
+  return `## How we perform the work (authoritative, overrides anything above)\n- ${line}`;
 }
 
 export async function getProfileJson(): Promise<CompanyProfileJson | null> {
@@ -170,7 +193,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   if (p.phone) lines.push(`- Phone: ${p.phone}`);
   if (p.outreach_email) lines.push(`- Outreach email (ALL sub outreach must originate here): ${p.outreach_email}`);
   lines.push(`- Small business: ${p.small_business ? "yes" : "no"}`);
-  if (p.business_model) lines.push(`- Business model: ${p.business_model}, we win contracts and fulfill them through vetted local subcontractors; we do not self-perform.`);
+  if (p.business_model) lines.push(`- Business model: ${p.business_model}.`);
   if (p.certifications?.length) lines.push(`- Certifications: ${p.certifications.join(", ")}`);
   lines.push("");
   lines.push("## What we pursue");

@@ -698,7 +698,7 @@ function FilterSheet({
         </button>
       </header>
 
-      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-4 py-4">
         {pendingChips.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {pendingChips.map((c) => (

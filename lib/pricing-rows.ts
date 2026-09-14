@@ -193,7 +193,20 @@ export async function pricingRowsFor(
   opportunityId: string,
   orgId: string,
 ): Promise<PricingRow[]> {
-  return pricingRowsForClient(opportunityId, orgId, null);
+  return markSelfPerformed(await pricingRowsForClient(opportunityId, orgId, null), opportunityId);
+}
+
+/**
+ * Flag the scopes the company does itself, so the review does not demand a
+ * subcontractor for work nobody was ever going to subcontract.
+ */
+async function markSelfPerformed(rows: PricingRow[], opportunityId: string): Promise<PricingRow[]> {
+  if (rows.length === 0) return rows;
+  const { opportunityWorkMode } = await import("./work-mode");
+  const { tradeSelfPerformed } = await import("./domain/work-mode");
+  const mode = await opportunityWorkMode(opportunityId).catch(() => null);
+  if (!mode || mode.mode === "sub") return rows;
+  return rows.map((r) => ({ ...r, selfPerformed: tradeSelfPerformed(mode.mode, mode.selfPerformedTrades, r.trade) }));
 }
 
 interface QuoteRow {
@@ -297,7 +310,7 @@ export async function pricingRowsWithQuotes(
   opportunityId: string,
   orgId: string,
 ): Promise<PricingRow[]> {
-  return pricingRowsWithQuotesClient(opportunityId, orgId, null);
+  return markSelfPerformed(await pricingRowsWithQuotesClient(opportunityId, orgId, null), opportunityId);
 }
 
 /**

@@ -640,10 +640,15 @@ body {
   border-radius: 2px;
 }
 
-/* Contain scroll chaining so inner lists do not rubber-band the document
-   past the mobile tab bar / footer. */
+/* Contain HORIZONTAL scroll chaining only. Containing both axes here made
+   every horizontally scrolling board, table and chip rail swallow vertical
+   wheel and touch scrolling over it, so the Opportunities board could not be
+   scrolled at all: the document is the vertical scroller now, and a rail that
+   cannot scroll vertically must hand that gesture up to it. Overlays that
+   need vertical containment (drawers, sheets, the palette) opt in with
+   overscroll-y-contain on their own scroll body. */
 .scroll-thin {
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
 }
 .scroll-thin::-webkit-scrollbar {
   height: 8px;

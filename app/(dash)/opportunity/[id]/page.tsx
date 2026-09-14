@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { WorkModeControl } from "@/components/work-mode-control";
+import { WORK_MODE_LABEL, describeWorkMode } from "@/lib/domain/work-mode";
+import { opportunityWorkMode } from "@/lib/work-mode";
+import { describeImport } from "@/lib/domain/solicitation-import";
 import { notFound } from "next/navigation";
 import { opportunityDetail } from "@/lib/data";
 import { ScoreBadge, TierBadge } from "@/components/badges";
@@ -379,6 +383,10 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       .filter((q) => Number(q.quote_amount) > 0 && q.subcontractor_id)
       .map((q) => q.subcontractor_id as string)
   );
+  // Who does the work here, resolved against the company rule. Decides
+  // whether subcontractor coverage is even a question on this record.
+  const workMode = await opportunityWorkMode(opp.id).catch(() => null);
+  const outreachOn = workMode?.outreachAllowed ?? true;
   const coverage = summarizeTradeCoverage({
     requiredTrades: analysis?.required_trades ?? [],
     subs: subs.map((s) => ({
@@ -389,6 +397,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       responded_at: s.responded_at,
     })),
     quotes: quoteRows,
+    workMode: workMode?.mode ?? null,
+    selfPerformedTrades: workMode?.selfPerformedTrades ?? null,
   });
   const riskFlags = opp.risk_flags ?? [];
   const pastPerfBlocked =
@@ -431,6 +441,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       found: t.found,
     })),
     subsFound: subs.length,
+    outreachEnabled: outreachOn,
     hasBid,
     packageReady: bid?.package_ready ?? null,
     humanFlags: (bid?.human_flags as string[] | null) ?? null,
@@ -535,6 +546,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
    * as a fact in the Bid Brief.
    */
   const metaLine = [place, contractKind].filter(Boolean).join(" · ");
+  // Where this record came from, when a person added it. Monitor rows say
+  // nothing here: SAM.gov is the source for all of them and the notice is
+  // rechecked on every run.
+  const sourceLine = describeImport(
+    (opp.import_meta ?? null) as Parameters<typeof describeImport>[0],
+    opp.source
+  );
 
   const whyHeadline =
     analysis?.pursue_recommendation?.trim() ||
@@ -647,6 +665,16 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               <p className="mt-2 text-sm text-muted-foreground sm:mt-3">
                 {metaLine || "Details loading"}
               </p>
+              {sourceLine && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {sourceLine}{" "}
+                  {opp.source_url && (
+                    <a href={opp.source_url} target="_blank" rel="noopener noreferrer" className="underline">
+                      View the source
+                    </a>
+                  )}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
                 <TierBadge tier={opp.tier} />
                 <DeadlineBadge deadline={opp.deadline} rules={rules} />
@@ -714,6 +742,29 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               before changing this pursuit.
             </p>
           )}
+          {/*
+            Who does the work, beside the pursuit controls: the other switch a
+            person needs without hunting. A self-performed job here skips
+            sourcing and outreach and goes straight to the company's own pricing.
+          */}
+          <details className="mt-2" id="work-mode">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-accent">
+              Who does the work
+              <span className="badge bg-surface-raised text-slate-600">
+                {workMode ? WORK_MODE_LABEL[workMode.mode] : "Subcontracted"}
+                {workMode?.inherited ? " (company default)" : ""}
+              </span>
+            </summary>
+            <div className="mt-3 max-w-3xl">
+              <WorkModeControl
+                opportunityId={opp.id}
+                requiredTrades={analysis?.required_trades ?? []}
+                canControl={can(viewer?.orgRole, "outreach")}
+                initialMode={workMode?.mode ?? "sub"}
+                initialInherited={workMode?.inherited ?? true}
+              />
+            </div>
+          </details>
         </header>
         <OpportunityWorkspace
           banner={
@@ -972,6 +1023,19 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           }
           coverage={
             <div className="space-y-6 px-5 py-8 sm:px-6" id="coverage">
+              {!outreachOn && (
+                <div className="card">
+                  <p className="font-display text-base font-semibold">Subcontractor outreach is off for this opportunity</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {workMode ? describeWorkMode(workMode.mode, workMode.inherited, workMode.selfPerformedTrades) : ""} Nothing is
+                    sourced, emailed or called. Price the work on the Pricing tab. Anything sent
+                    before it was turned off stays below as history.
+                  </p>
+                  <a href="#work-mode" className="btn-ghost mt-3 inline-flex min-h-11 items-center text-sm">
+                    Change who does the work
+                  </a>
+                </div>
+              )}
               <TradeCoverageStrip
                 coverage={coverage}
                 analysis={analysis as unknown as Record<string, unknown> | null}

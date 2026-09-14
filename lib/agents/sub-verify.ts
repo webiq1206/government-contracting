@@ -18,7 +18,8 @@ import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
 import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
 import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
-import { areCallsEnabled } from "../app-settings";
+import { areCallsEnabled, getWorkExecution } from "../app-settings";
+import { outreachAllowed } from "../domain/work-mode";
 import { currentOrgId } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
@@ -81,8 +82,8 @@ export const subVerify: AgentDefinition = {
       };
     }
 
-    const owner = await queryOne<{ org_id: string | null; location_state: string | null }>(
-      `select org_id, location_state from opportunities where id=$1 and org_id=$2`,
+    const owner = await queryOne<{ org_id: string | null; location_state: string | null; work_mode?: string | null }>(
+      `select org_id, location_state, work_mode from opportunities where id=$1 and org_id=$2`,
       [opportunityId, orgId]
     );
     const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null }>(
@@ -104,6 +105,12 @@ export const subVerify: AgentDefinition = {
           "Verification stopped because a required record is missing from this organization. Repair the queued record references, then retry.",
         humanActionRequired: true,
       };
+    }
+
+    // Read off the row just loaded: a verification queued before the switch
+    // must not contact anybody when it finally runs.
+    if (!outreachAllowed(await getWorkExecution(), owner)) {
+      return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed), so nothing was verified or contacted." };
     }
 
     const profile = await getProfileJson();

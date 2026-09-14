@@ -39,6 +39,10 @@ export interface OpportunityIngestPayload {
   attachments_json?: unknown;
   raw_json?: unknown;
   is_sources_sought?: boolean;
+  /** Where a person-added record came from; null for monitor ingests. */
+  source_url?: string | null;
+  /** How a person-added record arrived and which fields were retrieved, typed or inferred. */
+  import_meta?: unknown;
 }
 
 export interface OpportunityIngestResult {
@@ -289,9 +293,9 @@ export async function ingestOpportunity(
          set_aside_type, value_estimated, value_estimated_source, deadline, posted_at,
          location_state, location_text,
          agency, sub_agency, contact_json, attachments_json, raw_json, is_sources_sought,
-         stage, status)
+         stage, status, source_url, import_meta)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-               'scoring','open')
+               'scoring','open', $22, $23)
        returning id`,
       [
         payload.orgId,
@@ -321,6 +325,8 @@ export async function ingestOpportunity(
           ? JSON.stringify(payload.raw_json)
           : JSON.stringify({}),
         isSourcesSought,
+        payload.source_url ?? null,
+        payload.import_meta != null ? JSON.stringify(payload.import_meta) : null,
       ]
     );
     return {

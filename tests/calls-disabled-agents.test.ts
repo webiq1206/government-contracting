@@ -21,6 +21,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/app-settings", () => ({
   areCallsEnabled: () => areCallsEnabled(),
+  getWorkExecution: async () => "sub",
   getAutomationRules: vi.fn(),
   isAutomationPaused: vi.fn(async () => false),
   isAutomationStopped: vi.fn(async () => false),

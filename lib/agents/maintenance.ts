@@ -518,6 +518,7 @@ async function followUpForOrg(
         and c.replied_at is null
         and o.status = 'open'
         and coalesce(o.pursuit_state, 'active') = 'active'
+        and coalesce(o.work_mode, '${rules.work_execution}') <> 'self'
         and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
         /*
          * Has this firm answered us about this job AT ALL?
@@ -1255,6 +1256,7 @@ export const outreachRecoverySweep: AgentDefinition = {
 
     for (const org of fanout.orgs) {
       await runWithOrg(org.id, async () => {
+        const orgRules = await getAutomationRules();
         const stuck = await query<{
           opportunity_id: string;
           subcontractor_id: string;
@@ -1266,6 +1268,7 @@ export const outreachRecoverySweep: AgentDefinition = {
              join opportunities o on o.id = os.opportunity_id
             where o.org_id = $1 and o.status = 'open'
               and coalesce(o.pursuit_state, 'active') = 'active'
+              and coalesce(o.work_mode, '${orgRules.work_execution}') <> 'self'
               and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
               and os.removed_at is null
               and os.outreach_state in ('draft', 'send_failed')
@@ -1473,8 +1476,13 @@ export const stalledPipelineSweep: AgentDefinition = {
     let retryFailures = 0;
     const stalled: { id: string; title: string | null; stage: string; hours: number; orgId: string }[] = [];
     for (const sweepOrgId of await activeOrgIds()) {
+    const orgRules = await runWithOrg(sweepOrgId, () => getAutomationRules());
     for (const [stage, hours] of Object.entries(STALL_HOURS)) {
       if (hours == null) continue;
+      // A self-performed record is never stuck waiting for subcontractors.
+      const outreachGuard = ["sub_research", "outreach", "call_queue"].includes(stage)
+        ? `and coalesce(work_mode, '${orgRules.work_execution}') <> 'self'`
+        : "";
       // bid_building only counts as a system stall while no bid exists yet;
       // once the bid is built, the stage is legitimately waiting on the human.
       const bidGuard =
@@ -1496,6 +1504,7 @@ export const stalledPipelineSweep: AgentDefinition = {
               and updated_at < now() - make_interval(hours => $2)
               and not ($3 = any(coalesce(risk_flags, '{}')))
               ${bidGuard}
+              ${outreachGuard}
             returning id, title`,
           [stage, hours, retryMarker, sweepOrgId]
         ));

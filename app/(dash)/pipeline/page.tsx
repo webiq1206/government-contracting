@@ -507,6 +507,9 @@ export default async function PipelinePage(
         }
         primaryAction={
           <>
+        <Link href="/opportunity/new" className="btn-primary min-h-11">
+          Add solicitation
+        </Link>
         {(focusLabel || unknownFocus) && (
           <Link href="/pipeline?view=lanes" className="btn-ghost text-xs">
             Show all ({allOpps.length})
@@ -989,7 +992,10 @@ async function PipelineOnboarding() {
         Your setup checklist shows the next step for this account.
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
-        <Link href="/today" className="btn-primary">
+        <Link href="/opportunity/new" className="btn-primary">
+          Add a solicitation you found
+        </Link>
+        <Link href="/today" className="btn-ghost">
           Review account setup
         </Link>
         <Link href="/agents" className="btn-ghost">

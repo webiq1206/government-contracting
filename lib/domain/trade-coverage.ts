@@ -3,6 +3,8 @@
  * find, who responded, who quoted, and which scopes still need work.
  */
 
+import { tradeSelfPerformed, type WorkMode } from "./work-mode";
+
 export interface TradeCoverageInputSub {
   trade: string | null;
   outreach_state: string | null;
@@ -68,7 +70,12 @@ export function summarizeTradeCoverage(input: {
   requiredTrades?: string[] | null;
   subs: TradeCoverageInputSub[];
   quotes: TradeCoverageInputQuote[];
+  /** Who does the work on this record; scopes the company performs need no subs. */
+  workMode?: WorkMode | null;
+  selfPerformedTrades?: string[] | null;
 }): TradeCoverageSummary {
+  const selfTrade = (trade: string) =>
+    input.workMode ? tradeSelfPerformed(input.workMode, input.selfPerformedTrades, trade) : false;
   const tradeKeys = new Set<string>();
   for (const t of input.requiredTrades ?? []) {
     if (t?.trim()) tradeKeys.add(t.trim());
@@ -100,7 +107,10 @@ export function summarizeTradeCoverage(input: {
 
     let status: TradeCoverageRow["status"];
     let statusLabel: string;
-    if (found === 0) {
+    if (selfTrade(trade)) {
+      status = "complete";
+      statusLabel = "Self-performed: priced by you";
+    } else if (found === 0) {
       status = "empty";
       statusLabel = "Action required: no subs found";
     } else if (quoteCount > 0) {
@@ -138,8 +148,9 @@ export function summarizeTradeCoverage(input: {
     followUpDue: trades.reduce((a, t) => a + t.followUpDue, 0),
     uncovered: trades.filter((t) => t.status === "empty" || (t.quotes === 0 && t.found === 0)).length,
   };
-  // Uncovered = trades with zero quotes that still need pricing.
-  totals.uncovered = trades.filter((t) => t.quotes === 0).length;
+  // Uncovered = trades with zero quotes that still need pricing. A scope the
+  // company does itself is priced on the sheet, not quoted, so it is not one.
+  totals.uncovered = trades.filter((t) => t.quotes === 0 && !selfTrade(t.trade)).length;
 
   return { trades, totals };
 }

@@ -249,3 +249,12 @@ export async function setAutomationRules(
 export async function areCallsEnabled(): Promise<boolean> {
   return (await getAutomationRules()).calls_enabled;
 }
+
+/**
+ * The company-wide answer to "who does the work". Fails to "sub" on a
+ * missing key, which is the behaviour every account had before the setting
+ * existed; a database hiccup must not silently stop anybody's outreach.
+ */
+export async function getWorkExecution(): Promise<"sub" | "self" | "mixed"> {
+  return (await getAutomationRules()).work_execution;
+}

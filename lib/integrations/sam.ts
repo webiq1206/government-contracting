@@ -68,6 +68,7 @@ export async function samDailyUsage(
 import { fetchJson, withRetry } from "./http";
 
 const OPP_BASE = "https://api.sam.gov/opportunities/v2/search";
+const NOTICE_DESC_BASE = "https://api.sam.gov/prod/opportunities/v1/noticedesc";
 const ENTITY_BASE = "https://api.sam.gov/entity-information/v3/entities";
 // v4 is the current Exclusions API (v2 is dead and returns 404 for every call).
 const EXCLUSION_BASE = "https://api.sam.gov/entity-information/v4/exclusions";
@@ -227,6 +228,8 @@ export interface SearchParams {
   offset?: number;
   title?: string;
   solnum?: string; // solicitation-number lookup (exact), for award tracking
+  /** Exact notice id, for a link somebody pasted. */
+  noticeId?: string;
 }
 
 function mmddyyyy(d: Date): string {
@@ -259,6 +262,7 @@ export function buildOpportunityQuery(
     typeOfSetAside: params.setAside,
     title: params.title,
     solnum: params.solnum,
+    noticeid: params.noticeId,
   };
 }
 
@@ -520,6 +524,57 @@ export const sam = {
   },
 
   /** Award notices for post-submission tracking (win/loss detection). */
+  /**
+   * The notice text itself.
+   *
+   * SAM's search results do not carry the description; they carry the URL of
+   * the endpoint that does. The monitor stored that URL as the description
+   * for months, so scoring read a link and the record page showed one. This
+   * reads the text that link points at. One SAM call per notice.
+   */
+  async noticeDescription(
+    noticeId: string,
+    orgId?: string
+  ): Promise<{ description: string | null; disabled?: boolean; error?: string }> {
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
+    if (!apiKey) return { description: null, disabled: true };
+    if (!(await reserveSamCall(org))) return { description: null, disabled: true };
+    try {
+      const data = await withRetry(() =>
+        fetchJson<{ description?: string }>(NOTICE_DESC_BASE, {
+          query: { api_key: apiKey, noticeid: noticeId },
+        })
+      );
+      const text = typeof data?.description === "string" ? data.description.trim() : "";
+      return { description: text || null };
+    } catch (err) {
+      const e = err as { message?: string };
+      return { description: null, error: e.message ?? "request failed" };
+    }
+  },
+
+  /** One notice by id, for a link somebody pasted. */
+  async getNotice(noticeId: string, orgId?: string): Promise<{
+    notice: SamOpportunity | null;
+    disabled?: boolean;
+    disabledReason?: SamDisabledReason;
+    error?: string;
+    errorStatus?: number;
+  }> {
+    // SAM only searches a posting window; a notice can be a year old, so ask
+    // for the widest window the API allows rather than the monitor's three days.
+    const now = new Date();
+    const res = await sam.searchOpportunities(
+      { noticeId, limit: 1, postedFrom: mmddyyyy(new Date(now.getTime() - 365 * 86_400_000)), postedTo: mmddyyyy(now) },
+      orgId
+    );
+    if (res.disabled) return { notice: null, disabled: true, disabledReason: res.disabledReason };
+    if (res.error) return { notice: null, error: res.error, errorStatus: res.errorStatus };
+    const hit = res.items.find((o) => o.noticeId === noticeId) ?? res.items[0] ?? null;
+    return { notice: hit };
+  },
+
   async getAwardNotices(solicitationNumber: string, orgId?: string): Promise<SamOpportunity[]> {
     const org = await samOrg(orgId);
     const apiKey = await orgApiKey("SAM_API_KEY", org);
