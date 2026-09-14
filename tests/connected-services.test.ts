@@ -9,14 +9,13 @@ import {
   syncLine,
   eventKeyFor,
   notificationText,
-  signWebhook,
-  verifyWebhookSignature,
   nextRetryAt,
   deadlineEvent,
   folderName,
   NOTIFY_EVENTS,
 } from "@/lib/domain/connected-services";
 import { acceptableWebhookUrl } from "@/lib/integrations/team-notify";
+import { signWebhook, verifyWebhookSignature } from "@/lib/webhook-signature";
 import { acceptableWebhookTarget } from "@/lib/webhooks";
 
 describe("provider definitions", () => {

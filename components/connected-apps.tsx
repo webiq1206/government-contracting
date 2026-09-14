@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { StatusPill } from "./status-pill";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "./confirm-dialog";
 import { NOTIFY_EVENTS, STATUS_LABEL, syncLine, type ServiceDefinition, type ServiceProvider, type ServiceStatus } from "@/lib/domain/connected-services";
@@ -173,11 +174,11 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="font-display text-base font-semibold">{p.name}</h3>
         {connections.length > 0 ? (
-          <span className={`badge ${connections.some((c) => c.status === "needs_attention") ? "bg-risk/15 text-risk" : connections.every((c) => c.status === "paused") ? "bg-review/15 text-review" : "bg-pursue-soft text-pursue-strong"}`}>
+          <StatusPill tone={connections.some((c) => c.status === "needs_attention") ? "blocked" : connections.every((c) => c.status === "paused") ? "attention" : "good"}>
             {STATUS_LABEL[connections.some((c) => c.status === "needs_attention") ? "needs_attention" : connections.every((c) => c.status === "paused") ? "paused" : "connected"]}
-          </span>
+          </StatusPill>
         ) : (
-          <span className="badge bg-surface-raised text-muted-foreground">{p.available ? "Not connected" : "Not available yet"}</span>
+          <StatusPill tone="neutral">{p.available ? "Not connected" : "Not available yet"}</StatusPill>
         )}
       </div>
       <p className="text-sm">{p.lets}</p>
@@ -395,9 +396,9 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
                     {!w.active ? "Off" : w.failure_count > 0 ? `Last delivery failed (${w.failure_count} in a row)` : w.last_delivered_at ? `Last delivered ${new Date(w.last_delivered_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Nothing sent yet"}
                   </p>
                 </div>
-                <span className={`badge ${!w.active ? "bg-surface-raised text-muted-foreground" : w.failure_count > 0 ? "bg-risk/15 text-risk" : "bg-pursue-soft text-pursue-strong"}`}>
+                <StatusPill tone={!w.active ? "neutral" : w.failure_count > 0 ? "blocked" : "good"}>
                   {!w.active ? "Off" : w.failure_count > 0 ? "Needs attention" : "On"}
-                </span>
+                </StatusPill>
               </div>
               {canManage && (
                 <div className="flex flex-wrap gap-2">
@@ -415,7 +416,7 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
           <p className="font-medium">Signing secret (shown once)</p>
           <code className="mt-1 block break-all text-xs">{secret}</code>
           <p className="mt-1 text-xs text-muted-foreground">
-            Each request carries x-brostco-timestamp and x-brostco-signature: v1=HMAC-SHA256(secret, timestamp + "." + body). Zapier and Make can ignore it; your own receiver should check it.
+            Each request carries x-brostco-timestamp and x-brostco-signature: v1=HMAC-SHA256(secret, timestamp + &quot;.&quot; + body). Zapier and Make can ignore it; your own receiver should check it.
           </p>
           <button type="button" className="mt-2 underline" onClick={() => setSecret(null)}>I have saved it</button>
         </div>

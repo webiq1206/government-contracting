@@ -293,6 +293,7 @@ export const QUEUE_NAMES = [
   "unresponsive-sweep",
   "daily-recap",
   "service-sync",
+  "notice-description-sweep",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];

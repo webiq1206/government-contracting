@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { StatusPill } from "./status-pill";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UnsavedGuard } from "./unsaved-guard";
@@ -66,13 +67,11 @@ function toDateInput(iso: string): string {
 
 function ProvenanceTag({ value }: { value: FieldProvenance | undefined }) {
   if (!value) return null;
-  const tone =
-    value === "retrieved"
-      ? "bg-pursue-soft text-pursue-strong"
-      : value === "inferred"
-        ? "bg-review/15 text-review"
-        : "bg-surface-raised text-muted-foreground";
-  return <span className={`badge ${tone}`}>{PROVENANCE_LABEL[value]}</span>;
+  return (
+    <StatusPill tone={value === "retrieved" ? "good" : value === "inferred" ? "attention" : "neutral"}>
+      {PROVENANCE_LABEL[value]}
+    </StatusPill>
+  );
 }
 
 export function AddSolicitationForm({ canSave }: { canSave: boolean }) {

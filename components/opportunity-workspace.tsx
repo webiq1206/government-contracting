@@ -78,7 +78,7 @@ export function OpportunityWorkspace({
       tabs={[
         { id: "brief", label: "Overview", content: brief },
         { id: "requirements", label: "Requirements", content: requirements },
-        { id: "coverage", label: "Subs and outreach", content: coverage },
+        { id: "coverage", label: "Subcontractors", content: coverage },
         { id: "pricing", label: "Pricing", content: pricing },
         { id: "files", label: "Documents", content: files },
         { id: "submission", label: "Submission", content: submission },

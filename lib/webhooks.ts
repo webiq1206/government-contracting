@@ -11,7 +11,8 @@ import { query, queryOne } from "./db";
 import { encryptSecret, decryptSecret } from "./integration-settings";
 import { guardedFetch, GuardedFetchError } from "./integrations/guarded-fetch";
 import { config } from "./config";
-import { NOTIFY_EVENT_KEYS, nextRetryAt, signWebhook } from "./domain/connected-services";
+import { NOTIFY_EVENT_KEYS, nextRetryAt } from "./domain/connected-services";
+import { signWebhook } from "./webhook-signature";
 
 export interface WebhookRow {
   id: string;

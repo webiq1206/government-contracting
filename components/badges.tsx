@@ -69,7 +69,9 @@ export function PageHeader({
         )}
       </div>
       {children && (
-        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1.5">
+        // A full row on a phone, so a title never wraps letter by letter
+        // beside two buttons; beside the title from the tablet up.
+        <div className="flex max-w-full basis-full shrink-0 flex-wrap items-center gap-1.5 sm:basis-auto">
           {children}
         </div>
       )}

@@ -8,8 +8,6 @@
  * more than the code behind it does: a provider whose OAuth app the
  * platform has not registered is "unavailable", never "connect".
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 export type ServiceProvider =
   | "google_calendar"
   | "google_drive"
@@ -267,17 +265,6 @@ export function notificationText(e: LedgerEvent, appUrl: string): string {
   const link = e.opportunity_id ? ` ${appUrl}/opportunity/${e.opportunity_id}` : "";
   const who = e.actor && e.actor !== "system" ? ` (${e.actor})` : "";
   return `${e.title}${who}${link}`;
-}
-
-/** Sign a webhook body the way the receiver verifies it. */
-export function signWebhook(secret: string, timestamp: string, body: string): string {
-  return createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
-}
-
-export function verifyWebhookSignature(secret: string, timestamp: string, body: string, signature: string): boolean {
-  const expected = Buffer.from(signWebhook(secret, timestamp, body));
-  const given = Buffer.from(signature);
-  return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 /** Retry schedule for a failed delivery, in minutes; abandoned after the last. */

@@ -46,6 +46,7 @@ import { trialSweep } from "./trial-sweep";
 import { concessionSweep } from "./concession-sweep";
 import { dailyRecap } from "./daily-recap";
 import { serviceSync } from "./service-sync";
+import { noticeDescriptionSweep } from "./notice-description-sweep";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -87,6 +88,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   unresponsiveSweep,
   dailyRecap,
   serviceSync,
+  noticeDescriptionSweep,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];

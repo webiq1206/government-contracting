@@ -31,7 +31,9 @@ export function SettingsNav() {
           ))}
         </select>
       </label>
-      <nav aria-label="Settings sections" className="mt-2 flex flex-wrap gap-1">
+      {/* The chips are a second copy of the select for wide screens; a phone keeps the one picker. */}
+      <div className="hidden sm:block">
+        <nav aria-label="Settings sections" className="mt-2 flex flex-wrap gap-1">
         {SETTINGS_DESTINATIONS.map((item) => (
           <Link
             key={item.href}
@@ -47,6 +49,7 @@ export function SettingsNav() {
           </Link>
         ))}
       </nav>
+      </div>
     </div>
   );
 }
