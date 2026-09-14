@@ -62,6 +62,15 @@ Open http://localhost:3000 and sign in with `OPERATOR_EMAIL` / your password.
 
 - `DATABASE_URL`, Postgres/Supabase connection string
 - `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`, for the AI agents (one is enough; both gives cheaper routine work and a fallback)
+
+### Optional: connected apps
+
+Customers can connect Google Calendar, Google Drive, Microsoft Teams, and
+Zapier/Make/webhooks out of the box. Outlook, OneDrive, Slack, Dropbox and Box
+appear once the platform registers each provider's app; see DEPLOYMENT.md,
+"Connected apps". Solicitations can also be added by hand (link, upload, or
+typed) from Opportunities, and each company chooses whether it subcontracts,
+self-performs, or mixes, under Settings, Rules & limits.
 - `AUTH_SECRET`, `OPERATOR_EMAIL`, `OPERATOR_PASSWORD_HASH`, to log in
 
 **Everything else is optional.** Each integration degrades gracefully: a missing
