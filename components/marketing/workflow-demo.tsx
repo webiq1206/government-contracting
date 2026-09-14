@@ -1,5 +1,6 @@
 "use client";
 import { useId, useRef, useState } from "react";
+import { StickyColumn } from "./sticky-column";
 import { WORKFLOW_STAGES } from "./site-content";
 
 /** A simplified, illustrative workflow. No account data or external actions. */
@@ -315,7 +316,7 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
         aria-labelledby={`${id}-tab-${selected}`}
         className="bco-demo-panel"
       >
-        <div className="bco-demo-explanation">
+        <StickyColumn className="bco-demo-explanation">
           <p className="bco-kicker">
             {String(selected + 1).padStart(2, "0")} /{" "}
             {selected === 4 ? "Your focused action list" : "AI at work"}
@@ -330,13 +331,13 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
             <strong>Where you come in</strong>
             <p>{item.human}</p>
           </div>
-        </div>
+        </StickyColumn>
         <OpportunityPreview key={selected} stage={selected} />
       </div>
       <div className="bco-demo-footer">
         <p className="bco-caption">
           Interactive illustration with sample data. Automation uses your
-          connected services and rules. See actual recordings in the{" "}
+          connected services and rules. See guided product walkthroughs in the{" "}
           <a href="/demo#recordings">product tour</a>.
         </p>
         <button

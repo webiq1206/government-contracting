@@ -1,58 +1,104 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-/** Decorative product-motion layer for the public hero.
- * The copy and CTA never depend on playback. Reduced-motion users and failed
- * playback get the poster image instead.
- */
+/** User-supplied decorative film. The poster and copy never depend on playback. */
 export function HeroBackgroundVideo() {
   const ref = useRef<HTMLVideoElement>(null);
+  const container = useRef<HTMLDivElement>(null);
+  const [allowed, setAllowed] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [reduced, setReduced] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const [pageVisible, setPageVisible] = useState(true);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReduced(media.matches);
+    const connection = (
+      navigator as Navigator & { connection?: { saveData?: boolean } }
+    ).connection;
+    const sync = () => setAllowed(!media.matches && !connection?.saveData);
     sync();
     media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
+    const observer = new IntersectionObserver(([entry]) =>
+      setVisible(entry.isIntersecting),
+    );
+    if (container.current) observer.observe(container.current);
+    const onVisibility = () => setPageVisible(!document.hidden);
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      media.removeEventListener("change", sync);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   useEffect(() => {
-    if (reduced || failed) return;
     const video = ref.current;
     if (!video) return;
-    const promise = video.play();
-    promise?.catch(() => setFailed(true));
-  }, [reduced, failed]);
-
-  if (reduced || failed) {
-    return (
-      <div
-        className="bco-hero-media bco-hero-poster"
-        role="img"
-        aria-label="BrostCo opportunity workflow preview"
-      />
-    );
-  }
+    if (!allowed || paused || failed || !visible || !pageVisible) {
+      video.pause();
+      return;
+    }
+    let active = true;
+    video.play()?.catch(() => {
+      if (active) {
+        setFailed(true);
+        setPlaying(false);
+      }
+    });
+    return () => {
+      active = false;
+      video.pause();
+    };
+  }, [allowed, paused, failed, visible, pageVisible]);
 
   return (
-    <video
-      ref={ref}
-      className="bco-hero-media"
-      autoPlay
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      poster="/demos/today-desktop.jpg"
-      aria-hidden="true"
-      tabIndex={-1}
-      onError={() => setFailed(true)}
-    >
-      <source src="/demos/hero-loop.mp4" type="video/mp4" />
-      <source src="/demos/hero-preview.mp4" type="video/mp4" />
-    </video>
+    <>
+      <div ref={container} className="bco-hero-backdrop" aria-hidden="true">
+        <Image
+          src="/marketing/hero-poster.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+        />
+        {allowed && !failed && (
+          <video
+            ref={ref}
+            className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
+            muted
+            loop
+            playsInline
+            preload="none"
+            tabIndex={-1}
+            aria-hidden="true"
+            onPlaying={() => setPlaying(true)}
+            onError={() => {
+              setFailed(true);
+              setPlaying(false);
+            }}
+          >
+            <source src="/marketing/hero-background.mp4" type="video/mp4" />
+          </video>
+        )}
+      </div>
+      {allowed && !failed && (
+        <button
+          className="bco-hero-motion-toggle"
+          type="button"
+          aria-label={
+            paused ? "Play background video" : "Pause background video"
+          }
+          onClick={() => setPaused(!paused)}
+        >
+          <span aria-hidden="true">{paused ? "▷" : "Ⅱ"}</span>
+          {paused ? "Play video" : "Pause video"}
+        </button>
+      )}
+    </>
   );
 }

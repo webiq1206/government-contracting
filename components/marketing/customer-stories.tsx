@@ -56,7 +56,7 @@ export function CustomerStories() {
           </p>
         </div>
         <Link href="/demo#recordings" className="bco-text-link">
-          Watch the actual product ↗
+          Explore the product screens ↗
         </Link>
       </div>
       <div className="bco-story-grid">
@@ -99,7 +99,7 @@ export function CustomerStories() {
           <span aria-hidden="true">▷</span>
           <div>
             <strong>See the software in action</strong>
-            <span>Product recordings. No email gate.</span>
+            <span>Guided product previews. No email gate.</span>
           </div>
           <span aria-hidden="true">↗</span>
         </Link>

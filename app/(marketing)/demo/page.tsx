@@ -41,7 +41,7 @@ export default function DemoPage() {
       <PageIntro
         eyebrow="Product tour"
         title="See the work. Try the next step."
-        copy="Explore a sample pursuit at your own pace, then watch recordings of the actual BrostCo workspace. No account or email required."
+        copy="Explore a sample pursuit at your own pace, then watch guided previews made from captured BrostCo screens. No account or email required."
       />
       <section className="bco-container bco-section">
         <WorkflowDemo />
@@ -49,12 +49,13 @@ export default function DemoPage() {
       <section id="recordings" className="bco-tinted">
         <div className="bco-container bco-section">
           <SectionHeading
-            eyebrow="Actual workspace / Sample data"
+            eyebrow="Captured product screens / Sample data"
             title="Two minutes inside BrostCo."
           >
             See how Today, opportunity review, subcontractors, and bid
-            preparation connect. These recordings use sample records and may
-            show a slightly earlier workspace layout.
+            preparation connect. These guided previews use captured screens and
+            sample records. They show an earlier workspace layout, not live
+            interactions.
           </SectionHeading>
           <div className="bco-main-video">
             <ProductVideo
@@ -81,7 +82,7 @@ export default function DemoPage() {
               <ProductVideo
                 slug={slug}
                 poster={`/demos/${slug}-desktop.jpg`}
-                title={`${title}, product recording with sample data`}
+                title={`${title}, guided screen preview with sample data`}
               />
               <div>
                 <h3>{title}</h3>

@@ -25,15 +25,15 @@ describe("mobile dashboard scrolling", () => {
 
 describe("AI-first homepage", () => {
   it("leads with the audience, concrete outcome, and free trial CTA", () => {
-    expect(landing).toContain("AI for government contractors");
-    expect(landing).toContain("AI moves the work forward.");
-    expect(landing).toContain("You make the decisions.");
+    expect(landing).toContain("AI Government Procurement Platform");
+    expect(landing).toContain("AI that finds government contracts");
+    expect(landing).toContain("and prepares your bids.");
     expect(landing).toContain("Start free trial");
   });
   it("uses an on-demand product illustration and reduced-motion transitions", () => {
-    expect(landing).toContain("OpportunityPreview");
+    expect(landing).toContain("bco-hero-centered");
+    expect(landing).toContain("HeroBackgroundVideo");
     expect(landing).toContain("WorkflowDemo");
-    expect(landing).not.toContain("HeroBackgroundVideo");
     expect(homeCss).toMatch(/prefers-reduced-motion:\s*reduce/);
   });
 });

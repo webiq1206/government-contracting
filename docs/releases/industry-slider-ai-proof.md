@@ -52,3 +52,40 @@ At implementation time, Replit's workspace was still behind its security
 verification page, so a current workspace Git revision could not be confirmed.
 Sync the merged main revision into the workspace before republishing; a successful
 publish status by itself does not establish which Git revision is deployed.
+
+
+## Final landing-page review
+
+The later hero direction supersedes the initial split layout. The H1 is
+“AI that finds government contracts and prepares your bids.” The category label
+is “AI Government Procurement Platform.” Supporting copy names subcontractor
+coordination, follow-ups, document preparation, and human calls and review.
+A single free-trial action leads the centered hero.
+
+| Area | Review outcome |
+| --- | --- |
+| Above the fold | Centered hierarchy, readable overlay, category label, one primary trial action, no product cards competing with the message. |
+| Background media | User-supplied `untitled.mp4`, optimized as a 15-second, 720p H.264 loop with fast-start metadata. No audio. A still frame renders first; playback pauses offscreen, in hidden tabs, and at the visitor's request. Reduced-motion and data-saving preferences keep the still. |
+| Industry coverage | All 20 broad sectors are represented. Swipe, keyboard, arrows, optional playback, directory filtering, and empty-state recovery are supported. |
+| Product explanation | Five approved AI-led stages show concrete outputs, including successful quote follow-through and a prepared bid. Calls and final review remain distinct. |
+| Repetition and differentiation | The repeated feature section now explains company context, connected inbox conversations, and traceable activity. |
+| Desktop reading | Text columns stick within their section and release at its bottom. A size observer disables sticking for text that exceeds the available height. Mobile and tablet use normal scrolling. |
+| Conversion | Trial CTA and pricing remain consistent. Optional promotion failures fall back to standard pricing on both the homepage and signup. Analytics writes run after the response so they do not delay either page. |
+| Search and sharing | Homepage metadata uses a clear platform title without duplicating the brand template. Industry and workflow-example anchors are discoverable in the site map. |
+| Media accuracy | Existing product films use captured screens. Their descriptions now say guided screen previews rather than recordings of live interactions. |
+| Trust | Illustrative perspectives are labeled individually; product links, data practices, company details, and trial terms are visible. Verified customer testimony and measured outcomes have not been supplied. |
+
+### Production limits
+
+The implementation can be validated independently of deployment. Actual customer
+endorsements, refreshed live-interaction demo recordings, real-device field
+performance, and the deployed Replit revision still require evidence. Do not call
+the entire business or product enterprise-certified on the strength of a website
+redesign, or remove example disclosures to imply verified customer results.
+
+### Assets
+
+The supplied video is committed at `public/marketing/hero-background.mp4` and its
+fallback frame at `public/marketing/hero-poster.jpg`. The earlier generated
+infrastructure still was superseded by the user's film and is not referenced by
+the site. No generated customer portraits or logos are used.

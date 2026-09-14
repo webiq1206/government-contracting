@@ -2,21 +2,27 @@ import Link from "next/link";
 import { MarketingNav } from "./marketing-nav";
 import { MarketingFooter } from "./marketing-footer";
 import { TRIAL_COPY } from "./site-content";
+import { StickyColumn } from "./sticky-column";
 import "./site.css";
 
 export function MarketingShell({
   children,
   signupHref = "/signup",
+  darkHeader = false,
 }: {
   children: React.ReactNode;
   signupHref?: string;
+  darkHeader?: boolean;
 }) {
   return (
     <div className="bco-site">
       <a className="bco-skip" href="#main-content">
         Skip to content
       </a>
-      <MarketingNav signupHref={signupHref} />
+      <MarketingNav
+        signupHref={signupHref}
+        variant={darkHeader ? "dark" : "light"}
+      />
       <main id="main-content">{children}</main>
       <MarketingFooter />
     </div>
@@ -48,22 +54,25 @@ export function SectionHeading({
   eyebrow,
   title,
   children,
+  sticky = false,
 }: {
   eyebrow?: string;
   title: string;
   children?: React.ReactNode;
+  sticky?: boolean;
 }) {
-  return (
+  const content = (
     <div className="bco-section-heading">
       {eyebrow && <p className="bco-kicker">{eyebrow}</p>}
       <h2>{title}</h2>
       {children && <p>{children}</p>}
     </div>
   );
+  return sticky ? <StickyColumn>{content}</StickyColumn> : content;
 }
 export function TrialCTA({
   signupHref = "/signup",
-  title = "Put your next pursuit in motion.",
+  title = "Put AI to work on your next bid.",
 }: {
   signupHref?: string;
   title?: string;

@@ -28,7 +28,7 @@ export default function PlatformPage() {
         <div className="bco-subnav">
           <Link href="/subcontractors">Subcontractor coordination ↗</Link>
           <Link href="/ai">How AI works ↗</Link>
-          <Link href="/demo#recordings">Actual product recordings ↗</Link>
+          <Link href="/demo#recordings">Guided product walkthroughs ↗</Link>
         </div>
       </section>
       <section className="bco-tinted">

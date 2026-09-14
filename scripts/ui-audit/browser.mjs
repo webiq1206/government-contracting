@@ -116,6 +116,41 @@ try {
           assert((await story.innerText()).includes('not a customer testimonial'),'Every example must be identified');
         }
         record.industrySlider='Next, directory filter, empty state, recovery, and all sectors checked';
+        const faqCopy=p.locator('#faq .bco-sticky-column');
+        if(device==='desktop') {
+          await p.waitForFunction(()=>document.querySelector('#faq .bco-sticky-column').dataset.stickyFit==='true');
+          const faqTop=await p.locator('#faq').evaluate(el=>el.getBoundingClientRect().top+scrollY);
+          await p.evaluate(top=>window.scrollTo(0,top+160),faqTop);
+          await p.waitForFunction(()=>Math.abs(document.querySelector('#faq .bco-sticky-column').getBoundingClientRect().top-104)<3);
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'sticky');
+          await p.screenshot({path:join(out,`${device}-sticky-faq.png`)});
+          await p.locator('#faq').evaluate(el=>window.scrollTo(0,el.getBoundingClientRect().bottom+scrollY-180));
+          assert(await faqCopy.evaluate(el=>el.getBoundingClientRect().bottom<=el.closest('section').getBoundingClientRect().bottom+1),'Sticky text stays within its section');
+          await p.setViewportSize({width,height:220});
+          await p.waitForFunction(()=>document.querySelector('#faq .bco-sticky-column').dataset.stickyFit==='false');
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'static');
+          await p.setViewportSize({width,height});
+        } else {
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'static','Smaller screens use normal scrolling');
+        }
+        await p.evaluate(()=>window.scrollTo(0,0));
+        await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-centered-hero.png`)});
+        assert.equal(await p.locator('.bco-hero-centered h1').count(),1);
+        assert.equal(await p.locator('.bco-hero-centered .bco-button').count(),1,'Hero has one primary action');
+        const film=p.locator('.bco-hero-background-film');
+        if(await film.count()) {
+          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent and inline');
+          await p.getByRole('button',{name:'Pause background video',exact:true}).click();
+          assert(await film.evaluate(el=>el.paused),'Background film pauses on request');
+          await p.getByRole('button',{name:'Play background video',exact:true}).click();
+        }
+        await p.emulateMedia({reducedMotion:'reduce'});
+        await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));
+        assert(await p.locator('.bco-hero-backdrop img').isVisible(),'Reduced motion keeps the still frame');
+        await p.emulateMedia({reducedMotion:'no-preference'});
+
+        record.stickyCopy='Desktop pinning, section boundary, short viewport release, and small-screen normal flow checked';
+
       }
       record.tabs=[];
       const tablists=p.getByRole('tablist');
@@ -360,7 +395,16 @@ try {
   await page.screenshot({path:join(out,device+'-automation-filters.png')});
   results.push({device,role:'owner',route:'/agents',status:(filtersPassed?'automation filters, ':'')+'safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
-  await page.goto(base+'/settings/api-usage');
+  await page.goto(base+'/today');
+  if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
+  await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:'Settings',exact:true}).click();
+  await page.waitForURL('**/settings/profile');
+  const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
+  for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
+    assert(await settingsLinks.getByRole('link',{name,exact:true}).isVisible(),`${name} must be visible`);
+  }
+  await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
+  await page.waitForURL('**/settings/api-usage');
   await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});

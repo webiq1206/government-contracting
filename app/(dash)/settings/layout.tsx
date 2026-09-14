@@ -10,7 +10,7 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex page-shell">
+    <div className="flex page-shell min-h-0 flex-1 flex-col">
       <SettingsNav />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
     </div>

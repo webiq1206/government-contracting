@@ -77,11 +77,11 @@ export const NAVIGATION_SECTIONS: NavigationSection[] = [
 
 /** Settings keep direct routes without flooding the global navigation. */
 export const SETTINGS_DESTINATIONS: NavigationItem[] = [
-  { href: "/settings/profile", label: "Company" },
-  { href: "/settings/rules", label: "Rules" },
+  { href: "/settings/profile", label: "Company & NAICS codes" },
+  { href: "/settings/rules", label: "Rules & limits" },
   { href: "/settings/content", label: "Content" },
-  { href: "/settings/integrations", label: "Connections" },
-  { href: "/settings/api-usage", label: "AI usage" },
+  { href: "/settings/integrations", label: "Integrations & AI providers" },
+  { href: "/settings/api-usage", label: "AI usage & budget" },
   { href: "/settings/billing", label: "Billing" },
   { href: "/settings/recap", label: "Daily recap" },
   { href: "/settings/notifications", label: "Notifications" },

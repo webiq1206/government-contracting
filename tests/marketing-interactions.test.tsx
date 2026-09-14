@@ -13,6 +13,13 @@ beforeEach(() => {
   vi.stubGlobal("document", window.document);
   vi.stubGlobal("HTMLElement", window.HTMLElement);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   container = window.document.querySelector("main")! as unknown as HTMLElement;
   root = createRoot(container);
 });
