@@ -55,7 +55,7 @@ export default function AboutPage() {
               <p className="bco-kicker">Product evidence</p>
               <h3>Explore before you commit</h3>
               <p>
-                Use the interactive example and actual workspace recordings to
+                Use the interactive example and guided product walkthroughs to
                 evaluate how BrostCo fits your process.
               </p>
               <Link href="/demo" className="bco-text-link">

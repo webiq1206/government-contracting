@@ -345,6 +345,9 @@ export function Nav({
           ) : navBody}
         </div>
         {!accountOpen && <div className="shrink-0 space-y-2 border-t border-white/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <Link href="/settings/profile" onClick={() => setOpen(false)} aria-current={pathname.startsWith("/settings") ? "page" : undefined} className={`flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${pathname.startsWith("/settings") ? "bg-accent text-on-accent" : "text-muted-foreground hover:bg-white/5 hover:text-foreground"}`}>
+            Settings
+          </Link>
           <Link href="/more" onClick={() => setOpen(false)} aria-current={pathname === "/more" ? "page" : undefined} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground">
             Workspace<span aria-hidden>↗</span>
           </Link>

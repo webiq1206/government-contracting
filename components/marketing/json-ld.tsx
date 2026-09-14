@@ -30,7 +30,7 @@ export function JsonLd({
       operatingSystem: "Web",
       url: SITE_URL,
       description:
-        "AI for federal services contractors: opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation. Your team reviews and submits.",
+        "AI for government contractors: opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation. Your team reviews and submits.",
       offers: {
         "@type": "Offer",
         name: promoActive ? "Founding monthly" : "Standard monthly",

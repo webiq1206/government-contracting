@@ -6,8 +6,12 @@ import {
   ProductIcon,
   FAQ,
 } from "./site-shell";
-import { OpportunityPreview, WorkflowDemo } from "./workflow-demo";
+import { WorkflowDemo } from "./workflow-demo";
 import { HOME_FAQ, TRIAL_COPY, USAGE_COPY } from "./site-content";
+import { IndustrySlider } from "./industry-slider";
+import { CustomerStories } from "./customer-stories";
+import { HeroBackgroundVideo } from "./hero-background-video";
+import { StickyColumn } from "./sticky-column";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 
 export interface LandingPageProps {
@@ -27,66 +31,42 @@ export function LandingPage({
 }: LandingPageProps) {
   const price = promoActive ? foundingMonthly : standardMonthly;
   return (
-    <MarketingShell signupHref={signupHref}>
-      <section className="bco-hero">
-        <div className="bco-container bco-hero-grid">
-          <div className="bco-hero-copy">
-            <p className="bco-kicker">
-              <span className="bco-signal" />
-              AI for federal services contractors
-            </p>
-            <h1>
-              Find the right contracts.
-              <br />
-              <span>Get bids ready faster.</span>
-            </h1>
-            <p className="bco-lead">
-              BrostCo finds matching opportunities, reads requirements,
-              coordinates subcontractor quotes, and helps prepare your bid. Your
-              team reviews the work and submits.
-            </p>
-            <div className="bco-actions">
-              <Link href={signupHref} className="bco-button">
-                Start free trial <span aria-hidden="true">↗</span>
-              </Link>
-              <Link href="/demo" className="bco-button bco-button-secondary">
-                <span aria-hidden="true">▷</span> See how it works
-              </Link>
-            </div>
-            <p className="bco-caption">{TRIAL_COPY}</p>
+    <MarketingShell signupHref={signupHref} darkHeader>
+      <section className="bco-hero bco-hero-centered">
+        <HeroBackgroundVideo />
+        <div className="bco-container bco-hero-center-content">
+          <p className="bco-kicker">AI Government Procurement Platform</p>
+          <h1>
+            AI that finds government contracts
+            <br />
+            <span>and prepares your bids.</span>
+          </h1>
+          <p className="bco-lead">
+            BrostCo reads solicitations, coordinates subcontractors, follows up,
+            and assembles bid documents. Set your rules and let AI run the
+            routine work. You handle calls, exceptions, and final review.
+          </p>
+          <div className="bco-actions">
+            <Link href={signupHref} className="bco-button">
+              Start free trial <span aria-hidden="true">→</span>
+            </Link>
           </div>
-          <div className="bco-hero-product">
-            <div className="bco-product-label">
-              <span>THE WORK, CONNECTED</span>
-              <span>Powered by AI. Reviewed by you.</span>
-            </div>
-            <OpportunityPreview />
-            <p className="bco-caption">
-              A simplified product illustration. Sample data, no account
-              required.
-            </p>
-          </div>
-        </div>
-      </section>
-      <div className="bco-proof-strip">
-        <div className="bco-container">
-          <span>Built for teams doing the work</span>
-          <strong>Construction</strong>
-          <strong>Facilities</strong>
-          <strong>Professional services</strong>
-          <Link href="/security">
-            Sources, history & human control <span aria-hidden="true">↗</span>
+          <p className="bco-caption">{TRIAL_COPY}</p>
+          <Link href="#platform" className="bco-hero-tour">
+            See AI at work <span aria-hidden="true">↓</span>
           </Link>
         </div>
-      </div>
+      </section>
+      <IndustrySlider />
       <section id="platform" className="bco-container bco-section">
         <div className="bco-heading-row">
           <SectionHeading
-            eyebrow="One connected pursuit"
-            title="Less chasing. More work ready for review."
+            eyebrow="From setup to work done"
+            title="BrostCo does the preparation and follow-through."
           >
-            Move from a promising posting to a prepared bid without rebuilding
-            the context in spreadsheets, inboxes, and folders.
+            Set your company profile, connect your services, and choose your
+            automation rules. AI runs the routine work. Your team handles the
+            decisions.
           </SectionHeading>
           <Link href="/platform" className="bco-text-link">
             Explore the platform ↗
@@ -97,44 +77,44 @@ export function LandingPage({
       <section className="bco-tinted" id="ai">
         <div className="bco-container bco-section">
           <SectionHeading
-            eyebrow="Intelligence inside the workflow"
-            title="AI does the preparation. You bring the judgment."
+            eyebrow="Built around your business"
+            title="One connected workflow. Fewer tools to manage."
           >
-            Each step produces something useful: a fit explanation, a working
-            brief, a tracked conversation, or a draft ready to check.
+            Your company profile, conversations, and bid work stay connected.
+            The next step starts with the context it needs.
           </SectionHeading>
           <div className="bco-card-grid">
             <article className="bco-card">
               <ProductIcon kind="source" />
-              <h3>From documents to decisions</h3>
+              <h3>Your company guides the AI</h3>
               <p>
-                AI reads and organizes the requirements. Review the brief with
-                the supporting source nearby.
+                Your services, qualifications, location, and pursuit rules guide
+                opportunity matching and the work that follows.
               </p>
               <span className="bco-card-result">
-                Less manual reading and re-entry
+                Relevant work from the start
               </span>
             </article>
             <article className="bco-card">
               <ProductIcon kind="people" />
-              <h3>From replies to next steps</h3>
+              <h3>Your inbox carries the conversation</h3>
               <p>
-                Keep outreach and follow-ups connected to each trade. Unclear
-                replies come back to your team.
+                Quote requests and follow-ups use your connected mailbox.
+                Replies stay attached to the subcontractor and opportunity.
               </p>
               <span className="bco-card-result">
-                Fewer loose ends before the deadline
+                Follow-through without rebuilding each thread
               </span>
             </article>
             <article className="bco-card">
               <ProductIcon kind="check" />
-              <h3>From scattered files to a bid</h3>
+              <h3>Your work comes with a history</h3>
               <p>
-                Bring scope, quotes, and draft documents together. See what is
-                missing before final review.
+                See the analysis, messages, quotes, and documents behind each
+                action. Open the supporting work when a decision needs you.
               </p>
               <span className="bco-card-result">
-                A clearer path to a complete package
+                Context ready when you need it
               </span>
             </article>
           </div>
@@ -150,8 +130,9 @@ export function LandingPage({
       </section>
       <section id="workflow" className="bco-container bco-section bco-split">
         <SectionHeading
+          sticky
           eyebrow="Fits the way your team works"
-          title="Start with your company. End with a clear next action."
+          title="Set the direction. Let AI take it from there."
         >
           BrostCo works around your pursuit rules, connected services, and human
           review.
@@ -170,10 +151,10 @@ export function LandingPage({
           <li>
             <span>02</span>
             <div>
-              <h3>Let the workflow do its part</h3>
+              <h3>Let AI run the routine work</h3>
               <p>
-                AI and connected services gather opportunities, prepare
-                analysis, and progress configured outreach and bid work.
+                BrostCo finds matches, analyzes documents, sends outreach,
+                follows up, and drafts bid work under your rules.
               </p>
             </div>
           </li>
@@ -182,8 +163,8 @@ export function LandingPage({
             <div>
               <h3>Review what needs you</h3>
               <p>
-                Open Today for decisions, replies, calls, and blockers. Your
-                team checks the bid and submits.
+                Open Today for calls, exceptions, and final reviews. Confirm
+                pricing and contract terms, sign, and submit.
               </p>
               <Link href="/get-started" className="bco-text-link">
                 See the setup checklist ↗
@@ -192,14 +173,16 @@ export function LandingPage({
           </li>
         </ol>
       </section>
+      <CustomerStories />
       <section id="walkthrough" className="bco-dark-section">
         <div className="bco-container bco-section bco-split">
-          <div>
+          <StickyColumn>
             <p className="bco-kicker">Look inside before you sign up</p>
             <h2>A product you can explore.</h2>
             <p>
               Follow one sample opportunity through the interactive walkthrough,
-              then watch the actual workspace in action. No email gate.
+              then explore guided previews of the product screens. No email
+              gate.
             </p>
             <div className="bco-actions">
               <Link href="/demo" className="bco-button">
@@ -209,7 +192,7 @@ export function LandingPage({
                 Watch the 2-minute walkthrough
               </Link>
             </div>
-          </div>
+          </StickyColumn>
           <div className="bco-evidence-list">
             <article>
               <ProductIcon kind="source" />
@@ -246,6 +229,7 @@ export function LandingPage({
       </section>
       <section id="pricing" className="bco-container bco-section bco-split">
         <SectionHeading
+          sticky
           eyebrow="Clear pricing. A practical trial."
           title="Try a real workflow before you subscribe."
         >
@@ -290,6 +274,7 @@ export function LandingPage({
       </section>
       <section id="faq" className="bco-container bco-section bco-faq-section">
         <SectionHeading
+          sticky
           eyebrow="Before you begin"
           title="A few things worth knowing."
         />

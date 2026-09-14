@@ -4,6 +4,8 @@ import { parseHTML } from "linkedom";
 import { LandingPage } from "@/components/marketing/landing-page";
 import { HOME_SECTIONS, PUBLIC_ROUTES } from "@/lib/domain/public-routes";
 import { JsonLd } from "@/components/marketing/json-ld";
+import { INDUSTRIES } from "@/components/marketing/industry-content";
+import { NAICS_CODES } from "@/lib/naics";
 import { HOME_FAQ } from "@/components/marketing/site-content";
 const props = {
   promoActive: false,
@@ -37,6 +39,33 @@ describe("public visitor journey", () => {
     expect(html).toContain("No credit card required");
     expect(document.querySelectorAll("video[autoplay]")).toHaveLength(0);
     expect(document.querySelector('[role="tablist"]')).not.toBeNull();
+  });
+  it("covers every sector in the company industry catalog", () => {
+    const prefixes = INDUSTRIES.flatMap((industry) => [...industry.codes]);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
+    for (const industry of NAICS_CODES)
+      expect(prefixes, industry.code).toContain(industry.code.slice(0, 2));
+    expect(document.querySelectorAll(".bco-industry-card")).toHaveLength(
+      INDUSTRIES.length,
+    );
+    expect(
+      document.querySelector(".bco-industry-directory summary")?.textContent,
+    ).toContain("View all industries");
+  });
+  it("identifies every illustrative story without implying a real endorsement", () => {
+    const stories = document.querySelectorAll(".bco-story-card");
+    expect(stories).toHaveLength(3);
+    for (const story of stories) {
+      expect(story.querySelector(".bco-story-label")?.textContent).toBe(
+        "Illustrative scenario",
+      );
+      expect(story.textContent).toContain("not a customer testimonial");
+      expect(
+        story.querySelector("a[href]"),
+        "each example links to product evidence",
+      ).not.toBeNull();
+      expect(story.querySelectorAll("img")).toHaveLength(0);
+    }
   });
   it("publishes the same FAQ in visible copy and structured data", () => {
     const { document: schemaDoc } = parseHTML(

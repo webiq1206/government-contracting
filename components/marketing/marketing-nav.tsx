@@ -7,6 +7,7 @@ import "./site.css";
 export function MarketingNav({
   loginHref = "/login",
   signupHref,
+  variant = "light",
 }: {
   loginHref?: string;
   signupHref: string;
@@ -14,10 +15,14 @@ export function MarketingNav({
   variant?: "light" | "dark";
 }) {
   return (
-    <header className="bco-nav">
+    <header className={`bco-nav${variant === "dark" ? " bco-nav-dark" : ""}`}>
       <div className="bco-container bco-nav-inner">
         <Link href="/" aria-label="BrostCo home" className="bco-brand-link">
-          <Wordmark variant="dark" priority className="h-7 w-auto" />
+          <Wordmark
+            variant={variant === "dark" ? "light" : "dark"}
+            priority
+            className="h-7 w-auto"
+          />
         </Link>
         <nav aria-label="Primary navigation" className="bco-desktop-nav">
           {MARKETING_LINKS.map((link) => (
@@ -37,6 +42,7 @@ export function MarketingNav({
             <MarketingMobileMenu
               signupHref={signupHref}
               loginHref={loginHref}
+              dark={variant === "dark"}
             />
           </div>
         </div>

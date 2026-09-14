@@ -48,7 +48,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/platform", label: "Platform overview", summary: "How BrostCo connects opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/ai", label: "How AI works", summary: "What AI reads and prepares, what depends on connected services and rules, and where your team reviews the work.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/subcontractors", label: "Subcontractor coordination", summary: "Find candidates by trade, coordinate outreach, track replies and quotes, and see gaps before bid review.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
-  { path: "/demo", label: "Product tour", summary: "Explore an interactive sample pursuit and watch actual workspace recordings with captions and transcripts.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
+  { path: "/demo", label: "Product tour", summary: "Explore an interactive sample pursuit and watch guided product walkthroughs with captions and transcripts.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/get-started", label: "Getting started", summary: "Prepare your company profile and the connections needed to review your first opportunity during the trial.", changeFrequency: "monthly", priority: 0.8, group: "Get started" },
   { path: "/security", label: "Security and data", summary: "Understand organization access, integration credentials, AI data flow, and responsibility for final review.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
   { path: "/about", label: "About BrostCo", summary: "Learn about the product direction, the company operating BrostCo, and how to contact the team.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
@@ -125,9 +125,11 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
  * "pricing" wants a link that lands on pricing.
  */
 export const HOME_SECTIONS: { hash: string; label: string; summary: string }[] = [
+  { hash: "#industries", label: "Industries", summary: "Explore all broad industry sectors supported by company-profile discovery." },
+  { hash: "#proof", label: "Workflow examples", summary: "Illustrative team perspectives and links to product evidence." },
   { hash: "#platform", label: "Platform", summary: "What the software does, part by part." },
   { hash: "#workflow", label: "How it works", summary: "Set up your company, connect services, and review the next action." },
-  { hash: "#walkthrough", label: "Product tour", summary: "Explore sample workflows and actual workspace recordings." },
+  { hash: "#walkthrough", label: "Product tour", summary: "Explore sample workflows and guided product walkthroughs." },
   { hash: "#ai", label: "AI capabilities", summary: "How AI prepares work and where your team brings judgment." },
   { hash: "#pricing", label: "Pricing", summary: "What it costs, and what the trial includes." },
   { hash: "#faq", label: "Questions and answers", summary: "What it is, what it does not do, and who it is for." },

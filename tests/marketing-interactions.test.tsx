@@ -13,6 +13,13 @@ beforeEach(() => {
   vi.stubGlobal("document", window.document);
   vi.stubGlobal("HTMLElement", window.HTMLElement);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   container = window.document.querySelector("main")! as unknown as HTMLElement;
   root = createRoot(container);
 });
@@ -31,7 +38,7 @@ describe("interactive sample workflow", () => {
     const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
     await click(tabs[2]);
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");
-    expect(container.textContent).toContain("2 of 3 quotes received");
+    expect(container.textContent).toContain("3 of 3 quote replies received");
     const source = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent?.includes("Open sample source"),
     )!;

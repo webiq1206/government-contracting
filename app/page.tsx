@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import { LandingPage } from "@/components/marketing/landing-page";
 import { loadPublicPromo } from "@/lib/billing/public-promo";
 import {
@@ -12,14 +13,14 @@ export const dynamic = "force-dynamic";
 
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 export const metadata: Metadata = {
-  title: "BrostCo | AI for Federal Services Contractors",
+  title: { absolute: "AI Government Procurement Platform | BrostCo" },
   description:
-    "Brost Co watches SAM.gov, scores fit, emails subcontractors, and builds bid packages. You decide, call when needed, and submit. Find the right contracts and get bids ready faster.",
+    "AI for government contractors: find opportunities, analyze requirements, coordinate subcontractors, and prepare bids. Start your free BrostCo trial.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "BrostCo | AI for Federal Services Contractors",
+    title: "AI Government Procurement Platform | BrostCo",
     description:
-      "Government contracting software that takes the slow work off your plate: SAM.gov intake, fit scoring, sub outreach, and bid package prep. You keep judgment and submission.",
+      "AI finds matching opportunities, reads solicitations, coordinates outreach, and prepares bids. Your team handles calls, exceptions, and final review.",
     url: SITE_URL,
     type: "website",
     siteName: "Brost Co",
@@ -28,15 +29,15 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Brost Co, Automated Government Procurement Software",
+        alt: "BrostCo AI Government Procurement Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "BrostCo | AI for Federal Services Contractors",
+    title: "AI Government Procurement Platform | BrostCo",
     description:
-      "Brost Co watches SAM.gov, scores fit, emails subcontractors, and builds bid packages. You decide, call when needed, and submit.",
+      "AI finds opportunities, reads solicitations, coordinates subcontractors, and prepares bids. Your team handles calls and final review.",
     images: ["/og.png"],
   },
   keywords: [
@@ -52,10 +53,9 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const [promo] = await Promise.all([
-    loadPublicPromo(true),
-    trackEvent({ event: "landing_view", path: "/" }),
-  ]);
+  // Analytics must never hold the marketing response open.
+  after(() => trackEvent({ event: "landing_view", path: "/" }));
+  const promo = await loadPublicPromo(true);
 
   const signupHref = promo.active
     ? "/signup?plan=founding"

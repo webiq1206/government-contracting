@@ -3,6 +3,11 @@ import { NextRequest } from "next/server";
 import { middleware } from "../middleware";
 
 describe("expired session recovery", () => {
+  it.each(["/marketing/hero-background.mp4", "/marketing/hero-poster.jpg"])("serves public hero media without a session: %s", (path) => {
+    const response = middleware(new NextRequest(`https://example.test${path}`));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+  });
   it("returns JSON without redirecting protected API requests to login HTML", async () => {
     const response = middleware(new NextRequest("https://example.test/api/automation", { method: "POST" }));
     expect(response.status).toBe(401);

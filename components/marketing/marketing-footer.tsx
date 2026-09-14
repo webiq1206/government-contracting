@@ -23,6 +23,7 @@ export function MarketingFooter({
         ["/pricing-guide", "Pricing & usage"],
         ["/compare", "Compare approaches"],
         ["/get-started", "Getting started"],
+        ["/#industries", "Industries"],
         ["/#faq", "Common questions"],
       ],
     },
@@ -46,7 +47,7 @@ export function MarketingFooter({
               <Wordmark variant="light" className="h-7 w-auto" />
             </Link>
             <p>
-              AI for federal services contractors.
+              AI for government contractors.
               <br />
               From the right opportunity to a bid ready for your review.
             </p>
@@ -64,10 +65,7 @@ export function MarketingFooter({
           ))}
         </div>
         <div className="bco-footer-bottom">
-          <p>
-            © {new Date().getFullYear()} BROSTCO HOLDINGS LLC. Your team handles
-            final bid review and submission.
-          </p>
+          <p>© {new Date().getFullYear()} BROSTCO HOLDINGS LLC.</p>
           <Link href={loginHref}>Log in</Link>
           <Link href="/signup">Start free trial</Link>
         </div>

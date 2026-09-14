@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { SignupForm } from "@/components/signup-form";
 import { ThemeWordmark } from "@/components/theme-wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getFoundingPromo } from "@/lib/billing/promo";
+import { loadPublicPromo } from "@/lib/billing/public-promo";
 import {
   FOUNDING_MONTHLY_USD,
   STANDARD_MONTHLY_USD,
@@ -40,15 +41,17 @@ export default async function SignupPage(props: {
     redirect(hasAccess(entitlementOf(user)) ? "/today" : "/settings/billing");
   }
 
-  const promo = await getFoundingPromo({ startIfMissing: true });
+  const promo = await loadPublicPromo(true);
   const requested = searchParams?.plan === "founding" ? "founding" : "standard";
   const plan =
     requested === "founding" && promo.active ? "founding" : "standard";
-  await trackEvent({
-    event: "signup_started",
-    path: "/signup",
-    meta: { plan },
-  });
+  after(() =>
+    trackEvent({
+      event: "signup_started",
+      path: "/signup",
+      meta: { plan },
+    }),
+  );
 
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12 text-foreground">

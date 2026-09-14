@@ -96,6 +96,62 @@ try {
         await p.screenshot({path:join(out,record.expandedScreenshot),fullPage:true});
         record.expandedScrollFrames=await captureScrollFrames(p,out,name.replace('.png','-expanded'));
       }
+      if(entry.route==='/') {
+        const industryTrack=p.locator('.bco-industry-track');
+        await industryTrack.scrollIntoViewIfNeeded();
+        assert.equal(await industryTrack.locator('li').count(),20,'All broad industry sectors should be browsable');
+        await p.getByRole('button',{name:'Next industries',exact:true}).click();
+        await p.waitForFunction(()=>document.querySelector('.bco-industry-track').scrollLeft>100);
+        await industryTrack.screenshot({path:join(out,`${device}-industry-slider.png`)});
+        const search=p.getByLabel('Find your industry or service', {exact:true});
+        await search.fill('HVAC');
+        assert.equal(await p.locator('.bco-industry-directory-body li').count(),1);
+        await search.fill('no-such-service-example');
+        await p.getByText('No matching sector.',{exact:false}).waitFor();
+        await p.getByRole('button',{name:'show all industries',exact:true}).click();
+        assert.equal(await p.locator('.bco-industry-directory-body li').count(),20);
+        await p.locator('.bco-industry-directory > summary').click();
+        await p.locator('.bco-stories').screenshot({path:join(out,`${device}-example-stories.png`)});
+        for(const story of await p.locator('.bco-story-card').all()) {
+          assert((await story.innerText()).includes('not a customer testimonial'),'Every example must be identified');
+        }
+        record.industrySlider='Next, directory filter, empty state, recovery, and all sectors checked';
+        const faqCopy=p.locator('#faq .bco-sticky-column');
+        if(device==='desktop') {
+          await p.waitForFunction(()=>document.querySelector('#faq .bco-sticky-column').dataset.stickyFit==='true');
+          const faqTop=await p.locator('#faq').evaluate(el=>el.getBoundingClientRect().top+scrollY);
+          await p.evaluate(top=>window.scrollTo(0,top+160),faqTop);
+          await p.waitForFunction(()=>Math.abs(document.querySelector('#faq .bco-sticky-column').getBoundingClientRect().top-104)<3);
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'sticky');
+          await p.screenshot({path:join(out,`${device}-sticky-faq.png`)});
+          await p.locator('#faq').evaluate(el=>window.scrollTo(0,el.getBoundingClientRect().bottom+scrollY-180));
+          assert(await faqCopy.evaluate(el=>el.getBoundingClientRect().bottom<=el.closest('section').getBoundingClientRect().bottom+1),'Sticky text stays within its section');
+          await p.setViewportSize({width,height:220});
+          await p.waitForFunction(()=>document.querySelector('#faq .bco-sticky-column').dataset.stickyFit==='false');
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'static');
+          await p.setViewportSize({width,height});
+        } else {
+          assert.equal(await faqCopy.evaluate(el=>getComputedStyle(el).position),'static','Smaller screens use normal scrolling');
+        }
+        await p.evaluate(()=>window.scrollTo(0,0));
+        await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-centered-hero.png`)});
+        assert.equal(await p.locator('.bco-hero-centered h1').count(),1);
+        assert.equal(await p.locator('.bco-hero-centered .bco-button').count(),1,'Hero has one primary action');
+        const film=p.locator('.bco-hero-background-film');
+        if(await film.count()) {
+          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent and inline');
+          await p.getByRole('button',{name:'Pause background video',exact:true}).click();
+          assert(await film.evaluate(el=>el.paused),'Background film pauses on request');
+          await p.getByRole('button',{name:'Play background video',exact:true}).click();
+        }
+        await p.emulateMedia({reducedMotion:'reduce'});
+        await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));
+        assert(await p.locator('.bco-hero-backdrop img').isVisible(),'Reduced motion keeps the still frame');
+        await p.emulateMedia({reducedMotion:'no-preference'});
+
+        record.stickyCopy='Desktop pinning, section boundary, short viewport release, and small-screen normal flow checked';
+
+      }
       record.tabs=[];
       const tablists=p.getByRole('tablist');
       for(let group=0;group<await tablists.count();group++) {
@@ -339,7 +395,16 @@ try {
   await page.screenshot({path:join(out,device+'-automation-filters.png')});
   results.push({device,role:'owner',route:'/agents',status:(filtersPassed?'automation filters, ':'')+'safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
-  await page.goto(base+'/settings/api-usage');
+  await page.goto(base+'/today');
+  if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
+  await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:'Settings',exact:true}).click();
+  await page.waitForURL('**/settings/profile');
+  const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
+  for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
+    await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
+  }
+  await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
+  await page.waitForURL('**/settings/api-usage');
   await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
@@ -491,7 +556,7 @@ try {
   await v.goto(base+'/privacy',{waitUntil:'networkidle'});
   await v.getByRole('navigation',{name:'Platform',exact:true}).getByRole('link',{name:'Platform overview',exact:true}).click();
   await v.waitForURL('**/platform');
-  await v.getByRole('heading',{level:1,name:'One pursuit. All the working context.'}).waitFor();
+  await v.getByRole('heading',{level:1,name:'AI moves the pursuit from discovery to draft.'}).waitFor();
   results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to platform overview checked'});
   if(device!=='desktop') {
     for(const route of ['/', '/privacy']) {

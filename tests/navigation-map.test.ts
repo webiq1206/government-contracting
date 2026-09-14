@@ -5,9 +5,21 @@ import {
   navigationMatches,
   mobileDestination,
 } from "../lib/navigation";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 describe("shared navigation destinations", () => {
+  it("keeps settings discoverable and every settings route available", () => {
+    const nav = readFileSync("components/nav.tsx", "utf8");
+    expect(nav).toContain('pathname.startsWith("/settings")');
+    expect(nav).toContain('href="/settings/profile"');
+    const settings = readFileSync("components/settings-nav.tsx", "utf8");
+    expect(settings).toContain('aria-label="Settings sections" className="mt-2 flex flex-wrap gap-1"');
+    expect(SETTINGS_DESTINATIONS.find(item => item.href === "/settings/profile")?.label).toContain("NAICS");
+    expect(SETTINGS_DESTINATIONS.find(item => item.href === "/settings/rules")?.label).toContain("limits");
+    for (const { href } of SETTINGS_DESTINATIONS) {
+      expect(["app/(dash)", "app/(account)"].some(root => existsSync(`${root}${href}/page.tsx`)), href).toBe(true);
+    }
+  });
   it("includes activity and usage in the same source on every device", () => {
     const links = NAVIGATION_SECTIONS.flatMap((section) => section.items.map((item) => item.href));
     expect(links).toContain("/activity");
