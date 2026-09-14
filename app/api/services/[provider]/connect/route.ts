@@ -10,7 +10,7 @@ import { SERVICE_BY_ID, isServiceProvider } from "@/lib/domain/connected-service
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const STATE_COOKIE = "brostco_service_state";
+const STATE_COOKIE = "brostco_service_state";
 
 /**
  * Start the provider's sign-in. `?scope=personal|company` says whose
