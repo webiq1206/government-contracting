@@ -401,7 +401,7 @@ try {
   await page.waitForURL('**/settings/profile');
   const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
   for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
-    assert(await settingsLinks.getByRole('link',{name,exact:true}).isVisible(),`${name} must be visible`);
+    await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
   }
   await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
   await page.waitForURL('**/settings/api-usage');
