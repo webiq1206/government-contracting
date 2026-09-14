@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { listServices } from "@/lib/connected-services";
+import { SaveToStorage } from "@/components/save-to-storage";
 import { WorkModeControl } from "@/components/work-mode-control";
 import { WORK_MODE_LABEL, describeWorkMode } from "@/lib/domain/work-mode";
 import { opportunityWorkMode } from "@/lib/work-mode";
@@ -386,6 +388,12 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
   // Who does the work here, resolved against the company rule. Decides
   // whether subcontractor coverage is even a question on this record.
   const workMode = await opportunityWorkMode(opp.id).catch(() => null);
+  // Connected file storage this person may save into: company-wide ones and their own.
+  const storageTargets = viewer && opp.org_id
+    ? (await listServices(opp.org_id, viewer.id).catch(() => []))
+        .filter((s) => ["google_drive", "microsoft_onedrive", "dropbox", "box"].includes(s.provider) && s.status === "connected")
+        .map((s) => ({ id: s.id, provider: s.provider, label: s.account_label ?? s.provider, personal: s.user_id != null }))
+    : [];
   const outreachOn = workMode?.outreachAllowed ?? true;
   const coverage = summarizeTradeCoverage({
     requiredTrades: analysis?.required_trades ?? [],
@@ -1323,6 +1331,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   canAccept={can(viewer?.orgRole, "decide")}
                 />
               )}
+              {/* Where a person looks at the documents is where "save these to my Drive" belongs. */}
+              <SaveToStorage opportunityId={opp.id} targets={storageTargets} />
               <DocumentInventoryPanel
                 documents={inventory}
                 coverage={documentCoverage}

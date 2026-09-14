@@ -45,6 +45,7 @@ import { subOnboarding } from "./sub-onboarding";
 import { trialSweep } from "./trial-sweep";
 import { concessionSweep } from "./concession-sweep";
 import { dailyRecap } from "./daily-recap";
+import { serviceSync } from "./service-sync";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -85,6 +86,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   contactRecheckSweep,
   unresponsiveSweep,
   dailyRecap,
+  serviceSync,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];

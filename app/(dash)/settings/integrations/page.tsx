@@ -1,4 +1,6 @@
 import { config, integrationStatus } from "@/lib/config";
+import { SERVICE_BY_ID, isServiceProvider } from "@/lib/domain/connected-services";
+import { ConnectedApps } from "@/components/connected-apps";
 import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { PageFrame } from "@/components/page-frame";
 import { ReadOnlyBanner } from "@/components/permission-gate";
@@ -35,7 +37,7 @@ export const dynamic = "force-dynamic";
 
 export default async function IntegrationsPage(
   props: {
-    searchParams?: Promise<{ gmail?: string; gmailError?: string; sender?: string }>;
+    searchParams?: Promise<{ gmail?: string; gmailError?: string; sender?: string; service?: string; provider?: string; msg?: string; id?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -104,6 +106,8 @@ export default async function IntegrationsPage(
   const status = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const gmailParam = searchParams?.gmail;
   const gmailError = searchParams?.gmailError;
+  // The connected-app callbacks land here with a status in the query.
+  const serviceNotice = serviceNoticeFrom(searchParams);
 
   /*
    * A chosen sending address is only good while Google still says so. An
@@ -295,9 +299,19 @@ export default async function IntegrationsPage(
 
       <EditorialTabs
         ariaLabel="Integration groups"
-        defaultTab="core"
+        defaultTab="apps"
         layout="fill"
         hashAliases={{
+          apps: "apps",
+          google_calendar: "apps",
+          google_drive: "apps",
+          microsoft_calendar: "apps",
+          microsoft_onedrive: "apps",
+          slack: "apps",
+          teams: "apps",
+          dropbox: "apps",
+          box: "apps",
+          webhooks: "apps",
           sam: "core",
           claude: "core",
           openai: "core",
@@ -308,6 +322,18 @@ export default async function IntegrationsPage(
           googleMaps: "data",
         }}
         tabs={[
+          {
+            id: "apps",
+            label: "Your apps",
+            content: (
+              <div className="space-y-4 px-5 py-6 sm:px-6">
+                <p className="text-sm text-muted-foreground">
+                  Calendars, file storage and team channels you already use. Sign in, approve, choose a few preferences. Every card says what is read and what is written, and nothing is imported or sent until you choose it.
+                </p>
+                <ConnectedApps notice={serviceNotice} />
+              </div>
+            ),
+          },
           {
             id: "core",
             label: "Core",
@@ -386,4 +412,22 @@ export default async function IntegrationsPage(
       />
     </>
   );
+}
+
+/** One sentence for what just happened on a connected-app callback, or null. */
+function serviceNoticeFrom(params: Record<string, string | string[] | undefined> | undefined): string | null {
+  const status = typeof params?.service === "string" ? params.service : null;
+  if (!status) return null;
+  const provider = typeof params?.provider === "string" && isServiceProvider(params.provider) ? SERVICE_BY_ID[params.provider].name : "The app";
+  const msg = typeof params?.msg === "string" ? params.msg : "";
+  switch (status) {
+    case "connected": return `${provider} is connected. Choose its preferences below, then press Test.`;
+    case "denied": return `${provider} was not connected: the sign-in was cancelled or access was declined. Nothing changed.`;
+    case "csrf": return "That sign-in could not be matched to this session, so nothing was connected. Start again from the button below.";
+    case "missing_code": return `${provider} sent back no authorization, so nothing was connected. Try again.`;
+    case "forbidden": return "Connecting for the whole company needs the integrations permission. You can connect a personal one.";
+    case "unavailable": return `${provider} is not available on this deployment yet.`;
+    case "error": return `${provider} could not be connected: ${msg || "the provider returned an error"}. Nothing changed.`;
+    default: return null;
+  }
 }

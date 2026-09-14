@@ -281,6 +281,39 @@ export const config = {
     fallback: bool("AI_FALLBACK", true),
   },
 
+  // Connected-app providers. Each is a one-time platform registration; a
+  // customer only ever signs in and approves. Google reuses the Gmail app.
+  services: {
+    microsoft: {
+      get clientId() { return str("MICROSOFT_CLIENT_ID"); },
+      get clientSecret() { return str("MICROSOFT_CLIENT_SECRET"); },
+      get redirectUri() { return `${config.appUrl}/api/services/microsoft/callback`; },
+      get configured() { return Boolean(this.clientId && this.clientSecret); },
+    },
+    slack: {
+      get clientId() { return str("SLACK_CLIENT_ID"); },
+      get clientSecret() { return str("SLACK_CLIENT_SECRET"); },
+      get redirectUri() { return `${config.appUrl}/api/services/slack/callback`; },
+      get configured() { return Boolean(this.clientId && this.clientSecret); },
+    },
+    dropbox: {
+      get clientId() { return str("DROPBOX_CLIENT_ID"); },
+      get clientSecret() { return str("DROPBOX_CLIENT_SECRET"); },
+      get redirectUri() { return `${config.appUrl}/api/services/dropbox/callback`; },
+      get configured() { return Boolean(this.clientId && this.clientSecret); },
+    },
+    box: {
+      get clientId() { return str("BOX_CLIENT_ID"); },
+      get clientSecret() { return str("BOX_CLIENT_SECRET"); },
+      get redirectUri() { return `${config.appUrl}/api/services/box/callback`; },
+      get configured() { return Boolean(this.clientId && this.clientSecret); },
+    },
+    google: {
+      get redirectUri() { return `${config.appUrl}/api/services/google/callback`; },
+      get configured() { return Boolean(str("GMAIL_CLIENT_ID") && str("GMAIL_CLIENT_SECRET")); },
+    },
+  },
+
   sam: {
     get apiKey() { return str("SAM_API_KEY"); },
     get enabled() {

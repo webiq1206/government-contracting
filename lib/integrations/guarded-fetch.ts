@@ -81,6 +81,14 @@ export interface GuardedFetchOptions {
   /** Request headers. A polite user-agent, mostly. */
   headers?: Record<string, string>;
   /**
+   * GET unless said otherwise. POST exists for the two places that send
+   * something to an address a person supplied (a channel webhook, an
+   * outbound webhook); the destination checks are identical either way.
+   */
+  method?: "GET" | "POST";
+  /** Body for a POST, already serialised. */
+  body?: string;
+  /**
    * What to do when the body passes `maxBytes`.
    *
    * "refuse" (the default) is right for a file: half a PDF is not a smaller
@@ -404,7 +412,8 @@ export async function guardedFetch(
       let res: Response;
       try {
         res = await fetch(url, {
-          method: "GET",
+          method: opts.method ?? "GET",
+          body: opts.method === "POST" ? opts.body : undefined,
           headers,
           // Manual, so every hop goes back through the checks above. Following
           // automatically means the validation ran once and the connection

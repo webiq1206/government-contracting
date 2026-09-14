@@ -173,6 +173,27 @@ without copying any customer data across.
 
 ---
 
+## Connected apps (calendars, file storage, team channels, webhooks)
+
+Customers connect these under Settings, Integrations, "Your apps" by signing
+in and approving. Each provider needs a one-time platform registration; a
+customer never creates an app or handles credentials.
+
+| Provider | What to register | Secrets | Redirect URI |
+|---|---|---|---|
+| Google Calendar, Google Drive | The existing Gmail OAuth client. In Google Cloud Console, add the scopes `calendar.events`, `calendar.calendarlist.readonly` and `drive.file` to the OAuth consent screen (sensitive scopes may need verification if the app is published) and add the redirect URI. | reuses `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | `{APP_URL}/api/services/google/callback` |
+| Microsoft 365 (Outlook calendar, OneDrive) | Azure portal, App registrations, new registration, multitenant + personal accounts; delegated permissions `offline_access`, `User.Read`, `Calendars.ReadWrite`, `Files.ReadWrite`; a client secret. | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `{APP_URL}/api/services/microsoft/callback` |
+| Slack | api.slack.com, create an app, add the `incoming-webhook` scope, enable distribution if workspaces other than yours will install it. | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | `{APP_URL}/api/services/slack/callback` |
+| Microsoft Teams | Nothing to register. The customer pastes a Teams Workflows link ("Post to a channel when a webhook request is received"). | none | none |
+| Dropbox | dropbox.com/developers, scoped app, permissions `files.content.write` and `files.metadata.read`. | `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET` | `{APP_URL}/api/services/dropbox/callback` |
+| Box | Box Developer Console, custom app, OAuth 2.0 user authentication. | `BOX_CLIENT_ID`, `BOX_CLIENT_SECRET` | `{APP_URL}/api/services/box/callback` |
+| Zapier, Make, webhooks | Nothing to register. Customers add an https address and choose events; each POST is signed with a per-webhook secret. | none | none |
+
+A provider whose secrets are missing shows "Not available yet" on the card
+with no button, so nothing is offered that cannot work. The sync agent
+(`service-sync`, every 15 minutes) keeps deadlines on connected calendars,
+posts chosen updates to channels, and delivers webhooks with retries.
+
 ## Row-Level Security (Supabase)
 
 Migration `0002_rls.sql` enables Postgres RLS on every application table and
