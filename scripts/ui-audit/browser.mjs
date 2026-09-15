@@ -296,6 +296,7 @@ try {
   // and no provider test is sent outside this app.
   try {
     await page.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+    await page.getByRole('tab',{name:'Core',exact:true}).click();
     const card=page.locator('#sam');
     const field=card.locator('input').first();
     await field.fill('audit-placeholder-not-a-real-key');
@@ -480,6 +481,7 @@ try {
   writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
   assert.equal(denied.status,403,'Viewer cannot pause automation');
   await v.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+  await v.getByRole('tab',{name:'Core',exact:true}).click();
   const readOnlyCard=v.locator('#sam');
   assert.equal(await readOnlyCard.locator('input').count(),0,'Viewer should not be offered credential entry');
   assert.equal(await readOnlyCard.getByRole('button',{name:/^(Save|Test connection|Remove)$/}).count(),0,'Viewer should not be offered blocked integration actions');

@@ -44,9 +44,9 @@ export async function subConversations(
 ): Promise<Conversation[]> {
   const rows = await query<Row>(
     `with recent as (
-       select * from communications
-        where org_id = $2 and subcontractor_id = $1 and channel = 'email'
-        order by created_at desc, id desc
+       select c.* from communications c
+        where c.org_id = $2 and c.subcontractor_id = $1 and c.channel = 'email'
+        order by c.created_at desc, c.id desc
         limit 500
      )
      select c.id, c.direction, c.subject, c.body, c.created_at,
