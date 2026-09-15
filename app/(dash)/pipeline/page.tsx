@@ -634,7 +634,7 @@ export default async function PipelinePage(
         <label className="sr-only" htmlFor="board-search">Find an opportunity</label>
         <input id="board-search" name="q" type="search" defaultValue={boardSearch} placeholder="Title, solicitation number, or agency" className="input min-w-0 flex-1" />
         <button className="btn-secondary min-h-11" type="submit">Search opportunities</button>
-        {boardSearch && <Link href={`/pipeline?${clearBoardSearch}`} className="btn-ghost min-h-11">Clear search</Link>}
+        {boardSearch && <a href={`/pipeline?${clearBoardSearch}`} className="btn-ghost min-h-11">Clear search</a>}
       </form>}
       {opps.length === 0 && (boardSearch ? <p role="status" className="p-4 text-sm">No opportunities match your search. Try a shorter title or clear the search.</p> : <PipelineOnboarding />)}
 

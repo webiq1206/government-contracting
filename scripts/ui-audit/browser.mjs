@@ -247,13 +247,14 @@ try {
     } else {
       await page.getByRole('columnheader').getByRole('link',{name:/^Account/}).click();
     }
+    await page.waitForURL(url => url.searchParams.get('sort') === '-name' && (!url.searchParams.has('page') || url.searchParams.get('page') === '1'));
     await page.getByRole('link',{name:/^Pagination Audit 057(?:\s|$)/}).first().waitFor();
     assert(!await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),'Pagination must fit narrow screens');
     await page.screenshot({path:join(out,device+'-account-pagination.png')});
     results.push({device,route:'/admin/accounts',status:'57-account pagination, sort reset and viewport fit checked',screenshot:device+'-account-pagination.png'});
   } catch(error) {
     await page.screenshot({path:join(out,device+'-account-pagination-failure.png')}).catch(()=>{});
-    failures.push({device,route:'/admin/accounts',status:'pagination or sorting failed',error:String(error.stack??error.message)});checkpoint();
+    failures.push({device,route:'/admin/accounts',status:'pagination or sorting failed',finalUrl:page.url(),error:String(error.stack??error.message)});checkpoint();
   }
   try {
     await page.goto(base+'/activity',{waitUntil:'networkidle'});

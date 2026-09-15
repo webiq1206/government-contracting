@@ -148,6 +148,8 @@ export function DataTable<T extends { id: string }>({
         <label className="mb-3 flex items-center gap-3 text-sm lg:hidden">
           Sort by
           <select className="input min-h-11 min-w-0 flex-1"
+            disabled={!loaded}
+            aria-busy={!loaded}
             value={sort.key ? `${sort.direction === "desc" ? "-" : ""}${sort.key}` : ""}
             onChange={event => {
               const value = event.target.value;

@@ -56,6 +56,7 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await page.getByRole('button', {name:'Search opportunities',exact:true}).click();
     await page.getByRole('status').filter({hasText:'No opportunities match your search.'}).waitFor();
     await page.getByRole('link',{name:'Clear search',exact:true}).click();
+    await page.waitForURL(url => url.pathname === '/pipeline' && !url.searchParams.has('q'));
     assert.equal(new URL(page.url()).searchParams.get('stage'), 'scoring', 'Clear search preserves the selected stage');
     await page.getByRole('link',{name:'Quick look',exact:true}).filter({visible:true}).first().waitFor();
   });
