@@ -190,7 +190,7 @@ export function ConversationThreadPane({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <UnsavedGuard when={Boolean(text.trim())} message="Your reply has not been sent. Keep a copy before leaving. Leave without saving?" />
+      <UnsavedGuard when={Boolean(text.trim())} watchSearch message="Your reply has not been sent. Keep a copy before leaving. Leave without saving?" />
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10 sm:px-6">
         <Link href={backHref} className="tap text-xs text-slate-500 hover:text-accent lg:hidden">
           Back to conversations

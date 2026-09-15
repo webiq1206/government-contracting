@@ -24,7 +24,7 @@ try {
     values($1,'email','outbound','Ledger Audit Draft','Synthetic wording for the ledger regression.','fixture@example.test','draft')`, [org!.id]);
   await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,subject,body,recipient_email,delivery_state,gmail_thread_id,created_at)
     values ($1,$2,$3,'email','outbound','Email clarity audit','Please quote the electrical work.','fixture@example.test','sent','clarity-audit-thread',now()-interval '2 hours'),
-           ($1,$2,$3,'email','inbound','Re: Email clarity audit','Friday works.\n\nOn Tuesday Alex wrote:\n> Please quote the electrical work.','owner@example.test',null,'clarity-audit-thread',now()-interval '1 hour')`, [org!.id,sub!.id,opp!.id]);
+           ($1,$2,$3,'email','inbound','Re: Email clarity audit','Friday works.\n\nOn Tuesday Alex wrote:\n> Please quote the electrical work.','owner@example.test','sent','clarity-audit-thread',now()-interval '1 hour')`, [org!.id,sub!.id,opp!.id]);
   writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,sub:sub!.id,contract:contract!.id,call:call!.id,vendorToken:encodePortalToken({s:sub!.id,e:Math.floor(Date.now()/1000)+3600})}));
 } finally { await closePool(); }
 
