@@ -110,10 +110,16 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
   });
   await check('/communications', 'draft-status-and-delivery-evidence', async () => {
     await page.getByText('Draft, not sent', { exact: true }).waitFor();
-    if (device === 'desktop') {
-      assert.equal(await page.getByText('100%', { exact: true }).count(), 0, 'An unsent draft must not imply confirmed delivery');
-      await page.getByText('Nothing sent yet', { exact: true }).first().waitFor();
-    }
+    const draftLink = page.getByRole('link').filter({ hasText: 'Ledger Audit Draft' }).first();
+    const destination = await draftLink.getAttribute('href');
+    assert(destination && new URL(destination, base).searchParams.get('c'), 'Draft link identifies its conversation');
+    await draftLink.click();
+    await page.waitForURL(new URL(destination, base).href, { waitUntil: 'networkidle' });
+    const draft = page.locator('article').filter({ hasText: 'Synthetic wording for the ledger regression.' });
+    await draft.getByText('Unsent draft', { exact: true }).waitFor();
+    assert.equal(await draft.getByText('Draft, not sent', { exact: true }).count(), 1);
+    assert.equal(await draft.getByText('Delivered', { exact: true }).count(), 0, 'An unsent draft must not imply confirmed delivery');
+    assert.equal(await draft.getByText('Sent, no confirmation yet', { exact: true }).count(), 0);
   });
   await check('/call-queue', 'call-workspace-load-failure-and-recovery', async () => {
     const endpoint = `**/api/call-cards/${ids.call}/workspace`;

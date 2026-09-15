@@ -266,16 +266,19 @@ interface MessageRowDb {
 export async function conversationMessages(threadKey: string): Promise<CentreMessage[]> {
   const orgId = await currentOrg();
   const rows = await query<MessageRowDb>(
-    `select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
+    `with recent as (
+       select c.* from communications c
+       where c.org_id = $1 and c.channel = 'email' and ${THREAD_KEY_SQL} = $2
+       order by c.created_at desc, c.id desc limit 500
+     )
+     select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
             c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
             c.delivery_state, c.delivery_detail,
             c.opened_at::text as opened_at, c.clicked_at::text as clicked_at,
             c.replied_at::text as replied_at, c.follow_up_at::text as follow_up_at,
             c.meta
-       from communications c
-      where c.org_id = $1 and c.channel = 'email' and ${THREAD_KEY_SQL} = $2
-      order by c.created_at asc
-      limit 500`,
+       from recent c
+      order by c.created_at asc, c.id asc`,
     [orgId, threadKey]
   );
 

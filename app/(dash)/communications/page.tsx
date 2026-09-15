@@ -469,7 +469,7 @@ export default async function CommunicationsPage(
                 const active = c.threadKey === selectedKey;
                 return (
                   <li key={c.threadKey}>
-                    <Link
+                    <a
                       href={href(filter, q, c.threadKey, null, page)}
                       aria-current={active ? "true" : undefined}
                       className={`block border-b border-border/40 px-4 py-3 transition-colors hover:bg-foreground/[0.03] dark:border-white/5 ${
@@ -507,7 +507,7 @@ export default async function CommunicationsPage(
                           </span>
                         )}
                       </div>
-                    </Link>
+                    </a>
                     {/*
                       The row's controls, beside the link rather than inside
                       it: a button nested in an anchor opens the thread as
