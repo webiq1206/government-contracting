@@ -21,6 +21,8 @@ describe("email reading without losing original content", () => {
   });
   it("preserves plain-text email addresses and escapes HTML for display", () => {
     expect(emailText("Alex <alex@example.com>")).toBe("Alex <alex@example.com>");
+    expect(emailText("Alex <a@example.com>")).toBe("Alex <a@example.com>");
+    expect(emailText('<a href="https://example.test/quote">View quote</a>')).toBe("View quote (https://example.test/quote)");
     expect(emailText('<p>Hello &amp; thanks</p><script>alert(1)</script><p>Friday</p>')).toBe("Hello & thanks\nFriday");
   });
   it("keeps the complete history accessible but collapsed and labels the latest email", () => {
