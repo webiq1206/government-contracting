@@ -247,13 +247,14 @@ try {
     } else {
       await page.getByRole('columnheader').getByRole('link',{name:/^Account/}).click();
     }
+    await page.waitForURL(url => url.searchParams.get('sort') === '-name' && (!url.searchParams.has('page') || url.searchParams.get('page') === '1'));
     await page.getByRole('link',{name:/^Pagination Audit 057(?:\s|$)/}).first().waitFor();
     assert(!await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),'Pagination must fit narrow screens');
     await page.screenshot({path:join(out,device+'-account-pagination.png')});
     results.push({device,route:'/admin/accounts',status:'57-account pagination, sort reset and viewport fit checked',screenshot:device+'-account-pagination.png'});
   } catch(error) {
     await page.screenshot({path:join(out,device+'-account-pagination-failure.png')}).catch(()=>{});
-    failures.push({device,route:'/admin/accounts',status:'pagination or sorting failed',error:String(error.stack??error.message)});checkpoint();
+    failures.push({device,route:'/admin/accounts',status:'pagination or sorting failed',finalUrl:page.url(),error:String(error.stack??error.message)});checkpoint();
   }
   try {
     await page.goto(base+'/activity',{waitUntil:'networkidle'});
@@ -296,6 +297,7 @@ try {
   // and no provider test is sent outside this app.
   try {
     await page.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+    await page.getByRole('tab',{name:'Core',exact:true}).click();
     const card=page.locator('#sam');
     const field=card.locator('input').first();
     await field.fill('audit-placeholder-not-a-real-key');
@@ -400,10 +402,14 @@ try {
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:'Settings',exact:true}).click();
   await page.waitForURL('**/settings/profile');
   const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
-  for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
-    await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
+  if (page.viewportSize().width >= 640) {
+    for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
+      await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
+    }
+    await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
+  } else {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/api-usage');
   }
-  await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
   await page.waitForURL('**/settings/api-usage');
   await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
@@ -476,6 +482,7 @@ try {
   writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
   assert.equal(denied.status,403,'Viewer cannot pause automation');
   await v.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+  await v.getByRole('tab',{name:'Core',exact:true}).click();
   const readOnlyCard=v.locator('#sam');
   assert.equal(await readOnlyCard.locator('input').count(),0,'Viewer should not be offered credential entry');
   assert.equal(await readOnlyCard.getByRole('button',{name:/^(Save|Test connection|Remove)$/}).count(),0,'Viewer should not be offered blocked integration actions');

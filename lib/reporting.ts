@@ -494,9 +494,15 @@ export async function dataConfidenceMetrics(from: Date | null, to: Date | null):
 
 export async function automationMetrics(from: Date | null, to: Date | null): Promise<Metric[]> {
   const orgId = await currentOrg();
+  // Compute the first run/failure once per agent and record. Correlated scans
+  // of this same run set grow quadratically on accounts with long histories.
+  // Strict timestamp comparison preserves the treatment of simultaneous runs.
   const r = await queryOne<Record<string, unknown>>(
     `with runs as (
-       select r.id, r.agent, r.status, r.opportunity_id, r.started_at
+       select r.id, r.agent, r.status, r.opportunity_id, r.started_at,
+              min(r.started_at) over (partition by r.agent, r.opportunity_id) as first_started_at,
+              min(r.started_at) filter (where r.status = 'error')
+                over (partition by r.agent, r.opportunity_id) as first_failed_at
          from job_runs r
         where r.org_id = $1
           and ($2::timestamptz is null or r.started_at >= $2::timestamptz)
@@ -514,12 +520,8 @@ export async function automationMetrics(from: Date | null, to: Date | null): Pro
              */
             count(*) filter (
               where opportunity_id is not null
-                and exists (
-                  select 1 from runs prior
-                   where prior.agent = runs.agent
-                     and prior.opportunity_id = runs.opportunity_id
-                     and prior.started_at < runs.started_at
-                )
+                and agent is not null
+                and first_started_at < started_at
             )::int as repeats,
             /*
              * A recovery is a repeat that succeeded after a failure. The
@@ -528,13 +530,8 @@ export async function automationMetrics(from: Date | null, to: Date | null): Pro
              */
             count(*) filter (
               where status = 'ok' and opportunity_id is not null
-                and exists (
-                  select 1 from runs prior
-                   where prior.agent = runs.agent
-                     and prior.opportunity_id = runs.opportunity_id
-                     and prior.started_at < runs.started_at
-                     and prior.status = 'error'
-                )
+                and agent is not null
+                and first_failed_at < started_at
             )::int as recovered
        from runs`,
     [orgId, ...range(from, to)]

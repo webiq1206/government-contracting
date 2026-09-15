@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { RecordPagination } from "@/components/record-pagination";
+import { recordPage } from "@/lib/domain/record-pagination";
 import {
   pipelineOpportunities,
   PIPELINE_STAGES,
@@ -394,7 +396,14 @@ export default async function PipelinePage(
   const focusStage =
     rawStage && PIPELINE_STAGES.some((s) => s.key === rawStage) ? rawStage : null;
   const focusStages = focus ? focus.stages : focusStage ? [focusStage] : null;
-  const opps = focusStages ? allOpps.filter((o) => focusStages.includes(o.stage)) : allOpps;
+  const focusedOpps = focusStages ? allOpps.filter((o) => focusStages.includes(o.stage)) : allOpps;
+  const boardSearch = view !== "table" && typeof searchParams?.q === "string" ? searchParams.q.trim() : "";
+  const opps = boardSearch ? focusedOpps.filter(o => [o.title, o.agency, o.solicitation_number].some(v => v?.toLowerCase().includes(boardSearch.toLowerCase()))) : focusedOpps;
+  const clearBoardSearch = new URLSearchParams(peekQuery);
+  clearBoardSearch.delete("q");
+  for (const key of ["list_page", "page_you", "page_system", "page_waiting", "page_decided"]) clearBoardSearch.delete(key);
+  clearBoardSearch.set("view", view);
+  const listWindow = recordPage(opps.length, searchParams?.list_page, 20);
   const focusLabel = focus
     ? focus.label
     : focusStage
@@ -618,7 +627,16 @@ export default async function PipelinePage(
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
-      {opps.length === 0 && <PipelineOnboarding />}
+      {allOpps.length > 0 && <form action="/pipeline" className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3" role="search" aria-label="Search opportunities">
+        <input type="hidden" name="view" value={view} />
+        {rawFocus && <input type="hidden" name="focus" value={rawFocus} />}
+        {rawStage && <input type="hidden" name="stage" value={rawStage} />}
+        <label className="sr-only" htmlFor="board-search">Find an opportunity</label>
+        <input id="board-search" name="q" type="search" defaultValue={boardSearch} placeholder="Title, solicitation number, or agency" className="input min-w-0 flex-1" />
+        <button className="btn-secondary min-h-11" type="submit">Search opportunities</button>
+        {boardSearch && <a href={`/pipeline?${clearBoardSearch}`} className="btn-ghost min-h-11">Clear search</a>}
+      </form>}
+      {opps.length === 0 && (boardSearch ? <p role="status" className="p-4 text-sm">No opportunities match your search. Try a shorter title or clear the search.</p> : <PipelineOnboarding />)}
 
       {/* Simple view: four owner lanes. A grid from md up; on a phone the same
           four lanes stay side by side and are swiped between, because a lane
@@ -635,7 +653,7 @@ export default async function PipelinePage(
           }
         >
           <OpportunityList
-            rows={opps}
+            rows={opps.slice(listWindow.start, listWindow.end)}
             rules={rules}
             coverage={boardCoverage}
             owners={boardOwners}
@@ -645,6 +663,7 @@ export default async function PipelinePage(
             members={members}
             peekHrefFor={(o) => `${peekBase}peek=${o.id}`}
           />
+          <RecordPagination total={opps.length} value={searchParams?.list_page} query={peekQuery.toString()} pageKey="list_page" label="Opportunities" size={20} />
         </div>
       )}
 
@@ -661,6 +680,8 @@ export default async function PipelinePage(
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {LANES.map((lane) => {
               const cards = byLane.get(lane.key) ?? [];
+              const pageKey = `page_${lane.key}`;
+              const window = recordPage(cards.length, searchParams?.[pageKey]);
               return (
                 <section key={lane.key} className="min-w-0">
                   <div className="mb-2">
@@ -671,7 +692,7 @@ export default async function PipelinePage(
                     <p className="mt-1 text-xs text-slate-500">{lane.blurb}</p>
                   </div>
                   <div className="space-y-2">
-                    {cards.map((o) => (
+                    {cards.slice(window.start, window.end).map((o) => (
                       <PipelineCard
                       key={o.id}
                       o={o}
@@ -684,6 +705,7 @@ export default async function PipelinePage(
                       peekHref={`${peekBase}peek=${o.id}`}
                     />
                     ))}
+                    <RecordPagination total={cards.length} value={searchParams?.[pageKey]} query={peekQuery.toString()} pageKey={pageKey} label={lane.label} />
                     {cards.length === 0 && (
                       <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-slate-500">
                         Nothing here right now.

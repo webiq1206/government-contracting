@@ -247,8 +247,8 @@ export function AutomationBlockerBanner({ health }: { health: AutomationHealth }
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
         {worst && <p className="min-w-0 flex-1 text-foreground">{worst.spec.repair}</p>}
-        <Link href="/agents" className="btn-ghost shrink-0 text-xs">
-          Open Automation Health
+        <Link href={worst?.spec.repairHref ?? "/agents"} className="btn-ghost min-h-11 shrink-0 text-xs">
+          {worst?.cause === "spending_limit" ? "Review spending limits" : worst?.spec.repairHref ? "Resolve this issue" : "Open Automation Health"}
         </Link>
       </div>
     </div>

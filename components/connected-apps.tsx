@@ -45,21 +45,22 @@ export function ConnectedApps({ notice }: { notice: string | null }) {
   const [flash, setFlash] = useState<string | null>(notice);
 
   async function load() {
+    setLoadError(null);
     try {
       const res = await fetch("/api/services", { signal: AbortSignal.timeout(20_000) });
       if (!res.ok) throw new Error(String(res.status));
       setData((await res.json()) as Data);
       setLoadError(null);
     } catch {
-      setLoadError("Your connected apps could not be loaded. Reload to try again; nothing was changed.");
+      setLoadError("Your connected apps could not be loaded. Try again; nothing was changed.");
     }
   }
   useEffect(() => {
     void load();
   }, []);
 
-  if (loadError) return <p role="alert" className="text-sm text-risk">{loadError}</p>;
-  if (!data) return <p className="text-sm text-muted-foreground">Loading connected apps</p>;
+  if (loadError) return <div className="space-y-3"><p role="alert" className="text-sm text-risk">{loadError}</p><button type="button" className="btn-secondary min-h-11" onClick={() => void load()}>Try again</button></div>;
+  if (!data) return <p role="status" className="text-sm text-muted-foreground">Loading connected apps</p>;
 
   return (
     <div className="space-y-6">
