@@ -274,7 +274,12 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
             placeholder="https://sam.gov/opp/..."
             value={url}
             disabled={fetching}
-            onChange={(e) => { setUrl(e.target.value); setPreview(null); setAttachments([]); setDuplicates([]); setForce(false); }}
+            onChange={(e) => {
+              setUrl(e.target.value); setPreview(null); setAttachments([]); setDuplicates([]); setForce(false);
+              // A different source must not inherit facts imported from the old link.
+              setValues(previous => Object.fromEntries(IMPORTED_FIELD_KEYS.map(key => [key, enteredFields.current.has(key) ? previous[key] : ""])) as Values);
+              setProvenance(previous => Object.fromEntries(IMPORTED_FIELD_KEYS.map(key => [key, enteredFields.current.has(key) ? previous[key] : undefined])));
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

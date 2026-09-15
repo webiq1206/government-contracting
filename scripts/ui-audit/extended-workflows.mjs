@@ -44,15 +44,19 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
       assert.equal(saves, 1);
       assert.equal(await page.getByLabel('Title (required)', {exact: true}).inputValue(), 'My reviewed title');
       assert(await page.getByRole('button', {name: 'Add to opportunities', exact: true}).isEnabled());
+      await page.getByLabel('Solicitation link', {exact:true}).fill('https://example.test/another-solicitation');
+      assert.equal(await page.getByLabel('Title (required)', {exact:true}).inputValue(), 'My reviewed title');
+      assert.equal(await page.getByLabel('Issuing organization', {exact:true}).inputValue(), '', 'Imported facts must not follow a different source link');
     } finally {
       await page.unroute(preview); await page.unroute(duplicates); await page.unroute(create);
     }
   });
-  await check('/pipeline?view=list', 'opportunity-search-empty-state-and-recovery', async () => {
+  await check('/pipeline?view=list&stage=scoring', 'opportunity-search-empty-state-and-recovery', async () => {
     await page.getByLabel('Find an opportunity', {exact:true}).fill('no-such-audit-opportunity-zzzz');
     await page.getByRole('button', {name:'Search opportunities',exact:true}).click();
     await page.getByRole('status').filter({hasText:'No opportunities match your search.'}).waitFor();
     await page.getByRole('link',{name:'Clear search',exact:true}).click();
+    assert.equal(new URL(page.url()).searchParams.get('stage'), 'scoring', 'Clear search preserves the selected stage');
     await page.getByRole('link',{name:'Quick look',exact:true}).filter({visible:true}).first().waitFor();
   });
   await check(`/admin/accounts/${ids.org}`, 'member-controls-layout-failure-and-transfer-cancel', async () => {

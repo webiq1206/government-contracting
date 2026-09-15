@@ -399,6 +399,10 @@ export default async function PipelinePage(
   const focusedOpps = focusStages ? allOpps.filter((o) => focusStages.includes(o.stage)) : allOpps;
   const boardSearch = view !== "table" && typeof searchParams?.q === "string" ? searchParams.q.trim() : "";
   const opps = boardSearch ? focusedOpps.filter(o => [o.title, o.agency, o.solicitation_number].some(v => v?.toLowerCase().includes(boardSearch.toLowerCase()))) : focusedOpps;
+  const clearBoardSearch = new URLSearchParams(peekQuery);
+  clearBoardSearch.delete("q");
+  for (const key of ["list_page", "page_you", "page_system", "page_waiting", "page_decided"]) clearBoardSearch.delete(key);
+  clearBoardSearch.set("view", view);
   const listWindow = recordPage(opps.length, searchParams?.list_page, 20);
   const focusLabel = focus
     ? focus.label
@@ -630,7 +634,7 @@ export default async function PipelinePage(
         <label className="sr-only" htmlFor="board-search">Find an opportunity</label>
         <input id="board-search" name="q" type="search" defaultValue={boardSearch} placeholder="Title, solicitation number, or agency" className="input min-w-0 flex-1" />
         <button className="btn-secondary min-h-11" type="submit">Search opportunities</button>
-        {boardSearch && <Link href={`/pipeline?view=${view}`} className="btn-ghost min-h-11">Clear search</Link>}
+        {boardSearch && <Link href={`/pipeline?${clearBoardSearch}`} className="btn-ghost min-h-11">Clear search</Link>}
       </form>}
       {opps.length === 0 && (boardSearch ? <p role="status" className="p-4 text-sm">No opportunities match your search. Try a shorter title or clear the search.</p> : <PipelineOnboarding />)}
 
