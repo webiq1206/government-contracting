@@ -41,7 +41,9 @@ describe("email reading without losing original content", () => {
     expect(html).toContain("Acme");
   });
   it("renders a draft as unsent and unsafe markup as text", () => {
-    const html = renderToStaticMarkup(<EmailMessage direction="outbound" contact="Acme" body={'<svg onload="alert(1)">'} date="2026-09-15T10:00:00Z" label="Unsent draft" />);
+    const html = renderToStaticMarkup(<EmailMessage direction="outbound" contact="Acme" body={'<svg onload="alert(1)">'} date="2026-09-15T10:00:00Z" label="Unsent draft" latest />);
+    const { document } = parseHTML(html);
+    expect([...document.querySelectorAll('header span')].map(node => node.textContent)).toEqual(['Unsent draft', 'Latest message']);
     expect(html).toContain("Unsent draft");
     expect(html).not.toContain("<svg");
     expect(html).not.toContain("Sent email");
