@@ -3,6 +3,47 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check('/opportunity/new', 'import-preserves-edits-and-save-failure-recovers', async () => {
+    const preview = '**/api/opportunities/import/preview';
+    const duplicates = '**/api/opportunities/import/duplicates';
+    const create = '**/api/opportunities';
+    await page.route(preview, r => r.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
+      url: 'https://example.test/solicitation', kind: 'web', status: 'read', message: 'Source read.',
+      fields: {title: 'Imported title', agency: 'Source agency', attachments: []},
+      provenance: {title: 'retrieved', agency: 'retrieved'}, duplicates: [], samNoticeId: null
+    })}));
+    await page.route(duplicates, r => r.fulfill({status: 200, contentType: 'application/json', body: '{"duplicates":[]}'}));
+    let saves = 0;
+    await page.route(create, r => {
+      saves++;
+      const body = r.request().postDataJSON();
+      assert.equal(body.fields.title, 'My reviewed title');
+      assert.equal(body.url, 'https://example.test/solicitation');
+      return r.fulfill({status: 503, contentType: 'application/json', body: '{"error":"Save unavailable. Try again."}'});
+    });
+    try {
+      await page.getByLabel('Title (required)', {exact: true}).fill('My reviewed title');
+      await page.getByLabel('Solicitation link', {exact: true}).fill('https://example.test/solicitation');
+      await page.getByRole('button', {name: 'Read the link', exact: true}).click();
+      await page.getByText('Source read.', {exact: true}).waitFor();
+      assert.equal(await page.getByLabel('Title (required)', {exact: true}).inputValue(), 'My reviewed title');
+      assert.equal(await page.getByLabel('Issuing organization', {exact: true}).inputValue(), 'Source agency');
+      await page.getByRole('button', {name: 'Add to opportunities', exact: true}).click();
+      await page.getByRole('alert').filter({hasText: 'Save unavailable. Try again.'}).waitFor();
+      assert.equal(saves, 1);
+      assert.equal(await page.getByLabel('Title (required)', {exact: true}).inputValue(), 'My reviewed title');
+      assert(await page.getByRole('button', {name: 'Add to opportunities', exact: true}).isEnabled());
+    } finally {
+      await page.unroute(preview); await page.unroute(duplicates); await page.unroute(create);
+    }
+  });
+  await check('/pipeline?view=list', 'opportunity-search-empty-state-and-recovery', async () => {
+    await page.getByLabel('Find an opportunity', {exact:true}).fill('no-such-audit-opportunity-zzzz');
+    await page.getByRole('button', {name:'Search opportunities',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'No opportunities match your search.'}).waitFor();
+    await page.getByRole('link',{name:'Clear search',exact:true}).click();
+    await page.getByRole('link',{name:'Quick look',exact:true}).filter({visible:true}).first().waitFor();
+  });
   await check(`/admin/accounts/${ids.org}`, 'member-controls-layout-failure-and-transfer-cancel', async () => {
     await page.getByRole('tab', { name: /^People \(/ }).click();
     const role = page.getByLabel('Role for ui-member@example.test', { exact: true });

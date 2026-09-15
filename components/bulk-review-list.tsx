@@ -83,7 +83,7 @@ function ReviewCard({
               {countdown(o.deadline)}
             </span>
             {o.review_expires_at && (
-              <span className="text-review">Decide in {expiry}</span>
+              <span className="text-review">{expiry === "overdue" ? "Review overdue" : `Decide in ${expiry}`}</span>
             )}
           </div>
 

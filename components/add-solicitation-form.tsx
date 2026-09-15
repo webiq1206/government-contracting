@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { UnsavedGuard } from "./unsaved-guard";
 import {
   IMPORTED_FIELD_KEYS,
+  parseSolicitationUrl,
   PROVENANCE_LABEL,
   type FieldProvenance,
   type ImportedFieldKey,
@@ -77,6 +78,9 @@ function ProvenanceTag({ value }: { value: FieldProvenance | undefined }) {
 export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
   const router = useRouter();
   const pending = useRef(false);
+  const reading = useRef(false);
+  const enteredFields = useRef(new Set<ImportedFieldKey>());
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [fetching, setFetching] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -91,16 +95,19 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
-  const dirty = Object.values(values).some((v) => v.trim() !== "") || files.length > 0;
+  const dirty = url.trim() !== "" || attachments.length > 0 || Object.values(values).some((v) => v.trim() !== "") || files.length > 0;
   const method: "url" | "upload" | "manual" = preview ? "url" : files.length > 0 ? "upload" : "manual";
 
   function setField(key: ImportedFieldKey, v: string) {
+    enteredFields.current.add(key);
     setValues((s) => ({ ...s, [key]: v }));
     setProvenance((p) => ({ ...p, [key]: "entered" }));
   }
 
   async function fetchDetails() {
-    if (!url.trim() || fetching) return;
+    if (!canSave || !url.trim() || reading.current || pending.current || createdId) return;
+    reading.current = true;
+    setForce(false);
     setFetching(true);
     setFetchError(null);
     setPreview(null);
@@ -124,12 +131,13 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
         if (!v) continue;
         next[key] = key === "deadline" ? toLocalInput(v) : key === "posted_at" ? toDateInput(v) : v;
       }
-      setValues(next);
-      setProvenance(data.provenance ?? {});
+      setValues(previous => Object.fromEntries(IMPORTED_FIELD_KEYS.map(key => [key, enteredFields.current.has(key) ? previous[key] : next[key]])) as Values);
+      setProvenance(previous => Object.fromEntries(IMPORTED_FIELD_KEYS.map(key => [key, enteredFields.current.has(key) ? previous[key] : data.provenance?.[key]])));
       setAttachments(data.fields.attachments ?? []);
     } catch {
       setFetchError("The link took too long to read. Try again, upload the documents, or enter the details by hand.");
     } finally {
+      reading.current = false;
       setFetching(false);
     }
   }
@@ -150,7 +158,9 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
   }
 
   async function save() {
-    if (pending.current || !canSave) return;
+    if (pending.current || reading.current || createdId || !canSave) return;
+    const source = url.trim() ? parseSolicitationUrl(url) : null;
+    if (source?.kind === "invalid") { setSaveError(source.reason); return; }
     if (!values.title.trim()) {
       setSaveError("Give it a title first.");
       return;
@@ -178,7 +188,7 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           method,
-          url: preview?.url ?? null,
+          url: preview?.url ?? (source?.url ?? null),
           samNoticeId: preview?.samNoticeId ?? null,
           fields,
           provenance,
@@ -197,6 +207,7 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
         setSaveError(data.error ?? "That did not save.");
         return;
       }
+      setCreatedId(data.id);
       // Documents go up one at a time so a failure names the file.
       const failed: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -238,13 +249,15 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
       }
       if (!next.some((x) => x.name === f.name && x.size === f.size)) next.push(f);
     }
+    if (next.length > 10) rejected.push(...next.slice(10).map(f => f.name));
     setFiles(next.slice(0, 10));
-    setSaveError(rejected.length > 0 ? `Not added: ${rejected.join(", ")}. Files must be PDF, Word, PNG or JPEG under 12 MB.` : null);
+    setSaveError(rejected.length > 0 ? `Not added: ${rejected.join(", ")}. Choose up to 10 PDF, Word, PNG or JPEG files, each under 12 MB.` : null);
   }
 
   return (
     <div className="space-y-6">
-      <UnsavedGuard when={dirty && !saving} />
+      <UnsavedGuard when={dirty && !createdId} />
+      <fieldset disabled={!canSave || saving || !!createdId} className="min-w-0 space-y-6">
 
       <section className="card space-y-3">
         <h2 className="font-display text-lg font-semibold">Start from a link</h2>
@@ -260,7 +273,8 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
             inputMode="url"
             placeholder="https://sam.gov/opp/..."
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            disabled={fetching}
+            onChange={(e) => { setUrl(e.target.value); setPreview(null); setAttachments([]); setDuplicates([]); setForce(false); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -268,7 +282,7 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
               }
             }}
           />
-          <button type="button" className="btn-secondary min-h-11 shrink-0" disabled={fetching || !url.trim()} onClick={() => void fetchDetails()}>
+          <button type="button" className="btn-secondary min-h-11 shrink-0" disabled={!canSave || fetching || saving || !url.trim()} onClick={() => void fetchDetails()}>
             {fetching ? "Reading" : "Read the link"}
           </button>
         </div>
@@ -384,7 +398,7 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
       {uploadProgress && <p role="status" className="text-sm text-muted-foreground">{uploadProgress}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary min-h-11" disabled={!canSave || saving || !values.title.trim()} onClick={() => void save()}>
+        <button type="button" className="btn-primary min-h-11" disabled={!canSave || saving || fetching || !!createdId || !values.title.trim()} onClick={() => void save()}>
           {saving ? "Saving" : "Add to opportunities"}
         </button>
         <Link href="/pipeline" className="btn-ghost min-h-11">Cancel</Link>
@@ -394,6 +408,8 @@ export function AddSolicitationForm({ canSave }: { canSave: boolean }) {
             : "Saved once from what you provide. The source is kept so you can verify it; it is not watched for changes."}
         </p>
       </div>
+      </fieldset>
+      {createdId && <p role="status" className="text-sm">Opportunity saved. <Link href={`/opportunity/${createdId}`} className="underline">Open the opportunity</Link></p>}
     </div>
   );
 }

@@ -400,10 +400,14 @@ try {
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:'Settings',exact:true}).click();
   await page.waitForURL('**/settings/profile');
   const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
-  for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
-    await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
+  if (page.viewportSize().width >= 640) {
+    for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
+      await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
+    }
+    await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
+  } else {
+    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/api-usage');
   }
-  await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
   await page.waitForURL('**/settings/api-usage');
   await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');

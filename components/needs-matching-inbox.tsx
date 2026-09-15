@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export interface PendingMessage {
@@ -42,6 +42,7 @@ export function NeedsMatchingInbox({
   opportunities: MatchTarget[];
   canAct: boolean;
 }) {
+  const [shown, setShown] = useState(10);
   if (messages.length === 0) {
     return (
       <div className="card">
@@ -54,7 +55,8 @@ export function NeedsMatchingInbox({
   }
 
   return (
-    <div className="card border-review/40 bg-review/5">
+    <details className="card border-review/40 bg-review/5">
+      <summary className="min-h-11 cursor-pointer font-medium text-sm">Review unmatched messages ({messages.length})</summary>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <p className="eyebrow">
           Needs matching · <span className="num">{messages.length}</span>
@@ -64,11 +66,12 @@ export function NeedsMatchingInbox({
         </p>
       </div>
       <ul className="divide-y divide-border">
-        {messages.map((m) => (
+        {messages.slice(0, shown).map((m) => (
           <MessageRow key={m.id} message={m} opportunities={opportunities} canAct={canAct} />
         ))}
       </ul>
-    </div>
+      {shown < messages.length && <button type="button" className="btn-secondary min-h-11 mt-3" onClick={() => setShown(n => n + 10)}>Show more messages ({messages.length - shown} remaining)</button>}
+    </details>
   );
 }
 
@@ -82,6 +85,8 @@ function MessageRow({
   canAct: boolean;
 }) {
   const router = useRouter();
+  const pending = useRef(false);
+  const [completed, setCompleted] = useState(false);
   const [open, setOpen] = useState<"match" | "dismiss" | null>(null);
   const [opportunityId, setOpportunityId] = useState("");
   const [reason, setReason] = useState("");
@@ -89,6 +94,8 @@ function MessageRow({
   const [error, setError] = useState<string | null>(null);
 
   const send = async (payload: Record<string, unknown>) => {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -96,20 +103,25 @@ function MessageRow({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: message.id, ...payload }),
+        signal: AbortSignal.timeout(20_000),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         setError(body.error ?? "That did not work.");
         return;
       }
+      setCompleted(true);
       setOpen(null);
       router.refresh();
     } catch {
-      setError("Could not reach the server.");
+      setError("The change was not confirmed. Your entries are still here. Try again.");
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
+
+  if (completed) return <li role="status" className="py-3 text-sm text-muted-foreground">Message reviewed. Updating your inbox.</li>;
 
   return (
     <li className="py-3">
@@ -130,23 +142,21 @@ function MessageRow({
         entire decision, and it is not answerable without reading the message.
       */}
       {message.snippet && (
-        <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-          {message.snippet}
-        </p>
+        <details className="mt-1"><summary className="min-h-11 cursor-pointer text-xs text-muted-foreground">Read message</summary><p className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm text-muted-foreground">{message.snippet}</p></details>
       )}
 
       {canAct && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className="text-xs underline underline-offset-2"
+            className="min-h-11 text-sm underline underline-offset-2" disabled={busy}
             onClick={() => setOpen(open === "match" ? null : "match")}
           >
             This is about a bid
           </button>
           <button
             type="button"
-            className="text-xs underline underline-offset-2"
+            className="min-h-11 text-sm underline underline-offset-2" disabled={busy}
             onClick={() => setOpen(open === "dismiss" ? null : "dismiss")}
           >
             Not ours
@@ -154,7 +164,8 @@ function MessageRow({
         </div>
       )}
 
-      {open === "match" && (
+      {open === "match" && opportunities.length === 0 && <p role="status" className="mt-2 text-sm">There are no open opportunities to match. Add the solicitation in Opportunities, then return here.</p>}
+      {open === "match" && opportunities.length > 0 && (
         <form
           className="mt-2"
           onSubmit={(e) => {
@@ -226,7 +237,7 @@ function MessageRow({
         </form>
       )}
 
-      {error && <p className="mt-1 text-xs text-risk">{error}</p>}
+      {error && <p role="alert" className="mt-1 text-xs text-risk">{error}</p>}
     </li>
   );
 }
