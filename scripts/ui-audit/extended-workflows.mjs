@@ -3,6 +3,17 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check('/settings/integrations', 'connected-apps-load-retry', async () => {
+    await page.route('**/api/services', r => r.fulfill({status:503, contentType:'application/json',body:'{"error":"Unavailable"}'}));
+    try {
+      await page.reload({waitUntil:'networkidle'});
+      await page.getByRole('tab',{name:'Your apps',exact:true}).click();
+      await page.getByRole('alert').filter({hasText:'Your connected apps could not be loaded.'}).waitFor();
+    } finally { await page.unroute('**/api/services'); }
+    await page.getByRole('button',{name:'Try again',exact:true}).click();
+    await page.getByRole('heading',{name:'Calendars',exact:true}).waitFor();
+    assert.equal(await page.getByRole('alert').filter({hasText:'Your connected apps could not be loaded.'}).count(),0);
+  });
   await check('/opportunity/new', 'import-preserves-edits-and-save-failure-recovers', async () => {
     const preview = '**/api/opportunities/import/preview';
     const duplicates = '**/api/opportunities/import/duplicates';

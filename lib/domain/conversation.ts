@@ -43,15 +43,19 @@ export async function subConversations(
   orgId: string
 ): Promise<Conversation[]> {
   const rows = await query<Row>(
-    `select c.id, c.direction, c.subject, c.body, c.created_at,
+    `with recent as (
+       select * from communications
+        where org_id = $2 and subcontractor_id = $1 and channel = 'email'
+        order by created_at desc, id desc
+        limit 500
+     )
+     select c.id, c.direction, c.subject, c.body, c.created_at,
             c.recipient_email, c.gmail_thread_id, c.gmail_message_id,
             c.rfc822_message_id,
             c.opportunity_id, o.title as opportunity_title, c.meta
-       from communications c
+       from recent c
        left join opportunities o on o.id = c.opportunity_id and o.org_id = $2
-      where c.org_id = $2 and c.subcontractor_id = $1 and c.channel = 'email'
-      order by c.created_at asc
-      limit 500`,
+      order by c.created_at asc, c.id asc`,
     [subcontractorId, orgId]
   );
 

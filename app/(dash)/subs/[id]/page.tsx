@@ -645,7 +645,8 @@ export default async function SubDetailPage(
                 </p>
                 <ConversationThreads
                   subcontractorId={sub.id}
-                  canSend={inboxConnected}
+                  canSend={inboxConnected && can(viewer?.orgRole, "outreach")}
+                  unavailableReason={!can(viewer?.orgRole, "outreach") ? "Your role can read conversations. Ask an account owner for outreach access to draft or send replies." : undefined}
                   conversations={conversations}
                   savedDrafts={savedDrafts}
                 />
@@ -653,7 +654,8 @@ export default async function SubDetailPage(
               </div>
 
               <div id="communications">
-              <Collapsible title="Full history" meta={communications.length}>
+              <details className="card">
+                <summary className="min-h-11 cursor-pointer text-sm font-medium">Full history ({communications.length})</summary>
                 <p className="mb-3 text-xs text-slate-500">
                   Every email, reply, call, skip, and note is saved here automatically
                   as work happens across opportunities.
@@ -710,7 +712,7 @@ export default async function SubDetailPage(
                     })}
                   </div>
                 )}
-              </Collapsible>
+              </details>
               </div>
             </div>
           }

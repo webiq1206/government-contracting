@@ -66,12 +66,14 @@ function replyTargetId(c: Conversation): string | null {
 export function ConversationThreads({
   subcontractorId,
   canSend,
+  unavailableReason,
   conversations,
   savedDrafts = {},
 }: {
   subcontractorId: string;
   /** False when no inbox is connected, so the composer explains instead of failing. */
   canSend: boolean;
+  unavailableReason?: string;
   conversations: Conversation[];
   /** Drafts already generated for these threads, keyed by inbound message id. */
   savedDrafts?: Record<string, StoredReplyDraft>;
@@ -421,7 +423,7 @@ export function ConversationThreads({
                         </ul>
                       )}
                       {res && (
-                        <p className={`mt-1 text-sm ${res.ok ? "text-pursue" : "text-risk"}`}>
+                        <p role={res.ok ? "status" : "alert"} className={`mt-1 text-sm ${res.ok ? "text-pursue" : "text-risk"}`}>
                           {res.text}
                         </p>
                       )}
@@ -436,7 +438,7 @@ export function ConversationThreads({
                     </>
                   ) : (
                     <p className="text-sm text-review">
-                      Connect your Google inbox in Settings to reply from here.
+                      {unavailableReason ?? "Connect your Google inbox in Settings to reply from here."}
                     </p>
                   )}
                 </div>
