@@ -110,7 +110,11 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
   });
   await check('/communications', 'draft-status-and-delivery-evidence', async () => {
     await page.getByText('Draft, not sent', { exact: true }).waitFor();
-    await page.getByRole('link').filter({ hasText: 'Ledger Audit Draft' }).first().click();
+    const draftLink = page.getByRole('link').filter({ hasText: 'Ledger Audit Draft' }).first();
+    const destination = await draftLink.getAttribute('href');
+    assert(destination && new URL(destination, base).searchParams.get('c'), 'Draft link identifies its conversation');
+    await draftLink.click();
+    await page.waitForURL(new URL(destination, base).href, { waitUntil: 'networkidle' });
     const draft = page.locator('article').filter({ hasText: 'Synthetic wording for the ledger regression.' });
     await draft.getByText('Unsent draft', { exact: true }).waitFor();
     assert.equal(await draft.getByText('Draft, not sent', { exact: true }).count(), 1);
