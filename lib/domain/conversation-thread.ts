@@ -11,6 +11,7 @@
  */
 
 export interface ConversationMessage {
+  delivery_state?: string | null;
   id: string;
   direction: "inbound" | "outbound";
   subject: string | null;

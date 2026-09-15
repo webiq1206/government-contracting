@@ -21,6 +21,7 @@ import Link from "next/link";
 import { replyTarget } from "@/lib/domain/conversation-thread";
 import { createDraftAutosave, type DraftSaveState } from "@/lib/client/draft-autosave";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { EmailMessage, EmailTimeline } from "@/components/email-message";
 import type {
   Conversation,
   ConversationMessage,
@@ -65,12 +66,14 @@ function replyTargetId(c: Conversation): string | null {
 
 export function ConversationThreads({
   subcontractorId,
+  subcontractorName = "Subcontractor",
   canSend,
   unavailableReason,
   conversations,
   savedDrafts = {},
 }: {
   subcontractorId: string;
+  subcontractorName?: string;
   /** False when no inbox is connected, so the composer explains instead of failing. */
   canSend: boolean;
   unavailableReason?: string;
@@ -332,42 +335,27 @@ export function ConversationThreads({
                   </Link>
                 )}
 
-                <div className="space-y-3">
-                  {c.messages.map((m) => {
+                <EmailTimeline messages={c.messages.map((m, index) => {
                     const ours = m.direction === "outbound";
-                    const label = kindLabel(m.kind);
+                    const unsent = m.delivery_state === "draft" || m.delivery_state === "failed";
+                    const label = unsent ? null : kindLabel(m.kind);
                     return (
-                      <div
+                      <EmailMessage
                         key={m.id}
-                        className={`rounded-md border p-2.5 ${
-                          ours
-                            ? "border-border bg-muted/40"
-                            : "border-accent/30 bg-accent-soft/40"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="font-medium text-foreground">
-                            {ours ? "You" : "Them"}
-                          </span>
-                          {label && <span>{label}</span>}
-                          <span className="ml-auto">{when(m.created_at)}</span>
-                        </div>
-                        {m.body && (
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-foreground/80">
-                            {m.body}
-                          </p>
-                        )}
-                      </div>
+                        body={m.body} direction={m.direction} contact={subcontractorName}
+                        recipient={m.recipient_email} date={m.created_at}
+                        latest={index === c.messages.length - 1}
+                        label={!ours ? "Received email" : m.delivery_state === "draft" ? "Unsent draft" : m.delivery_state === "failed" ? "Send failed" : "Outgoing email"}
+                      >{label && <span className="text-xs text-muted-foreground">{label}</span>}</EmailMessage>
                     );
-                  })}
-                </div>
+                  })} />
 
-                <div className="mt-3 border-t border-border pt-3">
+                <div className="mt-5 rounded-xl border border-dashed border-accent/40 bg-surface p-4">
                   {canSend ? (
                     <>
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="label" htmlFor={`reply-${c.key}`}>
-                          Reply
+                          Unsent reply
                         </label>
                         {inboundId && (
                           <button
@@ -431,7 +419,7 @@ export function ConversationThreads({
                         type="button"
                         className="btn-primary mt-2 text-xs"
                         onClick={() => send(c)}
-                        disabled={busy != null || drafting != null}
+                        disabled={busy != null || drafting != null || !(drafts[c.key] ?? "").trim()}
                       >
                         {busy === c.key ? "Sending…" : "Send reply"}
                       </button>

@@ -21,6 +21,22 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     }
     checkpoint();
   };
+  await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
+    await page.getByText('Latest message', { exact: true }).waitFor();
+    assert(await page.getByText('Friday works.', { exact: true }).isVisible());
+    const earlier = page.getByText('Earlier messages (1)', { exact: true });
+    assert.equal(await earlier.evaluate(node => node.parentElement.open), false);
+    await earlier.click();
+    assert(await page.getByText('Please quote the electrical work.', { exact: true }).isVisible());
+    const quoted = page.getByText('Show quoted history', { exact: true });
+    assert.equal(await quoted.evaluate(node => node.parentElement.open), false);
+    await quoted.click();
+    assert.equal(await quoted.evaluate(node => node.parentElement.open), true);
+    await page.getByLabel('Unsent reply to Sample Electrical Services').fill('Draft for review only.');
+    assert.equal(await page.getByLabel('Unsent reply to Sample Electrical Services').inputValue(), 'Draft for review only.');
+    await page.getByLabel('Unsent reply to Sample Electrical Services').fill('');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+  });
   await check('/today', 'focused-today-disclosure-and-saved-links', async () => {
     const details = page.locator('[data-today-details]');
     assert.equal(await details.evaluate(node => node.open), false, 'Full task views start collapsed');

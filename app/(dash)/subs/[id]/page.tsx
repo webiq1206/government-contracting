@@ -643,7 +643,8 @@ export default async function SubDetailPage(
                   Read and reply right here. Messages go out from your own address and stay in
                   the same thread, so you never have to open Gmail.
                 </p>
-                <ConversationThreads
+            <ConversationThreads
+              subcontractorName={sub.company_name}
                   subcontractorId={sub.id}
                   canSend={inboxConnected && can(viewer?.orgRole, "outreach")}
                   unavailableReason={!can(viewer?.orgRole, "outreach") ? "Your role can read conversations. Ask an account owner for outreach access to draft or send replies." : undefined}

@@ -23,18 +23,8 @@ import type {
 } from "@/lib/domain/conversation-centre";
 import { readDeliveryCode, statusFromDetail } from "@/lib/domain/email-delivery";
 import type { MessageState } from "@/lib/domain/message-state";
-
-function when(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
-}
+import { EmailMessage, EmailTimeline } from "@/components/email-message";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 function stateTone(state: MessageState): string {
   if (state === "bounced" || state === "blocked" || state === "failed") {
@@ -45,21 +35,6 @@ function stateTone(state: MessageState): string {
     return "bg-pursue/15 text-pursue";
   }
   return "bg-slate-200 text-slate-600";
-}
-
-/** Plain text out of a stored HTML body, so a thread reads like a thread. */
-function readable(body: string | null): string {
-  if (!body) return "";
-  return body
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 export function ConversationThreadPane({
@@ -99,12 +74,14 @@ export function ConversationThreadPane({
   const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState<null | "send" | "resolve" | "address">(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [address, setAddress] = useState(conversation.subcontractorEmail ?? "");
   const [correcting, setCorrecting] = useState(false);
 
   async function post(url: string, body: unknown, kind: "send" | "resolve" | "address") {
     setBusy(kind);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -118,7 +95,7 @@ export function ConversationThreadPane({
       }
       return true;
     } catch {
-      setError("Could not reach the server. Nothing was sent.");
+      setError(kind === "send" ? "Could not confirm whether this reply was sent. Your draft is still here. Check the conversation before trying again." : "Could not confirm the change. Refresh to check its status before trying again.");
       return false;
     } finally {
       setBusy(null);
@@ -144,6 +121,7 @@ export function ConversationThreadPane({
     );
     if (ok) {
       setText("");
+      setNotice("Reply sent. It will appear in this conversation.");
       router.refresh();
     }
   }
@@ -212,6 +190,7 @@ export function ConversationThreadPane({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <UnsavedGuard when={Boolean(text.trim())} message="Your reply has not been sent. Keep a copy before leaving. Leave without saving?" />
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10 sm:px-6">
         <Link href={backHref} className="tap text-xs text-slate-500 hover:text-accent lg:hidden">
           Back to conversations
@@ -301,31 +280,16 @@ export function ConversationThreadPane({
       </header>
 
       <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
-        {messages.map((m) => {
+        <EmailTimeline messages={messages.map((m, index) => {
           const mine = m.direction === "outbound";
-          const text = readable(m.body);
           return (
-            <article
+            <EmailMessage
               key={m.id}
-              className={`max-w-2xl rounded-lg border px-3 py-2 ${
-                mine
-                  ? "ml-auto border-gold/40 bg-gold/[0.06]"
-                  : "border-border/60 bg-surface"
-              }`}
+              body={m.body} direction={mine ? "outbound" : "inbound"}
+              contact={conversation.subcontractorName} recipient={m.recipient_email}
+              date={m.created_at} latest={index === messages.length - 1}
+              label={!mine ? "Received email" : m.state === "draft" ? "Unsent draft" : "Outgoing email"}
             >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-xs font-medium text-foreground">
-                  {mine ? "You" : conversation.subcontractorName}
-                </span>
-                <span className="text-[11px] text-slate-500">{when(m.created_at)}</span>
-              </div>
-              {text ? (
-                <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{text}</p>
-              ) : (
-                <p className="mt-1 text-sm italic text-slate-500">
-                  No body was stored for this message.
-                </p>
-              )}
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stateTone(m.state)}`}
@@ -337,9 +301,9 @@ export function ConversationThreadPane({
                   <DeliveryDetail detail={m.delivery_detail} canSeeRaw={canSeeRaw} />
                 )}
               </div>
-            </article>
+            </EmailMessage>
           );
-        })}
+        })} />
         {messages.length === 0 && (
           <p className="text-sm text-slate-500">
             This conversation has no messages stored. That is a bug rather than an
@@ -352,8 +316,8 @@ export function ConversationThreadPane({
         {canSend ? (
           conversation.subcontractorId ? (
             <>
-              <label className="sr-only" htmlFor="reply-body">
-                Your reply
+              <label className="mb-2 block text-sm font-semibold" htmlFor="reply-body">
+                Unsent reply to {conversation.subcontractorName}
               </label>
               <textarea
                 id="reply-body"
@@ -394,6 +358,7 @@ export function ConversationThreadPane({
             {error}
           </p>
         )}
+        {notice && <p role="status" className="mt-2 text-sm text-pursue">{notice}</p>}
       </div>
     </div>
   );
