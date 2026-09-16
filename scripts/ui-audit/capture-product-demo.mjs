@@ -73,7 +73,68 @@ try {
     await p.screenshot({path:`${out}/opportunity-tab-${index}.png`});
   }
   await capture('activity','/activity');
-  writeFileSync(`${out}/provenance.json`,JSON.stringify({sourceCommit:process.env.GITHUB_SHA,source:'Current application rendered with disposable sample records',recordedInteractions:false,externalActions:false,viewport:{width:1440,height:1000}},null,2));
+  // Record real navigation and disclosures in the application. These are not
+  // provider demonstrations: no message, AI request, payment or bid is sent.
+  const auth = await ctx.storageState();
+  const recordings = [];
+  for (const [format, viewport] of [['desktop', {width:1280,height:900}], ['mobile', {width:390,height:760}]]) {
+    async function record(slug, route, steps) {
+      const film = await browser.newContext({ storageState:auth, viewport,
+        deviceScaleFactor:1, reducedMotion:'reduce', colorScheme:'light',
+        recordVideo:{dir:`${out}/raw`,size:viewport} });
+      await film.route('**/*', request => new URL(request.request().url()).origin === base ? request.continue() : request.abort());
+      const createdAt = Date.now();
+      const page = await film.newPage();
+      const video = page.video();
+      const events = [];
+      try {
+        await page.goto(base+route,{waitUntil:'networkidle'});
+        await page.evaluate(()=>document.fonts.ready);
+        const start = (Date.now()-createdAt)/1000;
+        await page.waitForTimeout(1800);
+        for (const [description, action] of steps) {
+          await action(page);
+          events.push({description,seconds:(Date.now()-createdAt)/1000-start});
+          await page.waitForTimeout(2800);
+        }
+        await page.waitForTimeout(2500);
+        await page.screenshot({path:`${out}/${slug}-${format}-end.png`});
+        const duration = (Date.now()-createdAt)/1000-start;
+        await film.close();
+        await video.saveAs(`${out}/${slug}-${format}.webm`);
+        recordings.push({slug,format,viewport,start,duration,events,file:`${slug}-${format}.webm`});
+      } finally { await film.close(); }
+    }
+    await record('hero-preview','/today',[
+      ['Open the complete task views',page=>page.getByText('All task views and controls',{exact:true}).click()],
+      ['Return to the focused day',page=>page.getByText('All task views and controls',{exact:true}).click()],
+    ]);
+    await record('pipeline','/pipeline',[
+      ['Switch to the list',page=>page.getByRole('link',{name:'List',exact:true}).click()],
+      ['Open the sample opportunity',page=>page.getByRole('link',{name:'Federal campus electrical upgrades',exact:true}).first().click()],
+    ]);
+    await record('review',`/opportunity/${ids.opportunity}`, [
+      ['Inspect the requirement context',page=>page.getByRole('tab',{name:'Requirements',exact:true}).click()],
+      ['Return to the opportunity overview',page=>page.getByRole('tab',{name:'Overview',exact:true}).click()],
+    ]);
+    await record('subs',`/subs/${ids.sub}`, [
+      ['Inspect connected opportunities',page=>page.getByRole('tab',{name:'Opportunities',exact:true}).click()],
+      ['Inspect recorded quotes',page=>page.getByRole('tab',{name:'Quotes',exact:true}).click()],
+    ]);
+    await record('communications','/communications?c=clarity-audit-thread', [
+      ['Inspect earlier messages',page=>page.getByText('Earlier messages (1)',{exact:true}).click()],
+      ['Focus the latest conversation',page=>page.getByText('Earlier messages (1)',{exact:true}).click()],
+    ]);
+    await record('opportunity',`/opportunity/${ids.opportunity}`, [
+      ['Inspect the supporting subcontractor quote',page=>page.getByRole('tab',{name:'Subcontractors',exact:true}).click()],
+      ['Review the pricing workspace',page=>page.getByRole('tab',{name:'Pricing',exact:true}).click()],
+    ]);
+    await record('activity','/activity', [
+      ['Expand a recorded event',page=>page.locator('details > summary').filter({has:page.locator('h3')}).first().click()],
+      ['Inspect available history filters',page=>page.getByText('More filters',{exact:true}).click()],
+    ]);
+  }
+  writeFileSync(`${out}/provenance.json`,JSON.stringify({sourceCommit:process.env.GITHUB_SHA,source:'Current application recorded with disposable sample records',recordedInteractions:true,externalActions:false,recordings},null,2));
 } finally {
   await browser.close();
   await db.end();
