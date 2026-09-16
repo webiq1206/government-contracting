@@ -1,6 +1,54 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 
+/** Each homepage chapter has its own original recording and responsive player. */
+export async function auditHomepageVideos(page, {device,width,out}) {
+  const format=width<=640?'mobile':'desktop';
+  const videos=page.locator('video[data-product-video]');
+  assert.equal(await videos.count(),8,'All eight product tours are available on the homepage');
+  const premature=await page.evaluate(()=>performance.getEntriesByType('resource').filter(entry=>/\/demos\/[^?]+\.mp4/.test(entry.name)).map(entry=>entry.name));
+  assert.deepEqual(premature,[],'Product video bytes must not load before Play');
+  const quick=page.locator('#quick-preview');
+  if(await quick.evaluate(el=>el.open)) await quick.locator('summary').click();
+  let previous;
+  for(const [section,slug] of [['platform','pipeline'],['platform','review'],['ai','subs'],['ai','communications'],['bid-review','opportunity'],['bid-review','activity']]) {
+    const card=page.locator(`#${section} [data-feature-video="${slug}"]`);
+    const video=card.locator('video');
+    assert.equal(await video.getAttribute('data-format'),format);
+    assert.equal(await video.getAttribute('preload'),'none');
+    assert.equal(await video.getAttribute('autoplay'),null);
+    assert((await video.locator('source').getAttribute('src')).includes(`/demos/${slug}${format==='mobile'?'-mobile':''}.mp4?`));
+    await video.scrollIntoViewIfNeeded();
+    await video.evaluate(async el=>{el.textTracks[0].mode='showing';await el.play();});
+    await page.waitForFunction(slug=>{
+      const el=document.querySelector(`[data-feature-video="${slug}"] video`);
+      return el&&el.videoWidth>0&&el.currentTime>.2&&el.textTracks[0].cues?.length>0;
+    },slug);
+    assert(await video.evaluate(el=>Math.abs(el.duration-20)<.2),'Complete 20-second feature tour');
+    if(previous) assert(await previous.evaluate(el=>el.paused),'Only one product tour plays at a time');
+    await video.evaluate(el=>{el.currentTime=7;});
+    await page.waitForFunction(slug=>!document.querySelector(`[data-feature-video="${slug}"] video`).seeking,slug);
+    await card.screenshot({path:join(out,`${device}-homepage-feature-${slug}.png`)});
+    assert.equal(await card.locator('figcaption a').getAttribute('href'),`/demos/${slug}.txt`);
+    previous=video;
+  }
+  await quick.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  assert(await quick.evaluate(el=>el.open),'Preview opens with the keyboard');
+  const preview=quick.locator('video');
+  await preview.scrollIntoViewIfNeeded();
+  await preview.evaluate(async el=>{await el.play();});
+  await page.waitForFunction(()=>document.querySelector('#quick-preview video').currentTime>.2);
+  assert.equal(await preview.getAttribute('data-format'),format);
+  assert(await preview.evaluate(el=>Math.abs(el.duration-16)<.2));
+  await quick.screenshot({path:join(out,`${device}-homepage-feature-quick-preview.png`)});
+  await quick.locator('summary').click();
+  await page.waitForFunction(()=>document.querySelector('#quick-preview video').paused);
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('video[data-product-video]')).every(video=>video.paused));
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+}
+
 /** Public native-media checks. No account, provider or third-party request. */
 export async function auditProductVideos(page, {device,width,out}) {
   const videos=page.locator('video[data-product-video]');

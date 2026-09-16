@@ -1101,6 +1101,37 @@
 .bco-main-video > .bco-caption {
   padding: 18px 24px;
 }
+/* Short tours sit beside the feature they explain. Video bytes load on play. */
+.bco-feature-intro { margin-top: 56px; max-width: 760px; }
+.bco-feature-intro > p:last-child { margin-top: 12px; font-size: 13px; color: #52696b; }
+.bco-feature-video-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 32px; }
+.bco-feature-video-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid #d9e2e2; border-radius: 16px; background: #fff; scroll-margin-top: 104px; }
+.bco-feature-video-copy { padding: 28px; }
+.bco-feature-video-copy .bco-kicker { font-size: 11px; margin-bottom: 12px; }
+.bco-feature-video-copy h3 { font-size: clamp(21px, 2.1vw, 27px); line-height: 1.25; margin-bottom: 14px; }
+.bco-feature-video-copy > p:last-child { font-size: 14px; line-height: 1.7; color: #52696b; }
+.bco-feature-video-card figure { margin: auto 0 0; }
+.bco-feature-video-media { padding: 12px; background: #eef3f2; }
+.bco-feature-video-media .bco-product-video { border-radius: 8px; overflow: hidden; }
+.bco-feature-video-card figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 20px; font-size: 12px; color: #52696b; }
+.bco-feature-video-card figcaption a, .bco-quick-preview figcaption a { color: #0e6f75; text-decoration: underline; text-underline-offset: 3px; }
+.bco-feature-video-card figcaption a { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
+.bco-quick-preview { margin: 24px 0 32px; }
+.bco-quick-preview summary { display: inline-flex; align-items: center; gap: 12px; min-height: 48px; padding: 12px 18px; border: 1px solid #b9ceca; border-radius: 12px; background: #edf5f2; color: #173d41; font-size: 14px; font-weight: 600; cursor: pointer; list-style: none; }
+.bco-quick-preview summary::-webkit-details-marker { display: none; }
+.bco-quick-preview[open] summary > span:last-child { transform: rotate(45deg); }
+.bco-quick-preview summary:focus-visible { outline: 3px solid #0e6f75; outline-offset: 4px; }
+.bco-quick-preview figure { max-width: 760px; margin: 20px 0 0; padding: 12px; background: #eef3f2; border: 1px solid #d9e2e2; border-radius: 14px; }
+.bco-quick-preview figcaption { padding: 14px 6px 4px; font-size: 12px; line-height: 1.7; color: #52696b; }
+@media (max-width: 680px) {
+  .bco-feature-video-grid { grid-template-columns: 1fr; gap: 24px; }
+  .bco-feature-video-copy { padding: 24px; }
+  .bco-feature-intro { margin-top: 40px; }
+}
+@media (max-width: 640px) {
+  .bco-feature-video-media .bco-product-video, .bco-quick-preview .bco-product-video { max-width: 252px; margin-inline: auto; }
+  .bco-quick-preview summary { width: 100%; justify-content: center; padding-inline: 12px; font-size: 13px; }
+}
 .bco-video-error {
   padding: 20px;
   background: #fff1df;

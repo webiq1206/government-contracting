@@ -17,6 +17,23 @@ const props = {
 const html = renderToStaticMarkup(<LandingPage {...props} />);
 const { document } = parseHTML(html);
 describe("public visitor journey", () => {
+  it("places every feature tour beside its relevant homepage content", () => {
+    const groups = { platform: ["pipeline", "review"], ai: ["subs", "communications"], "bid-review": ["opportunity", "activity"] };
+    for (const [section, slugs] of Object.entries(groups)) {
+      for (const slug of slugs) {
+        const card = document.querySelector(`#${section} [data-feature-video="${slug}"]`)!;
+        expect(card, `${slug} belongs in ${section}`).not.toBeNull();
+        expect(card.querySelector(`source[src^="/demos/${slug}.mp4"]`)).not.toBeNull();
+        expect(card.querySelector('video[controls][preload="none"]')).not.toBeNull();
+        expect(card.querySelector(`a[href="/demos/${slug}.txt"]`)).not.toBeNull();
+      }
+    }
+    expect(document.querySelectorAll('[data-feature-video]')).toHaveLength(6);
+    expect(document.querySelectorAll('video[data-product-video]')).toHaveLength(8);
+    expect(document.querySelector('#quick-preview[open]')).toBeNull();
+    expect(document.querySelector('#quick-preview source[src^="/demos/hero-preview.mp4"]')).not.toBeNull();
+    expect(document.querySelector('#proof source[src^="/demos/platform-walkthrough.mp4"]')).not.toBeNull();
+  });
   it("has a destination for every advertised homepage section", () => {
     for (const section of HOME_SECTIONS)
       expect(document.querySelector(section.hash), section.hash).not.toBeNull();
