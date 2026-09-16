@@ -103,11 +103,17 @@ try {
         await film.close();
         await video.saveAs(`${out}/${slug}-${format}.webm`);
         recordings.push({slug,format,viewport,start,duration,events,file:`${slug}-${format}.webm`});
-      } finally { await film.close(); }
+      } catch(error) {
+        await page.screenshot({path:`${out}/${slug}-${format}-failure.png`});
+        throw error;
+      } finally {
+        await film.close();
+        writeFileSync(`${out}/provenance.json`,JSON.stringify({sourceCommit:process.env.GITHUB_SHA,source:'Current application recorded with disposable sample records',recordedInteractions:true,externalActions:false,recordings},null,2));
+      }
     }
     await record('hero-preview','/today',[
-      ['Open the complete task views',page=>page.getByText('All task views and controls',{exact:true}).click()],
-      ['Return to the focused day',page=>page.getByText('All task views and controls',{exact:true}).click()],
+      ['Open the complete task views',page=>page.locator('[data-today-details] > summary').click()],
+      ['Return to the focused day',page=>page.locator('[data-today-details] > summary').click()],
     ]);
     await record('pipeline','/pipeline',[
       ['Switch to the list',page=>page.getByRole('link',{name:'List',exact:true}).click()],
