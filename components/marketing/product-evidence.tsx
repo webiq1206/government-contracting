@@ -11,16 +11,15 @@ export function ProductEvidence({ signupHref }: { signupHref: string }) {
         <div id="walkthrough" className="bco-evidence-intro">
           <StickyColumn>
             <p className="bco-kicker">See the product. Check the work.</p>
-            <h2 id="bco-evidence-title">Confidence comes from seeing the work.</h2>
+            <h2 id="bco-evidence-title">See the whole workflow.</h2>
             <p className="bco-evidence-copy">
-              Look inside the workspace before you create an account. Follow
-              the opportunity, the conversations, and the bid preparation in
-              one place.
+              From finding a match to reviewing the bid, follow the work
+              through BrostCo in two minutes and fifteen seconds.
             </p>
             <Link href="/demo" className="bco-text-link">Explore the full product tour ↗</Link>
           </StickyColumn>
           <figure className="bco-evidence-film">
-            <div className="bco-evidence-film-label"><span>Inside BrostCo</span><span>Narrated product tour</span></div>
+            <div className="bco-evidence-film-label"><span>Inside BrostCo</span><span>2 min 15 sec · Narrated tour</span></div>
             <ProductVideo slug="platform-walkthrough" poster="/demos/platform-walkthrough-desktop.jpg" title="BrostCo recorded product tour with sample records" />
             <figcaption>
               Recorded navigation in the redesigned workspace with sample records.
@@ -33,19 +32,19 @@ export function ProductEvidence({ signupHref }: { signupHref: string }) {
           <article>
             <ProductIcon kind="source" />
             <h3>See the source</h3>
-            <p>Check original documents alongside the AI-prepared brief. Important decisions should never depend on a summary alone.</p>
+            <p>Open the original documents beside the AI-prepared brief.</p>
             <Link href="/ai" className="bco-text-link">How AI prepares the work ↗</Link>
           </article>
           <article>
             <ProductIcon kind="clock" />
             <h3>Follow the history</h3>
-            <p>Trace sent messages, received replies, quotes, and blocked actions. See what happened and why the next step needs you.</p>
+            <p>Trace messages, replies, quotes, and the actions that need you.</p>
             <Link href="/demo#recordings" className="bco-text-link">Explore activity and conversations ↗</Link>
           </article>
           <article>
             <ProductIcon kind="shield" />
             <h3>Keep the final say</h3>
-            <p>Your rules guide automation. Your team confirms pricing, reviews contract terms, signs, and submits.</p>
+            <p>You set the rules, confirm pricing and terms, sign, and submit.</p>
             <Link href="/security" className="bco-text-link">Security and data practices ↗</Link>
           </article>
         </div>

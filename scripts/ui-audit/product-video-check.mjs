@@ -10,9 +10,16 @@ export async function auditHomepageVideos(page, {device,width,out}) {
   assert.deepEqual(premature,[],'Product video bytes must not load before Play');
   const quick=page.locator('#quick-preview');
   if(await quick.evaluate(el=>el.open)) await quick.locator('summary').click();
+  const explorer=page.locator('#interactive-workflow');
+  if(await explorer.evaluate(el=>el.open)) await explorer.locator('summary').click();
+  assert.equal(await page.locator('[data-feature-video]:visible').count(),3,'Only one tour per chapter occupies the page');
   let previous;
   for(const [section,slug] of [['platform','pipeline'],['platform','review'],['ai','subs'],['ai','communications'],['bid-review','opportunity'],['bid-review','activity']]) {
     const card=page.locator(`#${section} [data-feature-video="${slug}"]`);
+    const chapter=card.locator('..').locator('..');
+    await page.locator(`#tour-tab-${slug}`).click();
+    await card.waitFor({state:'visible'});
+    assert.equal(await chapter.locator('[data-feature-video]:visible').count(),1);
     const video=card.locator('video');
     assert.equal(await video.getAttribute('data-format'),format);
     assert.equal(await video.getAttribute('preload'),'none');
@@ -28,10 +35,35 @@ export async function auditHomepageVideos(page, {device,width,out}) {
     if(previous) assert(await previous.evaluate(el=>el.paused),'Only one product tour plays at a time');
     await video.evaluate(el=>{el.currentTime=7;});
     await page.waitForFunction(slug=>!document.querySelector(`[data-feature-video="${slug}"] video`).seeking,slug);
-    await card.screenshot({path:join(out,`${device}-homepage-feature-${slug}.png`)});
+    await chapter.screenshot({path:join(out,`${device}-homepage-feature-${slug}.png`),animations:'disabled'});
     assert.equal(await card.locator('figcaption a').getAttribute('href'),`/demos/${slug}.txt`);
     previous=video;
   }
+  // Switching by keyboard preserves focus, stops the hidden tour, and does not autoplay.
+  const lastTab=page.locator('#tour-tab-activity');
+  await lastTab.focus();
+  await page.keyboard.press('Home');
+  assert.equal(await page.locator('#tour-tab-opportunity').getAttribute('aria-selected'),'true');
+  assert(await page.locator('#tour-tab-opportunity').evaluate(el=>el===document.activeElement));
+  assert(await page.locator('#tour-activity video').evaluate(el=>el.paused));
+  assert(await page.locator('#tour-opportunity video').evaluate(el=>el.paused));
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await lastTab.getAttribute('aria-selected'),'true');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#tour-tab-opportunity').getAttribute('aria-selected'),'true');
+  for(const slug of ['pipeline','subs']) await page.locator(`#tour-tab-${slug}`).click();
+  for(const size of (device==='mobile'?[{width:320,height:640},{width:844,height:390}]:[])) {
+    await page.setViewportSize(size);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false,'Narrow and landscape chapters fit');
+    const tab=page.locator('#tour-tab-review');
+    await tab.click();
+    assert(await page.locator('#tour-review').isVisible());
+    const box=await tab.boundingBox();
+    assert(box.width>=44&&box.height>=44,'Tour selectors have touch-sized targets');
+    await page.locator('[data-chapter="discover"]').screenshot({path:join(out,`${device}-homepage-refined-${size.width}.png`),animations:'disabled'});
+  }
+  await page.setViewportSize({width,height:device==='mobile'?844:device==='tablet'?1180:1000});
+  await page.locator('#tour-tab-pipeline').click();
   await quick.locator('summary').focus();
   await page.keyboard.press('Enter');
   assert(await quick.evaluate(el=>el.open),'Preview opens with the keyboard');
@@ -44,6 +76,17 @@ export async function auditHomepageVideos(page, {device,width,out}) {
   await quick.screenshot({path:join(out,`${device}-homepage-feature-quick-preview.png`)});
   await quick.locator('summary').click();
   await page.waitForFunction(()=>document.querySelector('#quick-preview video').paused);
+  await explorer.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  assert(await explorer.locator('.bco-workflow-demo').isVisible(),'Interactive workflow remains accessible');
+  await explorer.locator('summary').click();
+  assert(await page.locator('.bco-price-card > .bco-price').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=40),'Price has clear visual prominence');
+  for(const heading of await page.locator('.bco-footer h2').all()) {
+    assert(await heading.evaluate(el=>parseFloat(getComputedStyle(el).fontSize)<=16),'Footer labels retain their compact hierarchy');
+  }
+  for(const selector of ['#workflow','#proof','#pricing','.bco-final-cta','.bco-footer']) {
+    await page.locator(selector).screenshot({path:join(out,`${device}-homepage-refined-${selector.replace(/[.#]/g,'')}.png`),animations:'disabled'});
+  }
   await page.evaluate(()=>window.scrollTo(0,0));
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('video[data-product-video]')).every(video=>video.paused));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);

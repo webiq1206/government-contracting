@@ -18,18 +18,21 @@ export function ProductVideo({ slug, poster, title, className = "" }: {
   useEffect(() => {
     const element = video.current;
     if (!element) return;
-    const onVisibility = () => { if (document.hidden) element.pause(); };
+    // Leave untouched players idle. Calling pause() on an empty media element
+    // can start resource selection and show a loading state before Play.
+    const pause = () => { if (!element.paused) element.pause(); };
+    const onVisibility = () => { if (document.hidden) pause(); };
     const onOtherPlayback = (event: Event) => {
-      if ((event as CustomEvent).detail !== element) element.pause();
+      if ((event as CustomEvent).detail !== element) pause();
     };
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) element.pause();
+      if (!entry.isIntersecting) pause();
     });
     observer.observe(element);
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("brostco:product-play", onOtherPlayback);
     return () => {
-      element.pause();
+      pause();
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("brostco:product-play", onOtherPlayback);
