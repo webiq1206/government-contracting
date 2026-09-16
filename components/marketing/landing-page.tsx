@@ -11,6 +11,7 @@ import { HOME_FAQ, USAGE_COPY } from "./site-content";
 import { IndustrySlider } from "./industry-slider";
 import { ProductEvidence } from "./product-evidence";
 import { HeroBackgroundVideo } from "./hero-background-video";
+import { IndustryRibbon } from "./industry-ribbon";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 
 export interface LandingPageProps {
@@ -36,13 +37,13 @@ export function LandingPage({
         <div className="bco-container bco-hero-center-content">
           <p className="bco-kicker">AI Government Procurement Platform</p>
           <h1>
-            Find government contracts.
+            AI finds government contracts{" "}
             <br />
-            <span>Let AI prepare the bid.</span>
+            <span>and prepares your bids.</span>
           </h1>
           <p className="bco-lead">
-            BrostCo finds matching work, contacts subcontractors, and drafts
-            your bids. You handle calls, decisions, and final review.
+            From opportunity scoring to optional subcontractor outreach, quote
+            capture, and bid assembly. Your rules. Your calls and final review.
           </p>
           <div className="bco-actions">
             <Link href={signupHref} className="bco-button">
@@ -57,14 +58,7 @@ export function LandingPage({
           </Link>
         </div>
       </section>
-      <div className="bco-value-strip" aria-label="How BrostCo fits your work">
-        <div className="bco-container">
-          <p>For small and mid-size government contractors</p>
-          <span>Your rules</span>
-          <span>Your connected inbox</span>
-          <span>Your final approval</span>
-        </div>
-      </div>
+      <IndustryRibbon />
       <section id="platform" className="bco-container bco-section">
         <div className="bco-heading-row">
           <SectionHeading
@@ -141,41 +135,50 @@ export function LandingPage({
       <section id="workflow" className="bco-container bco-section bco-split">
         <SectionHeading
           sticky
-          eyebrow="A clear path to your first opportunity"
-          title="Set it up. Put it to work. Stay in control."
+          eyebrow="Make your first week count"
+          title="From setup to work ready for review."
         >
-          BrostCo works around your pursuit rules, connected services, and human
-          review.
+          A practical plan for your seven-day trial. Start with discovery, then
+          enable the automation you want. Progress depends on your setup,
+          available opportunities, and subcontractor replies.
         </SectionHeading>
         <ol className="bco-steps">
           <li>
             <span>01</span>
             <div>
-              <h3>Set the direction</h3>
+              <p className="bco-kicker">Day 1 / Set your direction</p>
+              <h3>Give AI the context to find your work.</h3>
               <p>
-                Add your services, service area, qualifications, and target
-                work. Connect the services your workflow needs.
+                Add your services, locations, qualifications, and pursuit rules.
+                Connect discovery so AI can find and score matching contracts.
               </p>
+              <p className="bco-week-outcome"><strong>Your checkpoint:</strong> A company profile and matching criteria you can inspect.</p>
             </div>
           </li>
           <li>
             <span>02</span>
             <div>
-              <h3>Let AI run the routine work</h3>
+              <p className="bco-kicker">Days 2 to 3 / Put it to work</p>
+              <h3>Move from a posting to a clear plan.</h3>
               <p>
-                BrostCo finds matches, analyzes documents, sends outreach,
-                follows up, and drafts bid work under your rules.
+                Review a match and its requirement brief. If you want help
+                sourcing quotes, connect your inbox and enable subcontractor
+                outreach and follow-ups under your rules.
               </p>
+              <p className="bco-week-outcome"><strong>Your checkpoint:</strong> Requirements organized, with optional outreach configured.</p>
             </div>
           </li>
           <li>
             <span>03</span>
             <div>
-              <h3>Review what needs you</h3>
+              <p className="bco-kicker">Days 4 to 7 / Review the work</p>
+              <h3>See what AI handled. Decide what comes next.</h3>
               <p>
-                Open Today for calls, exceptions, and final reviews. Confirm
-                pricing and contract terms, sign, and submit.
+                Inspect captured replies and pricing. When required inputs are
+                available, review the assembled draft and requirement checks.
+                Today separates completed work from calls and decisions that need you.
               </p>
+              <p className="bco-week-outcome"><strong>Your checkpoint:</strong> A clear view of progress, missing inputs, and your next action.</p>
               <Link href="/get-started" className="bco-text-link">
                 See the setup checklist ↗
               </Link>

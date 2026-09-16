@@ -8,7 +8,8 @@ export function HeroBackgroundVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [allowed, setAllowed] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -19,7 +20,11 @@ export function HeroBackgroundVideo() {
     const connection = (
       navigator as Navigator & { connection?: { saveData?: boolean } }
     ).connection;
-    const sync = () => setAllowed(!media.matches && !connection?.saveData);
+    const sync = () => {
+      const enabled = !media.matches && !connection?.saveData;
+      setAllowed(enabled);
+      if (!enabled) setPlaying(false);
+    };
     sync();
     media.addEventListener("change", sync);
     const observer = new IntersectionObserver(([entry]) =>
@@ -30,6 +35,7 @@ export function HeroBackgroundVideo() {
     onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      if (stopTimer.current) clearTimeout(stopTimer.current);
       media.removeEventListener("change", sync);
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
@@ -39,7 +45,7 @@ export function HeroBackgroundVideo() {
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
-    if (!allowed || paused || failed || !visible || !pageVisible) {
+    if (!allowed || finished || failed || !visible || !pageVisible) {
       video.pause();
       return;
     }
@@ -54,7 +60,7 @@ export function HeroBackgroundVideo() {
       active = false;
       video.pause();
     };
-  }, [allowed, paused, failed, visible, pageVisible]);
+  }, [allowed, finished, failed, visible, pageVisible]);
 
   return (
     <>
@@ -66,17 +72,25 @@ export function HeroBackgroundVideo() {
           priority
           sizes="100vw"
         />
-        {allowed && !failed && (
+        {allowed && !failed && !(finished && !playing) && (
           <video
             ref={ref}
             className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
             muted
-            loop
             playsInline
             preload="none"
             tabIndex={-1}
             aria-hidden="true"
-            onPlaying={() => setPlaying(true)}
+            onPlaying={() => {
+              setPlaying(true);
+              // A brief decorative introduction, not perpetual unpausable motion.
+              // Keep the final frame visible rather than flashing back to a poster.
+              if (!stopTimer.current) stopTimer.current = setTimeout(() => setFinished(true), 4000);
+            }}
+            onTimeUpdate={(event) => {
+              if (event.currentTarget.currentTime >= 4) setFinished(true);
+            }}
+            onEnded={() => setFinished(true)}
             onError={() => {
               setFailed(true);
               setPlaying(false);
@@ -86,19 +100,6 @@ export function HeroBackgroundVideo() {
           </video>
         )}
       </div>
-      {allowed && !failed && (
-        <button
-          className="bco-hero-motion-toggle"
-          type="button"
-          aria-label={
-            paused ? "Play background video" : "Pause background video"
-          }
-          onClick={() => setPaused(!paused)}
-        >
-          <span aria-hidden="true">{paused ? "▷" : "Ⅱ"}</span>
-          {paused ? "Play video" : "Pause video"}
-        </button>
-      )}
     </>
   );
 }

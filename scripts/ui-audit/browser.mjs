@@ -1,4 +1,5 @@
 import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
+import { auditMarketingExploration } from "./marketing-exploration.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -161,17 +162,18 @@ try {
         record.marketingQuality='Above-fold trial, AA button contrast, product provenance, and mobile navigation checked';
         const film=p.locator('.bco-hero-background-film');
         if(await film.count()) {
-          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent and inline');
-          await p.getByRole('button',{name:'Pause background video',exact:true}).click();
-          assert(await film.evaluate(el=>el.paused),'Background film pauses on request');
-          await p.getByRole('button',{name:'Play background video',exact:true}).click();
+          assert(await film.evaluate(el=>el.muted&&!el.loop&&el.playsInline),'Background film is silent, inline, and does not loop');
+          await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused, null, {timeout:6000});
         }
+        assert.equal(await p.locator('.bco-hero-motion-toggle').count(),0,'No standalone hero pause control');
         await p.emulateMedia({reducedMotion:'reduce'});
         await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));
         assert(await p.locator('.bco-hero-backdrop img').isVisible(),'Reduced motion keeps the still frame');
         await p.emulateMedia({reducedMotion:'no-preference'});
 
         record.stickyCopy='Desktop pinning, section boundary, short viewport release, and small-screen normal flow checked';
+        await auditMarketingExploration(p, { device, width, height, out });
+        record.exploration='Source lightbox focus/escape, sticky step selection and boundaries, narrow/landscape widths, contextual CTA, ribbon motion, and first-week journey checked';
 
       }
       record.tabs=[];

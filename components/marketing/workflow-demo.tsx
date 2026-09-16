@@ -2,11 +2,10 @@
 import { useId, useRef, useState } from "react";
 import { StickyColumn } from "./sticky-column";
 import { WORKFLOW_STAGES } from "./site-content";
+import { DetailDialog } from "./detail-dialog";
 
 /** A simplified, illustrative workflow. No account data or external actions. */
 export function OpportunityPreview({ stage = 3 }: { stage?: number }) {
-  const [sourceOpen, setSourceOpen] = useState(false);
-  const sourceId = useId();
   const [reviewed, setReviewed] = useState(false);
   const current = Math.max(0, Math.min(WORKFLOW_STAGES.length - 1, stage));
   const item = WORKFLOW_STAGES[current];
@@ -233,30 +232,28 @@ export function OpportunityPreview({ stage = 3 }: { stage?: number }) {
             <p>{item.evidence}</p>
           </div>
         </div>
-        <button
-          type="button"
-          className="bco-demo-action"
-          aria-expanded={sourceOpen}
-          aria-controls={sourceId}
-          onClick={() => setSourceOpen(!sourceOpen)}
-        >
-          {sourceOpen ? "Close sample source" : "Open sample source"}
-          <span aria-hidden="true">↗</span>
-        </button>
-        {sourceOpen && (
-          <div id={sourceId} className="bco-demo-source">
+        <DetailDialog label="Open sample source" title="From the source to the next step">
+          <div className="bco-detail-source">
             <p className="bco-overline">Illustrative source / Scope excerpt</p>
             <blockquote>
               “Provide scheduled HVAC, electrical, and grounds maintenance.
               Include a separate price for each service. Responses are due
               October 15.”
             </blockquote>
+            <h3>What AI extracts</h3>
+            <ul className="bco-check-list">
+              <li>Three service areas: HVAC, electrical, and grounds</li>
+              <li>A separate price required for each service</li>
+              <li>An October 15 response deadline</li>
+            </ul>
+            <h3>What you verify</h3>
+            <p>Check the full solicitation and amendments, confirm pricing and qualifications, and resolve anything unclear before submission.</p>
             <p>
               This example explains the workflow. It is not an actual
               solicitation or a live AI result.
             </p>
           </div>
-        )}
+        </DetailDialog>
       </div>
     </div>
   );
@@ -268,10 +265,30 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
   );
   const id = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tablist = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  function selectStage(next: number) {
+    setSelected(next);
+    tabs.current[next]?.focus({ preventScroll: true });
+    // When changing a step halfway down its preview, bring the new explanation
+    // below the pinned controls, rather than leaving the reader in its middle.
+    if (window.matchMedia?.("(max-width: 950px)").matches && panel.current && tablist.current) {
+      const controls = tablist.current;
+      const content = panel.current;
+      requestAnimationFrame(() => {
+        const top = Number.parseFloat(getComputedStyle(controls).top) || 0;
+        const target = top + controls.getBoundingClientRect().height + 16;
+        if (content.getBoundingClientRect().top < target) {
+          window.scrollBy({ top: content.getBoundingClientRect().top - target, behavior: "instant" });
+        }
+      });
+    }
+  }
   const item = WORKFLOW_STAGES[selected];
   return (
     <div className="bco-workflow-demo">
       <div
+        ref={tablist}
         className="bco-demo-tabs"
         role="tablist"
         aria-label="Explore the opportunity workflow"
@@ -286,8 +303,7 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
           else if (event.key === "End") next = WORKFLOW_STAGES.length - 1;
           else return;
           event.preventDefault();
-          setSelected(next);
-          tabs.current[next]?.focus();
+          selectStage(next);
         }}
       >
         {WORKFLOW_STAGES.map((stage, i) => (
@@ -302,14 +318,16 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
             aria-selected={selected === i}
             aria-controls={`${id}-panel`}
             tabIndex={selected === i ? 0 : -1}
-            onClick={() => setSelected(i)}
+            onClick={() => selectStage(i)}
           >
             <span>{i + 1}</span>
-            {stage.label}
+            <span className="bco-step-label-full">{stage.label}</span>
+            <span className="bco-step-label-short" aria-hidden="true">{["Find", "Read", "Contact", "Prepare", "Track"][i]}</span>
           </button>
         ))}
       </div>
       <div
+        ref={panel}
         role="tabpanel"
         tabIndex={0}
         id={`${id}-panel`}
@@ -340,13 +358,15 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
           connected services and rules. See guided product walkthroughs in the{" "}
           <a href="/demo#recordings">product tour</a>.
         </p>
+        <div className="bco-step-paging" aria-label="Workflow step navigation">
+        <button type="button" className="bco-text-link" disabled={selected === 0}
+          onClick={() => selectStage(selected - 1)}><span aria-hidden="true">←</span> Previous step</button>
         <button
           type="button"
           className="bco-text-link"
           onClick={() => {
             const next = (selected + 1) % WORKFLOW_STAGES.length;
-            setSelected(next);
-            tabs.current[next]?.focus();
+            selectStage(next);
           }}
         >
           {selected === WORKFLOW_STAGES.length - 1
@@ -354,6 +374,7 @@ export function WorkflowDemo({ initialStage = 0 }: { initialStage?: number }) {
             : "See the next step"}{" "}
           <span aria-hidden="true">→</span>
         </button>
+        </div>
       </div>
     </div>
   );

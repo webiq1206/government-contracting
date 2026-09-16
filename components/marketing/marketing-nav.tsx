@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
 import { MarketingMobileMenu } from "./mobile-menu";
 import { MARKETING_LINKS } from "./site-content";
+import { NavTrialLink } from "./nav-trial-link";
 import "./site.css";
 
 export function MarketingNav({
@@ -35,9 +36,7 @@ export function MarketingNav({
           <Link href={loginHref} className="bco-login">
             Log in
           </Link>
-          <Link href={signupHref} className="bco-button">
-            Start free trial
-          </Link>
+          <NavTrialLink href={signupHref} />
           <div className="bco-mobile-trigger">
             <MarketingMobileMenu
               signupHref={signupHref}

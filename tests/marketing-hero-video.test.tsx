@@ -46,28 +46,27 @@ afterEach(async () => {
   await act(async () => root.unmount());
   vi.unstubAllGlobals();
 });
-async function click(label: string) {
-  await act(async () => {
-    container
-      .querySelector(`[aria-label="${label}"]`)!
-      .dispatchEvent(new window.Event("click", { bubbles: true }));
-  });
-}
 describe("hero background film", () => {
-  it("plays the supplied muted loop and offers pause and resume", async () => {
+  it("plays a brief introduction, then holds a still frame without a pause control", async () => {
     await act(async () => root.render(<HeroBackgroundVideo />));
     expect(container.querySelector("source")?.getAttribute("src")).toBe(
       "/marketing/hero-background.mp4",
     );
     expect(play).toHaveBeenCalledTimes(1);
-    await click("Pause background video");
-    expect(pause).toHaveBeenCalled();
-    await click("Play background video");
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("video")?.hasAttribute("loop")).toBe(false);
+    expect(container.querySelector("button")).toBeNull();
     await act(async () => observe([{ isIntersecting: false }]));
     const count = play.mock.calls.length;
     await act(async () => observe([{ isIntersecting: true }]));
     expect(play).toHaveBeenCalledTimes(count + 1);
+    const video = container.querySelector("video")!;
+    Object.defineProperty(video, "currentTime", { value: 4 });
+    await act(async () => video.dispatchEvent(new window.Event("timeupdate")));
+    expect(pause).toHaveBeenCalled();
+    const stoppedCount = play.mock.calls.length;
+    await act(async () => observe([{ isIntersecting: false }]));
+    await act(async () => observe([{ isIntersecting: true }]));
+    expect(play).toHaveBeenCalledTimes(stoppedCount);
   });
   it("does not request video for reduced motion", async () => {
     reduced = true;
