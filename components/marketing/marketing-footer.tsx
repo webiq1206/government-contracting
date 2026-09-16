@@ -55,7 +55,7 @@ export function MarketingFooter({
           </div>
           {columns.map((column) => (
             <nav key={column.title} aria-label={column.title}>
-              <h2>{column.title}</h2>
+              <h2 className="bco-footer-heading">{column.title}</h2>
               {column.links.map(([href, label]) => (
                 <Link key={href} href={href}>
                   {label}
