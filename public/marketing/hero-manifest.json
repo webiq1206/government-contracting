@@ -1,0 +1,51 @@
+{
+  "project": "BrostCo",
+  "source": {
+    "file": "AI-Government-Procurement-Hero-30s.mp4",
+    "sha256": "42c4ef63c94c42bad5b8e274f82660b33237d16081dc7d314eb4e2001e3c5e16",
+    "durationSeconds": 30,
+    "description": "Previously generated illustrative montage, recovered from the saved September 13 film. No new generation credits used."
+  },
+  "chapters": [
+    "AI computing",
+    "Government",
+    "Infrastructure",
+    "Logistics",
+    "Manufacturing",
+    "Aerospace"
+  ],
+  "mobileFocalPoints": [
+    0.5,
+    0.28,
+    0.5,
+    0.5,
+    0.4,
+    0.73
+  ],
+  "assets": {
+    "desktop": {
+      "file": "hero-background.mp4",
+      "sha256": "e1932b8dcfa8296448a2674061f1b4add362f6df14feb69cf2fb237162030a72",
+      "bytes": 4502437,
+      "durationSeconds": 30,
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "audio": false
+    },
+    "mobile": {
+      "file": "hero-background-mobile.mp4",
+      "sha256": "4366082a45415677474718a7fa2ad37b0a88cdc4e1d45e105aa94a9f7157684f",
+      "bytes": 1606008,
+      "durationSeconds": 30,
+      "width": 480,
+      "height": 854,
+      "codec": "h264",
+      "audio": false
+    }
+  },
+  "poster": {
+    "file": "hero-poster-full.jpg",
+    "sha256": "654d729a452b1d18b2cc673cce9761072bc72e2ab7078f1bcce80561654d3a7b"
+  }
+}
