@@ -60,7 +60,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       if (route.request().headers().rsc === '1') {
         await (new URL(route.request().url()).pathname === '/today' ? todayGate : pipelineGate);
       }
-      await route.continue().catch(() => {}); // Superseded requests may be cancelled.
+      // Continue through the context's local-only network guard.
+      await route.fallback();
     });
     try {
       const nav = page.getByRole('navigation', { name: 'Main', exact: true });
@@ -79,7 +80,9 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       assert.equal(new URL(page.url()).pathname, '/pipeline', 'The latest destination wins after the old request resolves');
     } finally {
       releaseToday(); releasePipeline();
-      await page.unroute(destinations);
+      // Wait for both released handlers before removing them. Removing a
+      // suspended handler can race with the context's request continuation.
+      await page.unrouteAll({ behavior: 'wait' });
     }
   });
   await check('/activity', 'activity-history-and-details', async () => {
