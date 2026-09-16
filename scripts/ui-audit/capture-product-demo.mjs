@@ -116,8 +116,11 @@ try {
       ['Return to the focused day',page=>page.locator('[data-today-details] > summary').click()],
     ]);
     await record('pipeline','/pipeline',[
-      ['Switch to the list',page=>page.getByRole('link',{name:'List',exact:true}).click()],
-      ['Open the sample opportunity',page=>page.getByRole('link',{name:'Federal campus electrical upgrades',exact:true}).first().click()],
+      ['Switch to the list',async page=>{
+        if(format==='mobile')await page.locator('summary').filter({hasText:/^View$/}).click();
+        await page.getByRole('link',{name:'List',exact:true}).click();
+      }],
+      ['Open the sample opportunity',page=>page.getByRole('link',{name:/Federal campus electrical upgrades/}).first().click()],
     ]);
     await record('review',`/opportunity/${ids.opportunity}`, [
       ['Inspect the requirement context',page=>page.getByRole('tab',{name:'Requirements',exact:true}).click()],
