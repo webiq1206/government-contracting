@@ -158,7 +158,7 @@ export function LandingPage({
           <li>
             <span>02</span>
             <div>
-              <p className="bco-kicker">Days 2–3 / Put it to work</p>
+              <p className="bco-kicker">Days 2 to 3 / Put it to work</p>
               <h3>Move from a posting to a clear plan.</h3>
               <p>
                 Review a match and its requirement brief. If you want help
@@ -171,7 +171,7 @@ export function LandingPage({
           <li>
             <span>03</span>
             <div>
-              <p className="bco-kicker">Days 4–7 / Review the work</p>
+              <p className="bco-kicker">Days 4 to 7 / Review the work</p>
               <h3>See what AI handled. Decide what comes next.</h3>
               <p>
                 Inspect captured replies and pricing. When required inputs are

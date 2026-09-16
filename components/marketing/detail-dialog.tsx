@@ -35,6 +35,19 @@ export function DetailDialog({ label, title, children }: {
     {open && createPortal(
       <dialog ref={dialog} id={id} className="bco-site bco-detail-dialog"
         aria-labelledby={`${id}-title`} aria-modal="true"
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+          )).filter((element) => element.getClientRects().length > 0);
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault(); last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault(); first?.focus();
+          }
+        }}
         onCancel={(event) => { event.preventDefault(); setOpen(false); }}
         onClick={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
         <div className="bco-detail-header">
