@@ -1,6 +1,7 @@
 import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
 import { auditMarketingExploration } from "./marketing-exploration.mjs";
 import { auditProductVideos, auditHomepageVideos } from "./product-video-check.mjs";
+import { auditSiteSpacing } from "./site-spacing.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -65,6 +66,7 @@ try {
         return nav?{responseMs:Math.round(nav.responseStart-nav.startTime),domMs:Math.round(nav.domContentLoadedEventEnd-nav.startTime),transferBytes:nav.transferSize}:null;
       });
       record.headings=await p.locator('h1').allTextContents();
+      await auditSiteSpacing(p, { device, width, out, route: entry.route });
       if(entry.route==='/opportunity/[id]') {
         const heading=await p.locator('h1').boundingBox();
         assert(heading&&heading.y>=0&&heading.y+heading.height<height,'Opportunity title must remain visible on arrival');

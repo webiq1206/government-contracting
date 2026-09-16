@@ -87,6 +87,14 @@ jobs:
           path: artifacts/ui-audit/${{ matrix.device }}-hero-scene-*.png
           if-no-files-found: warn
           retention-days: 7
+      - name: Preserve site spacing review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-spacing-${{ matrix.device }}
+          path: artifacts/ui-audit/${{ matrix.device }}-spacing-*.png
+          if-no-files-found: warn
+          retention-days: 7
       - name: Preserve homepage feature review
         if: always()
         uses: actions/upload-artifact@v4

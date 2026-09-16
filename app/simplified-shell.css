@@ -140,9 +140,9 @@ html:has([data-app-shell]) body {
 }
 
 /* Focused workspace: breathing room without more fixed chrome. */
-[data-app-shell] .product-page-header { padding-top: 1.5rem; padding-bottom: 1rem; }
+[data-app-shell] .product-page-header { padding-top: 1.5rem; padding-bottom: 1.25rem; gap: 1rem; }
 [data-app-shell] .product-page-header h1 { font-size: 1.65rem; }
-[data-app-shell] .product-page-header .page-description { display: block; overflow: visible; -webkit-line-clamp: unset; font-size: .875rem; line-height: 1.6; }
+[data-app-shell] .product-page-header .page-description { display: block; overflow: visible; -webkit-line-clamp: unset; max-width: 65ch; margin-top: .5rem; font-size: .875rem; line-height: 1.6; }
 [data-app-shell] .focused-today { margin-top: .5rem; }
 [data-app-shell] [data-primary-navigation] a { min-height: 3rem; font-size: .9375rem; border-radius: .75rem; }
 @media (min-width: 1024px) {
