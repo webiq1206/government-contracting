@@ -1,6 +1,6 @@
 import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
 import { auditMarketingExploration } from "./marketing-exploration.mjs";
-import { auditProductVideos } from "./product-video-check.mjs";
+import { auditProductVideos, auditHomepageVideos } from "./product-video-check.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -200,6 +200,8 @@ try {
         record.stickyCopy='Desktop pinning, section boundary, short viewport release, and small-screen normal flow checked';
         await auditMarketingExploration(p, { device, width, height, out });
         record.exploration='Source lightbox focus/escape, sticky step selection and boundaries, narrow/landscape widths, contextual CTA, ribbon motion, and first-week journey checked';
+        await auditHomepageVideos(p,{device,width,out});
+        record.homepageMedia='All eight tours present; six feature tours placed by topic, decoded with captions, phone sources selected, no early video requests, coordinated playback, and keyboard preview open/close checked';
 
       }
       if(entry.route==='/demo') {

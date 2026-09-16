@@ -3,7 +3,6 @@ import {
   MarketingShell,
   SectionHeading,
   TrialCTA,
-  ProductIcon,
   FAQ,
 } from "./site-shell";
 import { WorkflowDemo } from "./workflow-demo";
@@ -12,6 +11,7 @@ import { IndustrySlider } from "./industry-slider";
 import { ProductEvidence } from "./product-evidence";
 import { HeroBackgroundVideo } from "./hero-background-video";
 import { IndustryRibbon } from "./industry-ribbon";
+import { HomepageFeatureVideo, HomepageQuickPreview } from "./homepage-feature-videos";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 
 export interface LandingPageProps {
@@ -72,52 +72,31 @@ export function LandingPage({
             Explore the platform ↗
           </Link>
         </div>
+        <HomepageQuickPreview />
         <WorkflowDemo />
+        <div className="bco-feature-intro">
+          <p className="bco-kicker">See discovery and review in the workspace</p>
+          <p>These recorded tours use sample records, staged AI outputs, and sample message history. No external messages or bids are sent.</p>
+        </div>
+        <div className="bco-feature-video-grid" aria-label="Opportunity discovery and review videos">
+          <HomepageFeatureVideo slug="pipeline" />
+          <HomepageFeatureVideo slug="review" />
+        </div>
       </section>
       <IndustrySlider />
       <section className="bco-tinted" id="ai">
         <div className="bco-container bco-section">
           <SectionHeading
-            eyebrow="More than bid alerts or an AI writing tool"
-            title="One pursuit. Everything connected."
+            eyebrow="Coordinate the people and the replies"
+            title="The right team. The whole conversation."
           >
-            Discovery leads to analysis. Analysis guides outreach. Quotes feed
-            the bid. Your team picks up the work with the context already attached.
+            Keep subcontractors, quotes, and conversations attached to the pursuit.
+            Enable outreach and follow-ups under your rules, or perform the work
+            with your own team.
           </SectionHeading>
-          <div className="bco-card-grid">
-            <article className="bco-card">
-              <ProductIcon kind="source" />
-              <h3>Find work worth pursuing</h3>
-              <p>
-                Your services, qualifications, location, and pursuit rules guide
-                opportunity matching and the work that follows.
-              </p>
-              <span className="bco-card-result">
-                Relevant work from the start
-              </span>
-            </article>
-            <article className="bco-card">
-              <ProductIcon kind="people" />
-              <h3>Stop chasing every reply</h3>
-              <p>
-                Quote requests and follow-ups use your connected mailbox.
-                Replies stay attached to the subcontractor and opportunity.
-              </p>
-              <span className="bco-card-result">
-                Follow-through without rebuilding each thread
-              </span>
-            </article>
-            <article className="bco-card">
-              <ProductIcon kind="check" />
-              <h3>Review without the rebuild</h3>
-              <p>
-                See the analysis, messages, quotes, and documents behind each
-                action. Open the supporting work when a decision needs you.
-              </p>
-              <span className="bco-card-result">
-                Context ready when you need it
-              </span>
-            </article>
+          <div className="bco-feature-video-grid" aria-label="Subcontractor coordination and conversation videos">
+            <HomepageFeatureVideo slug="subs" />
+            <HomepageFeatureVideo slug="communications" />
           </div>
           <div className="bco-section-links">
             <Link href="/ai" className="bco-text-link">
@@ -130,6 +109,23 @@ export function LandingPage({
               Compare with your current workflow ↗
             </Link>
           </div>
+        </div>
+      </section>
+      <section id="bid-review" className="bco-container bco-section">
+        <SectionHeading
+          eyebrow="Prepare the bid. Keep the final say."
+          title="The numbers and the history, ready to review."
+        >
+          See pricing alongside the work that supports it. Follow the activity
+          behind each update before your team makes the final call.
+        </SectionHeading>
+        <div className="bco-feature-video-grid" aria-label="Bid preparation and activity videos">
+          <HomepageFeatureVideo slug="opportunity" />
+          <HomepageFeatureVideo slug="activity" />
+        </div>
+        <div className="bco-section-links">
+          <Link href={signupHref} className="bco-button">Start free trial ↗</Link>
+          <Link href="#walkthrough" className="bco-text-link">Watch the complete workflow ↗</Link>
         </div>
       </section>
       <section id="workflow" className="bco-container bco-section bco-split">
