@@ -3,22 +3,29 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-/** User-supplied decorative film. The poster and copy never depend on playback. */
+/** Full decorative film. The poster and copy never depend on playback. */
 export function HeroBackgroundVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [allowed, setAllowed] = useState(false);
-  const [finished, setFinished] = useState(false);
-  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mobile, setMobile] = useState(false);
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
 
   useEffect(() => {
+    // Select once before mounting the video, avoiding a second download on rotation.
+    setMobile(window.matchMedia("(max-width: 640px)").matches);
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const connection = (
-      navigator as Navigator & { connection?: { saveData?: boolean } }
+      navigator as Navigator & {
+        connection?: {
+          saveData?: boolean;
+          addEventListener?: (name: string, listener: () => void) => void;
+          removeEventListener?: (name: string, listener: () => void) => void;
+        };
+      }
     ).connection;
     const sync = () => {
       const enabled = !media.matches && !connection?.saveData;
@@ -27,6 +34,7 @@ export function HeroBackgroundVideo() {
     };
     sync();
     media.addEventListener("change", sync);
+    connection?.addEventListener?.("change", sync);
     const observer = new IntersectionObserver(([entry]) =>
       setVisible(entry.isIntersecting),
     );
@@ -35,8 +43,8 @@ export function HeroBackgroundVideo() {
     onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      if (stopTimer.current) clearTimeout(stopTimer.current);
       media.removeEventListener("change", sync);
+      connection?.removeEventListener?.("change", sync);
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -45,7 +53,7 @@ export function HeroBackgroundVideo() {
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
-    if (!allowed || finished || failed || !visible || !pageVisible) {
+    if (!allowed || failed || !visible || !pageVisible) {
       video.pause();
       return;
     }
@@ -60,43 +68,45 @@ export function HeroBackgroundVideo() {
       active = false;
       video.pause();
     };
-  }, [allowed, finished, failed, visible, pageVisible]);
+  }, [allowed, failed, visible, pageVisible]);
 
   return (
     <>
       <div ref={container} className="bco-hero-backdrop" aria-hidden="true">
         <Image
-          src="/marketing/hero-poster.jpg"
+          src="/marketing/hero-poster-full.jpg"
           alt=""
           fill
           priority
           sizes="100vw"
         />
-        {allowed && !failed && !(finished && !playing) && (
+        {allowed && !failed && (
           <video
             ref={ref}
             className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
+            data-format={mobile ? "mobile" : "desktop"}
             muted
+            loop
             playsInline
             preload="none"
             tabIndex={-1}
             aria-hidden="true"
             onPlaying={() => {
               setPlaying(true);
-              // A brief decorative introduction, not perpetual unpausable motion.
-              // Keep the final frame visible rather than flashing back to a poster.
-              if (!stopTimer.current) stopTimer.current = setTimeout(() => setFinished(true), 4000);
             }}
-            onTimeUpdate={(event) => {
-              if (event.currentTarget.currentTime >= 4) setFinished(true);
-            }}
-            onEnded={() => setFinished(true)}
             onError={() => {
               setFailed(true);
               setPlaying(false);
             }}
           >
-            <source src="/marketing/hero-background.mp4" type="video/mp4" />
+            <source
+              src={`/marketing/hero-background${mobile ? "-mobile" : ""}.mp4?v=20260916-full`}
+              type="video/mp4"
+              onError={() => {
+                setFailed(true);
+                setPlaying(false);
+              }}
+            />
           </video>
         )}
       </div>

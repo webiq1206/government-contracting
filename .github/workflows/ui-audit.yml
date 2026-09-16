@@ -79,3 +79,11 @@ jobs:
             artifacts/ui-audit
             /tmp/ui-server.log
           retention-days: 7
+      - name: Preserve compact hero review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepage-hero-${{ matrix.device }}
+          path: artifacts/ui-audit/${{ matrix.device }}-hero-scene-*.png
+          if-no-files-found: warn
+          retention-days: 7

@@ -162,10 +162,35 @@ try {
         }
         record.marketingQuality='Above-fold trial, AA button contrast, product provenance, and mobile navigation checked';
         const film=p.locator('.bco-hero-background-film');
-        if(await film.count()) {
-          assert(await film.evaluate(el=>el.muted&&!el.loop&&el.playsInline),'Background film is silent, inline, and does not loop');
-          await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused, null, {timeout:6000});
+        await film.waitFor({state:'visible'});
+        assert.equal(await film.getAttribute('data-format'),width<=640?'mobile':'desktop');
+        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
+        assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent, inline, and loops');
+        assert(await film.evaluate(el=>Math.abs(el.duration-30)<.1),'The full 30-second film is installed');
+        await film.evaluate(el=>{el.currentTime=7;});
+        await p.waitForFunction(()=>{
+          const video=document.querySelector('.bco-hero-background-film');
+          return video&&!video.paused&&video.currentTime>7.2;
+        });
+        await film.evaluate(el=>{el.currentTime=29.7;});
+        await p.waitForFunction(()=>{
+          const video=document.querySelector('.bco-hero-background-film');
+          return video&&!video.paused&&video.currentTime<1.5;
+        });
+        // Inspect every chapter behind the real headline and CTA at each width.
+        for(const [index,time] of [0.5,5.5,10.5,15.5,20.5,25.5].entries()) {
+          await film.evaluate((el,t)=>{el.currentTime=t;},time);
+          await p.waitForFunction(t=>{
+            const video=document.querySelector('.bco-hero-background-film');
+            return video&&!video.seeking&&video.currentTime>=t&&video.readyState>=2;
+          },time);
+          await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-hero-scene-${index+1}.png`)});
         }
+        await p.locator('#proof').scrollIntoViewIfNeeded();
+        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused);
+        await p.evaluate(()=>window.scrollTo(0,0));
+        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused===false);
+        record.heroFilm='30-second decode, playback past four seconds, loop boundary, all six scenes, and offscreen pause/resume checked';
         assert.equal(await p.locator('.bco-hero-motion-toggle').count(),0,'No standalone hero pause control');
         await p.emulateMedia({reducedMotion:'reduce'});
         await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));
