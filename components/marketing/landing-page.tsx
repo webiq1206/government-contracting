@@ -11,7 +11,7 @@ import { IndustrySlider } from "./industry-slider";
 import { ProductEvidence } from "./product-evidence";
 import { HeroBackgroundVideo } from "./hero-background-video";
 import { IndustryRibbon } from "./industry-ribbon";
-import { HomepageFeatureVideo, HomepageQuickPreview } from "./homepage-feature-videos";
+import { HomepageFeatureChapter, HomepageQuickPreview } from "./homepage-feature-videos";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 
 export interface LandingPageProps {
@@ -42,8 +42,9 @@ export function LandingPage({
             <span>and prepares your bids.</span>
           </h1>
           <p className="bco-lead">
-            From opportunity scoring to optional subcontractor outreach, quote
-            capture, and bid assembly. Your rules. Your calls and final review.
+            AI finds matches, organizes requirements, coordinates quotes, and
+            prepares bid drafts. Set your rules, choose your automation, and
+            keep the final review.
           </p>
           <div className="bco-actions">
             <Link href={signupHref} className="bco-button">
@@ -59,94 +60,48 @@ export function LandingPage({
         </div>
       </section>
       <IndustryRibbon />
-      <section id="platform" className="bco-container bco-section">
-        <div className="bco-heading-row">
-          <SectionHeading
-            eyebrow="From opportunity to a prepared bid"
-            title="The routine work, handled. The decisions, yours."
-          >
-            No more piecing together postings, documents, and email threads.
-            See how AI moves the work forward under your rules.
-          </SectionHeading>
-          <Link href="/platform" className="bco-text-link">
-            Explore the platform ↗
-          </Link>
+      <section id="platform" className="bco-container bco-section bco-discovery-section">
+        <HomepageFeatureChapter chapter="discover" />
+        <div className="bco-explore-more">
+          <HomepageQuickPreview />
+          <details className="bco-workflow-explorer" id="interactive-workflow">
+            <summary><span aria-hidden="true">↳</span> Try the workflow, step by step <span aria-hidden="true">+</span></summary>
+            <WorkflowDemo />
+          </details>
         </div>
-        <HomepageQuickPreview />
-        <WorkflowDemo />
-        <div className="bco-feature-intro">
-          <p className="bco-kicker">See discovery and review in the workspace</p>
-          <p>These recorded tours use sample records, staged AI outputs, and sample message history. No external messages or bids are sent.</p>
+        <p className="bco-tour-note">Recorded tours use sample records, staged AI outputs, and sample message history. No external messages or bids are sent.</p>
+      </section>
+      <section className="bco-coordination-section" id="ai">
+        <div className="bco-container bco-section">
+          <HomepageFeatureChapter chapter="coordinate" />
         </div>
-        <div className="bco-feature-video-grid" aria-label="Opportunity discovery and review videos">
-          <HomepageFeatureVideo slug="pipeline" />
-          <HomepageFeatureVideo slug="review" />
+      </section>
+      <section id="bid-review" className="bco-container bco-section bco-preparation-section">
+        <HomepageFeatureChapter chapter="prepare" />
+        <div className="bco-chapter-next">
+          <p>Your next opportunity deserves a better workflow.</p>
+          <Link href={signupHref} className="bco-button">Start free trial <span aria-hidden="true">↗</span></Link>
         </div>
       </section>
       <IndustrySlider />
-      <section className="bco-tinted" id="ai">
-        <div className="bco-container bco-section">
-          <SectionHeading
-            eyebrow="Coordinate the people and the replies"
-            title="The right team. The whole conversation."
-          >
-            Keep subcontractors, quotes, and conversations attached to the pursuit.
-            Enable outreach and follow-ups under your rules, or perform the work
-            with your own team.
-          </SectionHeading>
-          <div className="bco-feature-video-grid" aria-label="Subcontractor coordination and conversation videos">
-            <HomepageFeatureVideo slug="subs" />
-            <HomepageFeatureVideo slug="communications" />
-          </div>
-          <div className="bco-section-links">
-            <Link href="/ai" className="bco-text-link">
-              See what AI does and what you control ↗
-            </Link>
-            <Link href="/subcontractors" className="bco-text-link">
-              Explore subcontractor coordination ↗
-            </Link>
-            <Link href="/compare" className="bco-text-link">
-              Compare with your current workflow ↗
-            </Link>
-          </div>
-        </div>
-      </section>
-      <section id="bid-review" className="bco-container bco-section">
-        <SectionHeading
-          eyebrow="Prepare the bid. Keep the final say."
-          title="The numbers and the history, ready to review."
-        >
-          See pricing alongside the work that supports it. Follow the activity
-          behind each update before your team makes the final call.
-        </SectionHeading>
-        <div className="bco-feature-video-grid" aria-label="Bid preparation and activity videos">
-          <HomepageFeatureVideo slug="opportunity" />
-          <HomepageFeatureVideo slug="activity" />
-        </div>
-        <div className="bco-section-links">
-          <Link href={signupHref} className="bco-button">Start free trial ↗</Link>
-          <Link href="#walkthrough" className="bco-text-link">Watch the complete workflow ↗</Link>
-        </div>
-      </section>
       <section id="workflow" className="bco-container bco-section bco-split">
         <SectionHeading
           sticky
           eyebrow="Make your first week count"
-          title="From setup to work ready for review."
+          title="Your first week, with a clear plan."
         >
-          A practical plan for your seven-day trial. Start with discovery, then
-          enable the automation you want. Progress depends on your setup,
-          available opportunities, and subcontractor replies.
+          Start with discovery. Add automation as you go. Your progress depends
+          on setup, available opportunities, and subcontractor replies.
         </SectionHeading>
         <ol className="bco-steps">
           <li>
             <span>01</span>
             <div>
               <p className="bco-kicker">Day 1 / Set your direction</p>
-              <h3>Give AI the context to find your work.</h3>
+              <h3>Point AI toward the right work.</h3>
               <p>
-                Add your services, locations, qualifications, and pursuit rules.
-                Connect discovery so AI can find and score matching contracts.
+                Add your services, locations, and qualifications. Set your pursuit
+                rules and connect opportunity discovery.
               </p>
               <p className="bco-week-outcome"><strong>Your checkpoint:</strong> A company profile and matching criteria you can inspect.</p>
             </div>
@@ -155,11 +110,10 @@ export function LandingPage({
             <span>02</span>
             <div>
               <p className="bco-kicker">Days 2 to 3 / Put it to work</p>
-              <h3>Move from a posting to a clear plan.</h3>
+              <h3>Turn a match into a plan.</h3>
               <p>
-                Review a match and its requirement brief. If you want help
-                sourcing quotes, connect your inbox and enable subcontractor
-                outreach and follow-ups under your rules.
+                Review a match and its requirements. Need subcontractor quotes?
+                Connect your inbox and choose your outreach rules.
               </p>
               <p className="bco-week-outcome"><strong>Your checkpoint:</strong> Requirements organized, with optional outreach configured.</p>
             </div>
@@ -168,11 +122,11 @@ export function LandingPage({
             <span>03</span>
             <div>
               <p className="bco-kicker">Days 4 to 7 / Review the work</p>
-              <h3>See what AI handled. Decide what comes next.</h3>
+              <h3>Review the work. Make your next move.</h3>
               <p>
-                Inspect captured replies and pricing. When required inputs are
-                available, review the assembled draft and requirement checks.
-                Today separates completed work from calls and decisions that need you.
+                Check replies, pricing, and any missing inputs. When the required
+                inputs are ready, review your draft bid. Today shows the calls
+                and decisions that still need you.
               </p>
               <p className="bco-week-outcome"><strong>Your checkpoint:</strong> A clear view of progress, missing inputs, and your next action.</p>
               <Link href="/get-started" className="bco-text-link">

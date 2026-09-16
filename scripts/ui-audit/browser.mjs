@@ -72,6 +72,10 @@ try {
       if(entry.route.endsWith('/api-usage')) await p.getByRole('region',{name:'Account spending controls'}).waitFor();
       const name=`${device}-${entry.route.replace(/[^a-z0-9]/gi,'_')||'home'}.png`;
       await p.screenshot({path:join(out,name),fullPage:true});record.screenshot=name;
+      if(entry.route==='/') {
+        record.homepageHeight=await p.evaluate(()=>document.documentElement.scrollHeight);
+        await p.screenshot({path:join(out,`${device}-homepage-refined-full.png`),fullPage:true});
+      }
       record.controls=await p.evaluate(()=>Array.from(document.querySelectorAll('input,select,textarea,button')).filter(n=>n.getClientRects().length&&!n.closest('[inert]')).map(n=>({tag:n.tagName,name:n.getAttribute('aria-label')||(n.labels?Array.from(n.labels).map(l=>l.textContent).join(' '):'')||n.textContent||n.getAttribute('title')||'',width:Math.round(n.getBoundingClientRect().width),height:Math.round(n.getBoundingClientRect().height)})));
       const scrolled=await p.evaluate(()=>{
         const candidates=Array.from(document.querySelectorAll('main,main *')).filter(n=>n.scrollHeight>n.clientHeight+30&&n.clientHeight>100&&/auto|scroll/.test(getComputedStyle(n).overflowY));
@@ -201,7 +205,7 @@ try {
         await auditMarketingExploration(p, { device, width, height, out });
         record.exploration='Source lightbox focus/escape, sticky step selection and boundaries, narrow/landscape widths, contextual CTA, ribbon motion, and first-week journey checked';
         await auditHomepageVideos(p,{device,width,out});
-        record.homepageMedia='All eight tours present; six feature tours placed by topic, decoded with captions, phone sources selected, no early video requests, coordinated playback, and keyboard preview open/close checked';
+        record.homepageMedia='All eight tours present; six feature tours placed by topic, decoded with captions, phone sources selected, no early video requests, coordinated playback, keyboard tour selection, hidden-player pause, narrow and landscape fit, and keyboard preview open/close checked';
 
       }
       if(entry.route==='/demo') {

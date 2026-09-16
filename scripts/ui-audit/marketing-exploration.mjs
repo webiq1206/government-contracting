@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 /** Run on disposable audit data only. No signup, sends, or external actions. */
 export async function auditMarketingExploration(p, { device, width, height, out }) {
+  const explorer = p.locator('#interactive-workflow');
+  if (!(await explorer.evaluate(el => el.open))) await explorer.locator('summary').click();
   const workflow = p.locator('.bco-workflow-demo');
   const tabs = workflow.getByRole('tab');
   await tabs.nth(3).click();

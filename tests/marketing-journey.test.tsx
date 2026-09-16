@@ -29,6 +29,8 @@ describe("public visitor journey", () => {
       }
     }
     expect(document.querySelectorAll('[data-feature-video]')).toHaveLength(6);
+    expect(document.querySelectorAll('[data-feature-video]:not([hidden])')).toHaveLength(3);
+    expect(document.querySelector('#interactive-workflow[open]')).toBeNull();
     expect(document.querySelectorAll('video[data-product-video]')).toHaveLength(8);
     expect(document.querySelector('#quick-preview[open]')).toBeNull();
     expect(document.querySelector('#quick-preview source[src^="/demos/hero-preview.mp4"]')).not.toBeNull();
