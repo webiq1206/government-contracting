@@ -172,7 +172,7 @@ export default async function PricingGuidePage() {
             </p>
             <p>
               Your mailbox and external service subscriptions may also have
-              their own costs. Review your account's service choices and limits
+              their own costs. Review your account&apos;s service choices and limits
               before running paid work.
             </p>
           </div>

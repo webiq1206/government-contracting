@@ -67,7 +67,7 @@ export default function AboutPage() {
               <h3>Know what you control</h3>
               <p>
                 Review how AI is used, which work depends on your setup, and
-                what remains your team's responsibility.
+                what remains your team&apos;s responsibility.
               </p>
               <Link href="/security" className="bco-text-link">
                 Security & data practices ↗

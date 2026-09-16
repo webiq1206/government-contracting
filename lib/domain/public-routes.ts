@@ -126,7 +126,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
  */
 export const HOME_SECTIONS: { hash: string; label: string; summary: string }[] = [
   { hash: "#industries", label: "Industries", summary: "Explore all broad industry sectors supported by company-profile discovery." },
-  { hash: "#proof", label: "Workflow examples", summary: "Illustrative team perspectives and links to product evidence." },
+  { hash: "#proof", label: "Product evidence", summary: "Explore the product, source material, activity history, and human review controls." },
   { hash: "#platform", label: "Platform", summary: "What the software does, part by part." },
   { hash: "#workflow", label: "How it works", summary: "Set up your company, connect services, and review the next action." },
   { hash: "#walkthrough", label: "Product tour", summary: "Explore sample workflows and guided product walkthroughs." },

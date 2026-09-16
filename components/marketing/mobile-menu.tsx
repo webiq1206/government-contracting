@@ -43,9 +43,11 @@ export function MarketingMobileMenu({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-2xl ${dark ? "text-white" : "text-foreground"}`}
+        className={`bco-menu-toggle inline-flex min-h-11 min-w-11 items-center justify-center rounded-md ${dark ? "text-white" : "text-foreground"}`}
       >
-        <span aria-hidden="true">☰</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
       </button>
       {open &&
         createPortal(

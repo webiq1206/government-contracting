@@ -28,7 +28,7 @@ export default function SecurityPage() {
             <h3>Organization-based access</h3>
             <p>
               Account membership and roles determine access to your
-              organization's records and actions. Access checks apply to the
+              organization&apos;s records and actions. Access checks apply to the
               authenticated workspace.
             </p>
           </article>
@@ -66,7 +66,7 @@ export default function SecurityPage() {
                 work. The platform uses Anthropic Claude and OpenAI models for AI tasks.
               </p>
               <p>
-                Check your organization's data requirements before uploading
+                Check your organization&apos;s data requirements before uploading
                 material or enabling a service. Contact us for provider and
                 deployment details needed for your review.
               </p>
@@ -109,7 +109,7 @@ export default function SecurityPage() {
         >
           BrostCo helps prepare the work. Your team checks original
           requirements, confirms pricing, completes signatures and attestations,
-          and submits through the agency's channel.
+          and submits through the agency&apos;s channel.
         </SectionHeading>
         <div className="bco-note">
           <strong>Have specific security requirements?</strong>

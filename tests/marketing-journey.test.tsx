@@ -52,20 +52,22 @@ describe("public visitor journey", () => {
       document.querySelector(".bco-industry-directory summary")?.textContent,
     ).toContain("View all industries");
   });
-  it("identifies every illustrative story without implying a real endorsement", () => {
-    const stories = document.querySelectorAll(".bco-story-card");
-    expect(stories).toHaveLength(3);
-    for (const story of stories) {
-      expect(story.querySelector(".bco-story-label")?.textContent).toBe(
-        "Illustrative scenario",
-      );
-      expect(story.textContent).toContain("not a customer testimonial");
-      expect(
-        story.querySelector("a[href]"),
-        "each example links to product evidence",
-      ).not.toBeNull();
-      expect(story.querySelectorAll("img")).toHaveLength(0);
-    }
+  it("builds confidence with inspectable product evidence, not invented testimony", () => {
+    const proof = document.querySelector("#proof")!;
+    expect(proof.querySelectorAll("blockquote, .bco-story-card")).toHaveLength(0);
+    expect(proof.querySelectorAll(".bco-evidence-grid article")).toHaveLength(3);
+    expect(proof.querySelector('video[controls][preload="none"]')).not.toBeNull();
+    expect(proof.querySelector('track[kind="captions"]')).not.toBeNull();
+    expect(proof.textContent).toContain("sample records and an earlier workspace layout");
+    expect(proof.querySelector('a[href="/security"]')).not.toBeNull();
+    expect(proof.querySelector('a[href="/signup?plan=standard"]')).not.toBeNull();
+  });
+  it("shows the workflow before industries and keeps the hero concise", () => {
+    expect(html.indexOf('id="platform"')).toBeLessThan(html.indexOf('id="industries"'));
+    const lead = document.querySelector(".bco-hero .bco-lead")?.textContent || "";
+    expect(lead.trim().split(/\s+/).length).toBeLessThan(30);
+    expect(lead).toContain("final review");
+    expect(document.querySelectorAll(".bco-hero .bco-button")).toHaveLength(1);
   });
   it("publishes the same FAQ in visible copy and structured data", () => {
     const { document: schemaDoc } = parseHTML(
