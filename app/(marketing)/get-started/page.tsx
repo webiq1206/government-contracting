@@ -89,7 +89,7 @@ export default function GetStartedPage() {
               <h3>SAM.gov access</h3>
               <p>
                 SAM.gov remains the official source. Setup shows the key and
-                access needed for your account's discovery workflow.
+                access needed for your account&apos;s discovery workflow.
                 Registration and agency requirements remain your responsibility.
               </p>
             </article>

@@ -111,10 +111,10 @@ try {
         await p.getByRole('button',{name:'show all industries',exact:true}).click();
         assert.equal(await p.locator('.bco-industry-directory-body li').count(),20);
         await p.locator('.bco-industry-directory > summary').click();
-        await p.locator('.bco-stories').screenshot({path:join(out,`${device}-example-stories.png`)});
-        for(const story of await p.locator('.bco-story-card').all()) {
-          assert((await story.innerText()).includes('not a customer testimonial'),'Every example must be identified');
-        }
+        await p.locator('#proof').screenshot({path:join(out,`${device}-product-evidence.png`)});
+        assert.equal(await p.locator('#proof blockquote').count(),0,'Product evidence must not imply customer endorsements');
+        assert.equal(await p.locator('#proof .bco-evidence-grid article').count(),3);
+        assert((await p.locator('#proof figcaption').innerText()).includes('earlier workspace layout'),'Preview provenance must stay visible');
         record.industrySlider='Next, directory filter, empty state, recovery, and all sectors checked';
         const faqCopy=p.locator('#faq .bco-sticky-column');
         if(device==='desktop') {
@@ -137,6 +137,28 @@ try {
         await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-centered-hero.png`)});
         assert.equal(await p.locator('.bco-hero-centered h1').count(),1);
         assert.equal(await p.locator('.bco-hero-centered .bco-button').count(),1,'Hero has one primary action');
+        const heroCta=p.locator('.bco-hero-centered .bco-button');
+        const ctaBox=await heroCta.boundingBox();
+        assert(ctaBox&&ctaBox.y>=0&&ctaBox.y+ctaBox.height<height,'Trial CTA is visible without scrolling');
+        const contrast=await heroCta.evaluate(el=>{
+          const style=getComputedStyle(el);
+          const luminance=rgb=>rgb.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{const c=v/255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+          const fg=luminance(style.color),bg=luminance(style.backgroundColor);
+          return (Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05);
+        });
+        assert(contrast>=4.5,`Trial CTA contrast must pass AA; got ${contrast}`);
+        if(device!=='desktop') {
+          const menu=p.getByRole('button',{name:'Open navigation',exact:true});
+          assert.equal(await menu.evaluate(el=>getComputedStyle(el).color),'rgb(245, 250, 248)','Dark-header menu stays legible');
+          await menu.click();
+          await p.getByRole('dialog').waitFor();
+          await p.getByRole('navigation',{name:'Mobile navigation',exact:true}).getByRole('link',{name:'Start free trial',exact:true}).waitFor();
+          await p.keyboard.press('Escape');
+          await p.getByRole('dialog').waitFor({state:'hidden'});
+          assert(await menu.evaluate(el=>el===document.activeElement),'Marketing menu restores focus');
+          assert.notEqual(await p.evaluate(()=>document.body.style.overflow),'hidden','Marketing menu releases scroll lock');
+        }
+        record.marketingQuality='Above-fold trial, AA button contrast, product provenance, and mobile navigation checked';
         const film=p.locator('.bco-hero-background-film');
         if(await film.count()) {
           assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent and inline');

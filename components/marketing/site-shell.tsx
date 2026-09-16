@@ -15,7 +15,7 @@ export function MarketingShell({
   darkHeader?: boolean;
 }) {
   return (
-    <div className="bco-site">
+    <div className={`bco-site${darkHeader ? " bco-site-landing" : ""}`}>
       <a className="bco-skip" href="#main-content">
         Skip to content
       </a>
