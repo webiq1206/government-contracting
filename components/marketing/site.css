@@ -830,7 +830,7 @@
   margin-left: 7px;
   color: #61737b;
 }
-.bco-price-card > p {
+.bco-price-card > p:not(.bco-price) {
   font-size: 13px;
 }
 .bco-check-list {
@@ -953,10 +953,10 @@
   align-items: flex-start;
   gap: 0;
 }
-.bco-footer h2 {
+.bco-site .bco-footer h2 {
   color: #7cbab3;
   font:
-    600 10px Inter,
+    600 11px Inter,
     sans-serif;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2541,6 +2541,7 @@
 .bco-site-landing .bco-final-cta .bco-kicker { color: #bce7d2 !important; }
 .bco-site-landing .bco-final-cta .bco-button:not(.bco-button-secondary) { color: #173d31; background: #c0ead9; border-color: #c0ead9; }
 .bco-site-landing .bco-final-cta .bco-button:not(.bco-button-secondary):hover { background: #def4e8; }
+.bco-site-landing :is(.bco-final-cta, .bco-product-evidence) :is(a, button, video):focus-visible { outline: 3px solid #c0ead9; outline-offset: 4px; }
 .bco-site-landing .bco-final-cta .bco-button-secondary { color: #e6f2ed !important; background: transparent; border-color: #607f74; }
 @media (max-width: 640px) {
   .bco-site-landing .bco-evidence-film .bco-product-video { max-width: 232px; margin-inline: auto; }

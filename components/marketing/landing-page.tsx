@@ -79,7 +79,7 @@ export function LandingPage({
       <section id="bid-review" className="bco-container bco-section bco-preparation-section">
         <HomepageFeatureChapter chapter="prepare" />
         <div className="bco-chapter-next">
-          <p>Your next opportunity deserves a better workflow.</p>
+          <p>Try it with your own opportunities.</p>
           <Link href={signupHref} className="bco-button">Start free trial <span aria-hidden="true">↗</span></Link>
         </div>
       </section>
@@ -112,8 +112,8 @@ export function LandingPage({
               <p className="bco-kicker">Days 2 to 3 / Put it to work</p>
               <h3>Turn a match into a plan.</h3>
               <p>
-                Review a match and its requirements. Need subcontractor quotes?
-                Connect your inbox and choose your outreach rules.
+                Review a match and its requirements. For subcontractor quotes,
+                connect your inbox and choose your outreach rules.
               </p>
               <p className="bco-week-outcome"><strong>Your checkpoint:</strong> Requirements organized, with optional outreach configured.</p>
             </div>

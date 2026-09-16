@@ -80,7 +80,11 @@ export async function auditHomepageVideos(page, {device,width,out}) {
   await page.keyboard.press('Enter');
   assert(await explorer.locator('.bco-workflow-demo').isVisible(),'Interactive workflow remains accessible');
   await explorer.locator('summary').click();
-  for(const selector of ['#workflow','#proof','#pricing','.bco-final-cta']) {
+  assert(await page.locator('.bco-price-card > .bco-price').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=40),'Price has clear visual prominence');
+  for(const heading of await page.locator('.bco-footer h2').all()) {
+    assert(await heading.evaluate(el=>parseFloat(getComputedStyle(el).fontSize)<=16),'Footer labels retain their compact hierarchy');
+  }
+  for(const selector of ['#workflow','#proof','#pricing','.bco-final-cta','.bco-footer']) {
     await page.locator(selector).screenshot({path:join(out,`${device}-homepage-refined-${selector.replace(/[.#]/g,'')}.png`),animations:'disabled'});
   }
   await page.evaluate(()=>window.scrollTo(0,0));

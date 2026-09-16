@@ -16,7 +16,7 @@ const tours = {
 
 const chapters = {
   discover: {
-    number: "01", eyebrow: "Find and understand", title: "Good opportunities. A clear way in.",
+    number: "01", eyebrow: "Find and understand", title: "Find contracts worth pursuing.",
     copy: "Find work that fits your business. See why it matches, what it requires, and what needs your attention.",
     slugs: ["pipeline", "review"], href: "/platform", link: "Explore the platform",
   },
@@ -26,7 +26,7 @@ const chapters = {
     slugs: ["subs", "communications"], href: "/subcontractors", link: "Explore team coordination",
   },
   prepare: {
-    number: "03", eyebrow: "Prepare and review", title: "Less chasing. More ready to review.",
+    number: "03", eyebrow: "Prepare and review", title: "Prepare the bid. Keep the final say.",
     copy: "Bring requirements, quotes, and pricing into a prepared bid. See what’s missing, check the work, and keep the final say.",
     slugs: ["opportunity", "activity"], href: "/ai", link: "See what AI does and what you control",
   },
@@ -50,7 +50,7 @@ export function HomepageFeatureChapter({ chapter }: { chapter: keyof typeof chap
 
   function select(index: number, focus = false) {
     // Pause immediately, before React hides the outgoing panel.
-    root.current?.querySelectorAll("video").forEach(video => video.pause());
+    root.current?.querySelectorAll("video").forEach(video => { if (!video.paused) video.pause(); });
     setSelected(index);
     if (focus) tabs.current[index]?.focus({ preventScroll: true });
   }

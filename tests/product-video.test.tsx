@@ -69,6 +69,17 @@ describe("recorded product video", () => {
     await act(async () => root.render(null));
     expect(observers.size).toBe(0);
   });
+  it("leaves an untouched offscreen player idle until the visitor starts it", async () => {
+    await act(async () => root.render(tour()));
+    const video = container.querySelector("video")!;
+    Object.defineProperty(video, "paused", { configurable: true, value: true });
+    observers.get(video)!([{ isIntersecting: false }]);
+    document.dispatchEvent(new window.CustomEvent("brostco:product-play", { detail: null }));
+    expect(pauses.get(video) || 0).toBe(0);
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    observers.get(video)!([{ isIntersecting: false }]);
+    expect(pauses.get(video)).toBe(1);
+  });
   it("provides a transcript and replaces a failed player on retry", async () => {
     await act(async () => root.render(tour()));
     const video = container.querySelector("video")!;
