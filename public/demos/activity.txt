@@ -1,11 +1,5 @@
-BROSTCO | GUIDED SCREEN PREVIEW
-Sample data. This preview uses captured product screens.
+BROSTCO | RECORDED PRODUCT TOUR
+Real navigation in a disposable sample workspace. Staged AI analysis, quotes and message history. No external sends.
 
-00:00:00.000  See the recorded history
-The activity history brings actions, messages, and outcomes into a readable account record.
-
-00:00:08.000  Find the exact event
-Search for a company, message, bid, or phrase. Expand filters to narrow the history.
-
-00:00:16.000  Inspect the result
-Open event details and the related record to understand what happened and what needs attention.
+00:00:00.450
+Open a recorded event to see the details behind the activity. Use filters when you need to narrow the history. The ledger distinguishes recorded outcomes from work still waiting. Sample records illustrate the interface here; no external messages, payments, or bids were sent.

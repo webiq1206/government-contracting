@@ -1,0 +1,36 @@
+{
+  "intro": "Meet BrostCo. Follow a government contracting workflow, from opportunity to review.",
+  "outro": "Your rules guide automation. Your team keeps final review. Start your free trial at BrostCo.",
+  "scenes": [
+    {
+      "slug": "pipeline", "chapter": "01 / DISCOVER", "title": "Find the\nright work.",
+      "points": ["Compare fit and timing", "Choose a focused view", "Open the connected record"],
+      "narration": "Start with opportunities that fit your business. Here, we switch to a focused list, then open the same sample pursuit. Fit, deadline, and the source context stay connected, so you can inspect the details behind the match."
+    },
+    {
+      "slug": "review", "chapter": "02 / UNDERSTAND", "title": "Check the\nrequirements.",
+      "points": ["Keep the pursuit in context", "Inspect required inputs", "See what needs review"],
+      "narration": "A match is only a starting point. Open the requirements, check what needs attention, and return to the opportunity overview without losing context. This sample record contains staged analysis, not a live AI result. Your team checks the underlying documents before committing."
+    },
+    {
+      "slug": "subs", "chapter": "03 / COORDINATE", "title": "Keep your\nteam connected.",
+      "points": ["One subcontractor record", "Connected opportunities", "Quotes with context"],
+      "narration": "Keep the subcontractor and the work together. Move from the company record to related opportunities, then inspect its recorded quotes. Contacts, conversations, and pricing remain connected. Subcontractor outreach is optional and follows your company's rules. No outreach is sent in this demonstration."
+    },
+    {
+      "slug": "communications", "chapter": "04 / CONVERSATIONS", "title": "Read the reply.\nKeep the context.",
+      "points": ["The latest message first", "Earlier history on demand", "Drafts remain unsent"],
+      "narration": "Read the latest reply with its conversation nearby. Expand earlier messages when you need the background, then collapse them to focus again. These messages are sample history. Reading a thread does not send a reply, and a draft is not a delivered message."
+    },
+    {
+      "slug": "opportunity", "chapter": "05 / PREPARE", "title": "Review the\nwhole picture.",
+      "points": ["Inspect quote coverage", "Open the pricing workspace", "Keep final approval"],
+      "narration": "Open the subcontractor coverage, inspect the sample quote, then move into pricing. Keep amounts, assumptions, requirements, and missing inputs with the pursuit. This is a review workflow, not a submitted bid. Your team confirms pricing, reviews terms, signs, and submits."
+    },
+    {
+      "slug": "activity", "chapter": "06 / TRACK", "title": "Know what\nhappened.",
+      "points": ["Readable action history", "Details behind each event", "Focused history filters"],
+      "narration": "Open a recorded event to see the details behind the activity. Use filters when you need to narrow the history. The ledger distinguishes recorded outcomes from work still waiting. Sample records illustrate the interface here; no external messages, payments, or bids were sent."
+    }
+  ]
+}

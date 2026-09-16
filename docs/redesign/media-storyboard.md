@@ -1,4 +1,6 @@
-# Product media: delivered previews and final recording plan
+# Product media: historical previews and recording plan
+
+This document records the earlier preview checkpoint. It is superseded by [the recorded demonstration delivery](../releases/recorded-product-demos.md), the committed scene script, and `public/demos/manifest.json`. The current delivery uses real desktop and phone interaction recordings with narration, not the still-screen previews described below.
 
 ## Delivered assets
 

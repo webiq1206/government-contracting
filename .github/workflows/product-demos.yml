@@ -1,0 +1,73 @@
+name: Product demo capture
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/ui-audit/capture-product-demo.mjs'
+      - '.github/workflows/product-demos.yml'
+      - 'components/pipeline-view-menu.tsx'
+      - 'app/(dash)/pipeline/page.tsx'
+permissions:
+  contents: read
+concurrency:
+  group: product-demo-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: brostco_audit
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d brostco_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://unused@production-not-configured.invalid/unused
+      USE_REPLIT_DEV_DB: 'true'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: brostco_audit
+      PGUSER: postgres
+      PGPASSWORD: disposable-ci-only
+      AUTH_SECRET: disposable-ui-audit-signing-key-not-for-production
+      BROSTCO_PROCESS_ROLE: web
+      PLATFORM_ADMIN_EMAILS: ui-owner@example.test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Prepare disposable records
+        run: |
+          node --import tsx scripts/migrate.ts
+          node --import tsx scripts/seed.ts
+          node --import tsx scripts/ui-audit/seed.ts
+      - run: npm run build
+      - name: Record actual desktop and phone navigation
+        run: |
+          node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3100 > /tmp/demo-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
+            sleep 2
+          done
+          node scripts/ui-audit/capture-product-demo.mjs
+      - name: Preserve original recordings and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-demo-recordings
+          path: |
+            artifacts/ui-audit/product-demo
+            /tmp/demo-server.log
+          retention-days: 30

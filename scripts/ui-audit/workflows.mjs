@@ -20,6 +20,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       failures.push(record);
     }
     checkpoint();
+    console.log(JSON.stringify({ device, route, task, status: record.status, error: record.error }));
   };
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();
@@ -57,10 +58,15 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     const pipelineGate = new Promise(resolve => { releasePipeline = resolve; });
     const destinations = url => ['/today', '/pipeline'].includes(url.pathname);
     await page.route(destinations, async route => {
+      const url = new URL(route.request().url());
+      if (url.origin !== base) return route.abort();
       if (route.request().headers().rsc === '1') {
-        await (new URL(route.request().url()).pathname === '/today' ? todayGate : pipelineGate);
+        await (url.pathname === '/today' ? todayGate : pipelineGate);
       }
-      await route.continue().catch(() => {}); // Superseded requests may be cancelled.
+      // This handler owns the delayed request through completion. Passing an
+      // aborted navigation to another handler can race with route cleanup.
+      // The origin check above preserves the context's local-only policy.
+      await route.continue();
     });
     try {
       const nav = page.getByRole('navigation', { name: 'Main', exact: true });
@@ -79,7 +85,9 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       assert.equal(new URL(page.url()).pathname, '/pipeline', 'The latest destination wins after the old request resolves');
     } finally {
       releaseToday(); releasePipeline();
-      await page.unroute(destinations);
+      // Wait for both released handlers before removing them. Removing a
+      // suspended handler can race with the context's request continuation.
+      await page.unrouteAll({ behavior: 'wait' });
     }
   });
   await check('/activity', 'activity-history-and-details', async () => {

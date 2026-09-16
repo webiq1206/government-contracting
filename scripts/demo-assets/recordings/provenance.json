@@ -1,0 +1,302 @@
+{
+  "sourceCommit": "d1bc582f532c4afeb1dacd1c52333ad600d0175c",
+  "source": "Current application recorded with disposable sample records",
+  "recordedInteractions": true,
+  "externalActions": false,
+  "recordings": [
+    {
+      "slug": "hero-preview",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.928,
+      "duration": 10.01,
+      "events": [
+        {
+          "description": "Open the complete task views",
+          "seconds": 1.8479999999999999
+        },
+        {
+          "description": "Return to the focused day",
+          "seconds": 4.673
+        }
+      ],
+      "file": "hero-preview-desktop.webm"
+    },
+    {
+      "slug": "pipeline",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.919,
+      "duration": 10.019,
+      "events": [
+        {
+          "description": "Switch to the list",
+          "seconds": 1.8489999999999998
+        },
+        {
+          "description": "Open the sample opportunity",
+          "seconds": 4.676
+        }
+      ],
+      "file": "pipeline-desktop.webm"
+    },
+    {
+      "slug": "review",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.962,
+      "duration": 10.054,
+      "events": [
+        {
+          "description": "Inspect the requirement context",
+          "seconds": 1.8539999999999999
+        },
+        {
+          "description": "Return to the opportunity overview",
+          "seconds": 4.6850000000000005
+        }
+      ],
+      "file": "review-desktop.webm"
+    },
+    {
+      "slug": "subs",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.922,
+      "duration": 10,
+      "events": [
+        {
+          "description": "Inspect connected opportunities",
+          "seconds": 1.8529999999999998
+        },
+        {
+          "description": "Inspect recorded quotes",
+          "seconds": 4.666
+        }
+      ],
+      "file": "subs-desktop.webm"
+    },
+    {
+      "slug": "communications",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.931,
+      "duration": 10.027000000000001,
+      "events": [
+        {
+          "description": "Inspect earlier messages",
+          "seconds": 1.847
+        },
+        {
+          "description": "Focus the latest conversation",
+          "seconds": 4.656
+        }
+      ],
+      "file": "communications-desktop.webm"
+    },
+    {
+      "slug": "opportunity",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.949,
+      "duration": 10.02,
+      "events": [
+        {
+          "description": "Inspect the supporting subcontractor quote",
+          "seconds": 1.843
+        },
+        {
+          "description": "Review the pricing workspace",
+          "seconds": 4.658
+        }
+      ],
+      "file": "opportunity-desktop.webm"
+    },
+    {
+      "slug": "activity",
+      "format": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "start": 0.7,
+      "duration": 10.044,
+      "events": [
+        {
+          "description": "Expand a recorded event",
+          "seconds": 1.8539999999999999
+        },
+        {
+          "description": "Inspect available history filters",
+          "seconds": 4.691
+        }
+      ],
+      "file": "activity-desktop.webm"
+    },
+    {
+      "slug": "hero-preview",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.921,
+      "duration": 9.976,
+      "events": [
+        {
+          "description": "Open the complete task views",
+          "seconds": 1.8419999999999999
+        },
+        {
+          "description": "Return to the focused day",
+          "seconds": 4.653
+        }
+      ],
+      "file": "hero-preview-mobile.webm"
+    },
+    {
+      "slug": "pipeline",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.913,
+      "duration": 10.045,
+      "events": [
+        {
+          "description": "Switch to the list",
+          "seconds": 1.877
+        },
+        {
+          "description": "Open the sample opportunity",
+          "seconds": 4.72
+        }
+      ],
+      "file": "pipeline-mobile.webm"
+    },
+    {
+      "slug": "review",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.938,
+      "duration": 10,
+      "events": [
+        {
+          "description": "Inspect the requirement context",
+          "seconds": 1.8419999999999999
+        },
+        {
+          "description": "Return to the opportunity overview",
+          "seconds": 4.656000000000001
+        }
+      ],
+      "file": "review-mobile.webm"
+    },
+    {
+      "slug": "subs",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.913,
+      "duration": 9.972,
+      "events": [
+        {
+          "description": "Inspect connected opportunities",
+          "seconds": 1.8379999999999999
+        },
+        {
+          "description": "Inspect recorded quotes",
+          "seconds": 4.652
+        }
+      ],
+      "file": "subs-mobile.webm"
+    },
+    {
+      "slug": "communications",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.914,
+      "duration": 9.986,
+      "events": [
+        {
+          "description": "Inspect earlier messages",
+          "seconds": 1.8419999999999996
+        },
+        {
+          "description": "Focus the latest conversation",
+          "seconds": 4.654
+        }
+      ],
+      "file": "communications-mobile.webm"
+    },
+    {
+      "slug": "opportunity",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.939,
+      "duration": 10.006,
+      "events": [
+        {
+          "description": "Inspect the supporting subcontractor quote",
+          "seconds": 1.854
+        },
+        {
+          "description": "Review the pricing workspace",
+          "seconds": 4.668
+        }
+      ],
+      "file": "opportunity-mobile.webm"
+    },
+    {
+      "slug": "activity",
+      "format": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 760
+      },
+      "start": 0.718,
+      "duration": 10.011,
+      "events": [
+        {
+          "description": "Expand a recorded event",
+          "seconds": 1.851
+        },
+        {
+          "description": "Inspect available history filters",
+          "seconds": 4.666
+        }
+      ],
+      "file": "activity-mobile.webm"
+    }
+  ]
+}

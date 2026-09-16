@@ -15,6 +15,11 @@ export const metadata: Metadata = {
 };
 const recordings = [
   [
+    "review",
+    "Check the requirements before you commit",
+    "Move between the opportunity overview and its requirements without losing context.",
+  ],
+  [
     "pipeline",
     "Review the opportunity pipeline",
     "See fit, deadlines, and the next action before opening an opportunity.",
@@ -30,6 +35,11 @@ const recordings = [
     "Keep source materials, pricing, requirements, and missing information together.",
   ],
   [
+    "communications",
+    "Read the conversation, not the clutter",
+    "Open earlier messages and return to the latest reply. Nothing is sent in this tour.",
+  ],
+  [
     "activity",
     "Trace the work",
     "Inspect recorded actions and their details when you need to know what happened.",
@@ -41,7 +51,7 @@ export default function DemoPage() {
       <PageIntro
         eyebrow="Product tour"
         title="See the work. Try the next step."
-        copy="Explore a sample pursuit at your own pace, then watch guided previews made from captured BrostCo screens. No account or email required."
+        copy="Explore a sample pursuit, then watch recorded desktop and mobile workflows with guided narration. No account or email required."
       />
       <section className="bco-container bco-section">
         <WorkflowDemo />
@@ -49,24 +59,25 @@ export default function DemoPage() {
       <section id="recordings" className="bco-tinted">
         <div className="bco-container bco-section">
           <SectionHeading
-            eyebrow="Captured product screens / Sample data"
-            title="Two minutes inside BrostCo."
+            eyebrow="Recorded product workflows / Sample data"
+            title="Follow the work inside BrostCo."
           >
-            See how Today, opportunity review, subcontractors, and bid
-            preparation connect. These guided previews use captured screens and
-            sample records. They show an earlier workspace layout, not live
-            interactions.
+            See how opportunity discovery, review, subcontractors, and bid
+            preparation connect. These edited tours show real navigation in the
+            redesigned application using sample records. AI outputs, quotes, and
+            message history are staged examples. No external messages or bids are sent.
           </SectionHeading>
           <div className="bco-main-video">
             <ProductVideo
               slug="platform-walkthrough"
               poster="/demos/pipeline-desktop.jpg"
-              title="Two-minute BrostCo platform walkthrough using sample data"
+              title="BrostCo recorded platform tour with narration and sample data"
             />
             <p className="bco-caption">
-              2-minute product walkthrough · English captions ·{" "}
+              Narrated product tour · English captions ·{" "}
               <a href="/demos/platform-walkthrough.txt">Read the transcript</a>{" "}
-              · <a href="/demos/platform-walkthrough.mp4">Open video</a>
+              · <a href="/demos/platform-walkthrough.mp4">Open video</a>{" "}
+              · <a href="/demos/hero-preview.mp4">Quick 16-second preview</a>
             </p>
           </div>
         </div>
@@ -82,7 +93,7 @@ export default function DemoPage() {
               <ProductVideo
                 slug={slug}
                 poster={`/demos/${slug}-desktop.jpg`}
-                title={`${title}, guided screen preview with sample data`}
+                title={`${title}, recorded product tour with sample data`}
               />
               <div>
                 <h3>{title}</h3>

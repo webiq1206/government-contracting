@@ -58,7 +58,8 @@ describe("public visitor journey", () => {
     expect(proof.querySelectorAll(".bco-evidence-grid article")).toHaveLength(3);
     expect(proof.querySelector('video[controls][preload="none"]')).not.toBeNull();
     expect(proof.querySelector('track[kind="captions"]')).not.toBeNull();
-    expect(proof.textContent).toContain("sample records and an earlier workspace layout");
+    expect(proof.textContent).toContain("redesigned workspace with sample records");
+    expect(proof.textContent).toContain("No external sends");
     expect(proof.querySelector('a[href="/security"]')).not.toBeNull();
     expect(proof.querySelector('a[href="/signup?plan=standard"]')).not.toBeNull();
   });

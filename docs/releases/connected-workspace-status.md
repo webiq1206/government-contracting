@@ -1,5 +1,7 @@
 # Connected workspace continuation
 
+This is the historical PR #137 checkpoint. The subsequent [recorded demonstration delivery](recorded-product-demos.md) supersedes its preview-media status and tracks PR #145. Replit synchronization and live publication remain separate from GitHub merge status.
+
 Current source is tracked in [PR #137](https://github.com/webiq1206/government-contracting/pull/137), on `implementation/connected-workflows`. Source changes are authored directly in Git. Replit Agent prompts are not part of this workflow.
 
 ## Implemented continuation

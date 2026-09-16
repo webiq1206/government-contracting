@@ -1,13 +1,16 @@
 WEBVTT
 
-1
-00:00:00.000 --> 00:00:08.000
-The activity history brings actions, messages, and outcomes into a readable account record.
+00:00:00.450 --> 00:00:04.488
+Open a recorded event to see the details behind
+the activity.
 
-2
-00:00:08.000 --> 00:00:16.000
-Search for a company, message, bid, or phrase. Expand filters to narrow the history.
+00:00:04.488 --> 00:00:08.058
+Use filters when you need to narrow the history.
 
-3
-00:00:16.000 --> 00:00:24.000
-Open event details and the related record to understand what happened and what needs attention.
+00:00:08.058 --> 00:00:12.316
+The ledger distinguishes recorded outcomes from
+work still waiting.
+
+00:00:12.316 --> 00:00:19.154
+Sample records illustrate the interface here; no
+external messages, payments, or bids were sent.

@@ -1,5 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const RESPONSIVE_DEMOS = new Set(["hero-preview", "platform-walkthrough", "pipeline", "review", "subs", "communications", "opportunity", "activity"]);
+const MEDIA_REVISION = "2026-09-16-recorded";
 
 /** Native, keyboard-accessible media with an explicit recovery path. No autoplay. */
 export function ProductVideo({ slug, poster, title, className = "" }: {
@@ -7,11 +10,42 @@ export function ProductVideo({ slug, poster, title, className = "" }: {
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [mobile, setMobile] = useState(false);
+  const video = useRef<HTMLVideoElement>(null);
+  // Choose native phone footage once. Rotating a device must not restart a tour.
+  useEffect(() => setMobile(window.matchMedia("(max-width: 640px)").matches), []);
+  useEffect(() => { setFailed(false); }, [slug]);
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    const onVisibility = () => { if (document.hidden) element.pause(); };
+    const onOtherPlayback = (event: Event) => {
+      if ((event as CustomEvent).detail !== element) element.pause();
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) element.pause();
+    });
+    observer.observe(element);
+    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("brostco:product-play", onOtherPlayback);
+    return () => {
+      element.pause();
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("brostco:product-play", onOtherPlayback);
+    };
+  }, [slug, attempt, mobile]);
+  const responsive = RESPONSIVE_DEMOS.has(slug);
+  const format = responsive && mobile ? "mobile" : "desktop";
+  const source = `/demos/${slug}${format === "mobile" ? "-mobile" : ""}.mp4?v=${MEDIA_REVISION}`;
+  const currentPoster = responsive ? `/demos/${slug}-${format}.jpg?v=${MEDIA_REVISION}` : poster;
   return <div className="bco-product-video">
-    <video key={`${slug}-${attempt}`} className={className} controls playsInline preload="none"
-      poster={poster} aria-label={title} onError={() => setFailed(true)}>
-      <source src={`/demos/${slug}.mp4`} type="video/mp4" />
-      <track kind="captions" src={`/demos/${slug}.vtt`} srcLang="en" label="English" default />
+    <video ref={video} key={`${slug}-${attempt}-${format}`} className={className} controls playsInline preload="none"
+      data-product-video data-responsive={responsive} data-format={format} width={format === "mobile" ? 720 : 1600} height={format === "mobile" ? 1600 : 1000}
+      poster={currentPoster} aria-label={title} onError={() => setFailed(true)}
+      onPlay={(event) => document.dispatchEvent(new CustomEvent("brostco:product-play", { detail: event.currentTarget }))}>
+      <source src={source} type="video/mp4" onError={() => setFailed(true)} />
+      <track kind="captions" src={`/demos/${slug}.vtt?v=${MEDIA_REVISION}`} srcLang="en" label="English" default />
       Your browser cannot play this video. <a href={`/demos/${slug}.txt`}>Read the transcript</a>.
     </video>
     {failed && <div role="alert" className="bco-video-error">

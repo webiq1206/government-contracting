@@ -1087,6 +1087,7 @@
   display: block;
   background: #0b1720;
   object-fit: contain;
+  height: auto;
 }
 .bco-main-video {
   border: 1px solid #cddcdb;
@@ -1095,7 +1096,7 @@
   background: #fff;
 }
 .bco-main-video video {
-  aspect-ratio: 16/9;
+  aspect-ratio: 16/10;
 }
 .bco-main-video > .bco-caption {
   padding: 18px 24px;
@@ -2280,7 +2281,12 @@
   color: #dceee6;
   font-size: 12px;
 }
-.bco-evidence-film video { display: block; width: 100%; aspect-ratio: 64 / 45; object-fit: contain; }
+.bco-evidence-film video { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: contain; }
+.bco-product-video video[data-format="mobile"] { aspect-ratio: 9 / 20; }
+@media (max-width: 640px) {
+  /* Reserve the phone frame before hydration selects its media source. */
+  .bco-product-video video[data-responsive="true"] { aspect-ratio: 9 / 20; }
+}
 .bco-evidence-film figcaption {
   padding: 14px 18px;
   color: #b8cec5;
