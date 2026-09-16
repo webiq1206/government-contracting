@@ -5,6 +5,8 @@ on:
     paths:
       - 'scripts/ui-audit/capture-product-demo.mjs'
       - '.github/workflows/product-demos.yml'
+      - 'components/pipeline-view-menu.tsx'
+      - 'app/(dash)/pipeline/page.tsx'
 permissions:
   contents: read
 concurrency:

@@ -14,6 +14,7 @@ import { tradeCoverageFor, type TradeCoverage } from "@/lib/data";
 import type { Owner } from "@/lib/domain/ownership";
 import { AgencyPath } from "@/components/agency-path";
 import { OpportunityList } from "@/components/opportunity-list";
+import { PipelineViewMenu } from "@/components/pipeline-view-menu";
 import {
   BlockerChip,
   ConfidenceChip,
@@ -524,15 +525,7 @@ export default async function PipelinePage(
             Show all ({allOpps.length})
           </Link>
         )}
-        <details className="relative sm:hidden">
-          <summary className="btn-secondary min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden">View</summary>
-          <div className="absolute right-0 top-12 z-30 grid min-w-40 gap-1 rounded-lg border border-border bg-background p-2 shadow-xl">
-            <Link href="/pipeline?view=lanes" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Simple</Link>
-            <Link href="/pipeline?view=list" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">List</Link>
-            <Link href="/pipeline?view=stages" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">All stages</Link>
-            <Link href="/pipeline?view=table" className="min-h-11 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">Table</Link>
-          </div>
-        </details>
+        <PipelineViewMenu view={view} />
         <div className="hidden gap-1 rounded-md border border-border p-0.5 sm:flex">
           {/*
             * Explicit rather than the bare path: this page now puts back the
