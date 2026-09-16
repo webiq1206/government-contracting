@@ -1,20 +1,26 @@
-BROSTCO | GUIDED SCREEN PREVIEW
-Sample data. This preview uses captured product screens.
+BROSTCO | RECORDED PRODUCT TOUR
+Real navigation in a disposable sample workspace. Staged AI analysis, quotes and message history. No external sends.
 
-00:00:00.000  Start with what needs you
-Today puts the work queue and current blockers in view. Choose a task to continue the work.
+00:00:00.450
+Meet BrostCo. Follow a government contracting workflow, from opportunity to review.
 
-00:00:20.000  Find opportunities
-The pipeline groups opportunities by work that needs you, work BrostCo is handling, and work waiting on others. Use a simple board, a list, all stages, or a table to organize the same opportunities.
+00:00:07.450
+Start with opportunities that fit your business. Here, we switch to a focused list, then open the same sample pursuit. Fit, deadline, and the source context stay connected, so you can inspect the details behind the match.
 
-00:00:40.000  Make decisions
-Keep the opportunity and its decision brief together while you review. Pursue, pass, or open the full record. Your decision stays connected to the opportunity.
+00:00:27.450
+A match is only a starting point. Open the requirements, check what needs attention, and return to the opportunity overview without losing context. This sample record contains staged analysis, not a live AI result. Your team checks the underlying documents before committing.
 
-00:01:00.000  Build your team
-Search the roster by company, trade, or location. Open filters when you need a narrower view. Open the subcontractor record to follow its opportunities, conversations, and required paperwork.
+00:00:47.450
+Keep the subcontractor and the work together. Move from the company record to related opportunities, then inspect its recorded quotes. Contacts, conversations, and pricing remain connected. Subcontractor outreach is optional and follows your company's rules. No outreach is sent in this demonstration.
 
-00:01:20.000  Prepare the bid
-The opportunity brings its identity, deadline, owner, and next action together. Expand readiness to find remaining work. Your team handles final review, signatures, and submission.
+00:01:07.450
+Read the latest reply with its conversation nearby. Expand earlier messages when you need the background, then collapse them to focus again. These messages are sample history. Reading a thread does not send a reply, and a draft is not a delivered message.
 
-00:01:40.000  Track the work
-The activity history brings actions, messages, and outcomes into a readable account record. Open event details and the related record to understand what happened and what needs attention.
+00:01:27.450
+Open the subcontractor coverage, inspect the sample quote, then move into pricing. Keep amounts, assumptions, requirements, and missing inputs with the pursuit. This is a review workflow, not a submitted bid. Your team confirms pricing, reviews terms, signs, and submits.
+
+00:01:47.450
+Open a recorded event to see the details behind the activity. Use filters when you need to narrow the history. The ledger distinguishes recorded outcomes from work still waiting. Sample records illustrate the interface here; no external messages, payments, or bids were sent.
+
+00:02:07.450
+Your rules guide automation. Your team keeps final review. Start your free trial at BrostCo.

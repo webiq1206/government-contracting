@@ -126,7 +126,7 @@ export function WorkflowGallery() {
         <div className="bco-gallery-media">
           <ProductVideo key={item.file} slug={item.file} poster={`/demos/${item.file}-desktop.jpg`} title={`${item.label}: product walkthrough using sample data`} />
           <p className="bco-caption">
-            Guided screen preview · Sample data.{" "}
+            Recorded product tour · Sample data · No external sends.{" "}
             <a href={`/demos/${item.file}.txt`}>Read transcript</a>
           </p>
         </div>

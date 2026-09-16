@@ -1,5 +1,6 @@
 import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
 import { auditMarketingExploration } from "./marketing-exploration.mjs";
+import { auditProductVideos } from "./product-video-check.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -115,7 +116,7 @@ try {
         await p.locator('#proof').screenshot({path:join(out,`${device}-product-evidence.png`)});
         assert.equal(await p.locator('#proof blockquote').count(),0,'Product evidence must not imply customer endorsements');
         assert.equal(await p.locator('#proof .bco-evidence-grid article').count(),3);
-        assert((await p.locator('#proof figcaption').innerText()).includes('earlier workspace layout'),'Preview provenance must stay visible');
+        assert((await p.locator('#proof figcaption').innerText()).includes('sample records'),'Sample provenance must stay visible');
         record.industrySlider='Next, directory filter, empty state, recovery, and all sectors checked';
         const faqCopy=p.locator('#faq .bco-sticky-column');
         if(device==='desktop') {
@@ -175,6 +176,10 @@ try {
         await auditMarketingExploration(p, { device, width, height, out });
         record.exploration='Source lightbox focus/escape, sticky step selection and boundaries, narrow/landscape widths, contextual CTA, ribbon motion, and first-week journey checked';
 
+      }
+      if(entry.route==='/demo') {
+        await auditProductVideos(p,{device,width,out});
+        record.recordedMedia='Native desktop/phone decode, captions, seeking, pause coordination, offscreen pause, failed request and retry checked';
       }
       record.tabs=[];
       const tablists=p.getByRole('tablist');

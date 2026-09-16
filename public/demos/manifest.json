@@ -1,14 +1,379 @@
 {
-  "type": "guided_screen_previews",
-  "recorded_interactions": false,
-  "sample_data": true,
-  "durationsSeconds": {
-    "pipeline": 24,
-    "review": 24,
-    "subs": 24,
-    "opportunity": 24,
-    "activity": 24,
-    "platform-walkthrough": 120,
-    "hero-preview": 15
+  "version": "2026-09-16-recorded",
+  "type": "edited_recorded_workflows",
+  "sampleData": true,
+  "recordedInteractions": true,
+  "externalActions": false,
+  "narration": "Synthetic narration; script in scripts/ui-audit/product-demo-scenes.json",
+  "sourceCommit": "d1bc582f532c4afeb1dacd1c52333ad600d0175c",
+  "sourceRecordings": {
+    "pipeline": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/pipeline-desktop-body.mp4",
+          "source": "pipeline-desktop.webm",
+          "sourceSha256": "7101407968e68277ff364eaf5734e1182ef911d794fc0e53b24809d1ed530e26",
+          "captureStartSeconds": 0.919,
+          "events": [
+            {
+              "description": "Switch to the list",
+              "seconds": 1.8489999999999998
+            },
+            {
+              "description": "Open the sample opportunity",
+              "seconds": 4.676
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/pipeline-mobile-body.mp4",
+          "source": "pipeline-mobile.webm",
+          "sourceSha256": "55167bdef60c3e9c2ac1b99acc3b652a70bb9da6f15fe8952e6e8aa8403e3f82",
+          "captureStartSeconds": 0.913,
+          "events": [
+            {
+              "description": "Switch to the list",
+              "seconds": 1.877
+            },
+            {
+              "description": "Open the sample opportunity",
+              "seconds": 4.72
+            }
+          ]
+        }
+      }
+    },
+    "review": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/review-desktop-body.mp4",
+          "source": "review-desktop.webm",
+          "sourceSha256": "3b1462aee8d3e0fd8d85433e9dcd6bf961bbc03fe1f0e70c606812d1ea873486",
+          "captureStartSeconds": 0.962,
+          "events": [
+            {
+              "description": "Inspect the requirement context",
+              "seconds": 1.8539999999999999
+            },
+            {
+              "description": "Return to the opportunity overview",
+              "seconds": 4.6850000000000005
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/review-mobile-body.mp4",
+          "source": "review-mobile.webm",
+          "sourceSha256": "855e962f263fd766c29a54df892a7ba19be231faa3ae421a496906d5fddb4736",
+          "captureStartSeconds": 0.938,
+          "events": [
+            {
+              "description": "Inspect the requirement context",
+              "seconds": 1.8419999999999999
+            },
+            {
+              "description": "Return to the opportunity overview",
+              "seconds": 4.656000000000001
+            }
+          ]
+        }
+      }
+    },
+    "subs": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/subs-desktop-body.mp4",
+          "source": "subs-desktop.webm",
+          "sourceSha256": "4a8ca794ad551a79cd3378b6b7b2e27355ded90ef4e2135abc9a8a1e7d3fc616",
+          "captureStartSeconds": 0.922,
+          "events": [
+            {
+              "description": "Inspect connected opportunities",
+              "seconds": 1.8529999999999998
+            },
+            {
+              "description": "Inspect recorded quotes",
+              "seconds": 4.666
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/subs-mobile-body.mp4",
+          "source": "subs-mobile.webm",
+          "sourceSha256": "75393d9e0ae07c05ad3505666cf8a2438d5b1ab182d542aa3d57d32559889210",
+          "captureStartSeconds": 0.913,
+          "events": [
+            {
+              "description": "Inspect connected opportunities",
+              "seconds": 1.8379999999999999
+            },
+            {
+              "description": "Inspect recorded quotes",
+              "seconds": 4.652
+            }
+          ]
+        }
+      }
+    },
+    "communications": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/communications-desktop-body.mp4",
+          "source": "communications-desktop.webm",
+          "sourceSha256": "44fc3c756045894eb62f54deeb5472f3899246cab147a46455997daa3af4e2e8",
+          "captureStartSeconds": 0.931,
+          "events": [
+            {
+              "description": "Inspect earlier messages",
+              "seconds": 1.847
+            },
+            {
+              "description": "Focus the latest conversation",
+              "seconds": 4.656
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/communications-mobile-body.mp4",
+          "source": "communications-mobile.webm",
+          "sourceSha256": "b92a48aabd6aaee86ad68a7c2fb9333ab619715bf7f1f0cbe26e789c7e6ae83a",
+          "captureStartSeconds": 0.914,
+          "events": [
+            {
+              "description": "Inspect earlier messages",
+              "seconds": 1.8419999999999996
+            },
+            {
+              "description": "Focus the latest conversation",
+              "seconds": 4.654
+            }
+          ]
+        }
+      }
+    },
+    "opportunity": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/opportunity-desktop-body.mp4",
+          "source": "opportunity-desktop.webm",
+          "sourceSha256": "cb8b99222f36ff7a1e02f779d91d5cf321ca6338e4d00fbae901afe87e115b08",
+          "captureStartSeconds": 0.949,
+          "events": [
+            {
+              "description": "Inspect the supporting subcontractor quote",
+              "seconds": 1.843
+            },
+            {
+              "description": "Review the pricing workspace",
+              "seconds": 4.658
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/opportunity-mobile-body.mp4",
+          "source": "opportunity-mobile.webm",
+          "sourceSha256": "0c2033a53d9c204920bb557a07924acb2aed2ec15e291556c78d127914162063",
+          "captureStartSeconds": 0.939,
+          "events": [
+            {
+              "description": "Inspect the supporting subcontractor quote",
+              "seconds": 1.854
+            },
+            {
+              "description": "Review the pricing workspace",
+              "seconds": 4.668
+            }
+          ]
+        }
+      }
+    },
+    "activity": {
+      "duration": 20,
+      "formats": {
+        "desktop": {
+          "path": "editing-intermediates/activity-desktop-body.mp4",
+          "source": "activity-desktop.webm",
+          "sourceSha256": "83a55b351687d96a10f803430337a59293d28cba1eca6d5b2939fcda8eeeded3",
+          "captureStartSeconds": 0.7,
+          "events": [
+            {
+              "description": "Expand a recorded event",
+              "seconds": 1.8539999999999999
+            },
+            {
+              "description": "Inspect available history filters",
+              "seconds": 4.691
+            }
+          ]
+        },
+        "mobile": {
+          "path": "editing-intermediates/activity-mobile-body.mp4",
+          "source": "activity-mobile.webm",
+          "sourceSha256": "d363201f9290ab09a9a94d076d710f36f5818a05a8294bd03e6d5d8dc3f9eadc",
+          "captureStartSeconds": 0.718,
+          "events": [
+            {
+              "description": "Expand a recorded event",
+              "seconds": 1.851
+            },
+            {
+              "description": "Inspect available history filters",
+              "seconds": 4.666
+            }
+          ]
+        }
+      }
+    }
+  },
+  "assets": {
+    "platform-walkthrough": {
+      "desktop": {
+        "file": "platform-walkthrough.mp4",
+        "durationSeconds": 135.021333,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "6788dbbf2aa563dfebb26a92c7295fea0220e0345ce141c766688d8f9a56ea11"
+      },
+      "mobile": {
+        "file": "platform-walkthrough-mobile.mp4",
+        "durationSeconds": 135.021333,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "c59241cb90409307b724d567e2ac98935fd20092a937dbc31910751aeb9a7d3c"
+      }
+    },
+    "hero-preview": {
+      "desktop": {
+        "file": "hero-preview.mp4",
+        "durationSeconds": 16.083333,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "87199902b09ed54b182c6839e30cef7637925895b595902786422d6874410078"
+      },
+      "mobile": {
+        "file": "hero-preview-mobile.mp4",
+        "durationSeconds": 16.083333,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "1afd481ff065910265e3adbc9dda7dbf739307bc377aef6f8adfde5948b3c93e"
+      }
+    },
+    "pipeline": {
+      "desktop": {
+        "file": "pipeline.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "3f20aba83ac7f9cc7af769491dad0f4019a41f97ac754f511855d15557a61869"
+      },
+      "mobile": {
+        "file": "pipeline-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "63c1368613af4618ad921ee21e00794690c2e14e9df7eb8148f4795fd68f0bdb"
+      }
+    },
+    "review": {
+      "desktop": {
+        "file": "review.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "b45bc779089636c32c330aceec14fb1911403c9f9cc32cb360fb03769e485afd"
+      },
+      "mobile": {
+        "file": "review-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "691c98efd25258a087efb9d379d19ac9995e6a51d92e5d90e322941437428343"
+      }
+    },
+    "subs": {
+      "desktop": {
+        "file": "subs.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "b63d9dd04bb24995b4c984e2fa6d8563dd2b2f42cf84b3d60e43c8b77db42d9e"
+      },
+      "mobile": {
+        "file": "subs-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "feb603ea5a9faa8bd386974275d1d2ae284d8a643851f6a3dec4431aaf701b8d"
+      }
+    },
+    "communications": {
+      "desktop": {
+        "file": "communications.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "ede7351fabfd8c99425cc3f2856f9040a425b55ec12e410bd2697d2eba1f3e75"
+      },
+      "mobile": {
+        "file": "communications-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "e07941464eb66f1c1e30996c7ee7293354881cc0c5ec51524631b6ec4d9671b8"
+      }
+    },
+    "opportunity": {
+      "desktop": {
+        "file": "opportunity.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "029b0248cf4f841a7dd38dfa1eb59881e37e5eb2893512eb1118b97c67ad07d0"
+      },
+      "mobile": {
+        "file": "opportunity-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "e26fcd6829cc0df55d3948cad4de58e557d8764ce81b7bfa2a87ededeabd3346"
+      }
+    },
+    "activity": {
+      "desktop": {
+        "file": "activity.mp4",
+        "durationSeconds": 20,
+        "width": 1600,
+        "height": 1000,
+        "codec": "h264",
+        "sha256": "71cfc0546a18d80da8b146b5bb5755e82676dde66989b73ad47d249b9c3a1283"
+      },
+      "mobile": {
+        "file": "activity-mobile.mp4",
+        "durationSeconds": 20,
+        "width": 720,
+        "height": 1600,
+        "codec": "h264",
+        "sha256": "c8744855dfce505828185cc0b3aeb6bda7a2c52dcb8bcc0f7b0f342d3825000d"
+      }
+    }
   }
 }

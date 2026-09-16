@@ -1,5 +1,5 @@
-BROSTCO | GUIDED SCREEN PREVIEW
-Sample data. This preview uses captured product screens.
+BROSTCO | RECORDED PRODUCT TOUR
+Real navigation in a disposable sample workspace. Staged AI analysis, quotes and message history. No external sends.
 
-00:00:00.000  Know what needs you
-A clear queue connects each task to the next action and its underlying record.
+00:00:00.000
+BrostCo opportunity workflow. Real navigation with sample data. Switch to a focused list and inspect the connected opportunity. No external actions.

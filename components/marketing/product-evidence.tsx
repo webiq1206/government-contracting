@@ -20,10 +20,11 @@ export function ProductEvidence({ signupHref }: { signupHref: string }) {
             <Link href="/demo" className="bco-text-link">Explore the full product tour ↗</Link>
           </StickyColumn>
           <figure className="bco-evidence-film">
-            <div className="bco-evidence-film-label"><span>Inside BrostCo</span><span>2-minute walkthrough</span></div>
-            <ProductVideo slug="platform-walkthrough" poster="/demos/pipeline-desktop.jpg" title="BrostCo guided product preview with sample records" />
+            <div className="bco-evidence-film-label"><span>Inside BrostCo</span><span>Narrated product tour</span></div>
+            <ProductVideo slug="platform-walkthrough" poster="/demos/platform-walkthrough-desktop.jpg" title="BrostCo recorded product tour with sample records" />
             <figcaption>
-              Captured product screens with sample records and an earlier workspace layout.
+              Recorded navigation in the redesigned workspace with sample records.
+              Staged AI outputs and message history. No external sends.
               {" "}<a href="/demos/platform-walkthrough.txt">Read transcript</a>
             </figcaption>
           </figure>

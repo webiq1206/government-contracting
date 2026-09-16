@@ -1,0 +1,255 @@
+{
+  "sourceCommit": "d1bc582f532c4afeb1dacd1c52333ad600d0175c",
+  "mediaVersion": "2026-09-16-recorded",
+  "scope": "Offline full-file decode, format, hash and loudness checks. Browser interaction is covered by the separate responsive audit; real-device playback and listening review are separate.",
+  "results": [
+    {
+      "slug": "platform-walkthrough",
+      "format": "desktop",
+      "file": "platform-walkthrough.mp4",
+      "sha256": "6788dbbf2aa563dfebb26a92c7295fea0220e0345ce141c766688d8f9a56ea11",
+      "decoded": true,
+      "durationSeconds": 135.021333,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.77,
+        "truePeakDBTP": -1.32
+      }
+    },
+    {
+      "slug": "platform-walkthrough",
+      "format": "mobile",
+      "file": "platform-walkthrough-mobile.mp4",
+      "sha256": "c59241cb90409307b724d567e2ac98935fd20092a937dbc31910751aeb9a7d3c",
+      "decoded": true,
+      "durationSeconds": 135.021333,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.77,
+        "truePeakDBTP": -1.32
+      }
+    },
+    {
+      "slug": "hero-preview",
+      "format": "desktop",
+      "file": "hero-preview.mp4",
+      "sha256": "87199902b09ed54b182c6839e30cef7637925895b595902786422d6874410078",
+      "decoded": true,
+      "durationSeconds": 16.083333,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": null
+    },
+    {
+      "slug": "hero-preview",
+      "format": "mobile",
+      "file": "hero-preview-mobile.mp4",
+      "sha256": "1afd481ff065910265e3adbc9dda7dbf739307bc377aef6f8adfde5948b3c93e",
+      "decoded": true,
+      "durationSeconds": 16.083333,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": null
+    },
+    {
+      "slug": "pipeline",
+      "format": "desktop",
+      "file": "pipeline.mp4",
+      "sha256": "3f20aba83ac7f9cc7af769491dad0f4019a41f97ac754f511855d15557a61869",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.79,
+        "truePeakDBTP": -1.32
+      }
+    },
+    {
+      "slug": "pipeline",
+      "format": "mobile",
+      "file": "pipeline-mobile.mp4",
+      "sha256": "63c1368613af4618ad921ee21e00794690c2e14e9df7eb8148f4795fd68f0bdb",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.79,
+        "truePeakDBTP": -1.32
+      }
+    },
+    {
+      "slug": "review",
+      "format": "desktop",
+      "file": "review.mp4",
+      "sha256": "b45bc779089636c32c330aceec14fb1911403c9f9cc32cb360fb03769e485afd",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.83,
+        "truePeakDBTP": -1.38
+      }
+    },
+    {
+      "slug": "review",
+      "format": "mobile",
+      "file": "review-mobile.mp4",
+      "sha256": "691c98efd25258a087efb9d379d19ac9995e6a51d92e5d90e322941437428343",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.83,
+        "truePeakDBTP": -1.38
+      }
+    },
+    {
+      "slug": "subs",
+      "format": "desktop",
+      "file": "subs.mp4",
+      "sha256": "b63d9dd04bb24995b4c984e2fa6d8563dd2b2f42cf84b3d60e43c8b77db42d9e",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.98,
+        "truePeakDBTP": -1.47
+      }
+    },
+    {
+      "slug": "subs",
+      "format": "mobile",
+      "file": "subs-mobile.mp4",
+      "sha256": "feb603ea5a9faa8bd386974275d1d2ae284d8a643851f6a3dec4431aaf701b8d",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.98,
+        "truePeakDBTP": -1.47
+      }
+    },
+    {
+      "slug": "communications",
+      "format": "desktop",
+      "file": "communications.mp4",
+      "sha256": "ede7351fabfd8c99425cc3f2856f9040a425b55ec12e410bd2697d2eba1f3e75",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.39,
+        "truePeakDBTP": -1.33
+      }
+    },
+    {
+      "slug": "communications",
+      "format": "mobile",
+      "file": "communications-mobile.mp4",
+      "sha256": "e07941464eb66f1c1e30996c7ee7293354881cc0c5ec51524631b6ec4d9671b8",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.39,
+        "truePeakDBTP": -1.33
+      }
+    },
+    {
+      "slug": "opportunity",
+      "format": "desktop",
+      "file": "opportunity.mp4",
+      "sha256": "029b0248cf4f841a7dd38dfa1eb59881e37e5eb2893512eb1118b97c67ad07d0",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.94,
+        "truePeakDBTP": -1.4
+      }
+    },
+    {
+      "slug": "opportunity",
+      "format": "mobile",
+      "file": "opportunity-mobile.mp4",
+      "sha256": "e26fcd6829cc0df55d3948cad4de58e557d8764ce81b7bfa2a87ededeabd3346",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.94,
+        "truePeakDBTP": -1.4
+      }
+    },
+    {
+      "slug": "activity",
+      "format": "desktop",
+      "file": "activity.mp4",
+      "sha256": "71cfc0546a18d80da8b146b5bb5755e82676dde66989b73ad47d249b9c3a1283",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 1600,
+      "height": 1000,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.7,
+        "truePeakDBTP": -1.38
+      }
+    },
+    {
+      "slug": "activity",
+      "format": "mobile",
+      "file": "activity-mobile.mp4",
+      "sha256": "c8744855dfce505828185cc0b3aeb6bda7a2c52dcb8bcc0f7b0f342d3825000d",
+      "decoded": true,
+      "durationSeconds": 20,
+      "width": 720,
+      "height": 1600,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "loudness": {
+        "integratedLUFS": -16.7,
+        "truePeakDBTP": -1.38
+      }
+    }
+  ]
+}

@@ -4,13 +4,13 @@ This branch implements a new visual system, simpler workspaces, and a rebuilt pu
 
 The redesign has continued on `implementation/connected-workflows`. Earlier evidence below describes the original `redesign/complete-platform` checkpoint, based on `4a5461b`.
 
-Current source and automated checks are on [PR #137](https://github.com/webiq1206/government-contracting/pull/137). See [the continuation status](../releases/connected-workspace-status.md) for the current scope, verification, and Replit release blocker. Committed evidence files describe their named checkpoints.
+The connected-workspace continuation was delivered through PR #137. The latest recorded-media work and checks are on [PR #145](https://github.com/webiq1206/government-contracting/pull/145). See [the media release record](../releases/recorded-product-demos.md) for deliverables and the Replit release blocker. Committed evidence files describe their named checkpoints.
 
 ## Review the result
 
 Open [review.html](review.html) in a browser. It contains 48 synthetic product and public screens, with 320, 390, 768, 1024, and 1280px width controls and a dark-theme toggle. Native disclosures work. Application navigation, forms, tabs, saves, and transactions in this portable review are intentionally disconnected. It demonstrates layout, not live workflow completion.
 
-The homepage implementation is in `components/marketing/landing-page.tsx`. All seven playable, captioned **guided screen previews** are in `public/demos`. These use actual captured product screens with sample data, but they are not recordings of working interactions. See [media-storyboard.md](media-storyboard.md).
+The homepage implementation is in `components/marketing/landing-page.tsx`. Eight edited product videos in desktop and native-phone formats are in `public/demos`, with captions, transcripts and posters. These show actual interaction recordings using sample data. The main tour and six focused clips have narration. See [the current media delivery](../releases/recorded-product-demos.md); [media-storyboard.md](media-storyboard.md) preserves the historical preview plan.
 
 ## What changed and why
 

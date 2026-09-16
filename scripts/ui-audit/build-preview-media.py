@@ -5,7 +5,8 @@ from pathlib import Path
 import subprocess, json
 from PIL import Image, ImageDraw, ImageFont
 root=Path(__file__).resolve().parents[2]
-shots=root/'artifacts/redesign/screenshots'; out=root/'public/demos'; frames=root/'artifacts/redesign/media-frames'
+# Historical reproducibility only. Never overwrite the recorded delivery.
+shots=root/'artifacts/redesign/screenshots'; out=root/'artifacts/redesign/legacy-previews'; frames=root/'artifacts/redesign/media-frames'
 out.mkdir(exist_ok=True,parents=True);frames.mkdir(exist_ok=True,parents=True)
 font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',27)
 small=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',16)

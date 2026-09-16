@@ -1,11 +1,5 @@
-BROSTCO | GUIDED SCREEN PREVIEW
-Sample data. This preview uses captured product screens.
+BROSTCO | RECORDED PRODUCT TOUR
+Real navigation in a disposable sample workspace. Staged AI analysis, quotes and message history. No external sends.
 
-00:00:00.000  Review one decision
-Keep the opportunity and its decision brief together while you review.
-
-00:00:08.000  Check what is known
-Inspect strengths, risks, missing information, and the time available before you commit.
-
-00:00:16.000  Decide with context
-Pursue, pass, or open the full record. Your decision stays connected to the opportunity.
+00:00:00.450
+A match is only a starting point. Open the requirements, check what needs attention, and return to the opportunity overview without losing context. This sample record contains staged analysis, not a live AI result. Your team checks the underlying documents before committing.

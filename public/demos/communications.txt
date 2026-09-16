@@ -1,0 +1,5 @@
+BROSTCO | RECORDED PRODUCT TOUR
+Real navigation in a disposable sample workspace. Staged AI analysis, quotes and message history. No external sends.
+
+00:00:00.450
+Read the latest reply with its conversation nearby. Expand earlier messages when you need the background, then collapse them to focus again. These messages are sample history. Reading a thread does not send a reply, and a draft is not a delivered message.
