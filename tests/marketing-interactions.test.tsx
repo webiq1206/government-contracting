@@ -13,6 +13,10 @@ beforeEach(() => {
   vi.stubGlobal("document", window.document);
   vi.stubGlobal("HTMLElement", window.HTMLElement);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  Object.assign(window.HTMLElement.prototype, {
+    showModal() { this.setAttribute("open", ""); },
+    close() { this.removeAttribute("open"); },
+  });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -44,9 +48,14 @@ describe("interactive sample workflow", () => {
     )!;
     await click(source);
     expect(source.getAttribute("aria-expanded")).toBe("true");
-    expect(container.textContent).toContain(
+    expect(document.body.textContent).toContain(
       "It is not an actual solicitation or a live AI result",
     );
+    expect(document.querySelector("dialog")?.getAttribute("aria-modal")).toBe("true");
+    expect(document.body.style.overflow).toBe("hidden");
+    await click(document.querySelector('[aria-label="Close details"]')!);
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(source.getAttribute("aria-expanded")).toBe("false");
     await click(tabs[4]);
     const review = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent?.includes("Try marking"),
@@ -78,5 +87,12 @@ describe("interactive sample workflow", () => {
         .querySelector('[role="tabpanel"]')
         ?.getAttribute("aria-labelledby"),
     ).toBe(tabs[4].id);
+  });
+  it("closes source details on Escape's native cancel event", async () => {
+    await act(async () => root.render(<WorkflowDemo />));
+    await click(container.querySelector('[aria-haspopup="dialog"]')!);
+    await act(async () => { document.querySelector("dialog")!.dispatchEvent(new window.Event("cancel", { bubbles: false, cancelable: true })); });
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(document.body.style.overflow).not.toBe("hidden");
   });
 });

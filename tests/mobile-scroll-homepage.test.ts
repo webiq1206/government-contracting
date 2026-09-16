@@ -26,8 +26,8 @@ describe("mobile dashboard scrolling", () => {
 describe("AI-first homepage", () => {
   it("leads with the audience, concrete outcome, and free trial CTA", () => {
     expect(landing).toContain("AI Government Procurement Platform");
-    expect(landing).toContain("Find government contracts.");
-    expect(landing).toContain("Let AI prepare the bid.");
+    expect(landing).toContain("AI finds government contracts");
+    expect(landing).toContain("and prepares your bids.");
     expect(landing).toContain("Start free trial");
   });
   it("uses an on-demand product illustration and reduced-motion transitions", () => {

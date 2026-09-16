@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { INDUSTRIES } from "./industry-content";
 
-function IndustryIcon({ kind }: { kind: (typeof INDUSTRIES)[number]["icon"] }) {
+export function IndustryIcon({ kind }: { kind: (typeof INDUSTRIES)[number]["icon"] }) {
   const paths = {
     build: "m14 5 5 5M3 21l9-9M10 3l4 2 5 5 2 4-4 1-8-8Z",
     building: "M4 21V3h12v18M16 10h4v11M8 7h4M8 11h4M8 15h4M2 21h20",
