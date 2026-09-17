@@ -20,6 +20,15 @@ Stripe price, never editing an amount in application code.
 New accounts receive a **7-day cardless trial**. Checkout collects a payment
 method only when the customer chooses paid access.
 
+### Applying a price change in Replit
+
+Pull the latest main branch, then run `npm run stripe:reprice`. Copy all four
+printed monthly and annual price IDs into the corresponding Replit workspace
+and publishing secrets. Printing the IDs does not save those settings.
+Run `npm run stripe:verify` until it reports that the selected mode is ready,
+then republish. Never replace the Stripe API or webhook secrets with price IDs.
+Existing subscribers keep the prices already attached to their subscriptions.
+
 ---
 
 ## Current state (test mode)
