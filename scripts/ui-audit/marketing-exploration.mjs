@@ -60,7 +60,7 @@ export async function auditMarketingExploration(p, { device, width, height, out 
     assert(await track.evaluate(el=>Math.abs(el.children[0].getBoundingClientRect().width-el.children[1].getBoundingClientRect().width)<1),'Loop copies have equal widths');
     await p.emulateMedia({reducedMotion:'reduce'});
     assert.equal(await track.evaluate(el=>getComputedStyle(el).animationName),'none');
-    assert.equal(await track.locator('[aria-hidden="true"]').isVisible(),false);
+    assert.equal(await track.locator('ul[aria-hidden="true"]').isVisible(),false);
     await p.emulateMedia({reducedMotion:'no-preference'});
   }
   await p.evaluate(() => window.scrollTo(0, 0));
