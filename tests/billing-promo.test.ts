@@ -24,11 +24,11 @@ describe("configured purchase price", () => {
 });
 
 describe("SaaS pricing constants", () => {
-  it("uses $497 standard and $497 founding with a 7-day trial", () => {
+  it("uses $497 standard and $197 founding with a 7-day trial", () => {
     expect(STANDARD_MONTHLY_USD).toBe(497);
-    expect(FOUNDING_MONTHLY_USD).toBe(497);
+    expect(FOUNDING_MONTHLY_USD).toBe(197);
     expect(TRIAL_DAYS).toBe(7);
-    expect(annualSavingsUsd()).toBe((497 - 497) * 12);
+    expect(annualSavingsUsd()).toBe((497 - 197) * 12);
   });
 
   /**
@@ -43,6 +43,10 @@ describe("SaaS pricing constants", () => {
       (p) => p.plan === "standard" && p.interval === "year"
     )!;
     expect(standardYear.amountCents).toBe(497 * 7 * 100);
+    const foundingYear = allPrices().find(p => p.plan === "founding" && p.interval === "year")!;
+    expect(foundingYear.amountCents).toBe(137900);
+    expect(matchesCatalogPrice({ active: true, currency: "usd", unit_amount: 19700, recurring: { interval: "month", interval_count: 1 } }, "founding", "month")).toBe(true);
+    expect(matchesCatalogPrice({ active: true, currency: "usd", unit_amount: 49700, recurring: { interval: "month", interval_count: 1 } }, "founding", "month")).toBe(false);
   });
 });
 

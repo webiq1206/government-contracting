@@ -42,8 +42,8 @@ describe("offerPreview", () => {
       concession: { kind: "percent", percent: 25 },
       now: NOW,
     });
-    // 497 less a quarter.
-    expect(p.firstCharge).toBe("$373");
+    // 197 less a quarter, rounded for display.
+    expect(p.firstCharge).toBe("$148");
     expect(p.discount).toContain("25% off");
     // Open-ended, so there is no "and then" to state.
     expect(p.laterCharge).toBeNull();
@@ -56,8 +56,8 @@ describe("offerPreview", () => {
       concession: { kind: "percent", percent: 50, months: 3 },
       now: NOW,
     });
-    expect(p.firstCharge).toBe("$249");
-    expect(p.laterCharge).toContain("$497");
+    expect(p.firstCharge).toBe("$99");
+    expect(p.laterCharge).toContain("$197");
     expect(p.laterCharge).toContain("3 months");
   });
 
