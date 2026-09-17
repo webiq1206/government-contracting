@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-/** Full decorative film. The poster and copy never depend on playback. */
+/** A brief desktop introduction settles to a still. Phones never load video. */
 export function HeroBackgroundVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -13,6 +13,8 @@ export function HeroBackgroundVideo() {
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
+  const [finished, setFinished] = useState(false);
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Select once before mounting the video, avoiding a second download on rotation.
@@ -28,7 +30,7 @@ export function HeroBackgroundVideo() {
       }
     ).connection;
     const sync = () => {
-      const enabled = !media.matches && !connection?.saveData;
+      const enabled = !window.matchMedia("(max-width: 640px)").matches && !media.matches && !connection?.saveData;
       setAllowed(enabled);
       if (!enabled) setPlaying(false);
     };
@@ -43,6 +45,7 @@ export function HeroBackgroundVideo() {
     onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      if (stopTimer.current) clearTimeout(stopTimer.current);
       media.removeEventListener("change", sync);
       connection?.removeEventListener?.("change", sync);
       observer.disconnect();
@@ -53,7 +56,7 @@ export function HeroBackgroundVideo() {
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
-    if (!allowed || failed || !visible || !pageVisible) {
+    if (!allowed || failed || finished || !visible || !pageVisible) {
       video.pause();
       return;
     }
@@ -68,7 +71,7 @@ export function HeroBackgroundVideo() {
       active = false;
       video.pause();
     };
-  }, [allowed, failed, visible, pageVisible]);
+  }, [allowed, failed, finished, visible, pageVisible]);
 
   return (
     <>
@@ -86,13 +89,22 @@ export function HeroBackgroundVideo() {
             className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
             data-format={mobile ? "mobile" : "desktop"}
             muted
-            loop
             playsInline
             preload="none"
             tabIndex={-1}
             aria-hidden="true"
             onPlaying={() => {
               setPlaying(true);
+              if (!stopTimer.current) stopTimer.current = setTimeout(() => {
+                ref.current?.pause();
+                setFinished(true);
+              }, 4500);
+            }}
+            onTimeUpdate={event => {
+              if (event.currentTarget.currentTime >= 4.5) {
+                event.currentTarget.pause();
+                setFinished(true);
+              }
             }}
             onError={() => {
               setFailed(true);

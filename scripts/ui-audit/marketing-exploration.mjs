@@ -50,11 +50,14 @@ export async function auditMarketingExploration(p, { device, width, height, out 
   }
   await p.locator('#workflow').screenshot({ path: join(out, `${device}-first-week.png`) });
   await p.locator('.bco-industry-ribbon').scrollIntoViewIfNeeded();
-  const pause = p.getByRole('button', { name: 'Pause industry ribbon', exact: true });
-  if (await pause.count()) await pause.click();
-  await p.getByRole('button', { name: 'Play industry ribbon', exact: true }).click();
-  await p.getByRole('button', { name: 'Pause industry ribbon', exact: true }).click();
-  assert.equal(await p.locator('.bco-ribbon-track').getAttribute('data-playing'), 'false');
+  assert.equal(await p.getByRole('button', { name: /Pause industry ribbon|Play industry ribbon/ }).count(), 0);
+  await p.getByRole('button', { name: 'Browse more industry sectors', exact: true }).click();
+  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft > 50);
+  await p.getByRole('button', { name: 'Browse earlier industry sectors', exact: true }).click();
+  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft < 5);
+  await p.locator('#industry-sectors').focus();
+  await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft > 0);
   await p.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await p.locator('.bco-ribbon-track').evaluate(el => getComputedStyle(el).animationName), 'none');
   await p.emulateMedia({ reducedMotion: 'no-preference' });
