@@ -51,25 +51,26 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 describe("hero background film", () => {
-  it("has a wall-clock stop even if media time events stall", async () => {
+  it("does not interrupt playback with a time limit", async () => {
     vi.useFakeTimers();
     await act(async () => root.render(<HeroBackgroundVideo />));
     await act(async () => container.querySelector('video')!.dispatchEvent(new window.Event('playing')));
     pause.mockClear();
     await act(async () => vi.advanceTimersByTime(4500));
-    expect(pause).toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
     const count = play.mock.calls.length;
     await act(async () => observe([{ isIntersecting: false }]));
     await act(async () => observe([{ isIntersecting: true }]));
-    expect(play).toHaveBeenCalledTimes(count);
+    expect(play).toHaveBeenCalledTimes(count + 1);
   });
-  it("stops the introduction and does not restart it on re-entry", async () => {
+  it("loops the full film, loads eagerly, and resumes on re-entry", async () => {
     await act(async () => root.render(<HeroBackgroundVideo />));
     expect(container.querySelector("source")?.getAttribute("src")).toBe(
       "/marketing/hero-background.mp4?v=20260916-full",
     );
     expect(play).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("video")?.hasAttribute("loop")).toBe(false);
+    expect(container.querySelector("video")?.hasAttribute("loop")).toBe(true);
+    expect(container.querySelector("video")?.getAttribute("preload")).toBe("auto");
     expect(container.querySelector("button")).toBeNull();
     await act(async () => observe([{ isIntersecting: false }]));
     const count = play.mock.calls.length;
@@ -79,12 +80,12 @@ describe("hero background film", () => {
     Object.defineProperty(video, "currentTime", { value: 8 });
     pause.mockClear();
     await act(async () => video.dispatchEvent(new window.Event("timeupdate")));
-    expect(pause).toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
     await act(async () => observe([{ isIntersecting: false }]));
     expect(pause).toHaveBeenCalled();
     const stoppedCount = play.mock.calls.length;
     await act(async () => observe([{ isIntersecting: true }]));
-    expect(play).toHaveBeenCalledTimes(stoppedCount);
+    expect(play).toHaveBeenCalledTimes(stoppedCount + 1);
     expect(video.currentTime).toBe(8);
   });
   it("does not request video for reduced motion", async () => {

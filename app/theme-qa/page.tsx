@@ -60,7 +60,7 @@ export default function ThemeQaPage() {
           ))}
         </nav>
         <div className="space-y-3 border-t border-border/55 p-4 dark:border-white/10">
-          <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
+          <ThemeToggle className="self-start" />
           <p className="truncate text-xs text-muted-foreground">operator@brostco.com</p>
         </div>
       </aside>

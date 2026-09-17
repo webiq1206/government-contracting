@@ -51,15 +51,17 @@ export async function auditMarketingExploration(p, { device, width, height, out 
   await p.locator('#workflow').screenshot({ path: join(out, `${device}-first-week.png`) });
   await p.locator('.bco-industry-ribbon').scrollIntoViewIfNeeded();
   assert.equal(await p.getByRole('button', { name: /Pause industry ribbon|Play industry ribbon/ }).count(), 0);
-  await p.getByRole('button', { name: 'Browse more industry sectors', exact: true }).click();
-  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft > 50);
-  await p.getByRole('button', { name: 'Browse earlier industry sectors', exact: true }).click();
-  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft < 5);
-  await p.locator('#industry-sectors').focus();
-  await p.keyboard.press('ArrowRight');
-  await p.waitForFunction(() => document.querySelector('#industry-sectors').scrollLeft > 0);
-  await p.emulateMedia({ reducedMotion: 'reduce' });
-  assert.equal(await p.locator('.bco-ribbon-track').evaluate(el => getComputedStyle(el).animationName), 'none');
-  await p.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const selector of ['.bco-ribbon-track', '.bco-industry-loop']) {
+    const track = p.locator(selector);
+    await track.evaluate(el => el.parentElement.scrollIntoView({block:'center'}));
+    assert.equal(await track.evaluate(el=>getComputedStyle(el).animationTimingFunction), 'linear');
+    const before = await track.evaluate(el=>getComputedStyle(el).transform);
+    await p.waitForFunction(({selector,before})=>getComputedStyle(document.querySelector(selector)).transform!==before,{selector,before});
+    assert(await track.evaluate(el=>Math.abs(el.children[0].getBoundingClientRect().width-el.children[1].getBoundingClientRect().width)<1),'Loop copies have equal widths');
+    await p.emulateMedia({reducedMotion:'reduce'});
+    assert.equal(await track.evaluate(el=>getComputedStyle(el).animationName),'none');
+    assert.equal(await track.locator('[aria-hidden="true"]').isVisible(),false);
+    await p.emulateMedia({reducedMotion:'no-preference'});
+  }
   await p.evaluate(() => window.scrollTo(0, 0));
 }

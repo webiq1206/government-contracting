@@ -10,7 +10,7 @@ import { HOME_FAQ } from "@/components/marketing/site-content";
 const props = {
   promoActive: false,
   promoEndsAt: null,
-  standardMonthly: 1997,
+  standardMonthly: 497,
   foundingMonthly: 497,
   signupHref: "/signup?plan=standard",
 };
@@ -64,7 +64,7 @@ describe("public visitor journey", () => {
     expect(new Set(prefixes).size).toBe(prefixes.length);
     for (const industry of NAICS_CODES)
       expect(prefixes, industry.code).toContain(industry.code.slice(0, 2));
-    expect(document.querySelectorAll(".bco-industry-card")).toHaveLength(
+    expect(document.querySelectorAll(".bco-industry-track:not([aria-hidden]) .bco-industry-card")).toHaveLength(
       INDUSTRIES.length,
     );
     expect(

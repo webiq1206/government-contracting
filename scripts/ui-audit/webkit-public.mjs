@@ -33,7 +33,7 @@ try {
   assert(await plain.locator('h1').isVisible(), 'Heading does not depend on JS');
   assert(await plain.locator('.bco-hero-centered .bco-button').isVisible(), 'Trial does not depend on JS');
   assert(await plain.locator('.bco-chapter-copy h2').first().isVisible(), 'Reveals never hide essential content');
-  assert.equal(await plain.locator('.bco-ribbon-track li').count(), 20, 'Manual sector list survives without JS');
+  assert.equal(await plain.locator('.bco-ribbon-track ul:not([aria-hidden]) li').count(), 20, 'All industry sectors survive without JS');
   await fallback.close();
   console.log('Mobile WebKit: responsive hero, contextual CTA, stable tours, reduced motion, menu recovery, zero background video requests, and no-JS fallback passed.');
 } finally {

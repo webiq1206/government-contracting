@@ -50,7 +50,7 @@ export const PLANS: Record<Exclude<PlanKey, "none">, PlanDef> = {
     key: "standard",
     name: "Standard",
     blurb: "Full platform access.",
-    monthlyUsd: 1997,
+    monthlyUsd: 497,
     grandfathered: false,
     promoOnly: false,
   },
@@ -104,6 +104,16 @@ export function allPrices(): PlanPrice[] {
     }
   }
   return out;
+}
+
+/** Reject stale configured prices before a new purchase or plan change. */
+export function matchesCatalogPrice(price: {
+  active: boolean; currency: string; unit_amount: number | null;
+  recurring: { interval: string; interval_count: number } | null;
+}, plan: Exclude<PlanKey, "none">, interval: BillingInterval): boolean {
+  return price.active && price.currency === "usd" &&
+    price.unit_amount === planPrice(plan, interval).amountCents &&
+    price.recurring?.interval === interval && price.recurring.interval_count === 1;
 }
 
 /**

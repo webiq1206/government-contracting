@@ -22,8 +22,8 @@ export default async function LoginPage() {
   // rather than a login form that can't succeed.
   if (!(await hasAnyOperator())) redirect("/setup");
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
-      <div className="absolute right-4 top-4">
+    <main className="relative flex min-h-screen flex-col items-center justify-center bg-background p-6 text-foreground">
+      <div className="mb-4 flex w-full max-w-md justify-end">
         <ThemeToggle compact />
       </div>
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8">

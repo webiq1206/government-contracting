@@ -8,6 +8,7 @@ import { getFoundingPromo } from "@/lib/billing/promo";
 import {
   PLANS,
   planPrice,
+  matchesCatalogPrice,
   priceIdFor,
   planForPriceId,
   type BillingInterval,
@@ -120,6 +121,10 @@ export async function POST(req: Request) {
   const movingUp = nextCents > currentCents;
 
   try {
+    const price = await stripe.prices.retrieve(newPriceId);
+    if (!matchesCatalogPrice(price, target, interval)) {
+      return NextResponse.json({ error: "This price is being updated. Please try again later." }, { status: 503 });
+    }
     await stripe.subscriptions.update(org.stripe_subscription_id, {
       items: [{ id: item.id, price: newPriceId }],
       proration_behavior: movingUp ? "always_invoice" : "create_prorations",

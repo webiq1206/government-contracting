@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 
 export default function ForgotPasswordPage() {
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12 text-foreground">
-      <div className="absolute right-4 top-4">
+    <main className="relative flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 text-foreground">
+      <div className="mb-4 flex w-full max-w-md justify-end">
         <ThemeToggle compact />
       </div>
       <div className="w-full max-w-md">

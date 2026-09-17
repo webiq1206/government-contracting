@@ -36,7 +36,7 @@ export function MoreAccount({ email }: { email: string }) {
         Your session
       </h2>
       <div className="space-y-3 rounded-md border border-border/55 p-3 dark:border-white/10">
-        <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
+        <ThemeToggle className="self-start" />
         <p className="truncate text-xs text-muted-foreground">{email}</p>
         <button
           type="button"

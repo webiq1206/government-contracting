@@ -106,12 +106,10 @@ try {
         record.expandedScrollFrames=await captureScrollFrames(p,out,name.replace('.png','-expanded'));
       }
       if(entry.route==='/') {
-        const industryTrack=p.locator('.bco-industry-track');
+        const industryTrack=p.locator('.bco-industry-track:not([aria-hidden])');
         await industryTrack.scrollIntoViewIfNeeded();
         assert.equal(await industryTrack.locator('li').count(),20,'All broad industry sectors should be browsable');
-        await p.getByRole('button',{name:'Next industries',exact:true}).click();
-        await p.waitForFunction(()=>document.querySelector('.bco-industry-track').scrollLeft>100);
-        await industryTrack.screenshot({path:join(out,`${device}-industry-slider.png`)});
+        await p.locator('.bco-industry-window').screenshot({path:join(out,`${device}-industry-slider.png`)});
         const search=p.getByLabel('Find your industry or service', {exact:true});
         await search.fill('HVAC');
         assert.equal(await p.locator('.bco-industry-directory-body li').count(),1);
@@ -174,15 +172,22 @@ try {
         } else {
           await film.waitFor({state:'visible'});
           await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
-          assert(await film.evaluate(el=>el.muted&&!el.loop&&el.playsInline),'Introduction is silent, inline, and never loops');
-          await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused);
-          assert(await film.evaluate(el=>el.currentTime<=5),'Decorative motion ends within five seconds');
+          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline&&el.preload==='auto'),'Film loops silently and loads eagerly');
+          await film.evaluate(el=>{el.currentTime=7;});
+          await p.waitForFunction(()=>{const v=document.querySelector('.bco-hero-background-film');return v.currentTime>7.2&&!v.paused;});
+          await film.evaluate(el=>{el.currentTime=29.8;});
+          await p.waitForFunction(()=>{const v=document.querySelector('.bco-hero-background-film');return v.currentTime<2&&!v.paused;});
+          for(const time of [.5,5.5,10.5,15.5,20.5,25.5]) {
+            await film.evaluate((el,t)=>{el.currentTime=t;},time);
+            await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film').seeking);
+            await p.screenshot({path:join(out,`${device}-hero-scene-${time}.png`)});
+          }
           await p.locator('#proof').scrollIntoViewIfNeeded();
           await p.evaluate(()=>window.scrollTo(0,0));
-          assert(await film.evaluate(el=>el.paused),'Finished introduction stays still on re-entry');
+          await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film').paused);
         }
         await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-hero-scene-settled.png`),animations:'disabled'});
-        record.heroFilm='Phone still frame, bounded desktop introduction, no replay, and reduced-motion fallback checked';
+        record.heroFilm='Phone still frame, continuous desktop film, loop boundary, visibility resume, and reduced-motion fallback checked';
         assert.equal(await p.locator('.bco-hero-motion-toggle').count(),0,'No standalone hero pause control');
         await p.emulateMedia({reducedMotion:'reduce'});
         await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));

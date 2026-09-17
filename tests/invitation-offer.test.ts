@@ -84,7 +84,7 @@ describe("offerPreview", () => {
       now: NOW,
     });
     expect(forNow.firstCharge).toContain("Nothing for the first 3");
-    expect(forNow.laterCharge).toContain("$1,997");
+    expect(forNow.laterCharge).toContain("$497");
     // A free run still ends at a checkout, so this one does say so.
     expect(line(forNow, "Discount")?.note).toContain("at checkout");
   });
@@ -96,7 +96,7 @@ describe("offerPreview", () => {
       concession: { kind: "free_months", months: 0 },
       now: NOW,
     });
-    expect(p.firstCharge).toBe("$1,997");
+    expect(p.firstCharge).toBe("$497");
   });
 
   it("dates the expiry rather than describing it vaguely", () => {
