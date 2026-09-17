@@ -11,7 +11,7 @@ const props = {
   promoActive: false,
   promoEndsAt: null,
   standardMonthly: 497,
-  foundingMonthly: 497,
+  foundingMonthly: 197,
   signupHref: "/signup?plan=standard",
 };
 const html = renderToStaticMarkup(<LandingPage {...props} />);

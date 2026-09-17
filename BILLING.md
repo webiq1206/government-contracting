@@ -14,12 +14,11 @@ Stripe price, never editing an amount in application code.
 
 | Plan     | Monthly | Annual (5 months free) | Notes |
 |----------|---------|------------------------|-------|
-| Standard | $2,997  | $20,979                | List rate |
-| Founding | $497    | $3,479                 | Promo window only, rate locked for life of subscription |
+| Standard | $497    | $3,479                 | List rate |
+| Founding | $197    | $1,379                 | Promo window only, rate locked for life of subscription |
 
-Every new subscription gets a **7-day free trial** with a card collected up
-front, so Stripe charges automatically when the trial ends unless the customer
-cancels first.
+New accounts receive a **7-day cardless trial**. Checkout collects a payment
+method only when the customer chooses paid access.
 
 ---
 

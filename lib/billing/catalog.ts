@@ -58,7 +58,7 @@ export const PLANS: Record<Exclude<PlanKey, "none">, PlanDef> = {
     key: "founding",
     name: "Founding",
     blurb: "Founding rate, locked for the life of the subscription.",
-    monthlyUsd: 497,
+    monthlyUsd: 197,
     // The whole promise of this plan: a renewal must never move it to standard.
     grandfathered: true,
     promoOnly: true,
