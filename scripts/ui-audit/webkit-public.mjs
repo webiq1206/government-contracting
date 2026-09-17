@@ -29,11 +29,11 @@ try {
   const fallback = await browser.newContext({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
   const plain = await fallback.newPage();
   await plain.goto(base, { waitUntil: 'networkidle' });
+  await plain.screenshot({ path: 'artifacts/ui-audit/webkit/mobile-no-js.png', fullPage: true });
   assert(await plain.locator('h1').isVisible(), 'Heading does not depend on JS');
   assert(await plain.locator('.bco-hero-centered .bco-button').isVisible(), 'Trial does not depend on JS');
   assert(await plain.locator('.bco-chapter-copy h2').first().isVisible(), 'Reveals never hide essential content');
   assert.equal(await plain.locator('.bco-ribbon-track li').count(), 20, 'Manual sector list survives without JS');
-  await plain.screenshot({ path: 'artifacts/ui-audit/webkit/mobile-no-js.png', fullPage: true });
   await fallback.close();
   console.log('Mobile WebKit: responsive hero, contextual CTA, stable tours, reduced motion, menu recovery, zero background video requests, and no-JS fallback passed.');
 } finally {

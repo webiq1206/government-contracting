@@ -43,7 +43,7 @@ export function LandingPage({
           </h1>
           <p className="bco-lead">
             From matching opportunities to a prepared bid, AI handles the busywork.
-            You choose the automation and approve the final work.
+            You choose the automation and keep the final review.
           </p>
           <div className="bco-actions">
             <Link href={signupHref} className="bco-button">

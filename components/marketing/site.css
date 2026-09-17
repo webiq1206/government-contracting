@@ -2587,6 +2587,7 @@
   .bco-ribbon-heading > div { width: 100%; gap: 8px; }
   .bco-ribbon-heading a { max-width: none; margin-right: auto; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
   .bco-nav-dark .bco-nav-actions > .bco-button:focus-visible { display: inline-flex; }
+  .bco-nav-dark:has(.bco-nav-actions > .bco-button:focus-visible) .bco-brand-link img { max-width: 112px; height: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bco-feature-video-panel:not([hidden]) { animation: none; }

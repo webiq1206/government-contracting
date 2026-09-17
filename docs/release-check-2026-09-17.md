@@ -17,6 +17,10 @@ Mobile WebKit adds a Safari-engine compatibility check, menu/scroll recovery,
 zero decorative-video requests, and content visibility without JavaScript.
 These tests use disposable records and block external provider traffic.
 
+The first WebKit run caught an existing no-JavaScript failure: the root loading
+boundary left the async homepage hidden. Loading UI is now scoped to the
+authenticated route groups so public HTML can render without client scripts.
+
 ## Production evidence still required
 
 Repository checks are not certification of the deployed environment. Before
