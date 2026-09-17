@@ -38,13 +38,12 @@ export function LandingPage({
           <p className="bco-kicker">AI Government Procurement Platform</p>
           <h1>
             AI finds government contracts{" "}
-            <br />
+            <br className="bco-hero-desktop-break" />
             <span>and prepares your bids.</span>
           </h1>
           <p className="bco-lead">
-            AI finds matches, organizes requirements, coordinates quotes, and
-            prepares bid drafts. Set your rules, choose your automation, and
-            keep the final review.
+            From matching opportunities to a prepared bid, AI handles the busywork.
+            You choose the automation and keep the final review.
           </p>
           <div className="bco-actions">
             <Link href={signupHref} className="bco-button">

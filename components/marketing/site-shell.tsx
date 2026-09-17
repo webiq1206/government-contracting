@@ -3,6 +3,7 @@ import { MarketingNav } from "./marketing-nav";
 import { MarketingFooter } from "./marketing-footer";
 import { TRIAL_COPY } from "./site-content";
 import { StickyColumn } from "./sticky-column";
+import { SectionReveals } from "./section-reveals";
 import "./site.css";
 
 export function MarketingShell({
@@ -16,6 +17,7 @@ export function MarketingShell({
 }) {
   return (
     <div className={`bco-site${darkHeader ? " bco-site-landing" : ""}`}>
+      <SectionReveals />
       <a className="bco-skip" href="#main-content">
         Skip to content
       </a>

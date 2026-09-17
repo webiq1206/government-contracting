@@ -2,6 +2,7 @@ import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs
 import { auditMarketingExploration } from "./marketing-exploration.mjs";
 import { auditProductVideos, auditHomepageVideos } from "./product-video-check.mjs";
 import { auditSiteSpacing } from "./site-spacing.mjs";
+import { auditHomepagePolish } from "./homepage-polish.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -168,45 +169,30 @@ try {
         }
         record.marketingQuality='Above-fold trial, AA button contrast, product provenance, and mobile navigation checked';
         const film=p.locator('.bco-hero-background-film');
-        await film.waitFor({state:'visible'});
-        assert.equal(await film.getAttribute('data-format'),width<=640?'mobile':'desktop');
-        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
-        assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline),'Background film is silent, inline, and loops');
-        assert(await film.evaluate(el=>Math.abs(el.duration-30)<.1),'The full 30-second film is installed');
-        await film.evaluate(el=>{el.currentTime=7;});
-        await p.waitForFunction(()=>{
-          const video=document.querySelector('.bco-hero-background-film');
-          return video&&!video.paused&&video.currentTime>7.2;
-        });
-        await film.evaluate(el=>{el.currentTime=29.7;});
-        await p.waitForFunction(()=>{
-          const video=document.querySelector('.bco-hero-background-film');
-          return video&&!video.paused&&video.currentTime<1.5;
-        });
-        // Inspect every chapter behind the real headline and CTA at each width.
-        for(const [index,time] of [0.5,5.5,10.5,15.5,20.5,25.5].entries()) {
-          await film.evaluate((el,t)=>{el.currentTime=t;},time);
-          await p.waitForFunction(t=>{
-            const video=document.querySelector('.bco-hero-background-film');
-            return video&&!video.seeking&&video.currentTime>=t&&video.readyState>=2;
-          },time);
-          await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-hero-scene-${index+1}.png`)});
+        if(width<=640) {
+          assert.equal(await film.count(),0,'Phones do not download decorative background video');
+        } else {
+          await film.waitFor({state:'visible'});
+          await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
+          assert(await film.evaluate(el=>el.muted&&!el.loop&&el.playsInline),'Introduction is silent, inline, and never loops');
+          await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused);
+          assert(await film.evaluate(el=>el.currentTime<=5),'Decorative motion ends within five seconds');
+          await p.locator('#proof').scrollIntoViewIfNeeded();
+          await p.evaluate(()=>window.scrollTo(0,0));
+          assert(await film.evaluate(el=>el.paused),'Finished introduction stays still on re-entry');
         }
-        await p.locator('#proof').scrollIntoViewIfNeeded();
-        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused);
-        await p.evaluate(()=>window.scrollTo(0,0));
-        await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.paused===false);
-        record.heroFilm='30-second decode, playback past four seconds, loop boundary, all six scenes, and offscreen pause/resume checked';
+        await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-hero-scene-settled.png`),animations:'disabled'});
+        record.heroFilm='Phone still frame, bounded desktop introduction, no replay, and reduced-motion fallback checked';
         assert.equal(await p.locator('.bco-hero-motion-toggle').count(),0,'No standalone hero pause control');
         await p.emulateMedia({reducedMotion:'reduce'});
         await p.waitForFunction(()=>!document.querySelector('.bco-hero-background-film'));
         assert(await p.locator('.bco-hero-backdrop img').isVisible(),'Reduced motion keeps the still frame');
         await p.emulateMedia({reducedMotion:'no-preference'});
-
         record.stickyCopy='Desktop pinning, section boundary, short viewport release, and small-screen normal flow checked';
         await auditMarketingExploration(p, { device, width, height, out });
         record.exploration='Source lightbox focus/escape, sticky step selection and boundaries, narrow/landscape widths, contextual CTA, ribbon motion, and first-week journey checked';
         await auditHomepageVideos(p,{device,width,out});
+        await auditHomepagePolish(p,{device,width,height,out});
         record.homepageMedia='All eight tours present; six feature tours placed by topic, decoded with captions, phone sources selected, no early video requests, coordinated playback, keyboard tour selection, hidden-player pause, narrow and landscape fit, and keyboard preview open/close checked';
 
       }

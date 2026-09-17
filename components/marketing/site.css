@@ -2443,21 +2443,18 @@
 .bco-hero-background-film.is-playing {
   opacity: 1;
 }
-/* Quiet motion communicates industry breadth without implying endorsements. */
+/* Industry breadth is browsed deliberately, never automatically scrolled. */
 .bco-industry-ribbon { background: #10262b; color: #d4e8e1; border-top: 1px solid #ffffff26; padding: 18px 0 24px; }
 .bco-ribbon-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .bco-ribbon-heading p { color: #c0d4ce; font-size: 13px; }
 .bco-ribbon-heading > div { display: flex; align-items: center; gap: 16px; }
 .bco-ribbon-heading a { color: #c0ead9; font-size: 13px; }
 .bco-ribbon-heading button { width: 44px; min-height: 44px; border: 1px solid #ffffff40; border-radius: 50%; color: #eaf6f1; }
-.bco-ribbon-window { overflow: hidden; mask-image: linear-gradient(90deg, transparent, black 4%, black 96%, transparent); }
-.bco-ribbon-track { display: flex; width: max-content; animation: bco-ribbon 160s linear infinite; animation-play-state: paused; }
-.bco-ribbon-track[data-playing="true"] { animation-play-state: running; }
-.bco-industry-ribbon:is(:hover, :focus-within) .bco-ribbon-track { animation-play-state: paused; }
+.bco-ribbon-window { overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: #607f74 #10262b; padding-block: 8px 14px; }
+.bco-ribbon-track { display: flex; width: max-content; }
 .bco-ribbon-track ul { display: flex; align-items: center; flex-shrink: 0; gap: 48px; padding-right: 48px; margin: 0; list-style: none; }
-.bco-ribbon-track li { display: flex; align-items: center; gap: 12px; white-space: nowrap; font-size: 17px; font-weight: 600; }
+.bco-ribbon-track li { display: flex; align-items: center; gap: 12px; white-space: nowrap; font-size: 17px; font-weight: 600; scroll-snap-align: start; }
 .bco-ribbon-track svg { color: #9cbeb1; flex-shrink: 0; }
-@keyframes bco-ribbon { to { transform: translateX(-50%); } }
 .bco-steps .bco-kicker { margin-bottom: 8px; }
 .bco-steps .bco-week-outcome { padding: 14px 16px; margin-top: 18px; border-left: 2px solid #0e6f75; background: #eaf1ef; border-radius: 0 8px 8px 0; font-size: 13px; }
 .bco-demo-tabs .bco-step-label-full { font-size: inherit; opacity: 1; }
@@ -2560,6 +2557,42 @@
 .bco-site-landing .bco-final-cta .bco-button:not(.bco-button-secondary):hover { background: #def4e8; }
 .bco-site-landing :is(.bco-final-cta, .bco-product-evidence) :is(a, button, video):focus-visible { outline: 3px solid #c0ead9; outline-offset: 4px; }
 .bco-site-landing .bco-final-cta .bco-button-secondary { color: #e6f2ed !important; background: transparent; border-color: #607f74; }
+/* Stable tour stages reserve the tallest panel while inactive media stay hidden. */
+.bco-chapter-stage { display: grid; align-content: start; }
+.bco-feature-video-panel { grid-area: 1 / 1; min-width: 0; }
+.bco-feature-video-panel[hidden] { display: block; visibility: hidden; pointer-events: none; }
+.bco-feature-video-panel:not([hidden]) { animation: bco-tour-reveal 180ms ease-out; }
+.bco-chapter-stage > noscript { grid-row: 2; }
+@keyframes bco-tour-reveal { from { opacity: .4; } to { opacity: 1; } }
+.bco-site .bco-button { transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.bco-site .bco-button:active { transform: translateY(1px); }
+.bco-ribbon-window:focus-visible { outline: 2px solid #c0ead9; outline-offset: 4px; }
+.bco-ribbon-heading button:hover { background: #ffffff14; }
+@media (hover: hover) and (pointer: fine) {
+  .bco-site .bco-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px #10262b14; }
+}
+@media (max-width: 680px) {
+  .bco-hero-centered { min-height: 0; padding: 112px 0 44px; }
+  .bco-hero-center-content { text-align: left; width: calc(100% - 48px); }
+  .bco-hero-centered .bco-kicker { max-width: 30ch; margin-bottom: 20px; line-height: 1.6; }
+  .bco-hero-centered h1 { font-size: clamp(30px, 8vw, 38px); line-height: 1.16; letter-spacing: -.025em; max-width: 18ch; margin: 0; text-wrap: balance; }
+  .bco-hero-desktop-break { display: none; }
+  .bco-hero-centered .bco-lead { margin: 20px 0 0; max-width: 36ch; font-size: 16px; line-height: 1.65; }
+  .bco-hero-centered .bco-actions { justify-content: flex-start; margin-top: 26px; }
+  .bco-hero-centered .bco-button { min-height: 52px; padding-inline: 24px; }
+  .bco-hero-centered .bco-caption { margin-inline: 0; }
+  .bco-hero-tour { margin-top: 22px; }
+  .bco-ribbon-heading { flex-wrap: wrap; gap: 12px; }
+  .bco-ribbon-heading p { max-width: none; flex-basis: 100%; }
+  .bco-ribbon-heading > div { width: 100%; gap: 8px; }
+  .bco-ribbon-heading a { max-width: none; margin-right: auto; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+  .bco-nav-dark .bco-nav-actions > .bco-button:focus-visible { display: inline-flex; }
+  .bco-nav-dark:has(.bco-nav-actions > .bco-button:focus-visible) .bco-brand-link img { max-width: 112px; height: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bco-feature-video-panel:not([hidden]) { animation: none; }
+  .bco-site .bco-button { transition: none; transform: none !important; }
+}
 @media (max-width: 640px) {
   .bco-site-landing .bco-evidence-film .bco-product-video { max-width: 232px; margin-inline: auto; }
   .bco-site-landing .bco-evidence-film { background: #10262b; }
