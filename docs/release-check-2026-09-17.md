@@ -1,11 +1,15 @@
 # Mobile and interaction release check
 
-This change refines the mobile hero, removes automatic industry scrolling,
-adds progressive section reveals, stabilizes product-tour panels, and makes
-the mobile trial CTA respond to other visible trial buttons. Phones use the
-existing BrostCo poster without downloading decorative video. Larger screens
-play a bounded introduction and then retain a still frame. Product tours remain
-available on demand with captions and transcripts.
+The latest revision restores continuous desktop hero playback, lightens the
+overlay, gives the desktop hero a full first screen, and runs both industry
+rows as seamless continuous sliders on every device. Reduced-motion preferences
+retain static content. Phones retain the poster without decorative video downloads.
+The footer matches the teal gradient. Theme controls use an in-flow sun/moon icon.
+
+Standard pricing is $497/month. The existing seven-month annual calculation gives
+$3,479/year. Before publishing this pricing, run `npm run stripe:setup -- --reprice`
+in the deployment environment, apply the emitted standard price IDs, then run
+`npm run stripe:verify`. Existing subscriptions are not migrated by this change.
 
 ## Automated release gates
 

@@ -1,52 +1,19 @@
 "use client";
-
 import { useTheme } from "@/components/theme-provider";
 
-/**
- * Obvious Light / Dark control for the logged-in shell.
- * Renders as a compact segmented control that works in both themes.
- */
-export function ThemeToggle({
-  className = "",
-  compact = false,
-}: {
-  className?: string;
-  /** Tighter padding for the mobile header. */
-  compact?: boolean;
-}) {
+/** In-flow, touch-sized theme switch; never floats over page content. */
+export function ThemeToggle({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   const { theme, setTheme } = useTheme();
-  const pad = compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-1.5 text-xs";
-
+  const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
   return (
-    <div
-      role="group"
-      aria-label="Color theme"
-      className={`inline-flex items-stretch rounded-sm border border-border/55 bg-muted/50 p-0.5 dark:border-white/15 dark:bg-black/30 ${className}`}
-    >
-      <button
-        type="button"
-        aria-pressed={theme === "light"}
-        onClick={() => setTheme("light")}
-        className={`${pad} coarse:min-h-11 rounded-sm font-medium transition-colors ${
-          theme === "light"
-            ? "bg-surface text-foreground shadow-sm ring-1 ring-border/80 dark:bg-surface-raised"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        Light
+    <span className={`inline-flex shrink-0 ${className}`}>
+      <button type="button" aria-label={label} title={label}
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/55 bg-muted/50 text-foreground transition-colors hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        <svg width={compact ? 18 : 20} height={compact ? 18 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {theme === "dark" ? <><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></> : <path d="M20.5 13.2A8.7 8.7 0 0 1 10.8 3.5a8.8 8.8 0 1 0 9.7 9.7Z"/>}
+        </svg>
       </button>
-      <button
-        type="button"
-        aria-pressed={theme === "dark"}
-        onClick={() => setTheme("dark")}
-        className={`${pad} coarse:min-h-11 rounded-sm font-medium transition-colors ${
-          theme === "dark"
-            ? "bg-surface text-foreground shadow-sm ring-1 ring-border/80 dark:bg-surface-raised dark:ring-white/20"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        Dark
-      </button>
-    </div>
+    </span>
   );
 }

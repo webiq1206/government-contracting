@@ -327,7 +327,7 @@ export function Nav({
               <button type="button" onClick={() => setAccountOpen(false)} className="min-h-11 text-sm text-muted-foreground">← Back to menu</button>
               <h2 className="font-display text-xl text-foreground">Your account</h2>
               <p className="break-all text-sm text-muted-foreground">{email}</p>
-              <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
+              <ThemeToggle className="self-start" />
               <Link href="/settings/account" onClick={() => setOpen(false)} className="flex min-h-11 items-center text-sm text-foreground">Account settings</Link>
               <Link href="/how-it-works" onClick={() => setOpen(false)} className="flex min-h-11 items-center text-sm text-foreground">Help</Link>
               <Link href="/agents" onClick={() => setOpen(false)} title={mobileDetail} className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground">

@@ -2,6 +2,18 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 
 export async function auditHomepagePolish(page, { device, width, height, out }) {
+  if (device === 'desktop') {
+    for (const viewport of [{width:1366,height:768},{width:1918,height:1077},{width:1440,height:1000}]) {
+      await page.setViewportSize(viewport);
+      await page.evaluate(()=>scrollTo(0,0));
+      const ribbon = await page.locator('.bco-industry-ribbon').boundingBox();
+      assert(ribbon.y>=viewport.height-1,'Industry section begins below the desktop fold');
+      const cta=await page.locator('.bco-hero-centered .bco-button').boundingBox();
+      assert(cta.y+cta.height<viewport.height,'Desktop trial CTA stays above fold');
+      await page.screenshot({path:join(out,`${device}-hero-scene-${viewport.width}.png`)});
+    }
+    await page.setViewportSize({width,height});
+  }
   if (device === 'mobile') {
     for (const mobileWidth of [320, 390, 430]) {
       await page.setViewportSize({ width: mobileWidth, height: 844 });

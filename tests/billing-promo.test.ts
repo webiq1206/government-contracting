@@ -6,13 +6,29 @@ import {
   annualSavingsUsd,
 } from "../lib/billing/prices";
 import { isPromoActive, type PromoWindow } from "../lib/billing/promo";
+import { matchesCatalogPrice } from "../lib/billing/catalog";
+
+describe("configured purchase price", () => {
+  const price = { active: true, currency: "usd", unit_amount: 49700, recurring: { interval: "month", interval_count: 1 } };
+  it("accepts the advertised monthly price and refuses the previous amount", () => {
+    expect(matchesCatalogPrice(price, "standard", "month")).toBe(true);
+    expect(matchesCatalogPrice({ ...price, unit_amount: 199700 }, "standard", "month")).toBe(false);
+    expect(matchesCatalogPrice({ ...price, active: false }, "standard", "month")).toBe(false);
+    expect(matchesCatalogPrice({ ...price, currency: "eur" }, "standard", "month")).toBe(false);
+    expect(matchesCatalogPrice({ ...price, recurring: { interval: "month", interval_count: 2 } }, "standard", "month")).toBe(false);
+  });
+  it("validates the derived annual price and interval", () => {
+    expect(matchesCatalogPrice({ ...price, unit_amount: 347900, recurring: { interval: "year", interval_count: 1 } }, "standard", "year")).toBe(true);
+    expect(matchesCatalogPrice(price, "standard", "year")).toBe(false);
+  });
+});
 
 describe("SaaS pricing constants", () => {
-  it("uses $1997 standard and $497 founding with a 7-day trial", () => {
-    expect(STANDARD_MONTHLY_USD).toBe(1997);
+  it("uses $497 standard and $497 founding with a 7-day trial", () => {
+    expect(STANDARD_MONTHLY_USD).toBe(497);
     expect(FOUNDING_MONTHLY_USD).toBe(497);
     expect(TRIAL_DAYS).toBe(7);
-    expect(annualSavingsUsd()).toBe((1997 - 497) * 12);
+    expect(annualSavingsUsd()).toBe((497 - 497) * 12);
   });
 
   /**
@@ -26,7 +42,7 @@ describe("SaaS pricing constants", () => {
     const standardYear = allPrices().find(
       (p) => p.plan === "standard" && p.interval === "year"
     )!;
-    expect(standardYear.amountCents).toBe(1997 * 7 * 100);
+    expect(standardYear.amountCents).toBe(497 * 7 * 100);
   });
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { INDUSTRIES } from "./industry-content";
 
 export function IndustryIcon({ kind }: { kind: (typeof INDUSTRIES)[number]["icon"] }) {
@@ -36,63 +36,7 @@ export function IndustryIcon({ kind }: { kind: (typeof INDUSTRIES)[number]["icon
 
 export function IndustrySlider() {
   const id = useId();
-  const track = useRef<HTMLUListElement>(null);
-  const [first, setFirst] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [visible, setVisible] = useState(false);
   const [query, setQuery] = useState("");
-  const firstRef = useRef(0);
-  const reducedMotion = useRef(false);
-
-  const go = useCallback((direction: number) => {
-    const list = track.current;
-    if (!list) return;
-    const atEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 2;
-    const next =
-      direction > 0 && atEnd
-        ? 0
-        : Math.max(
-            0,
-            Math.min(INDUSTRIES.length - 1, firstRef.current + direction),
-          );
-    const card = list.children[next] as HTMLElement;
-    const origin = list.children[0] as HTMLElement;
-    list.scrollTo({
-      left: card.offsetLeft - origin.offsetLeft,
-      behavior: reducedMotion.current ? "instant" : "smooth",
-    });
-  }, []);
-
-  useEffect(() => {
-    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onMotion = () => {
-      reducedMotion.current = motion.matches;
-      if (motion.matches) setPlaying(false);
-    };
-    onMotion();
-    motion.addEventListener("change", onMotion);
-    const observer = new IntersectionObserver(
-      ([entry]) => setVisible(entry.isIntersecting),
-      { threshold: 0.4 },
-    );
-    if (track.current) observer.observe(track.current);
-    const onVisibility = () => {
-      if (document.hidden) setPlaying(false);
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      motion.removeEventListener("change", onMotion);
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!playing || hovered || !visible) return;
-    const timer = window.setInterval(() => go(1), 4000);
-    return () => window.clearInterval(timer);
-  }, [playing, hovered, visible, go]);
 
   const matches = INDUSTRIES.filter((industry) =>
     `${industry.name} ${industry.examples} ${industry.codes.join(" ")}`
@@ -114,85 +58,22 @@ export function IndustrySlider() {
               Federal work spans industries. So does discovery.
             </h2>
           </div>
-          <div
-            className="bco-slider-controls"
-            aria-label="Industry slider controls"
-          >
-            <button
-              type="button"
-              aria-label={
-                playing ? "Pause industry slider" : "Play industry slider"
-              }
-              aria-pressed={playing}
-              onClick={() => setPlaying(!playing)}
-            >
-              {playing ? (
-                <span aria-hidden="true">Ⅱ</span>
-              ) : (
-                <span aria-hidden="true">▷</span>
-              )}
-            </button>
-            <button
-              type="button"
-              aria-label="Previous industries"
-              aria-controls={`${id}-track`}
-              disabled={first === 0}
-              onClick={() => {
-                setPlaying(false);
-                go(-1);
-              }}
-            >
-              <span aria-hidden="true">←</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Next industries"
-              aria-controls={`${id}-track`}
-              onClick={() => {
-                setPlaying(false);
-                go(1);
-              }}
-            >
-              <span aria-hidden="true">→</span>
-            </button>
+        </div>
+        <div className="bco-industry-window" tabIndex={0} role="region" aria-label="Industry categories">
+          <div className="bco-industry-loop bco-continuous-track">
+            {[0, 1].map(copy => (
+              <ul key={copy} className="bco-industry-track" aria-hidden={copy === 1 ? true : undefined}>
+                {INDUSTRIES.map(industry => (
+                  <li key={industry.name} className="bco-industry-card">
+                    <IndustryIcon kind={industry.icon} />
+                    <h3>{industry.name}</h3>
+                    <p>{industry.examples}</p>
+                  </li>
+                ))}
+              </ul>
+            ))}
           </div>
         </div>
-        <ul
-          ref={track}
-          id={`${id}-track`}
-          className="bco-industry-track"
-          aria-label="Industry categories. Swipe or use arrow keys to browse."
-          tabIndex={0}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          onFocus={() => setPlaying(false)}
-          onTouchStart={() => setPlaying(false)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-              event.preventDefault();
-              go(event.key === "ArrowRight" ? 1 : -1);
-            }
-          }}
-          onScroll={() => {
-            const list = track.current!;
-            const origin = (list.children[0] as HTMLElement).offsetLeft;
-            const index = Array.from(list.children).findIndex(
-              (card) =>
-                (card as HTMLElement).offsetLeft - origin >=
-                list.scrollLeft - 2,
-            );
-            firstRef.current = index < 0 ? INDUSTRIES.length - 1 : index;
-            setFirst(firstRef.current);
-          }}
-        >
-          {INDUSTRIES.map((industry) => (
-            <li key={industry.name} className="bco-industry-card">
-              <IndustryIcon kind={industry.icon} />
-              <h3>{industry.name}</h3>
-              <p>{industry.examples}</p>
-            </li>
-          ))}
-        </ul>
         <div className="bco-industry-footer">
           <p>
             Matching follows your services, location, qualifications, and
@@ -200,15 +81,10 @@ export function IndustrySlider() {
           </p>
           <span>
             {INDUSTRIES.length} industry sectors{" "}
-            <span aria-hidden="true">·</span> Swipe to explore
+            <span aria-hidden="true">·</span> Explore the directory below
           </span>
         </div>
-        <details
-          className="bco-industry-directory"
-          onToggle={(event) => {
-            if (event.currentTarget.open) setPlaying(false);
-          }}
-        >
+        <details className="bco-industry-directory">
           <summary>
             View all industries <span aria-hidden="true">+</span>
           </summary>

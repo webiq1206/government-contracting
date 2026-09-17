@@ -931,7 +931,7 @@
   margin-bottom: 14px;
 }
 .bco-footer {
-  background: #0b1720;
+  background: radial-gradient(ellipse at 90% 0, #28554b, transparent 65%), #10262b;
   color: #c2d0d4;
   padding: 64px 0 28px;
   font-family: Inter, Arial, sans-serif;
@@ -2198,12 +2198,12 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(180deg, #10262b80, #10262b8c 45%, #0b1d24bf);
+  background: linear-gradient(180deg, #10262b33, #10262b4d 45%, #0b1d246b);
 }
 .bco-hero-center-content {
   text-align: center;
   max-width: 1120px;
-  text-shadow: 0 2px 18px #081c2866;
+  text-shadow: 0 2px 12px #081c28a6;
 }
 .bco-hero-center-content .bco-button { text-shadow: none; }
 .bco-hero-centered .bco-kicker {
@@ -2557,6 +2557,16 @@
 .bco-site-landing .bco-final-cta .bco-button:not(.bco-button-secondary):hover { background: #def4e8; }
 .bco-site-landing :is(.bco-final-cta, .bco-product-evidence) :is(a, button, video):focus-visible { outline: 3px solid #c0ead9; outline-offset: 4px; }
 .bco-site-landing .bco-final-cta .bco-button-secondary { color: #e6f2ed !important; background: transparent; border-color: #607f74; }
+/* The desktop first screen belongs to the hero, including the overlaid nav. */
+@media (min-width: 951px) {
+  .bco-site-landing .bco-hero-centered { min-height: 100vh; min-height: 100svh; padding: clamp(116px, 14svh, 180px) 0 clamp(64px, 8svh, 104px); }
+  .bco-hero-centered .bco-kicker { margin-bottom: 36px; }
+  .bco-hero-centered h1 { font-size: clamp(44px, 4vw, 64px); line-height: 1.16; max-width: 1080px; letter-spacing: -.035em; }
+  .bco-hero-centered .bco-lead { max-width: 680px; margin-top: 36px; line-height: 1.75; }
+  .bco-hero-centered .bco-actions { margin-top: 40px; }
+  .bco-hero-centered .bco-caption { margin-top: 22px; }
+  .bco-hero-centered .bco-hero-tour { margin-top: 28px; }
+}
 /* Stable tour stages reserve the tallest panel while inactive media stay hidden. */
 .bco-chapter-stage { display: grid; align-content: start; }
 .bco-feature-video-panel { grid-area: 1 / 1; min-width: 0; }
@@ -2603,4 +2613,17 @@
   .bco-site-landing .bco-evidence-grid h3 { margin-top: 2px; font-size: 19px; }
   .bco-site-landing .bco-evidence-grid p { margin-block: 8px 0; font-size: 13px; }
   .bco-site-landing .bco-evidence-grid .bco-text-link { font-size: 12px; }
+}
+
+/* Equal copies keep both industry rows moving without a visible reset. */
+.bco-industry-window, .bco-ribbon-window { overflow: hidden; }
+.bco-continuous-track { display:flex; width:max-content; animation:bco-industry-flow 160s linear infinite; }
+.bco-industry-loop .bco-industry-track { width:max-content; overflow:visible; flex-shrink:0; gap:24px; padding:4px 24px 14px 0; }
+.bco-industry-loop .bco-industry-card { flex:0 0 300px; width:300px; min-width:0; }
+@keyframes bco-industry-flow { to { transform:translateX(-50%); } }
+@media(max-width:680px) { .bco-industry-loop .bco-industry-card { flex-basis:78vw; width:78vw; max-width:300px; } }
+@media(prefers-reduced-motion:reduce) {
+ .bco-continuous-track { animation:none; }
+ .bco-industry-window, .bco-ribbon-window { overflow-x:auto; }
+ .bco-continuous-track > [aria-hidden="true"] { display:none; }
 }

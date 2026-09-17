@@ -298,7 +298,7 @@ export default async function AccountSettingsPage() {
             <li className="panel-inset px-4 py-3">
               <p className="font-medium text-foreground">Light or dark</p>
               <p className="mt-0.5 leading-relaxed text-muted-foreground">
-                Set with the Light and Dark buttons in the sidebar, and remembered in this
+                Set with the sun and moon switch in the navigation, and remembered in this
                 browser. It follows your system setting until you choose one.
               </p>
             </li>

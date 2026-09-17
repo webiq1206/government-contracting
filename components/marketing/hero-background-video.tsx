@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-/** A brief desktop introduction settles to a still. Phones never load video. */
+/** Continuous decorative playback while visible, with still-image fallbacks. */
 export function HeroBackgroundVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -13,8 +13,6 @@ export function HeroBackgroundVideo() {
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
-  const [finished, setFinished] = useState(false);
-  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Select once before mounting the video, avoiding a second download on rotation.
@@ -45,7 +43,6 @@ export function HeroBackgroundVideo() {
     onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      if (stopTimer.current) clearTimeout(stopTimer.current);
       media.removeEventListener("change", sync);
       connection?.removeEventListener?.("change", sync);
       observer.disconnect();
@@ -56,7 +53,7 @@ export function HeroBackgroundVideo() {
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
-    if (!allowed || failed || finished || !visible || !pageVisible) {
+    if (!allowed || failed || !visible || !pageVisible) {
       video.pause();
       return;
     }
@@ -71,7 +68,7 @@ export function HeroBackgroundVideo() {
       active = false;
       video.pause();
     };
-  }, [allowed, failed, finished, visible, pageVisible]);
+  }, [allowed, failed, visible, pageVisible]);
 
   return (
     <>
@@ -89,22 +86,14 @@ export function HeroBackgroundVideo() {
             className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
             data-format={mobile ? "mobile" : "desktop"}
             muted
+            autoPlay
+            loop
             playsInline
-            preload="none"
+            preload="auto"
             tabIndex={-1}
             aria-hidden="true"
             onPlaying={() => {
               setPlaying(true);
-              if (!stopTimer.current) stopTimer.current = setTimeout(() => {
-                ref.current?.pause();
-                setFinished(true);
-              }, 4500);
-            }}
-            onTimeUpdate={event => {
-              if (event.currentTarget.currentTime >= 4.5) {
-                event.currentTarget.pause();
-                setFinished(true);
-              }
             }}
             onError={() => {
               setFailed(true);

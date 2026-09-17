@@ -7,6 +7,7 @@ import { config } from "../config";
 import { stripeEnabled } from "./enabled";
 import {
   priceIdFor,
+  matchesCatalogPrice,
   type BillingInterval,
 } from "./catalog";
 
@@ -87,6 +88,10 @@ export async function createCheckoutSession(input: {
   // readable message instead of letting the exception become a blank browser
   // error page on the customer's first attempt to pay.
   try {
+    const price = await stripe.prices.retrieve(priceId);
+    if (!matchesCatalogPrice(price, input.plan, input.interval)) {
+      return { url: null, error: "Configured Stripe price does not match the current catalog. Run Stripe setup with --reprice and update the configured price IDs." };
+    }
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: input.customerId || undefined,
