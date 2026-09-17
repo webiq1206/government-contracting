@@ -107,7 +107,7 @@ try {
       }
       if(entry.route==='/') {
         const industryTrack=p.locator('.bco-industry-track:not([aria-hidden])');
-        await industryTrack.scrollIntoViewIfNeeded();
+        await p.locator('.bco-industry-window').scrollIntoViewIfNeeded();
         assert.equal(await industryTrack.locator('li').count(),20,'All broad industry sectors should be browsable');
         await p.locator('.bco-industry-window').screenshot({path:join(out,`${device}-industry-slider.png`)});
         const search=p.getByLabel('Find your industry or service', {exact:true});
