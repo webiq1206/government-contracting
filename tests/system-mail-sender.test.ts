@@ -19,6 +19,7 @@ async function loadSystemMail(opts: {
     | Error;
   systemMailFrom?: string;
   transportError?: Error;
+  senderVerified?: boolean;
 }) {
   vi.resetModules();
   if (opts.systemMailFrom) process.env.SYSTEM_MAIL_FROM = opts.systemMailFrom;
@@ -34,6 +35,7 @@ async function loadSystemMail(opts: {
       },
       isConnected: async () => true,
       canAuthenticate: async () => true,
+      verifiedSender: async () => ({ ok: opts.senderVerified !== false }),
     },
   }));
   vi.doMock("../lib/integrations/gmail", () => ({
@@ -45,6 +47,7 @@ async function loadSystemMail(opts: {
       },
       isConnected: async () => true,
       canAuthenticate: async () => true,
+      verifiedSender: async () => ({ ok: opts.senderVerified !== false }),
     },
   }));
   vi.doMock("../lib/domain/sender-identity", () => ({
@@ -75,6 +78,13 @@ afterEach(() => {
 });
 
 describe("who a platform email comes from", () => {
+  it("does not report ready when the grant works but the sender is no longer verified", async () => {
+    const { systemMail } = await loadSystemMail({
+      sender: { from: "BrostCo <hello@brostco.com>", replyTo: "hello@brostco.com", connected: true },
+      senderVerified: false,
+    });
+    await expect(systemMail.deliverable()).resolves.toBe(false);
+  });
   it("uses the sending address chosen for the platform inbox", async () => {
     const { systemMail, sends } = await loadSystemMail({
       sender: {

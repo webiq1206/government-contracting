@@ -1,0 +1,368 @@
+{
+  "observed_at_utc": "2026-09-23T18:50:40.275105+00:00",
+  "resolver": "Google Public DNS over HTTPS",
+  "records": [
+    {
+      "host": "brostco.com",
+      "type": "NS",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "brostco.com.",
+            "type": 2
+          }
+        ],
+        "Answer": [
+          {
+            "name": "brostco.com.",
+            "type": 2,
+            "TTL": 1800,
+            "data": "dns1.registrar-servers.com."
+          },
+          {
+            "name": "brostco.com.",
+            "type": 2,
+            "TTL": 1800,
+            "data": "dns2.registrar-servers.com."
+          }
+        ],
+        "Comment": "Response from 156.154.132.200."
+      }
+    },
+    {
+      "host": "brostco.com",
+      "type": "MX",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "brostco.com.",
+            "type": 15
+          }
+        ],
+        "Answer": [
+          {
+            "name": "brostco.com.",
+            "type": 15,
+            "TTL": 1799,
+            "data": "1 smtp.google.com."
+          }
+        ],
+        "Comment": "Response from 156.154.133.200."
+      }
+    },
+    {
+      "host": "brostco.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "brostco.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "brostco.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "v=spf1 include:_spf.google.com ~all"
+          },
+          {
+            "name": "brostco.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "google-site-verification=iHOoiEbYr1Dsvehkc_ZnNIAgtiYZ9COfj_LO51smlgE"
+          },
+          {
+            "name": "brostco.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "replit-verify=2fcd16f4-edbe-4d58-b3aa-0988df8c05d5"
+          }
+        ],
+        "Comment": "Response from 156.154.133.200."
+      }
+    },
+    {
+      "host": "_dmarc.brostco.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "_dmarc.brostco.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "_dmarc.brostco.com.",
+            "type": 16,
+            "TTL": 1799,
+            "data": "v=DMARC1; p=none;"
+          }
+        ],
+        "Comment": "Response from 156.154.132.200."
+      }
+    },
+    {
+      "host": "google._domainkey.brostco.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "google._domainkey.brostco.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "google._domainkey.brostco.com.",
+            "type": 16,
+            "TTL": 1799,
+            "data": "v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv1XgcRpNzSc9wkWmhcWj5zc2bhzpbBTjxI9DETatDFuCCQRYs3684h06cv56JOPCOu6CXK6HFmzQ1VNV9rDDGH3t8qZbaMERpZOFaCKUzKUzl/oXWb1rARXqqQAr4/QyWlAzMbTzvVDVCsXw289QB+t564PkJWLFeFTvJYgvKA2bZ1nEGOAwtmJiw5IRABFmMmgJw9LsbqT+Pt0yVzcREJNvv6nyMnqZHmToLmbPNE3CdNRkwmUuXnRun+zl80RptU5wMu/zidveOgj3aD2AuRvVubh3J/bkHzr3mroCYl3Gs+VJxa9igQt+Gqu2RjI1K/LhkO7X+wbzODOeeDIQMwIDAQAB"
+          }
+        ],
+        "Comment": "Response from 2610:a1:1024::200."
+      },
+      "rsa_key_bits": 2048
+    },
+    {
+      "host": "send.brostco.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "send.brostco.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "send.brostco.com.",
+            "type": 16,
+            "TTL": 1799,
+            "data": "v=spf1 include:amazonses.com ~all"
+          }
+        ],
+        "Comment": "Response from 156.154.133.200."
+      }
+    },
+    {
+      "host": "send.brostco.com",
+      "type": "MX",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "send.brostco.com.",
+            "type": 15
+          }
+        ],
+        "Answer": [
+          {
+            "name": "send.brostco.com.",
+            "type": 15,
+            "TTL": 1799,
+            "data": "10 feedback-smtp.us-east-1.amazonses.com."
+          }
+        ],
+        "Comment": "Response from 156.154.132.200."
+      }
+    },
+    {
+      "host": "resend._domainkey.brostco.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "resend._domainkey.brostco.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "resend._domainkey.brostco.com.",
+            "type": 16,
+            "TTL": 1799,
+            "data": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2Ns4df5c6RKJnX5vCJUWoJbFKVkEEx1fihRJpXKgHUH3APg9zJIgxBkuI77uHMhKWU0Ou2p1mySzqJyqEiafozNnE4FS7V60k2x/Znj/yWJHokbtOw7js7NlKs8V2nofcIXQD24pf+gsbc8mmpFmUKVyH6mfgL7w3WLD4P7x8zQIDAQAB"
+          }
+        ],
+        "Comment": "Response from 156.154.132.200."
+      },
+      "rsa_key_bits": 1024
+    },
+    {
+      "host": "_spf.google.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "_spf.google.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "_spf.google.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "v=spf1 ip4:74.125.0.0/16 ip4:209.85.128.0/17 ip6:2001:4860:4864::/56 ip6:2404:6800:4864::/56 ip6:2607:f8b0:4864::/56 ip6:2800:3f0:4864::/56 ip6:2a00:1450:4864::/56 ip6:2c0f:fb50:4864::/56 ~all"
+          }
+        ],
+        "Comment": "Response from 216.239.34.10."
+      }
+    },
+    {
+      "host": "_netblocks.google.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "_netblocks.google.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "_netblocks.google.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "v=spf1 ip4:74.125.0.0/16 ip4:209.85.128.0/17 ~all"
+          }
+        ],
+        "Comment": "Response from 216.239.32.10."
+      }
+    },
+    {
+      "host": "_netblocks2.google.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "_netblocks2.google.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "_netblocks2.google.com.",
+            "type": 16,
+            "TTL": 300,
+            "data": "v=spf1 ip6:2001:4860:4000::/36 ip6:2404:6800:4000::/36 ip6:2607:f8b0:4000::/36 ip6:2800:3f0:4000::/36 ip6:2a00:1450:4000::/36 ip6:2c0f:fb50:4000::/36 ~all"
+          }
+        ],
+        "Comment": "Response from 216.239.38.10."
+      }
+    },
+    {
+      "host": "amazonses.com",
+      "type": "TXT",
+      "response": {
+        "Status": 0,
+        "TC": false,
+        "RD": true,
+        "RA": true,
+        "AD": false,
+        "CD": false,
+        "Question": [
+          {
+            "name": "amazonses.com.",
+            "type": 16
+          }
+        ],
+        "Answer": [
+          {
+            "name": "amazonses.com.",
+            "type": 16,
+            "TTL": 900,
+            "data": "mailru-verification: 71ab435de908d6ed"
+          },
+          {
+            "name": "amazonses.com.",
+            "type": 16,
+            "TTL": 900,
+            "data": "yahoo-verification-key=OL6T0cZm2ykeymVyCj7mnvnTL3zAtLwrRXGAgBFtvFw="
+          },
+          {
+            "name": "amazonses.com.",
+            "type": 16,
+            "TTL": 900,
+            "data": "google-site-verification=aOJq8aXEtCO23r176f6iOTGt-RVuPv81XPtBuIzRTx0"
+          },
+          {
+            "name": "amazonses.com.",
+            "type": 16,
+            "TTL": 900,
+            "data": "v=spf1 ip4:199.255.192.0/22 ip4:199.127.232.0/22 ip4:54.240.0.0/18 ip4:69.169.224.0/20 ip4:23.249.208.0/20 ip4:23.251.224.0/19 ip4:76.223.176.0/20 ip4:54.240.64.0/18 ip4:76.223.128.0/19 ip4:216.221.160.0/19 ip4:206.55.144.0/20 ip4:24.110.64.0/18 ip4:98.77.0.0/16 -all"
+          }
+        ],
+        "Comment": "Response from 205.251.193.9."
+      }
+    }
+  ]
+}

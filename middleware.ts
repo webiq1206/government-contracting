@@ -56,6 +56,8 @@ const PUBLIC_PREFIXES = [
   "/api/billing",
   "/api/health",
   "/api/track",
+  // The opaque token authorizes only an outreach opt-out for one recipient.
+  "/api/email/unsubscribe",
   "/api/webhooks",
 ];
 

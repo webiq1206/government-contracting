@@ -13,7 +13,7 @@
  */
 import { query, queryOne } from "../db";
 
-export type SuppressionSource = "reply" | "operator" | "bounce";
+export type SuppressionSource = "reply" | "operator" | "bounce" | "unsubscribe";
 
 function addressOf(value: string): string {
   const trimmed = value.trim();

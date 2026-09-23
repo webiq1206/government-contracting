@@ -14,6 +14,8 @@ const sends: { from?: string; replyTo?: string; to: string }[] = [];
 const sendErrors: string[] = [];
 let gmailConnectionError: Error | null = null;
 let gmailSendError: Error | null = null;
+let suppressed = false;
+let suppressionError: Error | null = null;
 let senderResult:
   | { from: string; replyTo: string; connected: boolean; unknown?: boolean }
   | Error = {
@@ -59,6 +61,15 @@ vi.mock("../lib/db", () => ({
 
 vi.mock("../lib/impersonation", () => ({ currentImpersonator: async () => null }));
 vi.mock("../lib/logger", () => ({ logAgent: async () => {} }));
+vi.mock("../lib/domain/email-suppression", () => ({
+  isSuppressed: async () => {
+    if (suppressionError) throw suppressionError;
+    return suppressed;
+  },
+}));
+vi.mock("../lib/domain/marketing-opt-out", () => ({
+  marketingMessage: (input: { html: string; text: string }) => ({ ...input, unsubscribeUrl: "https://brostco.com/api/email/unsubscribe/test-token" }),
+}));
 
 vi.mock("../lib/integrations/gmail", () => ({
   gmail: {
@@ -88,6 +99,8 @@ beforeEach(() => {
   sendErrors.length = 0;
   gmailConnectionError = null;
   gmailSendError = null;
+  suppressed = false;
+  suppressionError = null;
   senderResult = {
     from: "BROST CO <hello@brostco.com>",
     replyTo: "hello@brostco.com",
@@ -100,6 +113,20 @@ afterEach(() => {
 });
 
 describe("the address backlink outreach goes out from", () => {
+  it("never sends an approved draft or follow-up to a suppressed recipient", async () => {
+    suppressed = true;
+    expect(await sendApprovedOutreach("o1", "org-1")).toMatchObject({ status: "skipped" });
+    expect(await sendFollowUps("org-1")).toEqual({ sent: 0, errors: 0 });
+    expect(sends).toHaveLength(0);
+  });
+
+  it("fails closed when recipient preferences cannot be read", async () => {
+    suppressionError = new Error("database unavailable");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sendApprovedOutreach("o1", "org-1")).toMatchObject({ status: "error" });
+    expect(await sendFollowUps("org-1")).toEqual({ sent: 0, errors: 1 });
+    expect(sends).toHaveLength(0);
+  });
   it("is the one the organization chose, not whichever account authorized Gmail", async () => {
     const out = await sendApprovedOutreach("o1", "org-1");
     expect(out.status).toBe("sent");

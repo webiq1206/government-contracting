@@ -11,6 +11,9 @@ import { gmail } from "./integrations/gmail";
 import { currentImpersonator } from "./impersonation";
 import { logAgent } from "./logger";
 import { resolveOutreachSender } from "./domain/sender-identity";
+import { isSuppressed } from "./domain/email-suppression";
+import { marketingMessage } from "./domain/marketing-opt-out";
+import { escapeHtml } from "./domain/email-shell";
 
 /**
  * The From / Reply-To pair for this organization, or nothing.
@@ -181,16 +184,26 @@ export async function sendApprovedOutreach(
 
   const trackingId = randomUUID();
   const plain = row.body ?? "";
-  const html = plain.replace(/\n/g, "<br>");
+  const html = escapeHtml(plain).replace(/\n/g, "<br>");
   // Named, not inferred: this decides whose mailbox the outreach leaves from,
   // and which of that mailbox's verified addresses it appears to come from.
+  let message: ReturnType<typeof marketingMessage>;
+  try {
+    if (await isSuppressed(orgId, row.contact_email)) {
+      return { status: "skipped", reason: "This recipient is on the do-not-contact list. Nothing was sent." };
+    }
+    message = marketingMessage({ orgId, email: row.contact_email, html, text: plain });
+  } catch {
+    const reason = "Recipient preferences or unsubscribe settings could not be verified. Nothing was sent. Check the database, AUTH_SECRET and HTTPS APP_URL.";
+    await recordSendFailure({ outreachId: row.id, orgId, domain: row.domain, reason, action: "outreach-send" });
+    return { status: "error", reason };
+  }
   let res: Awaited<ReturnType<typeof gmail.send>>;
   try {
     res = await gmail.send({
       to: row.contact_email,
       subject: row.subject ?? "Hello",
-      html,
-      text: plain,
+      ...message,
       trackingId,
       orgId,
       ...sender.headers,
@@ -351,13 +364,21 @@ export async function sendFollowUps(
   let errors = 0;
   for (const r of rows) {
     const body = `Hi,\n\nJust following up on my note below in case it slipped through. No worries if now isn't a good time.\n\n${r.body ?? ""}`;
+    let message: ReturnType<typeof marketingMessage>;
+    try {
+      if (await isSuppressed(orgId, r.contact_email!)) continue;
+      message = marketingMessage({ orgId, email: r.contact_email!, html: escapeHtml(body).replace(/\n/g, "<br>"), text: body });
+    } catch {
+      errors++;
+      await recordSendFailure({ outreachId: r.id, orgId, domain: r.domain, reason: "Recipient preferences or unsubscribe settings could not be verified. No follow-up was sent. Check the database, AUTH_SECRET and HTTPS APP_URL.", action: "outreach-followup" });
+      continue;
+    }
     let res: Awaited<ReturnType<typeof gmail.send>>;
     try {
       res = await gmail.send({
         to: r.contact_email!,
         subject: `Re: ${r.subject ?? "Following up"}`,
-        html: body.replace(/\n/g, "<br>"),
-        text: body,
+        ...message,
         trackingId: r.tracking_id ?? undefined,
         orgId,
         ...sender.headers,
