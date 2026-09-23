@@ -1,3 +1,4 @@
+import { inboundText } from "../domain/inbound-text";
 /**
  * PDF text extraction. Uses `unpdf` (a serverless-friendly build of pdf.js, no
  * native binaries, works on Replit). Dynamically imported so a missing/broken
@@ -106,7 +107,7 @@ export async function extractPdfPages(
 }
 
 function normalize(s: string): string {
-  return s
+  return inboundText(s)
     .replace(/\r/g, "")
     .replace(/ /g, " ") // non-breaking space -> normal space
     .replace(/[ \t]{2,}/g, " ") // collapse runs of spaces/tabs

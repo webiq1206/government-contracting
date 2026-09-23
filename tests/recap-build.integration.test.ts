@@ -63,6 +63,7 @@ d("building a recap from real rows (integration)", () => {
         `insert into communications (org_id, direction, channel, subject, body, provider, delivery_state, created_at)
          values ($1,'outbound','email','Invitation to bid','body','resend','delivered',$2),
                 ($1,'outbound','email','Invitation to bid','body',null,'sent',$2),
+                ($1,'outbound','email','Unsent draft','body',null,'draft',$2),
                 ($1,'inbound','email','Re: Invitation','we are interested','resend','delivered',$2)`,
         [org.id, inside.toISOString()]
       );
@@ -99,6 +100,7 @@ d("building a recap from real rows (integration)", () => {
       `select
          (select count(*) from communications
            where org_id=$1 and direction='outbound' and channel='email'
+             and provider is not null and delivery_state in ('sent','delivered','bounced','deferred')
              and created_at >= $2 and created_at < $3)::int as sent,
          (select count(*) from communications
            where org_id=$1 and direction='inbound' and channel='email'
@@ -108,9 +110,19 @@ d("building a recap from real rows (integration)", () => {
       [mine.id, dayWindow(DAY, TZ).start.toISOString(), dayWindow(DAY, TZ).end.toISOString()]
     );
 
+    expect(value("Outreach emails sent")).toBe(1);
     expect(value("Outreach emails sent")).toBe(counted!.sent);
     expect(value("Replies received")).toBe(counted!.replies);
     expect(value("Solicitations found")).toBe(counted!.discovered);
+  });
+
+  it("excludes intentional drafts from platform sends and failure alerts", async () => {
+    const { gatherPlatformFacts } = await import("../lib/recap/platform");
+    const window = dayWindow(DAY, TZ);
+    const facts = await gatherPlatformFacts(window.start, window.end);
+    expect(facts.mailTrouble.find(row => row.orgId === mine.id)?.failed).toBe(1);
+    expect(facts.emailsSent).toBe(2);
+    expect(facts.emailsFailed).toBe(2);
   });
 
   it("counts a busy day in full, past the number of items the mail lists", async () => {

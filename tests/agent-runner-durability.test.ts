@@ -53,10 +53,18 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("attributes a platform-owned scheduled job to its owner", async () => {
+    await runAgent({ ...probe(), ownerOrgId: ORG_ID }, "cron", {});
+    const insert = mocks.queryOne.mock.calls.find(([sql]) => String(sql).includes("insert into job_runs"));
+    expect(insert![1][2]).toBe(ORG_ID);
+  });
+
   it("keeps budget holds visible without asking the queue to retry immediately", async () => {
     mocks.handler.mockRejectedValueOnce(Object.assign(new Error("API_BUDGET: monthly limit reached"), { name: "ApiUsageBlockedError" }));
     const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
     expect(result).toMatchObject({ ok: false, spendingHeld: true, humanActionRequired: true });
+    const write = mocks.query.mock.calls.find(([sql]) => String(sql).includes("update job_runs set status"));
+    expect(JSON.parse(write![1][3])).toMatchObject({ spendingHeld: true, humanActionRequired: true });
     expect(shouldQueueRetry(result)).toBe(false);
     expect(result.permanent).toBeUndefined();
   });

@@ -97,6 +97,14 @@ describe("Ahrefs settings and provider outcomes", () => {
     expect(fetchJson).not.toHaveBeenCalled();
   });
 
+  it("preserves a spending hold without declaring the provider broken", async () => {
+    const hold = Object.assign(new Error("API_BUDGET: price ceiling required"), { name: "ApiUsageBlockedError" });
+    const { ahrefs, fetchJson, recordIntegrationUse } = await loadAhrefs({ provider: async () => { throw hold; } });
+    await expect(ahrefs.referringDomains("example.com")).rejects.toBe(hold);
+    expect(fetchJson).toHaveBeenCalledOnce();
+    expect(recordIntegrationUse).not.toHaveBeenCalled();
+  });
+
   it("throws and records a provider refusal instead of returning success with no rows", async () => {
     const { ahrefs, recordIntegrationUse } = await loadAhrefs({
       provider: async () => {

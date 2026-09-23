@@ -15,4 +15,15 @@ describe("provider capacity requires evidence", () => {
     expect(result.state).toBe("down");
     expect(result.detail).toContain("credit");
   });
+  it.each([
+    ["backlink-scout", "Ahrefs could not return live data (API_BUDGET: price ceiling required). Check the API key, plan quota, and provider status"],
+    ["solicitation-analyst", "API_BUDGET: Your daily allowance cannot cover another request"],
+    ["backlink-scout", "401 Unauthorized for Ahrefs"],
+    ["reply-poll", "Gmail 403 quota exceeded"],
+  ])("does not report %s spending or non-AI failures as AI outages", (agent, error) => {
+    expect(providerCapacityState([{ agent, orgId: "org", at: "2026-09-23T12:00:00Z", error }]).state).toBe("unknown");
+  });
+  it("keeps an actual AI authentication refusal visible", () => {
+    expect(providerCapacityState([{ agent: "solicitation-analyst", orgId: "org", at: "2026-09-23T12:00:00Z", error: "OpenAI 401 Unauthorized" }]).state).toBe("down");
+  });
 });

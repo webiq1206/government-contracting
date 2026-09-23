@@ -7,6 +7,7 @@
  * customer code is obvious in review rather than invisible.
  */
 import { query, queryOne } from "../db";
+import { classifyFailure } from "../domain/automation-health";
 import type { AgentRunFacts, FailureRow, ServiceState } from "../domain/platform-health";
 
 /** The window every figure on the page is measured over. */
@@ -135,20 +136,25 @@ export async function platformImpact(): Promise<{
 export function providerCapacityState(
   failures: FailureRow[]
 ): { state: ServiceState; detail: string } {
-  const text = failures.map((f) => (f.error ?? "").toLowerCase());
-  const credit = text.filter((t) => /credit balance|insufficient|too low/.test(t)).length;
-  const auth = text.filter((t) => /api key|unauthori|invalid key|revoked|401|403/.test(t)).length;
-  const rate = text.filter((t) => /rate limit|429|too many requests/.test(t)).length;
+  // Local spending holds and failures from non-AI integrations are not
+  // evidence about an AI credential or provider capacity.
+  const causes = failures.filter(f =>
+    f.agent !== "backlink-scout" &&
+    !/ahrefs|hunter|gmail|mailbox|google maps|sam\.gov|usaspending|stripe/i.test(f.error ?? "")
+  ).map(f => classifyFailure(f.error));
+  const credit = causes.filter(c => c === "provider_credit").length;
+  const auth = causes.filter(c => c === "provider_auth").length;
+  const rate = causes.filter(c => c === "provider_rate_limit").length;
   if (credit > 0) {
     return {
       state: "down",
-      detail: `${credit} calls refused for want of credit. Every agent that needs the model is failing.`,
+      detail: `${credit} calls refused for want of credit. Affected AI work is waiting; this does not establish an outage for every account.`,
     };
   }
   if (auth > 0) {
     return {
       state: "down",
-      detail: `${auth} calls rejected as unauthorized. The key has been revoked, deleted or saved incompletely.`,
+      detail: `${auth} calls rejected as unauthorized. Check the credential and provider named in the failures; the reason has not been verified.`,
     };
   }
   if (rate > 0) {

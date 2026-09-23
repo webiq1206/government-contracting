@@ -5,6 +5,17 @@ export function inboundText(value: string): string {
   return value.replace(/\u0000/g, "\uFFFD");
 }
 
+/** Normalize structured imported text before jsonb and text-array writes. */
+export function deepInboundText<T>(value: T): T {
+  if (typeof value === "string") return inboundText(value) as T;
+  if (Array.isArray(value)) return value.map(deepInboundText) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) =>
+      [inboundText(key), deepInboundText(child)])) as T;
+  }
+  return value;
+}
+
 /** Decode declared mail charsets and BOM-marked text attachments before saving.
  * In particular, treating UTF-16 as UTF-8 inserts NULs between every letter. */
 export function decodeInboundText(bytes: Uint8Array, charset?: string): string {

@@ -98,6 +98,9 @@ async function providerCall<T>(
     await recordIntegrationUse("AHREFS_API_KEY", { ok: true, orgId: creds.orgId });
     return data;
   } catch (error) {
+    // Admission stopped before a provider call. Preserve the typed hold so
+    // the worker does not retry it or mark the saved Ahrefs key as broken.
+    if (error instanceof Error && error.name === "ApiUsageBlockedError") throw error;
     const reason = providerReason(error, creds.apiKey);
     await recordIntegrationUse("AHREFS_API_KEY", {
       ok: false,

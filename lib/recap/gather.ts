@@ -15,6 +15,7 @@
  * with it.
  */
 import { query, queryOne } from "../db";
+import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
 import { TRIAGE_WHERE_SQL, WORKABLE_CALL_CARD_SQL } from "../data";
 import type {
   BidFact,
@@ -55,19 +56,7 @@ const iso = (v: unknown): string =>
 const isoOrNull = (v: unknown): string | null =>
   v instanceof Date ? v.toISOString() : typeof v === "string" && v ? v : null;
 
-/**
- * What counts as an outbound email that did not arrive.
- *
- * Two markers, because the send path writes both and reading only one
- * undercounts: `delivery_state` records what the provider said, and a null
- * `provider` records a send that never reached a provider at all. A recap that
- * says forty emails went out on a morning the mailbox was disconnected is the
- * failure this feature is supposed to catch.
- */
-const FAILED_SEND_SQL = `
-  c.direction = 'outbound'
-  and c.channel = 'email'
-  and (c.delivery_state in ('bounced', 'failed') or c.provider is null)`;
+const FAILED_SEND_SQL = failedEmailSql();
 
 export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> {
   const { orgId, start, end, now, settings } = input;
@@ -105,7 +94,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     // Communications: sends, deliveries, failures, replies and notes in one pass.
     queryOne<Record<string, unknown>>(
       `select
-         count(*) filter (where c.direction = 'outbound' and c.channel = 'email')::int as sent,
+         count(*) filter (where ${sentEmailSql()})::int as sent,
          count(*) filter (
            where c.direction = 'outbound' and c.channel = 'email' and c.delivery_state = 'delivered'
          )::int as delivered,
@@ -271,7 +260,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
             select 1 from communications c
              where c.org_id = e.org_id
                and c.subcontractor_id = e.subcontractor_id
-               and c.direction = 'outbound'
+               and ${sentEmailSql()}
                and c.created_at > e.created_at
           )
         order by e.created_at asc limit 25`,
@@ -349,7 +338,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
               select 1 from communications c
                where c.org_id = d.org_id
                  and c.subcontractor_id = d.subcontractor_id
-                 and c.direction = 'outbound'
+                 and ${sentEmailSql()}
                  and c.created_at > d.generated_at
             )
           )
@@ -364,7 +353,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
          left join subcontractors s on s.id = c.subcontractor_id
          left join opportunities o on o.id = c.opportunity_id
         where c.org_id = $1 and c.created_at >= $2 and c.created_at < $3
-          and c.direction = 'outbound' and c.channel = 'email'
+          and ${sentEmailSql()}
         order by c.created_at asc limit 100`,
       win
     ),

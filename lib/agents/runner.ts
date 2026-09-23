@@ -317,7 +317,8 @@ export async function runAgent(
     });
   }
 
-  const { orgId, missing, conflict } = await payloadOrgId(def.name, payload);
+  const { orgId, missing, conflict } = await payloadOrgId(def.name,
+    def.ownerOrgId ? { ...payload, orgId: def.ownerOrgId } : payload);
   const inOrg = <T>(fn: () => Promise<T>): Promise<T> =>
     orgId === null ? fn() : runWithOrg(orgId, fn);
   const exposeJobRunPersistenceFailure = async (
@@ -731,7 +732,8 @@ async function finishJobRun(
   try {
     await query(
       `update job_runs set status=$2, finished_at=now(), error=$3, summary=$4 where id=$1`,
-      [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data })]
+      [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data,
+        ...(result.spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) })]
     );
     return null;
   } catch (writeError) {
