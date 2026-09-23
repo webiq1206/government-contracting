@@ -34,6 +34,7 @@ const EXEMPT: Record<string, string> = {
   "auth/signup/route.ts": "Creates the account and its first owner.",
   "auth/forgot-password/route.ts": "Unauthenticated by design.",
   "auth/reset-password/route.ts": "Unauthenticated by design; the token is the credential.",
+  "email/unsubscribe/[token]/route.ts": "Authenticated, encrypted token grants only an opt-out for its embedded recipient and tenant; no account sign-in is needed.",
   "billing/webhook/route.ts": "Stripe calls this, not a person. Signature-verified.",
   "invitations/accept/route.ts": "The invitation token is the credential; it grants the role.",
   "vendor/[token]/documents/route.ts": "External subcontractor portal; the link is the credential.",

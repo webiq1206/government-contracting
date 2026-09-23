@@ -20,6 +20,8 @@ import { LEGACY_ORG_ID } from "../tenant-context";
 import { encryptSecret, decryptSecret } from "../integration-settings";
 import { describeSendFailure } from "./gmail-send-failure";
 import { decodeInboundText, inboundText } from "../domain/inbound-text";
+import { attachmentFilename, encodedHeader, mimeBase64, senderHeader, singleMailbox } from "../domain/email-mime";
+import { emailText } from "../domain/email-body";
 
 export { describeSendFailure } from "./gmail-send-failure";
 
@@ -167,6 +169,7 @@ export async function exchangeCode(
 
   // A new grant can see a different set of verified addresses.
   sendAsCache.delete(orgId);
+  authProbeCache.delete(orgId);
 
   return { email, senderReset };
 }
@@ -288,6 +291,8 @@ export interface SendEmailParams {
    */
   from?: string;
   replyTo?: string;
+  /** HTTPS endpoint for an actual marketing opt-out, never a tracking URL. */
+  unsubscribeUrl?: string;
   /** Which tenant's connected inbox to send from. Defaults to the caller's. */
   orgId?: string;
   /**
@@ -349,7 +354,8 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
     html = html.replace(
       /href="(https?:\/\/[^"]+)"/g,
       (_m, url) =>
-        `href="${base}/api/track/click/${params.trackingId}?u=${encodeURIComponent(url)}"`
+        url === params.unsubscribeUrl ? `href="${url}"` :
+          `href="${base}/api/track/click/${params.trackingId}?u=${encodeURIComponent(url)}"`
     );
     html = html.includes("</body>")
       ? html.replace("</body>", `${pixel}</body>`)
@@ -359,13 +365,15 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
   const altParts = [
     `--${boundary}`,
     "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
     "",
-    params.text ?? stripHtml(params.html),
+    mimeBase64(params.text ?? emailText(params.html)),
     "",
     `--${boundary}`,
     "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
     "",
-    html,
+    mimeBase64(html),
     "",
     `--${boundary}--`,
   ];
@@ -376,21 +384,34 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
     references: params.references,
     inReplyTo: inReplyTo ?? undefined,
   });
-  const safeFrom = safeHeaderValue(from);
+  const safeFrom = senderHeader(from);
   const safeTo = safeHeaderValue(params.to);
   const safeReplyTo = params.replyTo ? safeHeaderValue(params.replyTo) : "";
-  const safeSubject = safeHeaderValue(params.subject);
+  const safeSubject = encodedHeader(params.subject);
+  const unsubscribeHeaders: string[] = [];
+  if (params.unsubscribeUrl) {
+    const url = new URL(params.unsubscribeUrl);
+    if (url.protocol !== "https:" || url.username || url.password || /[\r\n<>]/.test(params.unsubscribeUrl)) {
+      throw new Error("Unsubscribe links must use HTTPS without credentials.");
+    }
+    unsubscribeHeaders.push(`List-Unsubscribe: <${url.href}>`, "List-Unsubscribe-Post: List-Unsubscribe=One-Click");
+  }
+  const commonHeaders = [
+    `From: ${safeFrom}`,
+    `To: ${safeTo}`,
+    safeReplyTo ? `Reply-To: ${safeReplyTo}` : "",
+    inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
+    references ? `References: ${references}` : "",
+    `Subject: ${safeSubject}`,
+    `Date: ${new Date().toUTCString()}`,
+    ...unsubscribeHeaders,
+    "MIME-Version: 1.0",
+  ].filter(Boolean);
   let headers: string[];
   let body: string[];
   if (attachments.length === 0) {
     headers = [
-      `From: ${safeFrom}`,
-      `To: ${safeTo}`,
-      safeReplyTo ? `Reply-To: ${safeReplyTo}` : "",
-      inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
-      references ? `References: ${references}` : "",
-      `Subject: ${safeSubject}`,
-      "MIME-Version: 1.0",
+      ...commonHeaders,
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ].filter(Boolean);
     body = altParts;
@@ -398,13 +419,7 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
     // multipart/mixed wrapping the alternative part + one part per attachment.
     const mixed = "brostco_mx_" + Math.random().toString(36).slice(2);
     headers = [
-      `From: ${safeFrom}`,
-      `To: ${safeTo}`,
-      safeReplyTo ? `Reply-To: ${safeReplyTo}` : "",
-      inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
-      references ? `References: ${references}` : "",
-      `Subject: ${safeSubject}`,
-      "MIME-Version: 1.0",
+      ...commonHeaders,
       `Content-Type: multipart/mixed; boundary="${mixed}"`,
     ].filter(Boolean);
     body = [
@@ -415,15 +430,17 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
       "",
     ];
     for (const a of attachments) {
-      const safeName = a.filename.replace(/["\r\n]/g, "");
+      const name = Array.from(a.filename.replace(/[\x00-\x1f\x7f]/g, "")).slice(0, 180).join("") || "attachment";
+      const safeName = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+      const mime = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(a.mime ?? "") ? a.mime : "application/octet-stream";
       body.push(
         `--${mixed}`,
-        `Content-Type: ${a.mime ?? "application/octet-stream"}; name="${safeName}"`,
+        `Content-Type: ${mime}; name="${safeName}"`,
         "Content-Transfer-Encoding: base64",
-        `Content-Disposition: attachment; filename="${safeName}"`,
+        `Content-Disposition: attachment; filename="${safeName}";\r\n ${attachmentFilename(name)}`,
         "",
         // 76-char lines per RFC 2045.
-        a.content.toString("base64").replace(/(.{76})/g, "$1\r\n"),
+        mimeBase64(a.content),
         ""
       );
     }
@@ -765,6 +782,24 @@ export const gmail = {
     return { ok: true, sendAs: value };
   },
 
+  /** Check the current grant, including deployment overrides, before a send. */
+  async verifiedSender(from: string, orgId: string, fresh = false): Promise<
+    { ok: true; from: string } | { ok: false; error: string }
+  > {
+    const address = from === "me" ? null : singleMailbox(from);
+    if (from !== "me" && !address) {
+      return { ok: false, error: "The sending address is invalid. Choose one verified Gmail address. Nothing was sent." };
+    }
+    const list = await this.sendAsAddresses(orgId, { refresh: fresh });
+    if (!list.ok) return { ok: false, error: `${list.error} Nothing was sent.` };
+    const match = list.options.find((item) => from === "me"
+      ? item.isPrimary : item.address.toLowerCase() === address!.toLowerCase());
+    if (!match) {
+      return { ok: false, error: "Google has not verified the selected sending address for this mailbox. Check Gmail Send mail as settings. Nothing was sent." };
+    }
+    return { ok: true, from: from === "me" ? match.address : from };
+  },
+
   /** Forget a tenant's connection. Their inbox is untouched at Google. */
   async disconnect(orgId?: string): Promise<void> {
     const org = await resolveOrg(orgId);
@@ -773,6 +808,8 @@ export const gmail = {
       `delete from integration_tokens where provider = 'gmail' and org_id = $1`,
       [org]
     );
+    sendAsCache.delete(org);
+    authProbeCache.delete(org);
   },
 
   async send(
@@ -819,10 +856,12 @@ export const gmail = {
     // params.from overrides GMAIL_SENDER so the outreach transport can lock
     // the sender to the address chosen for this tenant regardless of which
     // account is OAuth'd. Declared outside the try so a refusal can name it.
-    const from = params.from ?? config.gmail.sender ?? "me";
+    const from = params.from ?? (config.gmail.sender || "me");
     try {
+      const sender = await this.verifiedSender(from, org!, true);
+      if (!sender.ok) return { disabled: true, error: sender.error };
       await reserveGmailQuota(org!, 120);
-      const raw = buildGmailRawMessage(params, from);
+      const raw = buildGmailRawMessage(params, sender.from);
       const res = await client.users.messages.send({
         userId: "me",
         // threadId keeps the reply in the same conversation in the sender's

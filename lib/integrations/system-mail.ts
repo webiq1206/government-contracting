@@ -38,13 +38,8 @@ function asHtml(text: string): string {
 /**
  * The From header for platform mail.
  *
- * Same address subcontractors see on outreach, because it is the same
- * company: a password reset arriving from a different address than every
- * other email we send reads as a phishing attempt, and looks like one to a
- * spam filter too.
- *
- * SYSTEM_MAIL_FROM still wins where it is set, so an operator can split the
- * two deliberately. Otherwise the chosen sending address for the platform's
+ * SYSTEM_MAIL_FROM selects a separate verified transactional identity when
+ * configured. Otherwise the chosen sending address for the platform's
  * own inbox is required. Omitting it would let Gmail silently substitute the
  * authorized account, which may be a different identity from the one users
  * trust and from the mailbox where the platform expects replies.
@@ -130,7 +125,8 @@ export const systemMail = {
     if (!(await gmail.canAuthenticate(LEGACY_ORG_ID))) return false;
     const sender = await systemMailFrom();
     if (!sender.ok && sender.unavailable) throw new Error(sender.error);
-    return sender.ok;
+    if (!sender.ok) return false;
+    return (await gmail.verifiedSender(sender.from, LEGACY_ORG_ID)).ok;
   },
 
   async send(params: {

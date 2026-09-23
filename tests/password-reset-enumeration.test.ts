@@ -35,6 +35,9 @@ vi.mock("../lib/integrations/gmail", () => ({
     async canAuthenticate() {
       return transport.grantValid;
     },
+    async verifiedSender() {
+      return { ok: transport.grantValid, from: "Brost Co <platform@example.invalid>" };
+    },
     async isConnected() {
       return transport.storedStatus !== "revoked";
     },

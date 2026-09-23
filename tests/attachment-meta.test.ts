@@ -93,7 +93,7 @@ describe("buildGmailRawMessage attachments", () => {
     expect(decoded).toContain("Content-Transfer-Encoding: base64");
     // Payload must round-trip to the original PDF bytes.
     const b64Match = decoded.match(
-      /filename="attachment\.pdf"\r\n\r\n([\s\S]+?)\r\n--brostco_mx_/
+      /Content-Disposition: attachment; filename="attachment\.pdf"[^\r\n]*(?:\r\n[ \t][^\r\n]*)*\r\n\r\n([\s\S]+?)\r\n--brostco_mx_/
     );
     expect(b64Match).toBeTruthy();
     const attached = Buffer.from((b64Match?.[1] ?? "").replace(/\s+/g, ""), "base64");
