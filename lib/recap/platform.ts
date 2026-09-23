@@ -1,3 +1,4 @@
+import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
 /**
  * The platform administrator's recap.
  *
@@ -110,8 +111,7 @@ export async function gatherPlatformFacts(
       `select c.org_id, o.name as org_name, count(*)::int as failed
          from communications c
          left join organizations o on o.id = c.org_id
-        where c.direction = 'outbound' and c.channel = 'email'
-          and (c.delivery_state in ('bounced','failed') or c.provider is null)
+        where ${failedEmailSql()}
           and c.created_at >= $1 and c.created_at < $2
         group by c.org_id, o.name
         having count(*) > 0
@@ -152,13 +152,12 @@ export async function gatherPlatformFacts(
          (select count(*)::int from organizations) as accounts,
          (select count(distinct org_id)::int from agent_logs
            where created_at >= $1 and created_at < $2 and org_id is not null) as active_accounts,
-         (select count(*)::int from communications
-           where direction='outbound' and channel='email'
-             and created_at >= $1 and created_at < $2) as emails_sent,
-         (select count(*)::int from communications
-           where direction='outbound' and channel='email'
-             and (delivery_state in ('bounced','failed') or provider is null)
-             and created_at >= $1 and created_at < $2) as emails_failed,
+         (select count(*)::int from communications c
+           where ${sentEmailSql()}
+             and c.created_at >= $1 and c.created_at < $2) as emails_sent,
+         (select count(*)::int from communications c
+           where ${failedEmailSql()}
+             and c.created_at >= $1 and c.created_at < $2) as emails_failed,
          (select count(*)::int from job_runs
            where started_at >= $1 and started_at < $2) as job_runs,
          (select count(*)::int from job_runs

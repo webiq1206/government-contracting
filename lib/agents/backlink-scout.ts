@@ -59,6 +59,7 @@ export const backlinkScout: AgentDefinition = {
     "Daily: snapshots our Domain Rating, tracks new/lost backlinks, auto-discovers competitors, and mines + qualifies backlink prospects. Discovery only, never contacts anyone.",
   cron: "0 7 * * *",
   worksWithoutClaude: true,
+  ownerOrgId: LEGACY_ORG_ID,
   async handler(): Promise<AgentResult> {
     // Site Authority is a platform-owner workflow. Scheduled jobs carry no
     // tenant context, while a manual run carries the platform owner's account
@@ -75,7 +76,7 @@ export const backlinkScout: AgentDefinition = {
           message:
             "No Ahrefs API key is saved for the platform account or configured in its environment; Site Authority scan skipped.",
         });
-        return { ok: false, summary: "Ahrefs not configured, scan skipped." };
+        return { ok: false, permanent: true, humanActionRequired: true, summary: "Ahrefs not configured, scan skipped." };
       }
 
     const profile = await getProfileJson();

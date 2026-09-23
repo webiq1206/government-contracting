@@ -162,7 +162,8 @@ describe("platformStatus", () => {
     );
     expect(p.state).toBe("major_outage");
     expect(p.headline).toContain("Opportunity ingestion is down");
-    expect(p.detail).toContain("Every account is affected");
+    expect(p.detail).toContain("Review the incidents below for affected accounts");
+    expect(p.detail).not.toContain("Every account is affected");
   });
 
   it("counts multiple outages rather than naming only the first", () => {

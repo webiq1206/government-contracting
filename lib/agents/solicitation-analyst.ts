@@ -29,6 +29,7 @@ import {
 } from "../domain/extraction-checks";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
+import { inboundText, deepInboundText, decodeInboundText } from "../domain/inbound-text";
 import { extractValueFromText } from "../domain/value-extract";
 import {
   routeAfterAnalysis,
@@ -803,7 +804,8 @@ async function processAttachment(
       };
     }
     if (ct.includes("text") || ct.includes("html") || ct.includes("json")) {
-      const decoded = buf.toString("utf8");
+      const charset = /charset\s*=\s*["']?([^;"'\s]+)/i.exec(ct)?.[1];
+      const decoded = decodeInboundText(buf, charset);
       const text = decoded.slice(0, 6000);
       const truncated = text.length < decoded.length;
       return {
@@ -1020,7 +1022,8 @@ async function processStoredAnalysisSource(
   }
 
   if (/text|html|json/.test(meta.mime)) {
-    const decoded = buf.toString("utf8");
+    const charset = /charset\s*=\s*["']?([^;"'\s]+)/i.exec(meta.mime)?.[1];
+    const decoded = decodeInboundText(buf, charset);
     const text = decoded.slice(0, 6000);
     const truncated = text.length < decoded.length;
     return {
@@ -1665,7 +1668,7 @@ export const solicitationAnalyst: AgentDefinition = {
       // Then put the long-form fields into the one-item-per-line shape the
       // prompt asks for, since compliance with that varies run to run and the
       // fix belongs in one place rather than at each display and email site.
-      analysis = tightenAnalysisProse(deepNoEmDash(data));
+      analysis = tightenAnalysisProse(deepInboundText(deepNoEmDash(data)));
       analysis.brief_source = "model";
       // Every requirement needs a stable handle and a name a person can read.
       // A blank id would collide with every other blank id when confirmations
@@ -2084,7 +2087,7 @@ export const solicitationAnalyst: AgentDefinition = {
         mergedRiskFlags,
         stage,
         humanAction,
-        solicitationText,
+        inboundText(solicitationText),
         finalInputHash,
         ...valueParams,
       ]

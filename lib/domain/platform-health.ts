@@ -271,7 +271,7 @@ export function platformStatus(services: ServiceStatus[]): PlatformStatus {
         down.length === 1
           ? `${name(down[0])} is down`
           : `${down.length} services are down`,
-      detail: `Every account is affected: ${down.map(name).join(", ")}. Fix this before anything else on this page.`,
+      detail: `Recorded failures affect: ${down.map(name).join(", ")}. Review the incidents below for affected accounts and causes.`,
       down,
       degraded,
       unknown,

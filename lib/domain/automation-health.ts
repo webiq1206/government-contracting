@@ -125,9 +125,9 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     blocking: false,
   },
   mailbox_content: {
-    title: "An email could not be saved",
-    effect: "An incoming message contains text the database cannot store. The inbox is retrying that page.",
-    repair: "The inbox retries automatically. If this continues, contact support with the error details. The original email remains in Gmail.",
+    title: "Imported text could not be saved",
+    effect: "Imported message or document text contains a character the database cannot store. The affected job could not finish.",
+    repair: "Review the named job and its error details. Keep the original source, fix text normalization, then retry the affected work.",
     blocking: false,
   },
   provider_unavailable: {

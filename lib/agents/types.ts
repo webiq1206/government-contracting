@@ -15,6 +15,8 @@ export interface AgentDefinition {
   cron?: string;
   /** If true, the agent runs even when Claude is not configured (rule-only agents). */
   worksWithoutClaude?: boolean;
+  /** Explicit owner for platform-owned workflows that do not fan out. */
+  ownerOrgId?: string;
   /** The unit of work. */
   handler: (ctx: AgentContext) => Promise<AgentResult>;
 }
