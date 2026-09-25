@@ -82,16 +82,33 @@ function providerReason(error: unknown, apiKey: string): string {
   return redacted.replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
+/**
+ * Ledger service names for each endpoint.
+ *
+ * A stable key per endpoint, in the same shape Google Maps and Hunter use,
+ * so an administrator's price ceiling or request limit for "REFDOMAINS"
+ * survives a change of URL and does not need to be entered once per path.
+ */
+export const AHREFS_SERVICES = {
+  "/site-explorer/domain-rating": "DOMAIN_RATING",
+  "/site-explorer/backlinks-stats": "BACKLINKS_STATS",
+  "/site-explorer/refdomains": "REFDOMAINS",
+  "/site-explorer/organic-competitors": "ORGANIC_COMPETITORS",
+  "/site-explorer/broken-backlinks": "BROKEN_BACKLINKS",
+} as const;
+
+type AhrefsPath = keyof typeof AHREFS_SERVICES;
+
 async function providerCall<T>(
   creds: AhrefsCredentials,
-  path: string,
+  path: AhrefsPath,
   options: FetchJsonOptions
 ): Promise<T> {
   try {
     const data = await withRetry(() =>
       fetchJson<T>(`${BASE}${path}`, {
         ...options,
-        metering: { envKey: 'AHREFS_API_KEY', value: creds.apiKey, provider: 'Ahrefs', service: path, feature: 'Website research', orgId: creds.orgId },
+        metering: { envKey: 'AHREFS_API_KEY', value: creds.apiKey, provider: 'Ahrefs', service: AHREFS_SERVICES[path], feature: 'Website research', orgId: creds.orgId },
         headers: { ...options.headers, ...auth(creds.apiKey) },
       })
     );
@@ -157,6 +174,28 @@ export interface BrokenBacklink {
 }
 
 export const ahrefs = {
+  /**
+   * Why a scan would be refused by the spending ledger right now, or null.
+   *
+   * The same admission the first metered call would make, without a request
+   * or a reservation. A scan that would be refused on its first call should
+   * say so once and stop, rather than fail mid-run every morning and be
+   * retried by the queue.
+   */
+  async admissionHold(orgId = LEGACY_ORG_ID): Promise<string | null> {
+    const creds = await credentials(orgId);
+    if (!creds.apiKey) return null;
+    try {
+      const { beginUsage, requestIdentity } = await import("../api-usage/ledger");
+      const identity = await requestIdentity("AHREFS_API_KEY", creds.apiKey, orgId);
+      await beginUsage(identity, "Ahrefs", AHREFS_SERVICES["/site-explorer/domain-rating"], "Website research", { dryRun: true });
+      return null;
+    } catch (error) {
+      if (error instanceof Error && error.name === "ApiUsageBlockedError") return error.message;
+      throw error;
+    }
+  },
+
   async configuration(orgId = LEGACY_ORG_ID): Promise<AhrefsConfiguration> {
     const resolved = await credentials(orgId);
     return { enabled: resolved.apiKey.length > 0, target: resolved.target };

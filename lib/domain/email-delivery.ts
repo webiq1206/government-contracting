@@ -26,7 +26,14 @@ export type DeliveryState =
   /** The send itself failed; nothing ever left the building. */
   | "failed"
   /** Written on purpose and never handed over: waiting for a person to send it. */
-  | "draft";
+  | "draft"
+  /**
+   * Not sent, by rule: the address is on the do-not-contact list, the
+   * operator stopped this pursuit, or the mailbox is paused. Nothing broke
+   * and nobody is waiting to send it, so it is neither a failure nor a
+   * draft, and a day of these is not a day of mail that vanished.
+   */
+  | "held";
 
 /** A bounce notice parsed out of a delivery-status report. */
 export interface BounceReport {
@@ -197,7 +204,13 @@ export function deliveryStateFor(comm: {
   clicked_at?: string | Date | null;
 }): DeliveryState {
   const stored = comm.delivery_state;
-  if (stored === "bounced" || stored === "failed" || stored === "deferred" || stored === "draft") {
+  if (
+    stored === "bounced" ||
+    stored === "failed" ||
+    stored === "deferred" ||
+    stored === "draft" ||
+    stored === "held"
+  ) {
     return stored;
   }
   if (comm.replied_at || comm.clicked_at || comm.opened_at) return "delivered";
@@ -241,6 +254,12 @@ export function describeDeliveryState(state: DeliveryState): {
         label: "Draft",
         detail: "Written but never sent. It is waiting for a person to review it and send it.",
         attention: true,
+      };
+    case "held":
+      return {
+        label: "Held",
+        detail: "Not sent, by rule: a do-not-contact address, a stopped pursuit, or a paused mailbox. Nothing broke.",
+        attention: false,
       };
     default:
       return {

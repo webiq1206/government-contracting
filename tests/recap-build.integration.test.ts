@@ -116,6 +116,30 @@ d("building a recap from real rows (integration)", () => {
     expect(value("Solicitations found")).toBe(counted!.discovered);
   });
 
+  it("does not count a send that was held by rule as mail that did not arrive", async () => {
+    // A do-not-contact address or a stopped pursuit: nothing attempted,
+    // nothing broke. It used to be written as failed with no provider and
+    // read back, every morning, as mail that vanished.
+    await query(
+      `insert into communications (org_id, direction, channel, subject, body, provider, delivery_state, created_at)
+       values ($1,'outbound','email','Held approach','body',null,'held',$2)`,
+      [mine.id, inside.toISOString()]
+    );
+    try {
+      const { gatherPlatformFacts } = await import("../lib/recap/platform");
+      const window = dayWindow(DAY, TZ);
+      const facts = await gatherPlatformFacts(window.start, window.end);
+      expect(facts.mailTrouble.find((row) => row.orgId === mine.id)?.failed).toBe(1);
+      expect(facts.mailTrouble.find((row) => row.orgId === mine.id)?.neverSent).toBe(1);
+      expect(facts.mailTrouble.find((row) => row.orgId === mine.id)?.bounced).toBe(0);
+      const { recap } = await build(mine.id);
+      const sent = recap.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Outreach emails sent")!;
+      expect(sent.note).toBe("1 failed to deliver");
+    } finally {
+      await query(`delete from communications where org_id=$1 and subject='Held approach'`, [mine.id]);
+    }
+  });
+
   it("excludes intentional drafts from platform sends and failure alerts", async () => {
     const { gatherPlatformFacts } = await import("../lib/recap/platform");
     const window = dayWindow(DAY, TZ);

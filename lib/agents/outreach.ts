@@ -607,6 +607,7 @@ export const outreach: AgentDefinition = {
     let outreachState = "pending";
     let humanAction = false;
     let sent = false;
+    let heldByRule = false;
 
     if (sub.email && sub.email_verified) {
       const res = await sendOutreachEmail({
@@ -642,11 +643,12 @@ export const outreach: AgentDefinition = {
       } else if (res.error) {
         humanAction = true;
         outreachState = "send_failed";
+        heldByRule = Boolean(res.blocked);
         await logAgent({
           agent: "outreach",
           action: "send",
-          level: "error",
-          status: "error",
+          level: res.blocked ? "warn" : "error",
+          status: res.blocked ? "skipped" : "error",
           opportunityId,
           subcontractorId,
           message: res.blocked
@@ -720,7 +722,16 @@ export const outreach: AgentDefinition = {
         // screen to one that did. And a draft is not a failure either: an
         // approach held back because the firm has no verified address, or
         // because Gmail is paused, is waiting on a person, not broken.
-        sent ? "sent" : outreachState === "send_failed" ? "failed" : "draft",
+        // A send the safety boundary refused (a do-not-contact address, a
+        // stopped pursuit) is `held`: nothing was attempted and nobody is
+        // waiting to send it, so it is neither failure nor draft. Writing it
+        // as `failed` with no provider is what made the platform recap report
+        // every held approach as mail that did not arrive.
+        sent
+          ? "sent"
+          : outreachState === "send_failed"
+            ? (heldByRule ? "held" : "failed")
+            : "draft",
       ]
     );
 

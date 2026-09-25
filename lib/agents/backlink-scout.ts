@@ -79,6 +79,30 @@ export const backlinkScout: AgentDefinition = {
         return { ok: false, permanent: true, humanActionRequired: true, summary: "Ahrefs not configured, scan skipped." };
       }
 
+      /*
+       * Ask the spending ledger before doing anything. The first metered call
+       * would be refused anyway; refusing here means one clear line instead
+       * of a failed run, three queue retries, and a recap entry saying the
+       * scout "failed 4 times".
+       */
+      const hold = await ahrefs.admissionHold(orgId);
+      if (hold) {
+        const reason = hold.replace(/^API_BUDGET:\s*/, "");
+        await logAgent({
+          agent: "backlink-scout",
+          action: "spending-held",
+          level: "warn",
+          status: "skipped",
+          message: `Site Authority scan skipped: ${reason} It will run on the next schedule once the allowance allows.`,
+        });
+        return {
+          ok: false,
+          spendingHeld: true,
+          humanActionRequired: true,
+          summary: `API_BUDGET: Site Authority scan skipped. ${reason}`,
+        };
+      }
+
     const profile = await getProfileJson();
     const target = ahrefsConfig.target;
     const terms = nicheTerms(profile);

@@ -16,6 +16,7 @@
  */
 import { query, queryOne } from "../db";
 import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
+import { clipText } from "../domain/clip";
 import { TRIAGE_WHERE_SQL, WORKABLE_CALL_CARD_SQL } from "../data";
 import type {
   BidFact,
@@ -56,7 +57,7 @@ const iso = (v: unknown): string =>
 const isoOrNull = (v: unknown): string | null =>
   v instanceof Date ? v.toISOString() : typeof v === "string" && v ? v : null;
 
-const FAILED_SEND_SQL = failedEmailSql();
+const FAILED_SEND_SQL = `(${failedEmailSql()})`;
 
 export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> {
   const { orgId, start, end, now, settings } = input;
@@ -88,6 +89,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     integrationProblems,
     completedRows,
     exactCounts,
+    spendingHeld,
   ] = await Promise.all([
     queryOne<{ name: string }>(`select name from organizations where id = $1`, [orgId]),
 
@@ -182,9 +184,14 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
       win
     ),
 
+    // A run refused by a spending control is counted apart from a run that
+    // broke; it is reported as work waiting on the allowance, below.
     queryOne<Record<string, unknown>>(
       `select count(*)::int as total,
-              count(*) filter (where status = 'error')::int as errors
+              count(*) filter (where status = 'error'
+                and coalesce(summary->>'spendingHeld', '') <> 'true')::int as errors,
+              count(*) filter (where status = 'error'
+                and summary->>'spendingHeld' = 'true')::int as held
          from job_runs
         where org_id = $1 and started_at >= $2 and started_at < $3`,
       win
@@ -369,6 +376,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
          from agent_logs
         where org_id = $1 and created_at >= $2 and created_at < $3
           and status = 'error'
+          and coalesce(action, '') <> 'spending-held'
         group by agent
         order by n desc limit 10`,
       win
@@ -457,6 +465,23 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
          ) as drafts_generated`,
       win
     ),
+
+    /*
+     * Paid work that stopped at the account's own spending control. One line
+     * with a count, not one failure per attempt: the allowance is a setting
+     * to review, and the agents that waited on it are named so the reader
+     * knows what did not happen.
+     */
+    queryOne<Record<string, unknown>>(
+      `select count(*)::int as n, max(created_at) as last_at,
+              array_agg(distinct agent) as agents,
+              (array_agg(message order by created_at desc))[1] as message
+         from agent_logs
+        where org_id = $1 and created_at >= $2 and created_at < $3
+          and status = 'error'
+          and action = 'spending-held'`,
+      win
+    ),
   ]);
 
   const totals: RecapTotals = {
@@ -479,12 +504,36 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
   };
 
   const problems: ProblemFact[] = [];
+  const heldCount = num(spendingHeld?.n);
+  if (heldCount > 0) {
+    const agents = Array.isArray(spendingHeld?.agents)
+      ? (spendingHeld!.agents as unknown[]).filter(Boolean).map(String)
+      : [];
+    const reason = spendingHeld?.message
+      ? String(spendingHeld.message).replace(/^API_BUDGET:\s*/, "")
+      : "The allowance in Settings, API Usage was reached.";
+    problems.push({
+      key: "spending-held",
+      title: `${heldCount} task${heldCount === 1 ? "" : "s"} waited on your API allowance`,
+      detail:
+        clipText(
+          `${agents.length > 0 ? agents.join(", ") : "Paid automation"} stopped before spending anything. ${reason}`,
+          260
+        ) ?? null,
+      count: heldCount,
+      lastAt: isoOrNull(spendingHeld?.last_at),
+      href: "/settings/api-usage",
+      // Not a broken automation: a setting to review, however many times it
+      // was hit.
+      severity: "warning",
+    });
+  }
   for (const row of agentProblems) {
     const agent = String(row.agent ?? "an automation");
     problems.push({
       key: `agent-error:${agent}`,
       title: `${agent} failed`,
-      detail: row.message ? String(row.message).slice(0, 200) : null,
+      detail: clipText(row.message ? String(row.message) : null) ?? null,
       count: num(row.n),
       lastAt: isoOrNull(row.last_at),
       href: "/agents",

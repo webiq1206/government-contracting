@@ -32,7 +32,8 @@ release gate. The `ALLOW_TESTS_AGAINST_DATABASE_URL` flag exists so a
 `DATABASE_URL` pointing at production can never be picked up by accident:
 without the flag, the database-backed suites refuse to run at all.
 
-Setting up the database the full mode needs:
+Setting up the database the full mode needs (migration 122 seeds the default
+email templates, so the seed script is not required for the gate):
 
 ```
 createdb brostco_check   # any local PostgreSQL 15+

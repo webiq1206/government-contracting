@@ -221,7 +221,10 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/queue refused the job because automation became paused|retry was not admitted/.test(text)) return "unknown";
   if (/queue|pg-?boss/.test(text)) return "queue_unreachable";
   if (/5\d\d|server error|overloaded|service unavailable/.test(text)) return "provider_unavailable";
-  if (/fetch failed|enotfound|etimedout|network|timeout|aborted|unreachable/.test(text)) return "network";
+  // A connection attempt that failed on every address rejects with an
+  // AggregateError; its members are unwrapped by the runner, but an older
+  // row may still carry only the name.
+  if (/fetch failed|enotfound|etimedout|econnrefused|econnreset|network|timeout|aborted|unreachable|aggregateerror/.test(text)) return "network";
   if (/unbalanced json|invalid json|completejson|could not parse|json parse/.test(text))
     return "model_output";
   return "unknown";

@@ -8,6 +8,7 @@
  */
 import { query, queryOne } from "../db";
 import { classifyFailure } from "../domain/automation-health";
+import { failedEmailSql } from "../domain/email-reporting";
 import type { AgentRunFacts, FailureRow, ServiceState } from "../domain/platform-health";
 
 /** The window every figure on the page is measured over. */
@@ -109,10 +110,9 @@ export async function platformImpact(): Promise<{
            and stage in ('monitoring','scoring')) as unscored,
        (select count(*)::int from opportunities
          where status = 'open' and stage = 'outreach') as awaiting_outreach,
-       (select count(*)::int from communications
-         where direction = 'outbound' and channel = 'email'
-           and delivery_state in ('bounced','failed','deferred')
-           and created_at >= now() - interval '24 hours') as undelivered`
+       (select count(*)::int from communications c
+         where (${failedEmailSql()})
+           and c.created_at >= now() - interval '24 hours') as undelivered`
   );
   if (!row) {
     throw new Error("Platform impact could not be measured because the database returned no result.");

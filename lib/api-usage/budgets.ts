@@ -2,6 +2,7 @@ import { DEFAULT_ACCOUNT_BUDGET } from "./defaults";
 import { z } from "zod";
 import { queryOne, transaction } from "../db";
 import { validateCost } from "./money";
+import { UNCONFIRMED_PRICED_SQL } from "./ledger";
 
 const dollars = z.string().refine((value) => {
   try { validateCost(value); return true; } catch { return false; }
@@ -42,8 +43,8 @@ export async function readBudget(orgId: string) {
       coalesce(sum(coalesce(provider_cost,budget_cost,reserved_cost) * case when credential_source='platform' and billing_accepted then 1.25 else 1 end),0) as month_spend,
       count(*) filter(where not (credential_source='unknown' and provider_cost=0 and billing_status='not_billable') and started_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC')::int as day_requests,
       count(*) filter(where provider_cost is null and budget_cost is null and reserved_cost>0)::int as held_requests,
-      count(*) filter(where provider_cost is null and budget_cost is null and reserved_cost=0)::int as unknown_costs
-      from api_usage_events where org_id=$1 and started_at >= date_trunc('month',now() at time zone 'UTC') at time zone 'UTC') u`, [orgId]);
+      count(*) filter(where ${UNCONFIRMED_PRICED_SQL})::int as unknown_costs
+      from api_usage_events e where e.org_id=$1 and e.started_at >= date_trunc('month',now() at time zone 'UTC') at time zone 'UTC') u`, [orgId]);
   if (!result) throw new Error("Account budget could not be loaded.");
   if (!result.budget_org_id) Object.assign(result,DEFAULT_ACCOUNT_BUDGET);
   delete result.budget_org_id;

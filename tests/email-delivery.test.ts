@@ -227,4 +227,15 @@ describe("deliveryStateFor", () => {
     expect(describeDeliveryState("sent").attention).toBe(false);
     expect(describeDeliveryState("delivered").attention).toBe(false);
   });
+
+  it("keeps a held send held, and does not ask anyone to fix it", () => {
+    // Not sent by rule: a do-not-contact address or a stopped pursuit. Nothing
+    // broke, so it is neither a failure nor a draft waiting on a person.
+    expect(deliveryStateFor({ delivery_state: "held" })).toBe("held");
+    expect(deliveryStateFor({ delivery_state: "held", opened_at: "2026-01-01" })).toBe("held");
+    const described = describeDeliveryState("held");
+    expect(described.label).toBe("Held");
+    expect(described.attention).toBe(false);
+    expect(described.detail).toMatch(/nothing broke/i);
+  });
 });

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   logAgent: vi.fn(async () => undefined),
   enqueue: vi.fn(),
   handler: vi.fn(),
+  aiHold: vi.fn(async () => null as string | null),
 }));
 
 vi.mock("@/lib/config", () => ({ config: { worker: { disabledAgents: [] } } }));
@@ -21,6 +22,10 @@ vi.mock("@/lib/pursuit-guard", () => ({ pursuitStatus: vi.fn() }));
 vi.mock("@/lib/agents/payload-records", () => ({
   lookupPayloadRecords: vi.fn(async () => []),
   isPermanentlyGone: vi.fn(() => false),
+}));
+vi.mock("@/lib/queue/ai-admission", () => ({
+  aiEnqueueHold: mocks.aiHold,
+  holdReason: (m: string) => m.replace(/^API_BUDGET:\s*/, ""),
 }));
 vi.mock("@/lib/queue", () => ({
   enqueue: mocks.enqueue,
@@ -50,6 +55,7 @@ beforeEach(() => {
   mocks.queryOne.mockResolvedValue({ id: "run-1" });
   mocks.enqueue.mockResolvedValue("child-job-1");
   mocks.handler.mockResolvedValue({ ok: true, summary: "Canonical work completed." });
+  mocks.aiHold.mockResolvedValue(null);
 });
 
 describe("agent runner durable failure truth", () => {
@@ -170,5 +176,94 @@ describe("agent runner durable failure truth", () => {
       String(sql).includes("update job_runs set status")
     );
     expect(completion?.[1]?.[1]).toBe("ok");
+  });
+});
+
+
+describe("spending holds and wrapped errors", () => {
+  it("names the addresses inside a bare AggregateError instead of the word itself", async () => {
+    // Node's connection code rejects with an AggregateError whose own message
+    // is empty. "AggregateError" in the log told the operator nothing and
+    // matched no repair text.
+    const aggregate = new AggregateError(
+      [new Error("connect ECONNREFUSED 127.0.0.1:5432"), new Error("connect ECONNREFUSED ::1:5432")],
+      ""
+    );
+    mocks.handler.mockRejectedValueOnce(aggregate);
+
+    const result = await runAgent(probe(), "cron", { orgId: ORG_ID });
+
+    expect(result.ok).toBe(false);
+    expect(result.summary).toContain("ECONNREFUSED 127.0.0.1:5432");
+    expect(result.summary).toContain("::1:5432");
+    expect(result.summary).not.toBe("AggregateError");
+    const completion = mocks.query.mock.calls.find(([sql]) =>
+      String(sql).includes("update job_runs set status")
+    );
+    expect(completion?.[1]?.[2]).toContain("ECONNREFUSED");
+  });
+
+  it("records a thrown budget refusal as a hold, not a broken automation", async () => {
+    mocks.handler.mockRejectedValueOnce(
+      Object.assign(new Error("API_BUDGET: Your daily allowance cannot cover another request."), {
+        name: "ApiUsageBlockedError",
+      })
+    );
+
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+
+    expect(result).toMatchObject({ ok: false, spendingHeld: true });
+    expect(shouldQueueRetry(result)).toBe(false);
+    // Still an error row, so Automation Health keeps the blocking incident,
+    // but under its own action so the recap can tell it apart.
+    expect(mocks.logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "spending-held", status: "error", level: "warn" })
+    );
+  });
+
+  it("treats a handler that reports the budget refusal in words the same way", async () => {
+    mocks.handler.mockResolvedValueOnce({
+      ok: false,
+      summary: "API_BUDGET: Site Authority scan skipped. This service needs a price ceiling.",
+    });
+
+    const result = await runAgent(probe(), "cron", { orgId: ORG_ID });
+
+    expect(result).toMatchObject({ ok: false, spendingHeld: true, humanActionRequired: true });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(mocks.logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "spending-held", status: "error" })
+    );
+    const completion = mocks.query.mock.calls.find(([sql]) =>
+      String(sql).includes("update job_runs set status")
+    );
+    expect(JSON.parse(completion![1][3])).toMatchObject({ spendingHeld: true });
+  });
+
+  it("holds downstream AI work in words rather than failing the finished parent", async () => {
+    mocks.aiHold.mockResolvedValueOnce(
+      "API_BUDGET: Your daily allowance cannot cover another request: $24.10 is spent or reserved against a $25.00 limit."
+    );
+    mocks.handler.mockResolvedValueOnce({
+      ok: true,
+      summary: "Scored.",
+      enqueued: [{ agent: "solicitation-analyst", payload: { opportunityId: "opp-1" } }],
+    });
+
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.summary).not.toContain("Required downstream work was not queued");
+    expect(mocks.logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "downstream-held",
+        status: "skipped",
+        message: expect.stringContaining("solicitation-analyst was not queued: Your daily allowance"),
+      })
+    );
+    expect(mocks.logAgent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: "downstream-enqueue-failed" })
+    );
   });
 });

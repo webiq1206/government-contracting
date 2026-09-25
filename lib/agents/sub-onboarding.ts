@@ -134,12 +134,20 @@ async function chase(
     orgId: row.orgId ?? undefined,
   });
   const sent = Boolean(res.provider) && !res.error;
+  /*
+   * Three outcomes, three states. A chase Gmail actually refused is `failed`.
+   * One that was never attempted, because the mailbox is paused or not
+   * connected, the trial's outreach quota is used up, or the address is on
+   * the do-not-contact list, is `held`: nothing broke and nothing is waiting
+   * on a person, so it must not be counted as mail that did not arrive.
+   */
+  const state = sent ? "sent" : res.disabled || res.blocked ? "held" : "failed";
 
   let recordError: string | null = null;
   try {
-    // A chase that Gmail refused, or that was held, is recorded as `failed`,
-    // not left to the column's default of `sent`: the default is what made a
-    // refused paperwork request look identical to one that went out. The
+    // A chase that Gmail refused, or that was held, is not left to the
+    // column's default of `sent`: the default is what made a refused
+    // paperwork request look identical to one that went out. The
     // organization is written so the row belongs to the customer whose award
     // this is.
     await query(
@@ -158,7 +166,7 @@ async function chase(
         row.email,
         JSON.stringify({ kind: "compliance-chase", sent, error: res.error ?? null }),
         row.orgId ?? null,
-        sent ? "sent" : "failed",
+        state,
       ]
     );
   } catch (err) {

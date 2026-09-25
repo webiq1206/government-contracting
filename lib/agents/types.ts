@@ -15,6 +15,13 @@ export interface AgentDefinition {
   cron?: string;
   /** If true, the agent runs even when Claude is not configured (rule-only agents). */
   worksWithoutClaude?: boolean;
+  /**
+   * How hard the paid AI work is, for an agent that cannot run without it.
+   * The queue checks this tier's allowance before creating a job, so a held
+   * budget stops work from being queued rather than queued, run and refused.
+   * Defaults to routine.
+   */
+  aiTier?: "routine" | "complex";
   /** Explicit owner for platform-owned workflows that do not fan out. */
   ownerOrgId?: string;
   /** The unit of work. */

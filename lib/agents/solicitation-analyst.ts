@@ -1361,6 +1361,7 @@ export const solicitationAnalyst: AgentDefinition = {
     "Reads the solicitation + attachments, produces a structured analysis, classifies past performance, and routes to sub research on pursue (or holds the brief on review).",
   cron: undefined,
   worksWithoutClaude: false,
+  aiTier: "complex",
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
     if (!opportunityId) return { ok: false, summary: "no opportunityId in payload" };

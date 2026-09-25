@@ -337,7 +337,10 @@ export function ConversationThreads({
 
                 <EmailTimeline messages={c.messages.map((m, index) => {
                     const ours = m.direction === "outbound";
-                    const unsent = m.delivery_state === "draft" || m.delivery_state === "failed";
+                    const unsent =
+                      m.delivery_state === "draft" ||
+                      m.delivery_state === "failed" ||
+                      m.delivery_state === "held";
                     const label = unsent ? null : kindLabel(m.kind);
                     return (
                       <EmailMessage
@@ -345,7 +348,7 @@ export function ConversationThreads({
                         body={m.body} direction={m.direction} contact={subcontractorName}
                         recipient={m.recipient_email} date={m.created_at}
                         latest={index === c.messages.length - 1}
-                        label={!ours ? "Received email" : m.delivery_state === "draft" ? "Unsent draft" : m.delivery_state === "failed" ? "Send failed" : "Outgoing email"}
+                        label={!ours ? "Received email" : m.delivery_state === "draft" ? "Unsent draft" : m.delivery_state === "failed" ? "Send failed" : m.delivery_state === "held" ? "Held, not sent" : "Outgoing email"}
                       >{label && <span className="text-xs text-muted-foreground">{label}</span>}</EmailMessage>
                     );
                   })} />
