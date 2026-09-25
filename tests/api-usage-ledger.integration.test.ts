@@ -63,6 +63,7 @@ import {
   finishUsage,
   metered,
   requestIdentity,
+  settleAbandonedUsage,
   ApiUsageBlockedError,
 } from "../lib/api-usage/ledger";
 import { readUsage } from "../lib/api-usage/read";
@@ -480,4 +481,82 @@ it("recovery verifies current saved credentials and releases a corrected budget 
   await saveBudget(org,"owner",unlimitedBudget);
   await expect(checkRecentSpending(org)).resolves.toBeUndefined();
   expect((await state.db.query("select * from api_usage_events")).rows).toHaveLength(1);
+});
+
+describe("unpriced services and stuck allowances", () => {
+  it("lets a request-count limit govern an unpriced service under a dollar cap", async () => {
+    // The refusal used to ask for a request-count limit and then ignore the
+    // one the account already had. Ahrefs, with no price ceiling, was refused
+    // every morning under the default $25 daily allowance.
+    await saveBudget(org, "owner", { ...unlimitedBudget, dailyLimit: "25", dailyRequests: 100 });
+    await expect(beginUsage(identity, "Ahrefs", "REFDOMAINS", "Website research")).resolves.toBeTypeOf("string");
+    await saveBudget(org, "owner", { ...unlimitedBudget, dailyLimit: "25" });
+    await expect(beginUsage(identity, "Ahrefs", "REFDOMAINS", "Website research")).rejects.toThrow("price ceiling");
+  });
+
+  it("does not let an unpriced service's rows hold a priced service's allowance", async () => {
+    await seedHaiku();
+    await saveBudget(org, "owner", { ...unlimitedBudget, dailyLimit: "25", dailyRequests: 100 });
+    const id = await beginUsage(identity, "Ahrefs", "REFDOMAINS", "Website research");
+    await finishUsage(id, { units: { requests: 1 } });
+    // Finished, unpriced, reserved nothing: exactly the row that used to
+    // count as "awaiting confirmation" for the rest of the month.
+    await expect(beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary")).resolves.toBeTypeOf("string");
+    expect((await readBudget(org))?.unknown_costs).toBe(0);
+  });
+
+  it("still holds a priced request that has no confirmed cost, and says how many", async () => {
+    await seedHaiku();
+    const id = await beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary");
+    await state.db.query("update api_usage_events set reserved_cost=0 where id=$1", [id]);
+    await saveBudget(org, "owner", { ...unlimitedBudget, dailyLimit: "25" });
+    await expect(beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary")).rejects.toThrow(
+      "1 earlier request is still awaiting confirmation"
+    );
+  });
+
+  it("names the amounts when an allowance is exhausted", async () => {
+    await seedHaiku();
+    await saveBudget(org, "owner", { ...unlimitedBudget, dailyLimit: "3" });
+    const id = await beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary");
+    await finishUsage(id, { actualCost: "2" });
+    await expect(beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary")).rejects.toThrow(
+      "$2.50 is spent or reserved against a $3.00 limit, and this request could cost up to $2.50"
+    );
+  });
+
+  it("releases the ceiling of a request the provider refused with an HTTP status", async () => {
+    // Two 529s of a $10-ceiling model used to consume a $25 daily allowance
+    // for the rest of the day. An error response is not billed.
+    await seedHaiku();
+    const rejected = vi.fn().mockRejectedValue(Object.assign(new Error("overloaded"), { status: 529 }));
+    await expect(metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", rejected)).rejects.toThrow("overloaded");
+    const row = (await state.db.query("select budget_cost,reserved_cost,error_code,outcome from api_usage_events")).rows[0];
+    expect(row.outcome).toBe("failed");
+    expect(row.error_code).toBe("HTTP 529");
+    expect(Number(row.budget_cost)).toBe(0);
+    expect(Number((await readBudget(org))?.day_spend)).toBe(0);
+  });
+
+  it("keeps the ceiling of a failure with no status, because the provider may have billed it", async () => {
+    await seedHaiku();
+    const timedOut = vi.fn().mockRejectedValue(new Error("timeout"));
+    await expect(metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", timedOut)).rejects.toThrow("timeout");
+    const row = (await state.db.query("select budget_cost,reserved_cost from api_usage_events")).rows[0];
+    expect(row.budget_cost).toBeNull();
+    expect(Number(row.reserved_cost)).toBe(2);
+  });
+
+  it("closes a request left pending by a dead process, keeping its reservation for review", async () => {
+    await seedHaiku();
+    const stale = await beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary");
+    const fresh = await beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary");
+    await state.db.query("update api_usage_events set started_at=now()-interval '3 hours' where id=$1", [stale]);
+    expect(await settleAbandonedUsage(120)).toBe(1);
+    const rows = (await state.db.query("select id,outcome,error_code,reserved_cost::text from api_usage_events order by started_at")).rows;
+    expect(rows.find((r: any) => r.id === stale)).toMatchObject({ outcome: "failed" });
+    expect(rows.find((r: any) => r.id === stale).error_code).toMatch(/Abandoned/);
+    expect(Number(rows.find((r: any) => r.id === stale).reserved_cost)).toBe(2);
+    expect(rows.find((r: any) => r.id === fresh)).toMatchObject({ outcome: "pending" });
+  });
 });

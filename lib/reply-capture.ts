@@ -695,7 +695,12 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       thankYouSent: false,
     };
   }
-  await query(`update communications set replied_at = now()
+  // A reply is the strongest proof of delivery there is, so the stored state
+  // follows the evidence. Nothing else ever wrote `delivered`, which left the
+  // "confirmed delivered" count at zero on every surface that showed it.
+  await query(`update communications
+                  set replied_at = now(),
+                      delivery_state = case when delivery_state = 'sent' then 'delivered' else delivery_state end
                 where id::text=$1 and org_id=$2 and opportunity_id=$3`,
     [comm.id, orgId, comm.opportunity_id]);
 

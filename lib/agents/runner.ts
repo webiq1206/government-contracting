@@ -205,11 +205,58 @@ export function withDownstreamEnqueueFailures(
   };
 }
 
+/**
+ * The messages inside an error that has none of its own.
+ *
+ * Node's connection code and Promise.any reject with an AggregateError whose
+ * own message is empty and whose `errors` carry the facts (which address
+ * refused, which timed out). Reporting that as the bare word "AggregateError"
+ * told the operator nothing and matched no failure classifier, so a database
+ * outage was filed as "unknown" with no repair instructions. Bounded depth,
+ * because a cause chain can in principle point back at itself.
+ */
+function innerMessages(error: unknown, depth = 0): string[] {
+  if (depth > 4 || error == null) return [];
+  const out: string[] = [];
+  if (error instanceof Error) {
+    if (error.message.trim()) out.push(error.message.trim());
+    const members = (error as { errors?: unknown }).errors;
+    if (Array.isArray(members)) {
+      for (const member of members) out.push(...innerMessages(member, depth + 1));
+    }
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause !== undefined && cause !== error) out.push(...innerMessages(cause, depth + 1));
+  } else {
+    const value = String(error).trim();
+    if (value && value !== "undefined") out.push(value);
+  }
+  return out;
+}
+
 /** A safe, useful sentence for an unknown rejection value. */
-function failureMessage(error: unknown): string {
+export function failureMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (error instanceof Error) {
+    const inner = Array.from(new Set(innerMessages(error)));
+    if (inner.length > 0) return `${error.name || "Error"}: ${inner.join("; ")}`;
+    return `${error.name || "Error"} with no message`;
+  }
   const value = String(error).trim();
   return value && value !== "undefined" ? value : "unknown failure";
+}
+
+/**
+ * A spending hold, however it reached the runner.
+ *
+ * The ledger throws a typed error, which is the reliable signal. A handler
+ * that catches that error itself and returns a plain failure loses the type
+ * but keeps the prefix, and a hold that loses its type is retried three
+ * times by the queue and counted as three failures.
+ */
+export function isSpendingHold(error: unknown): boolean {
+  if (error instanceof Error && error.name === "ApiUsageBlockedError") return true;
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return /^API_BUDGET:/.test(message.trim());
 }
 
 /**
@@ -606,18 +653,25 @@ export async function runAgent(
     }
 
     const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId, relatedId: pursuitId ?? undefined }, () => def.handler({ runId, trigger, payload })));
-    const result =
+    const returned =
       pursuitId && guardedPursuitVersion != null
         ? await runWithPursuitVersion(
             { opportunityId: pursuitId, version: guardedPursuitVersion },
             runHandler
           )
         : await runHandler();
+    // A handler that reports a spending hold in words gets the same treatment
+    // as one that let the typed error through: no queue retry, and a log line
+    // the recap can tell apart from a broken automation.
+    const result: AgentResult =
+      !returned.ok && !returned.spendingHeld && isSpendingHold(returned.summary)
+        ? { ...returned, spendingHeld: true, humanActionRequired: true }
+        : returned;
 
     await inOrg(() =>
       logAgent({
         agent: def.name,
-        action: "run",
+        action: result.spendingHeld ? "spending-held" : "run",
         level: result.ok ? "success" : "warn",
         status: result.ok ? "ok" : "error",
         message: result.summary,
@@ -635,6 +689,28 @@ export async function runAgent(
     // check reads. An agent that names an org itself keeps it.
     const downstreamFailures: DownstreamEnqueueFailure[] = [];
     for (const next of result.enqueued ?? []) {
+      /*
+       * Paid AI work whose allowance is exhausted is held here, in words,
+       * rather than refused by the queue and reported as a failure of the
+       * step that finished. The state-driven recovery sweeps re-create the
+       * held job once the allowance allows it; nothing is lost, and nothing
+       * is logged as broken.
+       */
+      const { aiEnqueueHold, holdReason } = await import("../queue/ai-admission");
+      const hold = await aiEnqueueHold(next.agent, orgId ?? undefined);
+      if (hold) {
+        await inOrg(() =>
+          logAgent({
+            agent: def.name,
+            action: "downstream-held",
+            level: "warn",
+            status: "skipped",
+            message: `${next.agent} was not queued: ${holdReason(hold)} The scheduled recovery sweep will queue it once the allowance allows.`,
+            ...recordRefs(payload),
+          })
+        );
+        continue;
+      }
       const queueNext = () =>
         enqueue(next.agent, next.payload, {
           ...next.opts,
@@ -692,14 +768,18 @@ export async function runAgent(
     );
   } catch (err) {
     const message = failureMessage(err);
-    const spendingHeld = err instanceof Error && err.name === "ApiUsageBlockedError";
+    const spendingHeld = isSpendingHold(err);
     const result: AgentResult = { ok: false, summary: message,
       ...(spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) };
+    // Still an error row, so Automation Health keeps showing the hold as the
+    // blocking incident it is, with its repair link. The action is what lets
+    // the recap count it as work waiting on an allowance rather than as an
+    // automation that broke.
     await inOrg(() =>
       logAgent({
         agent: def.name,
-        action: "run",
-        level: "error",
+        action: spendingHeld ? "spending-held" : "run",
+        level: spendingHeld ? "warn" : "error",
         status: "error",
         message,
         ...recordRefs(payload),

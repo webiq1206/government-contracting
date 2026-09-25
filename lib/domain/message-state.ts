@@ -30,7 +30,13 @@ export type MessageState =
    * emphatically not `sent`, which is what the column's default called 140
    * such drafts and 250-odd held approaches in production until 2026-09-08.
    */
-  | "draft";
+  | "draft"
+  /*
+   * Not sent, by rule: a do-not-contact address, a stopped pursuit, or a
+   * paused mailbox. Nothing broke and nobody is waiting to send it. Kept
+   * apart from `failed` because a held approach is not ours to fix.
+   */
+  | "held";
 
 export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
   received: "From them",
@@ -44,6 +50,7 @@ export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
   blocked: "Blocked by their server",
   failed: "Never sent",
   draft: "Draft, not sent",
+  held: "Held, not sent",
 };
 
 /** What each state means for the person reading it, and what it asks of them. */
@@ -59,6 +66,7 @@ export const MESSAGE_STATE_MEANING: Record<MessageState, string> = {
   blocked: "Their server refused it on policy grounds. The address may be fine.",
   failed: "The send itself failed, so it never left here. This one is ours to fix.",
   draft: "Written but never sent. It is waiting for a person to review it and send it.",
+  held: "Not sent, by rule: the address is on the do-not-contact list, the pursuit was stopped, or the mailbox is paused.",
 };
 
 /** Whether a state means the message did not arrive. */
@@ -68,7 +76,7 @@ export function isFailure(state: MessageState): boolean {
 
 /** Whether a state means nothing has left here yet, failure or not. */
 export function isUnsent(state: MessageState): boolean {
-  return state === "failed" || state === "draft";
+  return state === "failed" || state === "draft" || state === "held";
 }
 
 export interface MessageRow {
@@ -121,6 +129,7 @@ export function messageState(m: MessageRow): MessageState {
   const ds = m.delivery_state ?? "sent";
   if (ds === "failed") return "failed";
   if (ds === "draft") return "draft";
+  if (ds === "held") return "held";
   if (ds === "bounced") return looksBlocked(m.delivery_detail) ? "blocked" : "bounced";
   if (ds === "deferred") return "delayed";
 

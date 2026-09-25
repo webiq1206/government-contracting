@@ -33,3 +33,15 @@ https://platform.claude.com/docs/en/about-claude/models/choosing-a-model
 https://platform.claude.com/docs/en/models/overview
 
 No live provider benchmark or measured dollar-savings percentage is claimed. Savings depend on task mix, output length and cache reuse.
+
+## Unpriced services and stuck allowances (2026-09-25)
+
+Three rules changed after the founding account's daily allowance stayed exhausted for days while its analyses were refused seven hundred times a day.
+
+- A service with no configured price ceiling (Ahrefs, Google Maps, Hunter, Twilio) is governed by the account's request-count limit, not by its dollar limits. The refusal used to ask the operator to "use a request-count limit" and then ignore the one the account already had. A dollar cap still blocks an unpriced service when the account has no request limit at all, and a platform monthly cap still blocks it unless an administrator has set an explicit platform request limit.
+- "Awaiting confirmation" now means a request for a priced service that has no confirmed or estimated cost. Rows for unpriced services no longer hold every other service's dollar allowance, and the refusal names the count so the operator knows what to reconcile in Admin, API Usage.
+- A request the provider refused with an HTTP error status (401, 429, 529 and the like) is not billed and no longer keeps its full price ceiling held for the rest of the window. A failure with no status, such as a timeout, keeps its reservation because the provider may have completed the work. Ledger rows left `pending` for more than two hours are closed as failed by the hourly usage job so they stop counting as in flight.
+
+Work that the ledger refuses is now recorded as a hold rather than a failure: the run's log line carries the action `spending-held`, the recap counts it as work waiting on an allowance, and Automation Health keeps showing the blocking spending incident with its repair link. The queue also asks the same admission question before creating a job for an agent that cannot run without AI, so an exhausted allowance stops work from being queued instead of being queued, run and refused every fifteen minutes.
+
+Ahrefs ledger rows are keyed by stable service names (`DOMAIN_RATING`, `BACKLINKS_STATS`, `REFDOMAINS`, `ORGANIC_COMPETITORS`, `BROKEN_BACKLINKS`) instead of endpoint paths, so one price ceiling or request limit per service is enough.

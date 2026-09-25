@@ -59,16 +59,33 @@ describe("writers that hold a message back say so", () => {
     expect(insert).toMatch(/'draft'\)/);
   });
 
-  it("the award-paperwork chase records a refused send as failed, with its organization", () => {
+  it("the award-paperwork chase tells a refused send from a held one, with its organization", () => {
     const src = read("lib/agents/sub-onboarding.ts");
     const insert = src.slice(src.indexOf("insert into communications"));
     expect(insert).toMatch(/org_id/);
-    expect(insert).toContain('sent ? "sent" : "failed"');
+    // A chase Gmail refused is failed. One never attempted (paused mailbox,
+    // exhausted quota, do-not-contact address) is held: nothing broke, and
+    // nothing is waiting on a person, so it is not mail that did not arrive.
+    expect(src).toContain('sent ? "sent" : res.disabled || res.blocked ? "held" : "failed"');
   });
 
-  it("the outreach agent tells a held approach apart from a failed send", () => {
+  it("the outreach agent tells a held approach apart from a failed send and a draft", () => {
     const src = read("lib/agents/outreach.ts");
-    expect(src).toContain('sent ? "sent" : outreachState === "send_failed" ? "failed" : "draft"');
+    expect(src).toContain('heldByRule = Boolean(res.blocked)');
+    expect(src).toMatch(/\? \(heldByRule \? "held" : "failed"\)\s*:\s*"draft"/);
+  });
+
+  it("the database accepts the held state and reclassifies only rows that prove the hold", () => {
+    const sql = read("db/migrations/123_communications_held_state.sql");
+    expect(sql).toMatch(/check \(delivery_state in \('sent','delivered','bounced','deferred','failed','draft','held'\)\)/);
+    const updates = sql.split("update communications").slice(1);
+    expect(updates.length).toBe(2);
+    for (const u of updates) {
+      expect(u).toContain("provider is null");
+      expect(u).toContain("delivery_state = 'failed'");
+    }
+    expect(updates[0]).toContain("compliance-chase");
+    expect(updates[1]).toContain("Held email to %");
   });
 
   it("the database accepts the state and repairs the rows that were mislabelled", () => {

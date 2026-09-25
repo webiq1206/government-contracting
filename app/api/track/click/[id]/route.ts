@@ -10,7 +10,10 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
   const url = new URL(req.url);
   const target = url.searchParams.get("u");
   await query(
-    `update communications set clicked_at = coalesce(clicked_at, now()) where tracking_id = $1`,
+    `update communications
+        set clicked_at = coalesce(clicked_at, now()),
+            delivery_state = case when delivery_state = 'sent' then 'delivered' else delivery_state end
+      where tracking_id = $1`,
     [params.id]
   ).catch(() => {});
 

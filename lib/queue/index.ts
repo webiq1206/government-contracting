@@ -154,6 +154,20 @@ export async function enqueue(
     return null;
   }
   /*
+   * Paid AI work whose allowance is exhausted is not queued. The run would be
+   * refused before it cost anything, but refused runs are still runs: logged,
+   * counted, and re-created by every state-driven sweep until the allowance
+   * resets. The runner's downstream loop asks the same question first and
+   * writes the reason where the operator will see it; this is the backstop
+   * for every other caller.
+   */
+  const { aiEnqueueHold } = await import("./ai-admission");
+  const hold = await aiEnqueueHold(name, enqueuingOrgId);
+  if (hold) {
+    console.warn(`[queue] enqueue skipped (AI allowance held): ${name}: ${hold}`);
+    return null;
+  }
+  /*
    * Do not queue new work for a pursuit the operator has stopped.
    *
    * The runner refuses stopped pursuits when a job runs, which is what stops

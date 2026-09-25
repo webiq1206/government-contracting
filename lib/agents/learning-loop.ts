@@ -67,6 +67,7 @@ export const learningLoop: AgentDefinition = {
     "Weekly: proposes new (inactive) scoring weights from win/loss data, recomputes sub reliability, and emits a report.",
   cron: "0 9 * * 1",
   worksWithoutClaude: false,
+  aiTier: "complex",
   async handler(): Promise<AgentResult> {
     /**
      * One tuning pass per organization.

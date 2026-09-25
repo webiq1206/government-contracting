@@ -54,6 +54,7 @@ vi.mock("../lib/integrations/contact-finder", () => ({ findContact: mocks.findCo
 vi.mock("../lib/integrations/ahrefs", () => ({
   ahrefs: {
     configuration: mocks.ahrefsConfiguration,
+    admissionHold: async () => null,
     authoritySnapshot: mocks.authoritySnapshot,
     referringDomains: mocks.referringDomains,
     organicCompetitors: mocks.organicCompetitors,
