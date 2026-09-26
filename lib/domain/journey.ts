@@ -318,8 +318,8 @@ export function deriveStep(s: StepInput): NextStep {
   if (s.tier === "review" && s.humanActionRequired)
     return {
       title: "Decide: pursue or pass",
-      why: "This scored in the borderline band. If you don't act before the timer, it auto-dismisses.",
-      after: "Pursue kicks off analysis, pricing, and sub research automatically; you'll only hear back when calls are ready.",
+      why: "This scored in the borderline band and needs your decision. Review timing and expiry behavior follow your saved automation rules.",
+      after: "Pursue starts the next eligible analysis steps. Missing documents, connections or spending allowance can hold work; check the record for its next action.",
       cta: "Read the brief",
       anchor: "#attachments",
       tone: "action",

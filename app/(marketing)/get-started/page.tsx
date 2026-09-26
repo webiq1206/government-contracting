@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -7,12 +8,11 @@ import {
   TrialCTA,
 } from "@/components/marketing/site-shell";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
-export const metadata: Metadata = {
-  title: "Get started with BrostCo | Trial and setup",
-  description:
-    "What to have ready for your free BrostCo trial: company profile, SAM.gov access, supported AI services, and a mailbox for outreach.",
-  alternates: { canonical: "/get-started" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Start your trial and review your first opportunity",
+  "What to have ready for your free BrostCo trial: company profile, SAM.gov access, supported AI services, and a mailbox for outreach.",
+  "/get-started",
+);
 export default function GetStartedPage() {
   return (
     <MarketingShell>
@@ -48,9 +48,10 @@ export default function GetStartedPage() {
             <div>
               <h3>Connect the work</h3>
               <p>
-                Set up SAM.gov access for opportunity discovery. Choose
-                supported AI and lookup services. Connect your mailbox and
-                complete sender identity before outreach.
+                Set up SAM.gov access for discovery, or start with a supported
+                notice link or PDF import. Choose supported AI services.
+                Mailbox and sender setup are needed before outreach, not for
+                simply reading and reviewing an opportunity.
               </p>
             </div>
           </li>
@@ -68,6 +69,7 @@ export default function GetStartedPage() {
             <span>04</span>
             <div>
               <h3>Work toward a prepared bid</h3>
+              <p className="bco-caption">Next, when you are ready to pursue</p>
               <p>
                 Find subcontractors, review quote coverage, and bring the bid
                 inputs together. Use Today to see decisions, calls, and missing

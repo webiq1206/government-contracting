@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { actionError } from "@/lib/client/action-request";
 import Link from "next/link";
+import { marketingEvent } from "@/lib/client/marketing-event";
 
 export function SignupForm({
   initialPlan,
@@ -12,10 +13,12 @@ export function SignupForm({
   promoActive: boolean;
 }) {
   const submitting = useRef(false);
+  const started = useRef(false);
   const plan =
     initialPlan === "founding" && !promoActive ? "standard" : initialPlan;
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -43,6 +46,7 @@ export function SignupForm({
         redirect?: string;
       };
       if (!res.ok) {
+        marketingEvent("signup_error", { location: "form" });
         setError(actionError(res.status, data.error));
         setPending(false);
         return;
@@ -53,6 +57,7 @@ export function SignupForm({
       }
       window.location.replace(data.redirect === "/today" ? data.redirect : "/today");
     } catch {
+      marketingEvent("signup_error", { location: "form" });
       setError("Account setup could not be confirmed. Your details are still here. Try signing in before creating the account again.");
       setPending(false);
     } finally {
@@ -61,7 +66,7 @@ export function SignupForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} onFocus={() => { if (!started.current) { started.current = true; marketingEvent("signup_started", { location: "form" }); } }} className="space-y-4">
       <div>
         <label className="label" htmlFor="name">
           Your name
@@ -106,13 +111,14 @@ export function SignupForm({
         <input
           id="password"
           name="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           required
           minLength={10}
           className="input mt-1"
           autoComplete="new-password"
         />
         <p className="mt-1 text-xs text-muted-foreground">At least 10 characters.</p>
+        <button type="button" className="mt-1 inline-flex min-h-11 items-center text-sm text-accent underline" aria-controls="password" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Hide password" : "Show password"}</button>
       </div>
       <input type="hidden" name="plan" value={plan} />
       {error && <p role="alert" className="text-sm text-risk">{error}</p>}

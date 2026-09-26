@@ -324,7 +324,7 @@ export function summarize(t: ThreadInput, now = new Date()): ConversationSummary
   return {
     threadKey: t.threadKey,
     subcontractorId: t.subcontractorId,
-    subcontractorName: t.subcontractorName || "Unknown sender",
+    subcontractorName: t.subcontractorName || t.subcontractorEmail || (t.messages.length === 0 ? "Draft: recipient not selected" : "Unmatched contact"),
     subcontractorEmail: t.subcontractorEmail,
     opportunityId: t.opportunityId,
     opportunityTitle: t.opportunityTitle,

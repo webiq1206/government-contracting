@@ -35,6 +35,7 @@ export function FocusedToday({ items, overdue, dueToday, completed, activity, in
           <dl className="space-y-4">
             {[{label:"Overdue",value:overdue,href:"/today?due=overdue#queue"},{label:"Due today",value:dueToday,href:"/today?due=due_today#queue"},{label:"Completed today",value:completed,href:"/today?due=completed_today#queue"}].map(row => <div key={row.label} className="flex items-center justify-between gap-4"><dt className="text-sm text-muted-foreground"><Link href={row.href} className="inline-flex min-h-11 items-center hover:underline">{row.label}</Link></dt><dd className="num text-xl font-semibold">{incomplete ? "Not available" : row.value}</dd></div>)}
           </dl>
+          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">Overdue and due today refer to task due dates. Review timers and agency bid deadlines are separate; check each opportunity before acting.</p>
         </div>
       </section>
     </div>

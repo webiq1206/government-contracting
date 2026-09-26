@@ -1669,7 +1669,7 @@ export const solicitationAnalyst: AgentDefinition = {
       // Then put the long-form fields into the one-item-per-line shape the
       // prompt asks for, since compliance with that varies run to run and the
       // fix belongs in one place rather than at each display and email site.
-      analysis = tightenAnalysisProse(deepInboundText(deepNoEmDash(data)));
+      analysis = { ...tightenAnalysisProse(deepInboundText(deepNoEmDash(data))), recorded_at: new Date().toISOString() };
       analysis.brief_source = "model";
       // Every requirement needs a stable handle and a name a person can read.
       // A blank id would collide with every other blank id when confirmations

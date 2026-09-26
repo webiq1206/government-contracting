@@ -4,6 +4,7 @@ import { MarketingMobileMenu } from "./mobile-menu";
 import { MARKETING_LINKS } from "./site-content";
 import { NavTrialLink } from "./nav-trial-link";
 import "./site.css";
+import { MarketingAnalytics } from "./marketing-analytics";
 
 export function MarketingNav({
   loginHref = "/login",
@@ -17,6 +18,7 @@ export function MarketingNav({
 }) {
   return (
     <header className={`bco-nav${variant === "dark" ? " bco-nav-dark" : ""}`}>
+      <MarketingAnalytics />
       <div className="bco-container bco-nav-inner">
         <Link href="/" aria-label="BrostCo home" className="bco-brand-link">
           <Wordmark

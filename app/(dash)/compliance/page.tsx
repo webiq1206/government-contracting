@@ -759,7 +759,7 @@ export default async function CompliancePage(
                 capRows.length ? ` · ${capRows.length} cap gauge${capRows.length === 1 ? "" : "s"}` : ""
               }`
         }
-        explanation="Brost Co checks these daily and warns before anything lapses. Set renewal dates and links so countdowns work."
+        explanation={`Renewal status and document evidence are separate checks. ${missingDocTargets.length} tracked item${missingDocTargets.length === 1 ? " has" : "s have"} no document attached. Set renewal dates and attach evidence; a future date alone does not verify compliance.`}
         primaryAction={
           /*
            * The way into the working mode.

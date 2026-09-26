@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -7,12 +8,11 @@ import {
   TrialCTA,
   ProductIcon,
 } from "@/components/marketing/site-shell";
-export const metadata: Metadata = {
-  title: "Security, data, and human control",
-  description:
-    "Understand BrostCo's organization access, integration credentials, AI data flow, activity history, and responsibility for final bid review.",
-  alternates: { canonical: "/security" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Security, data and human control",
+  "Understand BrostCo's organization access, integration credentials, AI data flow, activity history, and responsibility for final bid review.",
+  "/security",
+);
 export default function SecurityPage() {
   return (
     <MarketingShell>

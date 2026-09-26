@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -8,12 +9,11 @@ import {
   ProductIcon,
 } from "@/components/marketing/site-shell";
 import { WorkflowDemo } from "@/components/marketing/workflow-demo";
-export const metadata: Metadata = {
-  title: "AI subcontractor coordination for federal bids",
-  description:
-    "Find subcontractors by trade, prepare outreach, track quotes and replies, and see the gaps before bid review with BrostCo.",
-  alternates: { canonical: "/subcontractors" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Government subcontractor coordination software",
+  "Find subcontractors by trade, prepare outreach, track quotes and replies, and see the gaps before bid review with BrostCo.",
+  "/subcontractors",
+);
 export default function SubcontractorsPage() {
   return (
     <MarketingShell>

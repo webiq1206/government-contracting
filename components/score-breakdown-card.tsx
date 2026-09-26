@@ -33,7 +33,7 @@ function ConfidenceLine({ confidence }: { confidence?: DataConfidence }) {
  * Score dimensions with a tip on each row explaining why points were awarded
  * or withheld (uses the scoring engine's `reasoning` field).
  */
-export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown }) {
+export function ScoreBreakdownCard({ breakdown, currentScore }: { breakdown: ScoreBreakdown; currentScore?: number | null }) {
   const positives = breakdown.dimensions.filter((d) => d.points > 0);
   const risks = breakdown.dimensions.filter((d) => d.points <= 0);
 
@@ -58,6 +58,8 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
         opposite instruction.
       */}
       <ConfidenceLine confidence={breakdown.data_confidence} />
+      <p className="mt-3 text-sm font-medium">Recorded score: {currentScore ?? breakdown.total}/100. Source evidence and current eligibility still require review.</p>
+      {currentScore != null && currentScore !== breakdown.total && <p role="status" className="mt-2 rounded border border-review/30 bg-review/10 p-3 text-sm">This breakdown belongs to an earlier score ({breakdown.total}). Review the source and refresh scoring before relying on the factors below.</p>}
 
       <div className="mt-5 space-y-4">
         {positives.map((d) => {
@@ -110,9 +112,11 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
       )}
 
       {breakdown.summary && (
-        <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-slate-500">
-          {breakdown.summary}
-        </p>
+        <details className="mt-4 border-t border-border pt-3 text-sm leading-relaxed text-muted-foreground">
+          <summary className="min-h-11 cursor-pointer">Recorded AI scoring notes</summary>
+          <p className="mb-2">Historical analysis, not a live score or deadline assessment. Current figures appear above.</p>
+          <p>{breakdown.summary}</p>
+        </details>
       )}
       {breakdown.hard_exclusions_triggered?.length > 0 && (
         <div className="mt-3 rounded-md border border-risk/30 bg-risk/5 px-3 py-2">

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { PUBLIC_ROUTES } from "@/lib/domain/public-routes";
+import { PUBLIC_ROUTES, DISALLOWED_PREFIXES } from "@/lib/domain/public-routes";
 
 /*
  * The crawlable pages, from the one declaration.
@@ -91,6 +91,15 @@ export function middleware(req: NextRequest) {
   if (isPublic(pathname)) {
     return NextResponse.next();
   }
+
+  // Unknown public URLs should reach Next's real 404, not an unrelated login.
+  // Every private page prefix remains guarded; route-inventory tests enforce
+  // classification when a new dashboard page is introduced.
+  const protectedPath = DISALLOWED_PREFIXES.some(({ prefix }) => {
+    const base = prefix.replace(/\/$/, "");
+    return pathname === base || pathname.startsWith(base + "/");
+  });
+  if (!protectedPath) return NextResponse.next();
 
   const session = req.cookies.get("brostco_session")?.value;
   if (!session) {

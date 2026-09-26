@@ -687,7 +687,7 @@ function QuickStart({
               <span className="text-sm font-medium text-foreground">{item.label}</span>
               <span className="sr-only">{item.done ? "Done" : "Still to do"}</span>
               {item.required && !item.done && (
-                <span className="badge bg-risk/10 text-risk">nothing runs without it</span>
+                <span className="badge bg-risk/10 text-risk">required for this workflow</span>
               )}
             </div>
             <p className="mt-1 pl-7 text-sm leading-relaxed text-muted-foreground">{item.hint}</p>

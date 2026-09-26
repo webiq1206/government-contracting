@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -6,12 +7,11 @@ import {
   SectionHeading,
   TrialCTA,
 } from "@/components/marketing/site-shell";
-export const metadata: Metadata = {
-  title: "About BrostCo",
-  description:
-    "BrostCo is an AI platform operated by BROSTCO HOLDINGS LLC for federal services contractors who need a more connected pursuit and bid workflow.",
-  alternates: { canonical: "/about" },
-};
+export const metadata: Metadata = publicMetadata(
+  "About our government contracting platform",
+  "BrostCo is an AI platform operated by BROSTCO HOLDINGS LLC for federal services contractors who need a more connected pursuit and bid workflow.",
+  "/about",
+);
 export default function AboutPage() {
   return (
     <MarketingShell>

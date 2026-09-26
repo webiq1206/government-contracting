@@ -92,6 +92,11 @@ export function BidBrief({
       </div>
 
       <div className="space-y-7 px-6 py-6">
+        <aside className="rounded-lg border border-review/30 bg-review/10 p-4 text-sm" aria-label="Analysis freshness">
+          <strong>AI draft, verify against the source.</strong>{" "}
+          {analysis.recorded_at ? `Analysis recorded ${fmtDate(analysis.recorded_at)}.` : "The date of this older analysis was not recorded."}{" "}
+          Relative timing and risk notes describe the analysis snapshot, not today's deadline. Use the current deadline in the record header and check Documents for amendments before acting.
+        </aside>
         {/* The recommendation is not repeated here: the page states it directly
             above this card, and saying it twice is what made the brief feel
             like a document rather than an answer. */}

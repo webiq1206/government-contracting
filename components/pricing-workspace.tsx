@@ -100,8 +100,9 @@ export function PricingWorkspace({
 
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No trades identified for this solicitation yet. The analysis names the trades, and each
-            one gets a row here.
+            {sheet.missingTrades.length > 0
+              ? "Trades have been identified, but pricing rows are not ready. Complete the analysis and pursuit steps before entering costs."
+              : "No trades identified yet. Complete the document analysis to identify the scopes that need pricing."}
           </p>
         ) : (
           <>

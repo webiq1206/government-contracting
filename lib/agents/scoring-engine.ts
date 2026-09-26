@@ -460,6 +460,9 @@ async function scoreOpportunity(
   const forceReview =
     (flags.length > 0 || forceIntakeReview) && breakdown.tier === "pursue";
   if (forceReview) breakdown.tier = "review";
+  // Model prose was written before evidence caps and review routing. Do not
+  // publish its earlier score or a relative deadline as the final decision.
+  breakdown.summary = `Recorded score: ${breakdown.total}/100. Decision: ${breakdown.tier}. ${breakdown.hard_exclusions_triggered.length ? "A hard exclusion applies. " : ""}${forceReview ? "A review flag requires a human decision even though the score met the pursuit threshold. " : ""}The dimension scores below are the recorded basis for this decision. Check the current deadline and source documents before acting.`;
 
   // 3) Persist score + tier + route.
   const enqueued: AgentResult["enqueued"] = [];

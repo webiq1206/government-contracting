@@ -7,6 +7,7 @@ import { withApiUsageContext } from '../api-usage/context';
  */
 import { randomUUID } from "node:crypto";
 import { claudeEnabled } from "../ai/claude";
+import { providerNeedsIntervention } from "../domain/provider-retry";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { pursuitStatus } from "../pursuit-guard";
@@ -143,7 +144,7 @@ async function payloadOrgId(
  * comment above it and tested on its own.
  */
 export function shouldQueueRetry(result: AgentResult): boolean {
-  return !result.ok && !result.permanent && !result.spendingHeld;
+  return !result.ok && !result.permanent && !result.spendingHeld && !providerNeedsIntervention(result.summary);
 }
 
 /**

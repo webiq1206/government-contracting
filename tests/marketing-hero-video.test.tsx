@@ -17,6 +17,7 @@ let play: ReturnType<typeof vi.fn>;
 let pause: ReturnType<typeof vi.fn>;
 let observe: (entries: { isIntersecting: boolean }[]) => void;
 beforeEach(() => {
+  vi.useFakeTimers();
   const { window } = parseHTML("<html><body><main></main></body></html>");
   vi.stubGlobal("window", window);
   vi.stubGlobal("document", window.document);
@@ -45,15 +46,29 @@ beforeEach(() => {
   container = window.document.querySelector("main")! as unknown as HTMLElement;
   root = createRoot(container);
 });
+async function renderLoadedHero() {
+  await act(async () => root.render(<HeroBackgroundVideo />));
+  await act(async () => window.dispatchEvent(new window.Event("load")));
+  await act(async () => vi.advanceTimersByTime(2000));
+}
 afterEach(async () => {
   await act(async () => root.unmount());
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 describe("hero background film", () => {
+  it("does not mount decorative video before the page loads and settles", async () => {
+    await act(async () => root.render(<HeroBackgroundVideo />));
+    expect(container.querySelector("video")).toBeNull();
+    await act(async () => window.dispatchEvent(new window.Event("load")));
+    await act(async () => vi.advanceTimersByTime(1999));
+    expect(container.querySelector("video")).toBeNull();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(container.querySelector("video")).not.toBeNull();
+  });
   it("does not interrupt playback with a time limit", async () => {
     vi.useFakeTimers();
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     await act(async () => container.querySelector('video')!.dispatchEvent(new window.Event('playing')));
     pause.mockClear();
     await act(async () => vi.advanceTimersByTime(4500));
@@ -63,15 +78,15 @@ describe("hero background film", () => {
     await act(async () => observe([{ isIntersecting: true }]));
     expect(play).toHaveBeenCalledTimes(count + 1);
   });
-  it("loops the full film, loads eagerly, and resumes on re-entry", async () => {
-    await act(async () => root.render(<HeroBackgroundVideo />));
+  it("loops after page load and resumes on re-entry without losing its position", async () => {
+    await renderLoadedHero();
     expect(container.querySelector("source")?.getAttribute("src")).toBe(
       "/marketing/hero-background.mp4?v=20260916-full",
     );
     expect(play).toHaveBeenCalledTimes(1);
     expect(container.querySelector("video")?.hasAttribute("loop")).toBe(true);
-    expect(container.querySelector("video")?.getAttribute("preload")).toBe("auto");
-    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector("video")?.getAttribute("preload")).toBe("none");
+    expect(container.querySelector("button")?.textContent).toContain("Pause background animation");
     await act(async () => observe([{ isIntersecting: false }]));
     const count = play.mock.calls.length;
     await act(async () => observe([{ isIntersecting: true }]));
@@ -90,7 +105,7 @@ describe("hero background film", () => {
   });
   it("does not request video for reduced motion", async () => {
     reduced = true;
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "/marketing/hero-poster-full.jpg",
@@ -99,20 +114,20 @@ describe("hero background film", () => {
   });
   it("keeps phones on the poster without downloading a background video", async () => {
     mobile = true;
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")).not.toBeNull();
     expect(play).not.toHaveBeenCalled();
   });
   it("keeps video unloaded for data saving and responds to motion changes", async () => {
     vi.stubGlobal("navigator", { connection: { saveData: true } });
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     expect(container.querySelector("video")).toBeNull();
     expect(play).not.toHaveBeenCalled();
     vi.stubGlobal("navigator", {});
     await act(async () => root.unmount());
     root = createRoot(container);
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     expect(container.querySelector("video")).not.toBeNull();
     reduced = true;
     await act(async () => motionChange());
@@ -122,7 +137,7 @@ describe("hero background film", () => {
     expect(container.querySelector("video")).not.toBeNull();
   });
   it("pauses in a hidden tab and resumes when the tab returns", async () => {
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     await act(async () => document.dispatchEvent(new window.Event("visibilitychange")));
     expect(pause).toHaveBeenCalled();
@@ -132,14 +147,14 @@ describe("hero background film", () => {
     expect(play).toHaveBeenCalledTimes(count + 1);
   });
   it("keeps the poster when the video source cannot load", async () => {
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     await act(async () => container.querySelector("source")!.dispatchEvent(new window.Event("error")));
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")).not.toBeNull();
   });
   it("keeps the poster if the browser blocks playback", async () => {
     play.mockRejectedValue(new Error("Playback unavailable"));
-    await act(async () => root.render(<HeroBackgroundVideo />));
+    await renderLoadedHero();
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")).not.toBeNull();
     expect(container.querySelector("button")).toBeNull();

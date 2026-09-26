@@ -354,10 +354,10 @@ export default async function AnalyticsPage(
     pipelineTotal === 0
       ? null
       : pipelineValued === pipelineTotal
-        ? "all have a published value"
+        ? "all have a recorded value; includes estimates"
         : pipelineValued === 0
-          ? `none of ${pipelineTotal} publish a value`
-          : `from ${pipelineValued} of ${pipelineTotal} that publish one`;
+          ? `none of ${pipelineTotal} have a recorded value`
+          : `from ${pipelineValued} of ${pipelineTotal}; includes estimates`;
   const activeRevenue = fb.active_contract_revenue;
   const wins = fb.wins;
   const losses = fb.losses;
@@ -644,11 +644,11 @@ export default async function AnalyticsPage(
             accent
           />
           <KpiCard
-            label="Pipeline value"
+            label="Recorded pipeline value"
             value={pipelineValued === 0 ? null : currency(pipelineValue)}
             absent={
               pipelineValued === 0
-                ? "No open opportunity publishes a value."
+                ? "No open opportunity has a recorded value."
                 : undefined
             }
             sub={pipelineCoverage ?? undefined}
@@ -656,11 +656,10 @@ export default async function AnalyticsPage(
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
         </div>
         <p className="text-xs text-slate-500">
-          Win rate is wins divided by decided bids. Pipeline value adds up the
-          opportunities that publish an estimate, and many federal notices do
-          not, so it is a floor rather than a forecast: the card says how many
-          it covers. These fill in as bids are decided, so early numbers look
-          sparse.
+          Win rate is wins divided by decided bids. Recorded pipeline value includes
+          both sourced values and AI estimates across current open opportunities.
+          It is not revenue or a forecast. The period-filtered breakdown below
+          separates published, estimated and unvalued work.
         </p>
 
         {/* Live activity, computed straight from the data (no engine run needed). */}

@@ -79,6 +79,8 @@ export default async function NotificationSettingsPage() {
             Each category shows where to check its alerts. Manage your daily recap email and time zone in Your account.
           </p>
           <Link href="/settings/account" className="mt-2 inline-flex min-h-11 items-center font-medium underline">Manage daily recap</Link>
+          <p className="mt-3 text-xs text-slate-600">For supported event updates, review your connected Teams or Slack channels and outbound webhooks. These are separate from the recap and do not turn every category below into an immediate email alert.</p>
+          <Link href="/settings/integrations?tab=apps" className="mt-2 inline-flex min-h-11 items-center font-medium underline">Review connected alert channels</Link>
         </div>
 
         <ul className="max-w-3xl space-y-3">

@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -9,12 +10,11 @@ import {
 } from "@/components/marketing/site-shell";
 import { OpportunityPreview } from "@/components/marketing/workflow-demo";
 import { HOME_FAQ } from "@/components/marketing/site-content";
-export const metadata: Metadata = {
-  title: "How BrostCo uses AI",
-  description:
-    "See what AI reads, prepares, and coordinates in BrostCo, which actions depend on your rules, and where your team reviews the work.",
-  alternates: { canonical: "/ai" },
-};
+export const metadata: Metadata = publicMetadata(
+  "AI solicitation analysis for government contractors",
+  "See what AI reads, prepares, and coordinates in BrostCo, which actions depend on your rules, and where your team reviews the work.",
+  "/ai",
+);
 const rows = [
   [
     "Company profile + opportunity",
@@ -64,6 +64,18 @@ export default function AIPage() {
           </p>
         </div>
         <OpportunityPreview stage={1} />
+      </section>
+      <section className="bco-tinted">
+        <div className="bco-container bco-section">
+          <SectionHeading eyebrow="Illustrative example, not a live solicitation" title="From source passage to a reviewable requirement." />
+          <div className="bco-card-grid">
+            <article className="bco-card"><h3>Source passage</h3><p>Fictional example: “Provide weekday custodial service at two facilities. Include floor care. Submit a separate price for weekend service.”</p></article>
+            <article className="bco-card"><h3>Working extraction</h3><p>Base scope: weekday custodial service at two facilities, including floor care. Separate alternate: weekend service. Confirm facility details and the pricing schedule against the full documents.</p></article>
+            <article className="bco-card"><h3>Uncertainty and approval</h3><p>The passage does not state floor-care frequency or facility size. Do not invent quantities or a firm price. Your reviewer checks attachments and asks the agency through its stated questions process.</p></article>
+          </div>
+          <p className="bco-note">When documents or amendments change, recheck the brief and pricing against the current source. A saved AI note is not a live deadline. A manually imported state or local notice is not automatically monitored for portal changes.</p>
+          <Link href="/resources/proposal-compliance-matrix" className="bco-text-link">Build a source-linked compliance matrix ↗</Link>
+        </div>
       </section>
       <section className="bco-tinted">
         <div className="bco-container bco-section">

@@ -87,7 +87,8 @@ describe("public visitor journey", () => {
     const lead = document.querySelector(".bco-hero .bco-lead")?.textContent || "";
     expect(lead.trim().split(/\s+/).length).toBeLessThan(30);
     expect(lead).toContain("final review");
-    expect(document.querySelectorAll(".bco-hero .bco-button")).toHaveLength(1);
+    expect(document.querySelectorAll(".bco-hero .bco-button")).toHaveLength(2);
+    expect(document.querySelector('.bco-hero a[href="/demo#recordings"]')?.textContent).toContain("Watch walkthrough");
   });
   it("publishes the same FAQ in visible copy and structured data", () => {
     const { document: schemaDoc } = parseHTML(

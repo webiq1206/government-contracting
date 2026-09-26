@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -6,12 +7,11 @@ import {
   SectionHeading,
   TrialCTA,
 } from "@/components/marketing/site-shell";
-export const metadata: Metadata = {
-  title: "Compare BrostCo with spreadsheets, CRM, alerts, and hiring",
-  description:
-    "Compare ways to run a federal bid workflow. See where BrostCo fits, when a simpler tool may be enough, and how it complements your team.",
-  alternates: { canonical: "/compare" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Compare bid management approaches",
+  "Compare ways to run a federal bid workflow. See where BrostCo fits, when a simpler tool may be enough, and how it complements your team.",
+  "/compare",
+);
 const approaches = [
   [
     "Spreadsheets + SAM.gov",

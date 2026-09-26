@@ -13,6 +13,17 @@ export function HeroBackgroundVideo() {
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    // The decorative film must not compete with the hero poster and text.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const afterLoad = () => { timer = setTimeout(() => setReady(true), 2000); };
+    if (document.readyState === "complete") afterLoad();
+    else window.addEventListener("load", afterLoad, { once: true });
+    return () => { clearTimeout(timer); window.removeEventListener("load", afterLoad); };
+  }, []);
 
   useEffect(() => {
     // Select once before mounting the video, avoiding a second download on rotation.
@@ -53,7 +64,7 @@ export function HeroBackgroundVideo() {
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
-    if (!allowed || failed || !visible || !pageVisible) {
+    if (!allowed || failed || !visible || !pageVisible || !ready || paused) {
       video.pause();
       return;
     }
@@ -68,7 +79,7 @@ export function HeroBackgroundVideo() {
       active = false;
       video.pause();
     };
-  }, [allowed, failed, visible, pageVisible]);
+  }, [allowed, failed, visible, pageVisible, ready, paused]);
 
   return (
     <>
@@ -80,16 +91,15 @@ export function HeroBackgroundVideo() {
           priority
           sizes="100vw"
         />
-        {allowed && !failed && (
+        {allowed && ready && !failed && (
           <video
             ref={ref}
             className={`bco-hero-background-film${playing ? " is-playing" : ""}`}
             data-format={mobile ? "mobile" : "desktop"}
             muted
-            autoPlay
             loop
             playsInline
-            preload="auto"
+            preload="none"
             tabIndex={-1}
             aria-hidden="true"
             onPlaying={() => {
@@ -111,6 +121,7 @@ export function HeroBackgroundVideo() {
           </video>
         )}
       </div>
+      {allowed && ready && !failed && <button type="button" className="bco-motion-toggle" aria-pressed={paused} onClick={() => setPaused((value) => !value)}>{paused ? "Play background animation" : "Pause background animation"}</button>}
     </>
   );
 }

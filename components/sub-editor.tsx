@@ -204,7 +204,8 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
       {sub.reviews_summary && (
         <div className="border-t border-border pt-3">
           <span className="label block">Reviews summary</span>
-          <p className="mt-1 text-sm text-slate-700">{sub.reviews_summary}</p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{sub.reviews_summary.replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1")}</p>
+          <p className="mt-2 text-xs text-muted-foreground">AI summary of available reviews, not a guarantee of current licensing, insurance or performance. Verify the original review source and current paperwork before selection.</p>
         </div>
       )}
     </div>

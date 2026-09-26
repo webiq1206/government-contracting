@@ -59,6 +59,11 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("does not immediately retry a normalized provider account allowance refusal", () => {
+    expect(shouldQueueRetry({ ok: false, summary: "AI_UNAVAILABLE: The Anthropic account has reached its specified API usage limits. You will regain access on 2026-10-01." })).toBe(false);
+    expect(shouldQueueRetry({ ok: false, summary: "AI_UNAVAILABLE: Anthropic is rate limiting this account" })).toBe(true);
+    expect(shouldQueueRetry({ ok: false, summary: "Unrelated request quota parser failed" })).toBe(true);
+  });
   it("attributes a platform-owned scheduled job to its owner", async () => {
     await runAgent({ ...probe(), ownerOrgId: ORG_ID }, "cron", {});
     const insert = mocks.queryOne.mock.calls.find(([sql]) => String(sql).includes("insert into job_runs"));

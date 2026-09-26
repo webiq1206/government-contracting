@@ -89,7 +89,7 @@ export const CATEGORIES: CategoryDef[] = [
     label: "Subcontractor replies",
     covers: "A subcontractor writing back with a price, a question, or a decline.",
     canDisable: true,
-    inAppAt: { label: "Communications", href: "/communications" },
+    inAppAt: { label: "Inbox", href: "/communications" },
   },
   {
     key: "assignments",
@@ -110,7 +110,7 @@ export const CATEGORIES: CategoryDef[] = [
     label: "Periodic summaries",
     covers: "The weekly performance digest and scoring-weight proposals.",
     canDisable: true,
-    inAppAt: { label: "Analytics", href: "/analytics" },
+    inAppAt: { label: "Reports", href: "/analytics" },
   },
   {
     key: "informational",

@@ -27,7 +27,7 @@ describe("landing response readiness", () => {
   });
   it("uses one clear platform title without repeating the brand template", () => {
     expect(metadata.title).toEqual({
-      absolute: "AI Government Procurement Platform | BrostCo",
+      absolute: "AI Government Contracting Software | BrostCo",
     });
   });
 });

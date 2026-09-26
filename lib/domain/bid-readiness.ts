@@ -269,7 +269,7 @@ export function computeBidReadiness(input: {
       actionRequired.push({
         key: "human-triage",
         label: "Decide: pursue or pass this borderline score",
-        why: "This scored in the middle band. If you do not act before the timer, it auto-dismisses.",
+        why: "This scored in the middle band and needs your decision. Review timing and expiry behavior follow your saved automation rules.",
         who: "admin",
         how: "Use Pursue or Dismiss in the Next step banner after reading the brief.",
         href: "#next-step",

@@ -34,13 +34,8 @@
 import { createHash } from "crypto";
 import { query } from "../db";
 
-export type TrialMetric = "outreach_emails" | "ai_briefs" | "bid_packages";
-
-export const TRIAL_LIMITS: Record<TrialMetric, number> = {
-  outreach_emails: 10,
-  ai_briefs: 10,
-  bid_packages: 2,
-};
+import { TRIAL_LIMITS, type TrialMetric } from "./trial-catalog";
+export { TRIAL_LIMITS, type TrialMetric } from "./trial-catalog";
 
 /** Plain-English name for each meter, for the UI and for refusal messages. */
 export const TRIAL_METRIC_LABEL: Record<TrialMetric, string> = {

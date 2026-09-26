@@ -121,15 +121,15 @@ export function creditView(causes: string[], callsMade: number): CreditView {
   if (causes.includes("provider_credit")) {
     return {
       state: "out_of_credit",
-      label: "Refusing calls: out of credit",
-      detail: "The provider rejected calls for want of balance. Nothing is being scored, analysed or drafted.",
+      label: "Provider allowance reached",
+      detail: "Work using the affected provider is waiting for credit or its allowance reset. Other services may still run; check the affected workflows and provider reset time.",
     };
   }
   if (causes.includes("provider_auth")) {
     return {
       state: "key_rejected",
       label: "Refusing calls: key rejected",
-      detail: "The credential was revoked, deleted, or saved incompletely. Replacing it restores every agent at once.",
+      detail: "Check the named provider connection. Updating it addresses only that connection; budget, queue or other service blockers may still need attention.",
     };
   }
   if (causes.includes("provider_rate_limit")) {

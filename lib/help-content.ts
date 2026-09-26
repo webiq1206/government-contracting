@@ -37,7 +37,7 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     points: [
       "These scored in the middle band, so the system wants your judgment.",
       "Pursue starts the full pipeline; Dismiss archives it.",
-      "Undecided items auto-dismiss when their timer expires.",
+      "Undecided items follow your saved review-expiry rules. Check Automation Rules to see whether they are kept or dismissed.",
       "Click a card to read the full brief before deciding.",
     ],
   },

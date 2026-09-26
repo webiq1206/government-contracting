@@ -1,4 +1,5 @@
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
+import { TRIAL_ALLOWANCE_COPY } from "@/lib/billing/trial-catalog";
 
 export const MARKETING_LINKS = [
   { href: "/platform", label: "Platform" },
@@ -6,7 +7,7 @@ export const MARKETING_LINKS = [
   { href: "/demo", label: "Product tour" },
   { href: "/pricing-guide", label: "Pricing" },
 ] as const;
-export const TRIAL_COPY = `${TRIAL_DAYS} days free. No credit card required. Subscribe only when you choose.`;
+export const TRIAL_COPY = `${TRIAL_DAYS} days free. No credit card required. ${TRIAL_ALLOWANCE_COPY} Subscribe only when you choose.`;
 export const USAGE_COPY =
   "Service usage is separate from your subscription. Use supported platform services with usage billing, or connect eligible API keys and pay those providers directly.";
 export const HOME_FAQ = [

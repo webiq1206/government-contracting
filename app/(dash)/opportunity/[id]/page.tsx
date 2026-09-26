@@ -1,3 +1,4 @@
+import { RiskFlagList } from "@/components/risk-flag-list";
 import Link from "next/link";
 import { listServices } from "@/lib/connected-services";
 import { SaveToStorage } from "@/components/save-to-storage";
@@ -841,7 +842,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </div>
                 <div className="lg:pl-10">
                   {breakdown ? (
-                    <ScoreBreakdownCard breakdown={breakdown} />
+                    <ScoreBreakdownCard breakdown={breakdown} currentScore={opp.score} />
                   ) : (
                     <div className="rounded-md border border-border/55 bg-surface p-5 dark:border-white/10">
                       <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
@@ -981,18 +982,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 {opp.risk_flags.length > 0 && (
                   <div className="mt-4 border-t border-border pt-3">
                     <p className="label mb-2">Flags needing attention</p>
-                    <div className="flex flex-wrap gap-1">
-                      {opp.risk_flags.map((f) => (
-                        <a
-                          key={f}
-                          href="#attention"
-                          className="badge bg-risk/15 text-risk hover:bg-risk/25"
-                          title="Open attention items for what to do next"
-                        >
-                          ⚠ {flagLabel(f)}
-                        </a>
-                      ))}
-                    </div>
+                    <RiskFlagList flags={opp.risk_flags} />
                   </div>
                 )}
               </div>

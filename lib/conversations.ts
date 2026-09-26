@@ -217,7 +217,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
     return {
       threadKey: r.thread_key,
       subcontractorId: r.subcontractor_id,
-      subcontractorName: r.company_name || "Unknown sender",
+      subcontractorName: r.company_name || r.sub_email || (n(r.message_count) === 0 ? "Draft: recipient not selected" : "Unmatched contact"),
       subcontractorEmail: r.sub_email,
       opportunityId: r.opportunity_id,
       opportunityTitle: r.opportunity_title,

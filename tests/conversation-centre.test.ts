@@ -355,7 +355,7 @@ describe("summarize", () => {
       thread({ subcontractorName: "", messages: [msg({ id: "a" })] }),
       NOW
     );
-    expect(s.subcontractorName).toBe("Unknown sender");
+    expect(s.subcontractorName).toBe("sub@example.test");
   });
 
   it("gives every state a label", () => {

@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Log in", robots: { index: false, follow: false } };
 
 export default async function LoginPage() {
   const auth = await currentUser().then(

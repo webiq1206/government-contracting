@@ -18,7 +18,8 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
    * minutes looking for a button that is not there. Blocked steps are shown
    * with the reason, below the ones that can actually be done.
    */
-  const remaining = checklist.items.filter((i) => !i.done && i.state !== "blocked");
+  const remaining = checklist.items.filter((i) => !i.done && i.state !== "blocked" && i.state !== "optional");
+  const optional = checklist.items.filter((i) => !i.done && i.state === "optional");
   const blocked = checklist.items.filter((i) => i.state === "blocked");
   const finished = checklist.items.filter((i) => i.done);
   const pct = Math.round((checklist.done / checklist.total) * 100);
@@ -88,6 +89,12 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
           </li>
         ))}
       </ul>
+
+      {optional.length > 0 && <details className="mt-4 rounded-md border border-border bg-background px-4">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">Optional connections and refinements ({optional.length})</summary>
+        <p className="pb-3 text-xs text-muted-foreground">These improve specific workflows. You do not need to finish them all before reviewing your first opportunity.</p>
+        <ul className="space-y-3 pb-4">{optional.map((item) => <li key={item.key}><Link href={item.href} className="inline-flex min-h-11 items-center text-sm text-accent underline">{item.label}</Link><p className="text-xs leading-relaxed text-muted-foreground">{item.hint}</p></li>)}</ul>
+      </details>}
 
       {/* Steps waiting on something else, with what that something is. */}
       {blocked.length > 0 && (

@@ -13,29 +13,29 @@ export const dynamic = "force-dynamic";
 
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 export const metadata: Metadata = {
-  title: { absolute: "AI Government Procurement Platform | BrostCo" },
+  title: { absolute: "AI Government Contracting Software | BrostCo" },
   description:
     "AI for government contractors: find opportunities, analyze requirements, coordinate subcontractors, and prepare bids. Start your free BrostCo trial.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "AI Government Procurement Platform | BrostCo",
+    title: "AI Government Contracting Software | BrostCo",
     description:
       "AI finds matching opportunities, reads solicitations, coordinates outreach, and prepares bids. Your team handles calls, exceptions, and final review.",
     url: SITE_URL,
     type: "website",
-    siteName: "Brost Co",
+    siteName: "BrostCo",
     images: [
       {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "BrostCo AI Government Procurement Platform",
+        alt: "BrostCo AI Government Contracting Software",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI Government Procurement Platform | BrostCo",
+    title: "AI Government Contracting Software | BrostCo",
     description:
       "AI finds opportunities, reads solicitations, coordinates subcontractors, and prepares bids. Your team handles calls and final review.",
     images: ["/og.png"],

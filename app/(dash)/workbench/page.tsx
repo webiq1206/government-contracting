@@ -339,7 +339,7 @@ export default async function WorkbenchPage(
       <div className={opened ? "hidden lg:contents" : "contents"}>
         <PageFrame
           help={PAGE_HELP["workbench"]}
-          title="My Work"
+          title="All tasks"
           status={queueUnavailable ? "Queue status unavailable" : `${actionable.length} need you`}
           explanation="Work the items that need you. Waiting work stays out of the way."
         />

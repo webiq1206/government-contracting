@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingNav } from "@/components/marketing/marketing-nav";
@@ -7,12 +8,11 @@ import {
   STANDARD_MONTHLY_USD,
 } from "@/lib/billing/prices";
 
-export const metadata: Metadata = {
-  title: "Terms of Service | Brost Co",
-  description:
-    "Terms governing use of the Brost Co government contracting platform.",
-  alternates: { canonical: "/terms" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Terms of Service",
+  "Terms governing use of the Brost Co government contracting platform.",
+  "/terms",
+);
 
 export default function TermsPage() {
   return (

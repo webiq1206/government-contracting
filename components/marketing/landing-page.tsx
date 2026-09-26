@@ -35,7 +35,7 @@ export function LandingPage({
       <section className="bco-hero bco-hero-centered">
         <HeroBackgroundVideo />
         <div className="bco-container bco-hero-center-content">
-          <p className="bco-kicker">AI Government Procurement Platform</p>
+          <p className="bco-kicker">AI Government Contracting Software</p>
           <h1>
             AI finds government contracts{" "}
             <br className="bco-hero-desktop-break" />
@@ -49,6 +49,7 @@ export function LandingPage({
             <Link href={signupHref} className="bco-button">
               Start free trial <span aria-hidden="true">→</span>
             </Link>
+            <Link href="/demo#recordings" className="bco-button bco-button-secondary">Watch walkthrough</Link>
           </div>
           <p className="bco-caption">
             {TRIAL_DAYS} days free. No credit card required.

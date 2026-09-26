@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingShell, PageIntro } from "@/components/marketing/site-shell";
@@ -7,12 +8,11 @@ import {
   absoluteUrl,
   type RouteGroup,
 } from "@/lib/domain/public-routes";
-export const metadata: Metadata = {
-  title: "Site map",
-  description:
-    "Find BrostCo product information, AI workflows, demos, pricing, setup, and company information.",
-  alternates: { canonical: "/sitemap" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Site map",
+  "Find BrostCo product information, AI workflows, demos, pricing, setup, and company information.",
+  "/sitemap",
+);
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 const GROUPS: RouteGroup[] = [
   "Product",

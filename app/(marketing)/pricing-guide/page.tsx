@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -15,13 +16,13 @@ import {
   TRIAL_DAYS,
 } from "@/lib/billing/catalog";
 import { loadPublicPromo } from "@/lib/billing/public-promo";
+import { TrialAllowances } from "@/components/marketing/trial-allowances";
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Pricing and usage | BrostCo",
-  description:
-    "Compare BrostCo monthly and annual pricing, understand separate service usage costs, and estimate the value using your own bid volume and time savings.",
-  alternates: { canonical: "/pricing-guide" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Pricing and service usage",
+  "Compare BrostCo monthly and annual pricing, understand separate service usage costs, and estimate the value using your own bid volume and time savings.",
+  "/pricing-guide",
+);
 const usd = (n: number) =>
   n.toLocaleString("en-US", {
     style: "currency",
@@ -53,6 +54,7 @@ export default async function PricingGuidePage() {
         copy={`${TRIAL_DAYS} days free, with no credit card required. Explore the workflow before choosing a paid subscription. Service usage is separate.`}
       />
       <section className="bco-container bco-section">
+        <TrialAllowances />
         <div className="bco-pricing-grid">
           <article className="bco-price-card">
             <p className="bco-kicker">
@@ -124,6 +126,7 @@ export default async function PricingGuidePage() {
           >
             {USAGE_COPY}
           </SectionHeading>
+          <p className="bco-note"><strong>Illustrative usage calculation:</strong> $10.00 of confirmed provider cost becomes $12.50 with the 25% platform markup, in addition to your subscription and applicable taxes. This is arithmetic, not a prediction of your monthly usage or a per-bid quote. Your actual work and chosen services determine the cost.</p>
           <div className="bco-card-grid">
             <article className="bco-card">
               <p className="bco-kicker">Option 1</p>

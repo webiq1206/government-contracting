@@ -1,14 +1,14 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingNav } from "@/components/marketing/marketing-nav";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy | Brost Co",
-  description:
-    "How Brost Co collects, uses, and protects customer information.",
-  alternates: { canonical: "/privacy" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Privacy Policy",
+  "How Brost Co collects, uses, and protects customer information.",
+  "/privacy",
+);
 
 export default function PrivacyPage() {
   return (
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-3 text-sm text-slate-500">
-          Last updated: August 11, 2026
+          Last updated: September 26, 2026
         </p>
         <p className="mt-5">
           <Link href="/security">Read the security and data overview</Link> for
@@ -57,6 +57,9 @@ export default function PrivacyPage() {
             <li>
               Product usage events (page views, CTA clicks, checkout milestones)
               to improve the service.
+              Anonymous marketing interaction events do not include form values,
+              URL query strings, referrers, visitor identifiers or tracking cookies.
+              Browser interaction tracking honors Do Not Track and Global Privacy Control.
             </li>
           </ul>
           <h2 className="font-display text-2xl text-foreground">

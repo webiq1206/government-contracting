@@ -117,7 +117,8 @@ describe("assessAutomation", () => {
     });
     expect(h.state).toBe("blocked");
     expect(h.headline).not.toContain("Running normally");
-    expect(h.detail).toContain("out of credit");
+    expect(h.detail).toContain("allowance");
+    expect(h.detail).toContain("affected provider");
     expect(h.interrupt).toBe(true);
   });
 

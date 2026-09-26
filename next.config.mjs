@@ -6,6 +6,9 @@ const nextConfig = {
   // Node's sha256 hasher, and keep the build on the main thread so a worker
   // crash cannot surface as Hash.update(undefined).
   webpack: (config) => {
+    // Optional for disk-constrained verification environments. Default builds
+    // retain their cache; this changes no application behavior or type checks.
+    if (process.env.BROSTCO_BUILD_NO_CACHE === "1") config.cache = false;
     config.output.hashFunction = "sha256";
     config.output.hashDigest = "hex";
     return config;

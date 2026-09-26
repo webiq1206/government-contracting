@@ -413,6 +413,8 @@ export interface Qualifications {
  * retained for the downstream agents.
  */
 export interface SolicitationAnalysis {
+  /** When this document analysis was recorded, not the current viewing time. */
+  recorded_at?: string;
   // --- Operator-facing brief ---
   title?: string;
   project_overview: string;

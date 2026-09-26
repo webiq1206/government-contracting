@@ -96,18 +96,18 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     blocking: true,
   },
   provider_credit: {
-    title: "The AI account is out of credit",
+    title: "The provider account has reached its allowance",
     effect:
-      "Nothing is being scored, analysed, drafted or read. Opportunities keep arriving and keep piling up unprocessed.",
-    repair: "Add credit to the AI provider account: Anthropic at console.anthropic.com under Billing, or OpenAI at platform.openai.com under Billing. The failure names which one.",
+      "Work using the affected provider is waiting for credit or its account allowance to reset. Other connected services may still work.",
+    repair: "Check billing and usage limits at the provider named in the failure. Respect its reset time and your approved budget; replacing a valid key will not reset an allowance.",
     repairHref: "/settings/integrations#claude",
     blocking: true,
   },
   provider_auth: {
-    title: "The AI key was rejected",
+    title: "A provider key was rejected",
     effect:
-      "Nothing is being scored, analysed, drafted or read. The key was deleted, revoked, or pasted incompletely.",
-    repair: "Create a new key at the provider named in the failure (console.anthropic.com or platform.openai.com) and save it under Settings, Integrations.",
+      "Requests using this provider connection are blocked. Check the affected workflows below; this does not mean every integration has stopped.",
+    repair: "Check the provider named in the failure and update only that connection under Settings, Integrations. Confirm recovery before retrying affected work.",
     repairHref: "/settings/integrations#claude",
     blocking: true,
   },
@@ -201,7 +201,7 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
-  if (/credit balance|insufficient (?:credit|funds)|add credit/.test(text)) return "provider_credit";
+  if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
   // Google can return quota exhaustion as HTTP 403. Check throttling before
   // authentication, including historical messages with a reconnect suffix.

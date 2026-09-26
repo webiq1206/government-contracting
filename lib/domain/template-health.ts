@@ -239,7 +239,7 @@ export function openRateLabel(m: TemplateMetrics): string {
  * number without that is presenting a guess as a measurement.
  */
 export const OPEN_RATE_CAVEAT =
-  "Opens are counted by an image the mail client loads, which some clients fetch automatically and others block, so treat this as a floor with noise rather than a count of people who read it. None recorded can equally mean the tracking image is not being loaded at all.";
+  "Opens are tracking-image loads, not verified readers. Automatic fetching can inflate this number and image blocking can reduce it. Evaluate replies and qualified quotes instead of optimizing for opens.";
 
 export function metricsSummary(m: TemplateMetrics): string {
   if (m.sent === 0) {

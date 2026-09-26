@@ -153,11 +153,20 @@ export function describeClaudeFailure(
   // Out of credits arrives as a 400, not a 402: the request is well-formed,
   // the account simply cannot pay for it. Nothing will run until it is topped
   // up, so this is never retryable.
-  if (/credit balance|insufficient|billing|quota|payment/i.test(text)) {
+  if (/specified (?:api )?usage limits|regain access on/i.test(text)) {
     return {
       reason:
-        "The Anthropic account cannot pay for requests (its credit balance is too low). " +
-        "Nothing will be scored, analysed, or drafted until credits are added at console.anthropic.com under Billing.",
+        "The Anthropic account has reached its specified API usage limits. " +
+        "Check Billing and Usage at console.anthropic.com. Requests using this provider must wait for its allowance to reset or an approved account change. " +
+        (text.match(/regain access on\s+[^\"\n}]+/i)?.[0] ?? ""),
+      status,
+      retryable: false,
+    };
+  }
+
+  if (/credit balance|insufficient|billing|quota|payment/i.test(text)) {
+    return {
+      reason: "The Anthropic credit balance is too low or billing allowance has been exhausted. Check Billing and Usage at console.anthropic.com before retrying. A new API key alone will not restore the account allowance.",
       status,
       retryable: false,
     };

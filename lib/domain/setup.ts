@@ -481,11 +481,11 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     key: "claude",
     stage: "ai",
     label: i.onTrial
-      ? "Add your AI key (Anthropic or OpenAI) before the trial ends"
-      : "Add your AI key (Anthropic or OpenAI)",
+      ? "Review AI service access before the trial ends"
+      : "Review AI service access (platform service or your own key)",
     hint:
       claude.note ??
-      integrationHint("claude", "Powers scoring, plain-English bid briefs, and call scripts."),
+      "AI powers scoring, bid briefs and call scripts. Use supported platform services under the displayed trial or usage terms, or connect an eligible Anthropic or OpenAI key. Check service readiness and spending limits before running work.",
     state: claude.proven ? "complete" : pending(!i.onTrial),
     evidence: claude.evidence,
     href: INTEGRATIONS_HREF,
@@ -501,8 +501,8 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     key: "googleMaps",
     stage: "extras",
     label: i.onTrial
-      ? "Add your Google Maps key before the trial ends"
-      : "Add your Google Maps key",
+      ? "Review subcontractor lookup access before the trial ends"
+      : "Review subcontractor lookup service access",
     hint:
       maps.note ??
       integrationHint("googleMaps", "Finds local subcontractors for each trade automatically."),

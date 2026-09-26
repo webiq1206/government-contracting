@@ -23,6 +23,7 @@ export function MarketingFooter({
         ["/pricing-guide", "Pricing & usage"],
         ["/compare", "Compare approaches"],
         ["/get-started", "Getting started"],
+        ["/resources", "Contractor resources"],
         ["/#industries", "Industries"],
         ["/#faq", "Common questions"],
       ],

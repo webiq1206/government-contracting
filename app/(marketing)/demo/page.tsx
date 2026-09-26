@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import {
   MarketingShell,
@@ -7,12 +8,11 @@ import {
 } from "@/components/marketing/site-shell";
 import { WorkflowDemo } from "@/components/marketing/workflow-demo";
 import { ProductVideo } from "@/components/marketing/product-video";
-export const metadata: Metadata = {
-  title: "Explore BrostCo | Interactive tour and product videos",
-  description:
-    "Try an ungated sample workflow and watch the BrostCo workspace in action, with captions and transcripts. No account required.",
-  alternates: { canonical: "/demo" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Interactive product tour and walkthroughs",
+  "Try an ungated sample workflow and watch the BrostCo workspace in action, with captions and transcripts. No account required.",
+  "/demo",
+);
 const recordings = [
   [
     "review",

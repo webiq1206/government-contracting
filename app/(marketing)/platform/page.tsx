@@ -1,3 +1,4 @@
+import { publicMetadata } from "@/lib/marketing/metadata";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -9,12 +10,11 @@ import {
 } from "@/components/marketing/site-shell";
 import { WorkflowDemo } from "@/components/marketing/workflow-demo";
 import { WORKFLOW_STAGES } from "@/components/marketing/site-content";
-export const metadata: Metadata = {
-  title: "The AI platform for your federal bid workflow",
-  description:
-    "Discover matching opportunities, read requirements, coordinate subcontractors, and prepare bids in one connected BrostCo workflow.",
-  alternates: { canonical: "/platform" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Government bid management software",
+  "Discover matching opportunities, read requirements, coordinate subcontractors, and prepare bids in one connected BrostCo workflow.",
+  "/platform",
+);
 export default function PlatformPage() {
   return (
     <MarketingShell>
@@ -25,6 +25,7 @@ export default function PlatformPage() {
       />
       <section className="bco-container bco-section">
         <WorkflowDemo />
+        <p className="bco-note">Federal discovery uses supported SAM.gov connections. You can also start from a supported notice link or PDF. Manually importing a state or local notice does not automatically monitor that portal for amendments; keep checking the official source.</p>
         <div className="bco-subnav">
           <Link href="/subcontractors">Subcontractor coordination ↗</Link>
           <Link href="/ai">How AI works ↗</Link>

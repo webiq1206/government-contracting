@@ -22,8 +22,10 @@
  * covered by a disallow rule. A new page cannot be added without this file
  * being brought along.
  *
- * Pure. No imports.
+ * Pure declarations. The resource catalog contains no server dependencies.
  */
+
+import { CONTRACTOR_GUIDES } from "../marketing/resources";
 
 export type RouteGroup = "Product" | "Get started" | "Legal" | "Reference" | "Company";
 
@@ -45,6 +47,11 @@ export interface PublicRoute {
  * them.
  */
 export const PUBLIC_ROUTES: PublicRoute[] = [
+  { path: "/resources", label: "Contractor resources", summary: "Official-source Idaho and Boise contracting guides and practical checklists for preparing government bids.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
+  ...CONTRACTOR_GUIDES.map((guide): PublicRoute => ({
+    path: `/resources/${guide.slug}`, label: guide.title, summary: guide.description,
+    changeFrequency: "monthly", priority: 0.7, group: "Reference",
+  })),
   { path: "/platform", label: "Platform overview", summary: "How BrostCo connects opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/ai", label: "How AI works", summary: "What AI reads and prepares, what depends on connected services and rules, and where your team reviews the work.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/subcontractors", label: "Subcontractor coordination", summary: "Find candidates by trade, coordinate outreach, track replies and quotes, and see gaps before bid review.", changeFrequency: "monthly", priority: 0.8, group: "Product" },

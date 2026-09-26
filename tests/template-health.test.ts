@@ -175,7 +175,9 @@ describe("templateMetrics", () => {
   });
 
   it("keeps a caveat on the open rate, because a pixel is not a reader", () => {
-    expect(OPEN_RATE_CAVEAT).toContain("floor with noise");
+    expect(OPEN_RATE_CAVEAT).toContain("inflate");
+    expect(OPEN_RATE_CAVEAT).toContain("image blocking");
+    expect(OPEN_RATE_CAVEAT).toContain("not verified readers");
   });
 });
 

@@ -37,14 +37,14 @@ describe("value totals disclose their coverage", () => {
       /pipelineValued === 0 \? null : currency\(pipelineValue\)/
     );
     expect(page, "the zero case gives no reason").toMatch(
-      /pipelineValued === 0\s*\?\s*"[^"]*publishes? a value/
+      /pipelineValued === 0\s*\?\s*`[^`]*have a recorded value/
     );
     expect(page).toMatch(/s\.valued === 0 \? \(/);
   });
 
   it("tells the reader what fraction the total covers", () => {
     const page = read("app/(dash)/analytics/page.tsx");
-    expect(page).toMatch(/that publish one/);
+    expect(page).toMatch(/from \$\{pipelineValued\} of \$\{pipelineTotal\}; includes estimates/);
     expect(page).toMatch(/Value known for/);
   });
 

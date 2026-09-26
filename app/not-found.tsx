@@ -31,9 +31,10 @@ export default function NotFound() {
       <p className="max-w-sm text-sm text-muted-foreground">
         The link may be old, the record may have been deleted, or your account may not have access. Check the link or ask your account owner for help.
       </p>
-      <Link href="/pipeline" className="btn-primary">
-        Back to Opportunities
+      <Link href="/" className="btn-primary">
+        Back to home
       </Link>
+      <Link href="/resources" className="text-accent underline">Browse contractor resources</Link>
     </main>
   );
 }

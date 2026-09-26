@@ -14,6 +14,8 @@ import {
 import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
 import { SessionLoadFailure } from "@/components/session-load-failure";
+import { TrialAllowances } from "@/components/marketing/trial-allowances";
+import { MarketingAnalytics } from "@/components/marketing/marketing-analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +49,7 @@ export default async function SignupPage(props: {
     requested === "founding" && promo.active ? "founding" : "standard";
   after(() =>
     trackEvent({
-      event: "signup_started",
+      event: "signup_page_view",
       path: "/signup",
       meta: { plan },
     }),
@@ -55,6 +57,7 @@ export default async function SignupPage(props: {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 text-foreground">
+      <MarketingAnalytics />
       <div className="mb-4 flex w-full max-w-md justify-end">
         <ThemeToggle compact />
       </div>
@@ -63,16 +66,16 @@ export default async function SignupPage(props: {
           <p className="mb-4 text-sm text-muted-foreground">
             A clearer way to pursue federal work
           </p>
-          <h1 className="flex justify-center">
+          <div className="flex justify-center">
             <Link href="/">
               <ThemeWordmark className="h-12" />
             </Link>
-          </h1>
+          </div>
         </div>
 
-        <h2 className="font-display text-3xl text-foreground">
+        <h1 className="font-display text-3xl text-foreground">
           Create your account
-        </h2>
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {plan === "founding" ? (
             <>
@@ -124,6 +127,7 @@ export default async function SignupPage(props: {
         <div className="card mt-6">
           <SignupForm initialPlan={plan} promoActive={promo.active} />
         </div>
+        <div className="mt-6"><TrialAllowances /></div>
         <p className="mt-4 text-center text-xs text-muted-foreground">
           By continuing you agree to the{" "}
           <Link href="/terms" className="text-accent hover:underline">

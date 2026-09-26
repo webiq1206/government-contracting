@@ -299,7 +299,7 @@ export default async function IntegrationsPage(
 
       <EditorialTabs
         ariaLabel="Integration groups"
-        defaultTab="apps"
+        defaultTab="core"
         layout="fill"
         hashAliases={{
           apps: "apps",

@@ -15,16 +15,8 @@ import { PUBLIC_ROUTES, absoluteUrl } from "@/lib/domain/public-routes";
  */
 export const dynamic = "force-dynamic";
 
-/**
- * When this deployment went out.
- *
- * Captured once at module load rather than per request. `lastModified` is a
- * claim about when the page changed, and these pages change when they are
- * deployed; answering with the current time would tell a crawler the whole
- * site changed every time it asked, which is the fastest way to teach it to
- * ignore the field.
- */
-const DEPLOYED_AT = new Date();
+// Omit lastModified until a reliable per-page editorial timestamp is available.
+// A process start is not a content update.
 
 /**
  * /sitemap.xml, generated from the declared public surface.
@@ -38,7 +30,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = process.env.APP_URL || "https://brostco.com";
   return PUBLIC_ROUTES.map((route) => ({
     url: absoluteUrl(siteUrl, route.path),
-    lastModified: DEPLOYED_AT,
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));
