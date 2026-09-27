@@ -1,0 +1,46 @@
+name: Owner production migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Inspect first. Apply only after reviewing pending migrations and recovery readiness.
+        type: choice
+        options: [inspect, apply]
+        default: inspect
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-migrations
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install without production credentials or lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Inspect or migrate the verified production target
+        run: npx --no-install tsx scripts/production-release.ts
+        env:
+          NODE_ENV: production
+          USE_REPLIT_DEV_DB: "false"
+          BROSTCO_PROCESS_ROLE: release
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          EXPECTED_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+          EXPECTED_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+          RELEASE_ACTION: ${{ inputs.action }}

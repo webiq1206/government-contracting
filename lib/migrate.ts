@@ -43,6 +43,11 @@ const LOCK_TIMEOUT_MS = 60_000;
 
 export async function applyMigrations(): Promise<number> {
   const dedicatedUrl = process.env.MIGRATION_DATABASE_URL?.trim();
+  if (dedicatedUrl && config.database.isIsolatedDev) {
+    throw new Error(
+      "Refusing owner migrations from isolated development. Remove MIGRATION_DATABASE_URL from development/shared secrets and use the owner-only release job."
+    );
+  }
   if (!dedicatedUrl && config.isProd && !config.database.isIsolatedDev) {
     throw new Error(
       "MIGRATION_DATABASE_URL is required for production migrations. Run this as a release job with an owner-only connection that is not available to the web or worker runtime."

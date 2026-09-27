@@ -1,6 +1,6 @@
 /** A quote extractor may copy a stated amount, never silently calculate one. */
 export function sourceMoneyValues(text: string): number[] {
-  return [...text.matchAll(/(?:\$|\bUSD\s*)(\s*\d+(?:,\d{3})*(?:\.\d{1,2})?)(?![\d.,]|\s*[kKmM]\b)/gi)]
+  return [...text.matchAll(/(?:\$|\bUSD\s*)(\s*\d+(?:,\d{3})*(?:\.\d{1,2})?)(?![\d,]|\.\d|\s*[kKmM]\b)/gi)]
     .map(m => Number(m[1].replace(/[\s,]/g, "")))
     .filter(Number.isFinite);
 }
