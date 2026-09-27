@@ -29,16 +29,29 @@ localPort = 3100
 externalPort = 3001
 
 [workflows]
-runButton = "Dev"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Dev"
 mode = "sequential"
-author = 0
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm install && npm run db:setup && npm run dev"
+args = "npm run dev -- --strictPort --port 5000"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Dev"
 
 [agent]
 expertMode = true
