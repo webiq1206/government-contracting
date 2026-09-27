@@ -8,6 +8,16 @@ export const metadata = publicMetadata("Government contracting resources and Ida
 export default function ResourcesPage() {
   return <MarketingShell>
     <PageIntro eyebrow="Contractor resources" title="Find the right work. Prepare a clearer response." copy="Official-source guides for Boise and Idaho contracting, plus practical checklists for federal opportunity review and bid preparation. No email gate." />
+    <section className="bco-container bco-section">
+      <h2>Reference</h2>
+      <div className="bco-card-grid">
+        <article className="bco-card">
+          <h3><Link href="/resources/idaho-procurement-sources">Idaho public procurement sources</Link></h3>
+          <p>Which Idaho authority advertises which public work, on which official source, and what each source leaves out. Free to cite, and available as JSON and CSV.</p>
+          <Link className="bco-text-link" href="/resources/idaho-procurement-sources">Open the register ↗</Link>
+        </article>
+      </div>
+    </section>
     {(["Idaho contracting", "Bid preparation"] as const).map((category) => <section className="bco-container bco-section" key={category}>
       <h2>{category}</h2><div className="bco-card-grid">{CONTRACTOR_GUIDES.filter((guide) => guide.category === category).map((guide) => <article className="bco-card" key={guide.slug}><h3><Link href={`/resources/${guide.slug}`}>{guide.title}</Link></h3><p>{guide.description}</p><Link className="bco-text-link" href={`/resources/${guide.slug}`}>Read the guide ↗</Link></article>)}</div>
     </section>)}
