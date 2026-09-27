@@ -36,4 +36,21 @@ stays; only the historical record goes), or restore the file so the baseline
 can checksum it. Reading the ledger first also tells you whether the
 "cannot verify file checksums" error means a real mismatch or simply that the
 checksum column does not exist yet: that message is emitted from a catch
-around the ledger SELECT, so a missing column produces it too.
+ around the ledger SELECT, so a missing column produces it too.
+
+## Out-of-band objects are not an applied migration
+
+A database object can exist while its migration is still absent from
+`_migrations`. An earlier repair may create a function that a pending migration
+uses plain `CREATE FUNCTION` to add. The runner then fails with a duplicate
+object error before applying that migration's other effects.
+
+**Why:** the isolated development database had the token estimator function,
+but no ledger row for the migration that also installs provider rates. Function
+presence alone did not establish that the migration was complete.
+
+**How to apply:** when a pending migration collides with an existing object,
+compare the whole migration's schema and data effects with the database and
+ledger. Do not mark the migration applied or infer its completion from one
+matching object; reconcile the verified differences in the isolated target
+before resuming the release.
