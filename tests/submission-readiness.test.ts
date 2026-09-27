@@ -59,7 +59,7 @@ describe("the headline above the send button", () => {
     const r = assessReadiness(input({ auditStatus: "pending" }));
     expect(r.headline).toContain("still running");
     // Not sendable, and not failed either. Pending is its own answer.
-    expect(r.maySend).toBe(true);
+    expect(r.maySend).toBe(false);
     expect(r.nextAction).toBe("Wait for the audit to finish.");
   });
 

@@ -30,7 +30,6 @@
  */
 import { query, queryOne } from "../db";
 import { complete, ClaudeNotConfiguredError } from "../ai/claude";
-import { config } from "../config";
 import { logAgent } from "../logger";
 import { getProfileJson } from "../ai/companyProfile";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
@@ -589,17 +588,19 @@ export async function generateReplyDraft(input: {
 
   let text: string;
   let usage: unknown;
+  let model: string | null = null;
   try {
     const res = await complete(prompt, { maxTokens: 700 });
     text = res.text;
     usage = res.usage;
+    model = res.usage?.model ?? null;
   } catch (err) {
     if (err instanceof ClaudeNotConfiguredError) {
       return {
         ok: false,
         reason: "not-configured",
         message:
-          "Drafting is not available because no Claude API key is configured.",
+          "Drafting is not available because the selected AI provider is not connected.",
       };
     }
     throw err;
@@ -628,6 +629,7 @@ export async function generateReplyDraft(input: {
       const retryWarnings = checkDraftCommitments(retryBody, extracted);
       if (retryBody && retryWarnings.length < warnings.length) {
         body = retryBody;
+        model = retry.usage?.model ?? null;
         warnings = retryWarnings;
       }
       usage = [usage, retry.usage];
@@ -673,7 +675,7 @@ export async function generateReplyDraft(input: {
       row.opportunity_id,
       body,
       warnings,
-      config.claude.model,
+      model,
     ]
   );
 

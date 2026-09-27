@@ -312,6 +312,7 @@ export interface ComplianceRequirement {
    */
   source_document?: string;
   source_document_id?: string;
+  source_quote?: string;
   source_page?: number;
 }
 
@@ -413,6 +414,8 @@ export interface Qualifications {
  * retained for the downstream agents.
  */
 export interface SolicitationAnalysis {
+  verification_issues?: string[];
+  verification_completed_at?: string;
   /** When this document analysis was recorded, not the current viewing time. */
   recorded_at?: string;
   // --- Operator-facing brief ---

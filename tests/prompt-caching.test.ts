@@ -9,7 +9,11 @@
  * symptom is a larger bill.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { config } from "../lib/config";
 import { runWithOrg } from "../lib/tenant-context";
+
+// These fixtures explicitly exercise the optional Anthropic adapter.
+beforeEach(() => { config.ai.routineProvider = "Anthropic"; config.ai.complexProvider = "Anthropic"; });
 
 const budgetState = vi.hoisted(() => ({ blocked: false, recordUse: vi.fn() }));
 vi.mock("../lib/integration-settings", () => ({ recordIntegrationUse: budgetState.recordUse }));

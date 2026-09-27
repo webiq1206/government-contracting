@@ -574,6 +574,7 @@ function fnv1a(input: string): string {
 }
 
 export interface ValidationInput {
+  analysisVerificationIssues?: string[];
   resolved: ResolvedRequirement[];
   hasIdentifiers: boolean;
   /** Pricing sanity: does bid_amount reconcile with subtotal + markup? */
@@ -598,7 +599,7 @@ export interface ValidationInput {
 }
 
 export function validatePackage(input: ValidationInput): PackageValidation {
-  const blockers: string[] = [];
+  const blockers: string[] = [...(input.analysisVerificationIssues ?? []).map(issue => `Source verification: ${issue}`)];
   const warnings: string[] = [];
   const mandatory = input.resolved.filter((r) => r.mandatory);
 

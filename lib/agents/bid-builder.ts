@@ -636,6 +636,7 @@ export const bidBuilder: AgentDefinition = {
     const pricingReconciles =
       Math.abs(bidAmount - (subQuoteTotal + markupAmount)) < 1; // within $1 rounding
     const validation = validatePackage({
+    analysisVerificationIssues: opp?.solicitation_analysis?.verification_issues,
       resolved,
       hasIdentifiers,
       pricingReconciles,

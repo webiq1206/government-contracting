@@ -1,3 +1,5 @@
+import { strictJsonSchema } from "./strict-schema";
+import { groundedMoney, quoteHasRange } from "../domain/source-money";
 /**
  * AI-assisted classification + field extraction from subcontractor reply emails.
  * Detects intent (quote, decline, question, etc.), pulls pricing when present,
@@ -239,7 +241,7 @@ export async function extractReplyFromReply(
           "Choose partial_scope over quote when they price only part of the work: the price is real,",
           "but recording it as full coverage is how a bid gets assembled with a hole in it.",
           "- is_quote is true ONLY if the reply states a price for the work itself (not fees, not example figures, not questions about price).",
-          "- quote_amount: total price in whole US dollars (never cents). If they give a range, use the midpoint. Null when no price.",
+          "- quote_amount: copy the explicitly stated total in US dollars, preserving cents. Never calculate a total, midpoint, extension or percentage. For ranges or unit prices without an explicit total, return null and add a price clarification to missing_fields.",
           "- payment_terms: any stated terms (e.g. 'net 30', '50% mobilization'), else null.",
           "- notes: a one-to-two sentence summary of conditions, exclusions, or caveats they mention, else null.",
           "- company_name: the company name from their signature if present, else null.",
@@ -247,8 +249,8 @@ export async function extractReplyFromReply(
           "- capability_notes: short summary of what they can/cannot do and why (especially for decline / cant_fulfill), else null.",
           "- trades_mentioned: list of trades they mention covering or not covering; empty array if none.",
           "- scope_summary: what work they are actually pricing, in their words, else null.",
-          "- labor_cost / material_cost: whole dollars when they break the price out; null when they give only a total.",
-          "- taxes_amount / freight_amount / mobilization_amount / bonding_amount: whole dollars, and ONLY when the reply",
+          "- labor_cost / material_cost: US dollars preserving cents when they break the price out; null when they give only a total.",
+          "- taxes_amount / freight_amount / mobilization_amount / bonding_amount: US dollars preserving cents, and ONLY when the reply",
           "  states that figure separately from the total. Null when they do not break it out, and null when they say the",
           "  item is included in the price without giving its amount. Never derive one of these from a percentage or a rate;",
           "  a number nobody wrote down is not a number.",
@@ -284,15 +286,21 @@ export async function extractReplyFromReply(
         ]
           .filter(Boolean)
           .join("\n"),
-        { schema: ReplySchema, injectProfile: false, maxTokens: 768 }
+        { schema: ReplySchema, responseSchema: strictJsonSchema(ReplySchema), injectProfile: false, maxTokens: 1600 }
       );
-      const amount =
-        data.quote_amount != null &&
-        Number.isFinite(data.quote_amount) &&
-        data.quote_amount > 0 &&
-        data.quote_amount <= 100_000_000
-          ? Math.round(data.quote_amount)
-          : null;
+      const amount = quoteHasRange(text) ? null : groundedMoney(data.quote_amount, text);
+      const numericIssues: string[] = [];
+      if (data.is_quote && amount == null) numericIssues.push("The quote total is not a single source-stated amount; confirm it before pricing.");
+      const checkedComponent = (value: number | null): number | null => {
+        const checked = groundedMoney(value, text);
+        if (value != null && checked == null) numericIssues.push("An extracted cost component could not be verified against a stated currency amount.");
+        return checked;
+      };
+      const costs = {
+        laborCost: checkedComponent(data.labor_cost), materialCost: checkedComponent(data.material_cost),
+        taxesAmount: checkedComponent(data.taxes_amount), freightAmount: checkedComponent(data.freight_amount),
+        mobilizationAmount: checkedComponent(data.mobilization_amount), bondingAmount: checkedComponent(data.bonding_amount),
+      };
       const intent = data.intent;
       const canPerform =
         intent === "decline" || intent === "cant_fulfill"
@@ -306,12 +314,7 @@ export async function extractReplyFromReply(
         notes: data.notes,
         companyName: data.company_name,
         scopeSummary: data.scope_summary,
-        laborCost: sanePositive(data.labor_cost),
-        materialCost: sanePositive(data.material_cost),
-        taxesAmount: sanePositive(data.taxes_amount),
-        freightAmount: sanePositive(data.freight_amount),
-        mobilizationAmount: sanePositive(data.mobilization_amount),
-        bondingAmount: sanePositive(data.bonding_amount),
+        ...costs,
         exclusions: data.exclusions ?? [],
         qualifications: data.qualifications ?? [],
         priceIsFirm: data.price_is_firm,
@@ -336,10 +339,10 @@ export async function extractReplyFromReply(
             : null,
         availabilityNotes: data.availability_notes,
         quoteValidUntil: data.quote_valid_until,
-        missingFields: data.missing_fields ?? [],
-        conflicts: data.conflicts ?? [],
+        missingFields: [...new Set([...(data.missing_fields ?? []), ...(data.is_quote && amount == null ? ["price"] : [])])],
+        conflicts: [...(data.conflicts ?? []), ...numericIssues],
         // Clamp: a model returning 1.4 must not read as extra-confident.
-        confidence: Math.min(1, Math.max(0, Number(data.confidence) || 0)),
+        confidence: Math.min(numericIssues.length ? 0.5 : 1, Math.max(0, Number(data.confidence) || 0)),
         canPerform,
         capabilityNotes: data.capability_notes,
         tradesMentioned: (data.trades_mentioned ?? [])

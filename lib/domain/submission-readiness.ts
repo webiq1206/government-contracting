@@ -146,7 +146,7 @@ export function assessReadiness(input: ReadinessInput): Readiness {
 
   const maySend =
     mechanical.state === "passed" &&
-    audit !== "failed" &&
+    audit !== "failed" && audit !== "pending" &&
     (!humanGateRequired || verified.state === "passed");
 
   const readyToSend: ReadinessStepResult = {

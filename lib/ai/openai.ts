@@ -136,6 +136,7 @@ export interface OpenAiRequest {
   maxTokens: number;
   /** Ask for a JSON object. The prompt must mention JSON, which completeJson's does. */
   json?: boolean;
+  responseSchema?: Record<string, unknown>;
   /** Reasoning effort for reasoning models; ignored for others. */
   effort?: string;
   /** Extra output tokens allowed when reasoning is on. */
@@ -171,6 +172,7 @@ export function buildOpenAiBody(req: OpenAiRequest): Record<string, unknown> {
   if (effort) body.reasoning = { effort };
   if (!openAiIsReasoningModel(req.model) && req.temperature != null) body.temperature = req.temperature;
   if (req.json) body.text = { format: { type: "json_object" } };
+  if (req.responseSchema) body.text = { format: { type: "json_schema", name: "brostco_response", strict: true, schema: req.responseSchema } };
   if (req.cacheKey) body.prompt_cache_key = req.cacheKey;
   return body;
 }
@@ -209,21 +211,22 @@ type ResponsesBody = {
 /** Read the assistant text out of a Responses payload. Pure. */
 export function parseOpenAiResponse(body: ResponsesBody): OpenAiResult {
   const parts: string[] = [];
+  let refused = false;
   for (const item of body.output ?? []) {
     if (item?.type !== "message") continue;
     for (const c of item.content ?? []) {
       if (c?.type === "output_text" && typeof c.text === "string") parts.push(c.text);
-      else if (c?.type === "refusal" && typeof c.refusal === "string") parts.push(c.refusal);
+      else if (c?.type === "refusal") refused = true;
     }
   }
   const input = body.usage?.input_tokens ?? 0;
   const cached = body.usage?.input_tokens_details?.cached_tokens ?? 0;
   const stopReason =
-    body.status === "incomplete"
+    refused ? "refusal" : body.status === "incomplete"
       ? body.incomplete_details?.reason === "max_output_tokens"
         ? "max_tokens"
         : (body.incomplete_details?.reason ?? "incomplete")
-      : "end_turn";
+      : body.status === "completed" ? "end_turn" : (body.status ?? "unknown");
   return {
     id: body.id ?? "",
     text: parts.join(""),

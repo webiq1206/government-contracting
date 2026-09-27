@@ -131,11 +131,11 @@ export function chooseRoute(req: RouteRequest): RoutePlan | null {
       primary = route(cfg, explicitProvider, explicit, tier);
     } else {
       const other = otherProvider(explicitProvider);
-      if (available[other]) primary = route(cfg, other, tierModel(cfg, other, tier), tier);
+      if (cfg.fallback && req.fallback !== false && available[other]) primary = route(cfg, other, tierModel(cfg, other, tier), tier);
     }
   } else {
     const preferred = tier === "complex" ? cfg.complexProvider : cfg.routineProvider;
-    const chosen = available[preferred] ? preferred : available[otherProvider(preferred)] ? otherProvider(preferred) : null;
+    const chosen = available[preferred] ? preferred : cfg.fallback && req.fallback !== false && available[otherProvider(preferred)] ? otherProvider(preferred) : null;
     if (chosen) primary = route(cfg, chosen, tierModel(cfg, chosen, tier), tier);
   }
   if (!primary) return null;

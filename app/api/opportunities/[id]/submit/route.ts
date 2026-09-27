@@ -28,6 +28,7 @@ interface BidApprovalFacts {
   human_flags: string[];
   qa_checklist: { ok: boolean }[] | null;
   package_ready: boolean;
+  audit_status?: string | null;
   validation_json: { blockers?: string[] } | null;
   requirements_fingerprint: string | null;
   audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
@@ -188,7 +189,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const bid = await queryOne<BidApprovalFacts>(
-    `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings,
+    `select id, human_flags, qa_checklist, package_ready, audit_status, validation_json, audit_findings,
             requirements_fingerprint, bid_amount, submission_state,
             updated_at::text as updated_at_token, compliance_matrix,
             package_manifest, documents_json
@@ -235,6 +236,13 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
    * force must NOT override it: forcing past a known-outdated package is not
    * a judgement call an operator can make from this screen.
    */
+  if (bid.audit_status === "pending") {
+    return NextResponse.json({ error: "Wait for the compliance audit to finish before approving this bid.", needsForce: false }, { status: 409 });
+  }
+  const sourceIssues = opp.solicitation_analysis?.verification_issues ?? [];
+  if (sourceIssues.length > 0) {
+    return NextResponse.json({ error: "Resolve source verification issues before approving this bid.", blockers: sourceIssues, needsForce: false }, { status: 409 });
+  }
   const preflightRequirements = requirementsState(bid.requirements_fingerprint, opp);
   if (!preflightRequirements.valid) return requirementsChangedResponse();
 
@@ -438,7 +446,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       await client.query("lock table trade_pricing_rows, quotes in share mode");
       const lockedRows = await client.query<LockedApprovalFacts>(
         `select b.id, b.human_flags, b.qa_checklist, b.package_ready,
-                b.validation_json, b.requirements_fingerprint, b.audit_findings,
+                b.validation_json, b.requirements_fingerprint, b.audit_findings, b.audit_status,
                 b.bid_amount, b.submission_state,
                 b.updated_at::text as updated_at_token,
                 b.compliance_matrix, b.package_manifest, b.documents_json,
@@ -456,12 +464,14 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
 
       const lockedRequirements = requirementsState(locked.requirements_fingerprint, locked);
       if (
+        (locked.solicitation_analysis?.verification_issues?.length ?? 0) > 0 ||
         !lockedRequirements.valid ||
         lockedRequirements.current !== preflightRequirements.current
       ) {
         return { ok: false, reason: "requirements" };
       }
       if (
+        locked.audit_status === "pending" ||
         locked.submission_state !== "package_ready" ||
         (!locked.package_ready && !force) ||
         locked.stage !== "bid_building" ||

@@ -222,6 +222,7 @@ export async function applyPackageChange(
   const markup = bid.markup_pct != null ? Number(bid.markup_pct) : 0;
 
   const validation = validatePackage({
+    analysisVerificationIssues: opp?.solicitation_analysis?.verification_issues,
     resolved: next.matrix,
     // Read from the profile, not asserted. Hardcoding this true meant the
     // missing-UEI/CAGE warning vanished the moment an operator ticked any

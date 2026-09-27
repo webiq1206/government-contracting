@@ -253,12 +253,9 @@ export const config = {
   // lib/ai/routing.ts can serve either tier from either provider.
   openai: {
     get apiKey() { return str("OPENAI_API_KEY"); },
-    // Routine tier. gpt-5.6-luna is OpenAI's cost-optimised model: about a
-    // fifth of Haiku 4.5's price per token, with a 1M context window.
-    model: str("OPENAI_MODEL", "gpt-5.6-luna"),
-    // Complex tier, used when Claude is unavailable or when an operator
-    // points the complex tier here. Priced close to Sonnet 5.
-    modelSmart: str("OPENAI_MODEL_SMART", "gpt-5.6-terra"),
+    // Both workloads use GPT-4.1; complexity still controls spending and validation.
+    model: str("OPENAI_MODEL", "gpt-4.1"),
+    modelSmart: str("OPENAI_MODEL_SMART", "gpt-4.1"),
     // Reasoning effort per tier. "none" keeps routine calls fast and cheap;
     // reasoning tokens are billed as output, so "medium" on the complex tier
     // is a deliberate spend on the bid-critical path.
@@ -272,13 +269,11 @@ export const config = {
     },
   },
 
-  // Which provider serves each tier when an organization holds keys for
-  // both. Availability always wins: an organization with one key uses it
-  // for everything. Cross-provider fallback is on unless switched off.
+  // Default all new work to OpenAI. Cross-provider fallback requires explicit opt-in.
   ai: {
     routineProvider: parseProvider(str("AI_ROUTINE_PROVIDER"), "OpenAI"),
-    complexProvider: parseProvider(str("AI_COMPLEX_PROVIDER"), "Anthropic"),
-    fallback: bool("AI_FALLBACK", true),
+    complexProvider: parseProvider(str("AI_COMPLEX_PROVIDER"), "OpenAI"),
+    fallback: bool("AI_FALLBACK", false),
   },
 
   // Connected-app providers. Each is a one-time platform registration; a

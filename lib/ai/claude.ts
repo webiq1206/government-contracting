@@ -43,7 +43,7 @@ export type { AiProvider, AiRoute } from "./routing";
  */
 export class ClaudeNotConfiguredError extends Error {
   constructor() {
-    super("No AI provider key is set (ANTHROPIC_API_KEY or OPENAI_API_KEY), AI-dependent step skipped.");
+    super("The selected AI provider is not connected. Configure its API key before retrying; automatic provider switching may be disabled.");
     this.name = "ClaudeNotConfiguredError";
   }
 }
@@ -238,7 +238,7 @@ export async function aiProviderAvailability(orgId?: string): Promise<Record<AiP
  */
 export async function claudeEnabled(): Promise<boolean> {
   const a = await aiProviderAvailability();
-  return a.Anthropic || a.OpenAI;
+  return chooseRoute({ available: a, cfg: routingConfig() }) !== null;
 }
 export const aiEnabled = claudeEnabled;
 
@@ -295,6 +295,7 @@ export interface CompleteOptions {
    * (OpenAI) get it switched on; the prompt must still ask for JSON.
    */
   json?: boolean;
+  responseSchema?: Record<string, unknown>;
   /** Set false to refuse the cross-provider fallback for this call. */
   fallback?: boolean;
   /**
@@ -392,6 +393,13 @@ export interface Completion {
   stopReason: string | null;
 }
 
+function validateCompletion(result: Completion, opts: CompleteOptions): Completion {
+  if (!opts.json && result.stopReason && !["end_turn", "stop_sequence"].includes(result.stopReason)) {
+    throw new Error(`AI output was not complete (${result.stopReason}); no partial result was accepted`);
+  }
+  return result;
+}
+
 export async function complete(prompt: string, opts: CompleteOptions = {}): Promise<Completion> {
   const system = await buildSystem(opts);
   const plan = await planRoute(opts);
@@ -399,7 +407,7 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
 
   let primaryFailure: AiUnavailableError;
   try {
-    return await runRoute(plan.primary, system, prompt, opts);
+    return validateCompletion(await runRoute(plan.primary, system, prompt, opts), opts);
   } catch (err) {
     // A local spending hold never reached a provider; it is not the
     // provider's fault and the other provider would be held just the same.
@@ -417,7 +425,7 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
       `Retrying once on ${plan.fallback.provider} (${plan.fallback.model}).`
   );
   try {
-    const res = await runRoute(plan.fallback, system, prompt, opts);
+    const res = validateCompletion(await runRoute(plan.fallback, system, prompt, opts), opts);
     return { ...res, usage: { ...res.usage, fallback_from: plan.primary.provider } };
   } catch (err) {
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
@@ -594,6 +602,7 @@ async function runOpenAi(
       documents: opts.documents,
       maxTokens: opts.maxTokens ?? 2048,
       json: opts.json,
+      responseSchema: opts.responseSchema,
       effort: route.complex ? config.openai.reasoningComplex : config.openai.reasoningRoutine,
       reasoningHeadroom: config.openai.reasoningHeadroom,
       temperature: opts.temperature ?? 0.2,
@@ -657,6 +666,9 @@ export async function completeJson<T = unknown>(
     totalIn += usage.input_tokens;
     totalOut += usage.output_tokens;
     try {
+      if (stopReason && stopReason !== "end_turn" && stopReason !== "stop_sequence") {
+        throw new Error(`AI response was not complete (${stopReason}); no partial result was accepted`);
+      }
       const obj = extractJson(text);
       const data = opts.schema ? opts.schema.parse(obj) : (obj as T);
       return {

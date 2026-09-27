@@ -105,6 +105,7 @@ export interface CompletenessInput {
   storedDocumentCount: number;
   attachmentOutcomes: AttachmentFetchOutcome[];
   analysis: {
+    verification_issues?: string[];
     scope_plain_language?: string | null;
     project_overview?: string | null;
     draft_sow?: string | null;
@@ -133,6 +134,13 @@ export function evaluateSolicitationCompleteness(
   const missing: MissingInfoItem[] = [];
   const riskFlags: string[] = [];
   const analysis = input.analysis;
+  for (const [index, issue] of (analysis?.verification_issues ?? []).entries()) {
+    missing.push({ key: `analysis_verification_${index}`, what: "Source verification needs review", why: issue,
+      retrievable: "either", resolution: "Review the cited source and current amendments, correct the record or add missing documents, then re-run analysis.",
+      action: { label: "Review source documents", href: "#attachments", modal: "review-missing" }, critical: true });
+    riskFlags.push("unverified_analysis");
+  }
+
   const blob = [
     input.description ?? "",
     analysis?.scope_plain_language ?? "",

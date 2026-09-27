@@ -19,7 +19,11 @@ export async function checkRecentSpending(orgId: string) {
     where org_id=$1 and credential_source in ('platform','tenant') and started_at>=now()-interval '7 days'
     order by provider,service,feature limit 21`,[orgId]);
   if(recent.length>20) throw new ApiUsageBlockedError("Several workflows need review. Open API Usage to check the affected service before retrying it.");
-  const work=recent.length?recent:[{provider:"Anthropic",service:config.claude.model,feature:"AI assistance"}];
+  if (!recent.length) {
+    await checkAiSpending(orgId, "routine", "AI assistance");
+    return;
+  }
+  const work=recent;
   for(const item of work) {
     const envKey=item.provider==="Ahrefs"?"AHREFS_API_KEY":BILLABLE_PROVIDERS.find(p=>p.provider===item.provider)?.key;
     if(!envKey || !isAllowedKey(envKey)) throw new Error("Unsupported spending scope");
@@ -30,14 +34,14 @@ export async function checkRecentSpending(orgId: string) {
   }
 }
 
-async function preflight(orgId: string, provider: AiProvider, model: string, feature: string) {
+async function preflight(orgId: string, provider: AiProvider, model: string, feature: string, complex?: boolean) {
   const envKey = ENV_KEY_FOR[provider];
   const value = await orgApiKey(envKey, orgId);
   if (!value) throw new ApiUsageBlockedError("AI is not connected. Analysis is waiting. Open Settings, Integrations to complete setup.");
   const identity = await requestIdentity(envKey, value, orgId);
   await beginUsage(identity, provider, model, feature, {
     dryRun: true,
-    complex: isComplexService(provider, model),
+    complex: complex ?? isComplexService(provider, model),
   });
 }
 
@@ -58,6 +62,6 @@ export async function checkAiSpending(orgId: string, tier: AiTier, feature: stri
   const { planRoute } = await import("../ai/claude");
   const plan = await planRoute({ complexity: tier }, orgId);
   if (!plan) throw new ApiUsageBlockedError("AI is not connected. Analysis is waiting. Open Settings, Integrations to complete setup.");
-  await preflight(orgId, plan.primary.provider, plan.primary.model, feature);
+  await preflight(orgId, plan.primary.provider, plan.primary.model, feature, plan.primary.complex);
   return plan.primary;
 }

@@ -67,18 +67,10 @@ describe("AnalysisSchema", () => {
     ).toBe("team_accepted");
   });
 
-  it("keeps the analysis when one matrix row is truncated", () => {
-    const parsed = AnalysisSchema.parse({
-      ...base,
-      scope_plain_language: "Replace 14 rooftop units.",
-      compliance_matrix: [
-        { id: "reps", title: "Reps and certs", category: "certification" },
-        { id: "broken" },
-      ],
-    });
-    expect(parsed.scope_plain_language).toBe("Replace 14 rooftop units.");
-    expect(parsed.compliance_matrix).toHaveLength(1);
-    expect(parsed.compliance_matrix[0].title).toBe("Reps and certs");
+  it("rejects a truncated requirement instead of silently dropping it", () => {
+    expect(() => AnalysisSchema.parse({ ...base, compliance_matrix: [
+      { id: "reps", title: "Reps and certs", category: "certification" }, { id: "broken" },
+    ] })).toThrow();
   });
 
   it("survives a matrix row with the wrong type in a scalar field", () => {
@@ -90,6 +82,6 @@ describe("AnalysisSchema", () => {
     });
     expect(parsed.compliance_matrix).toHaveLength(1);
     expect(parsed.compliance_matrix[0].mandatory).toBe(true);
-    expect(parsed.compliance_matrix[0].signature_required).toBe(false);
+    expect(parsed.compliance_matrix[0].signature_required).toBe(true);
   });
 });

@@ -7,6 +7,7 @@
  * local budget hold are never "fixed" by switching providers.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { config } from "../lib/config";
 import { runWithOrg } from "../lib/tenant-context";
 
 const TEST_ORG = "00000000-0000-4000-8000-000000000098";
@@ -56,6 +57,9 @@ async function call(prompt: string, opts: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  // Exercise the explicitly enabled legacy fallback mode, not production defaults.
+  config.ai.complexProvider = "Anthropic";
+  config.ai.fallback = true;
   state.keys = { ANTHROPIC_API_KEY: "sk-ant", OPENAI_API_KEY: "sk-oa" };
   state.blocked = false;
   state.metered = [];
@@ -161,5 +165,18 @@ describe("fallback", () => {
     anthropicCreate.mockRejectedValueOnce(overloaded);
     await expect(call("Analyze", { complexity: "complex", fallback: false })).rejects.toBeInstanceOf(ClaudeUnavailableError);
     expect(openAi).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("incomplete outputs", () => {
+  it("rejects even valid JSON when the provider marked it truncated", async () => {
+    const { completeJson } = await import("../lib/ai/claude");
+    openAi.mockResolvedValueOnce({ ...openAiOk, text: '{"ok":true}', stopReason: "max_tokens" });
+    await expect(runWithOrg(TEST_ORG, () => completeJson("JSON", { retries: 0 }))).rejects.toThrow("not complete");
+  });
+  it("does not persist a refused free-form answer as a completion", async () => {
+    openAi.mockResolvedValueOnce({ ...openAiOk, text: "", stopReason: "refusal" });
+    await expect(call("Draft a bid")).rejects.toThrow("not complete");
   });
 });

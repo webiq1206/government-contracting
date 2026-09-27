@@ -145,6 +145,25 @@ describe("submission approval fact and audit boundary", () => {
     mocks.profile.mockResolvedValue({ decision_thresholds: { submit_lead_hours: 2 } });
   });
 
+  it("cannot force approval past source-verification findings", async () => {
+    const opp = opportunity();
+    mocks.queryOne.mockResolvedValueOnce({ ...opp, solicitation_analysis: { ...analysis, verification_issues: ["Amended deadline conflicts"] } }).mockResolvedValueOnce(bid(fingerprint));
+    const { POST } = await import("@/app/api/opportunities/[id]/submit/route");
+    const forced = new Request(`https://app.test/api/opportunities/${OPP}/submit`, { method: "POST", body: JSON.stringify({ force: true }) });
+    const response = await POST(forced, { params: { id: OPP } });
+    expect(response.status).toBe(409);
+    expect((await response.json()).needsForce).toBe(false);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("holds approval while the compliance audit is pending", async () => {
+    mocks.queryOne.mockResolvedValueOnce(opportunity()).mockResolvedValueOnce({ ...bid(fingerprint), audit_status: "pending" });
+    const { POST } = await import("@/app/api/opportunities/[id]/submit/route");
+    const response = await POST(request(), { params: { id: OPP } });
+    expect(response.status).toBe(409);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
   it("refuses a legacy package with no requirements fingerprint when requirements exist", async () => {
     mocks.queryOne
       .mockResolvedValueOnce(opportunity())
