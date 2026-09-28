@@ -158,13 +158,21 @@ jobs:
       # in shell. Three levels of quoting (YAML, bash, JSON) around a body that
       # contains backticks and em-dashes is how a notification step silently
       # stops notifying.
+      # Default branch only, like the evidence commit above. Both gates below
+      # report on PRODUCTION state -- whether brostco.com is serving, and whether
+      # live third-party pages still carry our links. Neither says anything about
+      # the branch whose code triggered the run, so raising a production alert
+      # from a feature branch attributes an outage to whoever happened to push.
       - name: Raise an issue if our site is down or a placement stopped verifying
-        if: steps.verify.outcome == 'failure' || steps.health.outcome == 'failure'
+        if: |
+          (steps.verify.outcome == 'failure' || steps.health.outcome == 'failure')
+          && github.ref_name == github.event.repository.default_branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          SITE_URL: brostco.com
         run: |
           cat > issue-body.md <<'BODY'
           The scheduled backlink check needs attention. Evidence is committed under `docs/seo/` and attached to this run as an artifact.
@@ -217,8 +225,28 @@ jobs:
               with urllib.request.urlopen(req, timeout=30) as response:
                   return json.loads(response.read() or "null")
 
+          # The title has to say which gate fired, because the title is the only
+          # part most people read. The first real alert this produced was headed
+          # "A recorded backlink stopped verifying as dofollow" while the body
+          # said site health had failed and verification had passed -- so an
+          # outage taking down every public URL was announced under a headline
+          # about one link's rel attribute. A hardcoded title on a gate with two
+          # causes buries whichever cause it was not written for, and here it
+          # buried the far more urgent one.
+          health_failed = os.environ["HEALTH_OUTCOME"] == "failure"
+          verify_failed = os.environ["VERIFY_OUTCOME"] == "failure"
+          site = os.environ.get("SITE_URL", "the site")
+          if health_failed and verify_failed:
+              title = f"{site} is not serving, and a recorded backlink stopped verifying"
+          elif health_failed:
+              title = f"{site} is not serving: critical URLs are failing"
+          else:
+              title = "A recorded backlink stopped verifying as dofollow"
+
           # One issue, reused. A daily job that opens a fresh issue every morning
-          # trains everyone to ignore the label.
+          # trains everyone to ignore the label. Reused also means the title can
+          # be stale relative to today's cause, so it is corrected on each
+          # comment rather than left describing the first failure forever.
           open_issues = call(
               "GET",
               f"{api}/repos/{repo}/issues?state=open&labels=backlink-verification&per_page=1",
@@ -226,16 +254,41 @@ jobs:
           if open_issues:
               number = open_issues[0]["number"]
               call("POST", f"{api}/repos/{repo}/issues/{number}/comments", {"body": body})
+              if open_issues[0]["title"] != title:
+                  call("PATCH", f"{api}/repos/{repo}/issues/{number}", {"title": title})
+                  print(f"Retitled issue #{number} to match the current cause.")
               print(f"Commented on existing issue #{number}.")
           else:
               created = call(
                   "POST",
                   f"{api}/repos/{repo}/issues",
-                  {
-                      "title": "A recorded backlink stopped verifying as dofollow",
-                      "body": body,
-                      "labels": ["backlink-verification"],
-                  },
+                  {"title": title, "body": body, "labels": ["backlink-verification"]},
               )
               print(f"Opened issue #{created['number']}.")
           PY
+
+      # The run's own status is a signal too, and it was lying.
+      #
+      # Site health is continue-on-error so the later steps still gather their
+      # evidence, and the issue above is the alert channel. But that left the
+      # job concluding "success" while every public URL on the site returned
+      # 500 -- a green tick in the Actions list, next to a run whose own
+      # evidence said the site was down. That is the same failure the health
+      # check was added to prevent, one layer up: a healthy-looking report over
+      # an unhealthy system.
+      #
+      # Default branch only, for the mirror image of that reason. On a feature
+      # branch this gate turned a pull request red because production was down,
+      # which reads as "this change is broken" to everyone who sees it. A signal
+      # is only useful while it means what its reader assumes, and red on a pull
+      # request means the pull request.
+      #
+      # Last, deliberately. The evidence is committed and the issue is raised
+      # before this runs, so failing the run costs no information.
+      - name: Fail the run when something needed attention
+        if: |
+          (steps.verify.outcome == 'failure' || steps.health.outcome == 'failure')
+          && github.ref_name == github.event.repository.default_branch
+        run: |
+          echo "::error::Site health '${{ steps.health.outcome }}', placement verification '${{ steps.verify.outcome }}'. Details are in the issue labelled backlink-verification and in docs/seo/. This run is marked failed so its status matches its findings."
+          exit 1
