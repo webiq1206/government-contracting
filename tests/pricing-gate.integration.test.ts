@@ -110,6 +110,8 @@ d("the pricing sheet as the submit gate", () => {
       exclusions: [{ text: "Crane and rigging", covered_by: "unassigned" }],
       actor: "op@x.invalid",
     });
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, oppId]);
     const res = await POST(
       req({ override: { requirement: "Pricing", reason: "We will sort the crane out on site." } }),
       { params: { id: oppId } }
@@ -137,6 +139,8 @@ d("the pricing sheet as the submit gate", () => {
       alternates: [{ label: "Add generator", amount: null, included: true }],
       actor: "op@x.invalid",
     });
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, oppId]);
     const res = await POST(req({}), { params: { id: oppId } });
     expect(res.status).toBe(409);
     expect(JSON.stringify(await res.json())).toContain("Add generator");
@@ -154,6 +158,8 @@ d("the pricing sheet as the submit gate", () => {
       pendingComponents: ["freight"],
       actor: "op@x.invalid",
     });
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, oppId]);
     const res = await POST(req({}), { params: { id: oppId } });
     expect(res.status).toBe(409);
     // Not "the bid is 100,000 and freight was nothing".
@@ -179,6 +185,8 @@ d("the pricing sheet as the submit gate", () => {
         where id=$1 and org_id=$2`,
       [bidId, org.id]
     );
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, oppId]);
     const res = await POST(req({}), { params: { id: oppId } });
     expect(res.status, JSON.stringify(await res.json())).toBe(200);
 
@@ -226,6 +234,8 @@ d("the pricing sheet as the submit gate", () => {
        values ($1,$2,$3,'electrical',88000), ($1,$2,$4,'electrical',94000)`,
       [org.id, oppId, sub, other!.id]
     );
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, oppId]);
     const res = await POST(req({}), { params: { id: oppId } });
     expect(res.status).toBe(409);
     expect(JSON.stringify(await res.json())).toContain("none has been chosen");
