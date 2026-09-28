@@ -1,0 +1,84 @@
+# Push changed URLs to the search engines the moment they change.
+#
+# Triggered by content changing rather than by a clock, which is the whole point
+# of IndexNow and also its etiquette: the protocol is for announcing that a URL
+# changed, and re-submitting unchanged pages on a timer is the one thing its
+# operators ask sites not to do.
+#
+# Why this matters to a backlink programme at all: the register on this site is
+# written to be cited, and a page nobody can find is a page nobody cites. Left
+# to ordinary crawling, a new reference page can sit unindexed for weeks. This
+# closes that to minutes on Bing, Yandex, Seznam and Naver, which share one
+# IndexNow network. Google does not participate and reads the sitemap instead,
+# so nothing here is aimed at it.
+#
+# Fully unattended and permanently so: ownership is proved by the key file this
+# app serves at /indexnow-key.txt, so there is no account, no token to rotate
+# and nothing to renew.
+#
+# Runs only on the default branch. Submitting URLs while a feature branch is
+# being iterated on would ask the engines to recrawl pages that are not live.
+
+name: IndexNow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # The public surface, and the things that define it. A change anywhere in
+      # here can alter what a crawler should see.
+      - "app/(marketing)/**"
+      - "app/page.tsx"
+      - "app/sitemap.ts"
+      - "app/robots.ts"
+      - "app/llms.txt/**"
+      - "lib/domain/public-routes.ts"
+      - "lib/marketing/**"
+      - "components/marketing/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List the URLs without submitting them"
+        type: boolean
+        default: false
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No npm ci: the submitter reads the route declaration as text and uses
+      # only Node built-ins, so an install would add a minute to every run and
+      # a dependency tree to something that needs neither.
+      - name: Confirm the key file is live before submitting
+        run: |
+          # A submission whose key file does not match is rejected with a 403
+          # and no explanation, so the file is checked first and the mismatch
+          # named here rather than guessed at from the endpoint's silence.
+          expected=$(grep -oE 'INDEXNOW_KEY = "[^"]+"' lib/marketing/indexnow.ts | grep -oE '[0-9a-f]{32}')
+          served=$(curl -sS -m 25 "https://brostco.com/indexnow-key.txt" || echo "")
+          echo "expected: $expected"
+          echo "served  : $served"
+          if [ "$expected" != "$served" ]; then
+            echo "::warning::The deployed key file does not match the repository. The site may not have redeployed yet; submitting anyway, and a 403 below means exactly this."
+          fi
+
+      - name: Submit
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node scripts/seo/indexnow-submit.mjs --dry-run
+          else
+            node scripts/seo/indexnow-submit.mjs
+          fi
