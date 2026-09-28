@@ -1,0 +1,79 @@
+{
+  "asOf": "2026-09-27",
+  "targetSite": "https://brostco.com",
+  "verifyWith": "node scripts/seo/verify-backlinks.mjs",
+  "statusDefinitions": {
+    "published": "The link is live on the third-party page and has been verified dofollow by scripts/seo/verify-backlinks.mjs. Evidence lands in docs/seo/backlink-verification.json. An entry with this status that fails verification fails the script, so the bucket cannot quietly hold a claim that is no longer true.",
+    "submitted": "Content has been submitted and is awaiting moderation or publication. No link exists yet, so nothing is claimed about its attributes.",
+    "opportunity": "Researched, relevant, and prepared: the contribution is written and ready to submit. Not submitted. Dofollow status is unverified, because a platform's link attributes can only be established by reading a live page and no page exists yet.",
+    "rejected": "Investigated and deliberately not pursued, with the reason recorded so the same ground is not researched twice."
+  },
+  "blockedBy": [
+    "Network egress policy. Outbound HTTPS from the working session is restricted to an allowlist (brostco.com, github.com, package registries). Every candidate platform, and every page that would be needed to verify a link attribute, is refused at the proxy with HTTP 403. Evidence: docs/seo/dofollow-platform-probe-evidence.json, where 25 of 30 probes record verdict 'blocked'.",
+    "No BrostCo-controlled mailbox or platform credentials in the session. The connected mailbox belongs to an unrelated business, so no account can be created, email-verified, or signed into on brostco.com's behalf."
+  ],
+  "placements": [
+    {
+      "platform": "GitHub (repository README, profile, organization links)",
+      "status": "rejected",
+      "placementUrl": null,
+      "destination": "https://brostco.com",
+      "linkAttribute": "nofollow",
+      "evidence": "Verified 2026-09-27 against https://github.com/vercel/next.js. Every external anchor carried rel=\"nofollow\", the repository's own homepage link included, which rendered as rel=\"noopener noreferrer nofollow\".",
+      "reason": "GitHub applies nofollow to outbound links site-wide, so a README, profile, or organization link passes no authority. Worth having for other reasons; not worth counting as a backlink."
+    },
+    {
+      "platform": "SourceForge (project page)",
+      "status": "rejected",
+      "placementUrl": null,
+      "destination": "https://brostco.com",
+      "linkAttribute": "nofollow",
+      "evidence": "Verified 2026-09-27 against https://sourceforge.net/projects/sevenzip/. The project's own \"Web Site\" link carried rel=\"nofollow\".",
+      "reason": "The project homepage field is the only place a project links out from, and it is nofollow. High domain authority passing no authority is precisely the case this programme exists to catch before effort is spent."
+    },
+    {
+      "platform": "Public library and university research guides (Springshare LibGuides)",
+      "status": "opportunity",
+      "placementUrl": null,
+      "destination": "https://brostco.com/resources/idaho-procurement-sources",
+      "linkAttribute": "unverified",
+      "submission": "docs/seo/submissions/library-research-guide.md",
+      "whyLegitimate": "Library and university business guides exist to point patrons at authoritative free resources, and they routinely list procurement bid sources. The register is free, needs no account or email, states its reuse terms, and saves the guide's maintainer from curating seven authorities and their boundaries themselves.",
+      "needs": "No account and no fee. Most guides carry a 'suggest a resource' form or name a subject librarian on the guide itself.",
+      "verifyBefore": "node scripts/seo/verify-backlinks.mjs --target <a host the guide already links to> --probe <guide URL>"
+    },
+    {
+      "platform": "Idaho APEX Accelerator, Idaho SBDC, Idaho Commerce resource lists",
+      "status": "opportunity",
+      "placementUrl": null,
+      "destination": "https://brostco.com/resources/idaho-procurement-sources",
+      "linkAttribute": "unverified",
+      "submission": "docs/seo/submissions/idaho-assistance-resource-list.md",
+      "whyLegitimate": "These organizations counsel Idaho businesses on exactly the problem the register solves. The register already links out to the accelerator as an independent resource, unprompted and unreciprocated, so the submission is a genuine contribution rather than a trade.",
+      "needs": "No account or fee. A public resource-suggestion or contact route on each organization's own site.",
+      "verifyBefore": "Confirm the organization's resource pages emit dofollow outbound links before investing effort. Several public-sector content systems nofollow every external link."
+    },
+    {
+      "platform": "Dataset registries and open-data catalogues",
+      "status": "opportunity",
+      "placementUrl": null,
+      "destination": "https://brostco.com/resources/idaho-procurement-sources",
+      "linkAttribute": "unverified",
+      "submission": "docs/seo/submissions/dataset-registry.md",
+      "whyLegitimate": "The register ships real distributions at /data.json and /data.csv with schema.org Dataset markup and stated reuse terms, which is what a catalogue requires. It is a dataset, not a landing page dressed as one.",
+      "needs": "A free account per catalogue.",
+      "note": "The same Dataset markup makes the register eligible for Google Dataset Search, which finds it by crawling rather than submission and needs no account at all. That part is already live."
+    },
+    {
+      "platform": "Software and SaaS directories",
+      "status": "opportunity",
+      "placementUrl": null,
+      "destination": "https://brostco.com",
+      "linkAttribute": "unverified",
+      "submission": "docs/seo/submissions/directory-listing-kit.md",
+      "whyLegitimate": "A directory listing for a real, purchasable product is a legitimate business listing rather than a link placement.",
+      "needs": "A free account per directory and a verified mailbox on the brostco.com domain.",
+      "verifyBefore": "Verify each directory individually and expect most to fail. Directory outbound links are commonly nofollow or wrapped in an out-link redirector, and both registries verified so far were nofollow. Nothing moves to 'published' until the verifier confirms it."
+    }
+  ]
+}

@@ -1,0 +1,241 @@
+# The unattended half of the backlink programme.
+#
+# This exists because of a specific asymmetry. Outbound network access from the
+# authoring environment is restricted to an allowlist, so nothing there can
+# reach a third-party page to read a link attribute or ask a public API a
+# question. A GitHub Actions runner has ordinary internet access. So the checks
+# that need the open web live here, on a schedule, and nobody has to run them.
+#
+# What it does every day, with no input from anyone:
+#   * confirms the official sources the register points at still resolve, so a
+#     moved government URL is caught before a reader hits a 404
+#   * re-reads every live placement in the ledger and fails if something claimed
+#     as dofollow has quietly become nofollow
+#   * asks the free, keyless indexes who is citing us, and records what it finds
+#   * commits the evidence back, so the repository is the audit trail
+#   * opens one issue only when a human is genuinely needed
+#
+# What it deliberately does not do: submit anything to a platform that requires
+# an account. That needs a mailbox on the site's own domain and, on most
+# platforms, a human past a CAPTCHA. Pretending to automate it would produce a
+# report full of placements that do not exist.
+#
+# The schedule only fires once this file is on the default branch -- that is a
+# GitHub rule, not a choice -- so the daily run begins when this merges.
+
+name: Backlink verify
+
+on:
+  schedule:
+    # 07:12 UTC. Off the hour on purpose: scheduled jobs pile up at :00 and get
+    # delayed, and nothing here is time-critical enough to want the queue.
+    - cron: "12 7 * * *"
+  workflow_dispatch:
+  push:
+    # So a change to the tooling proves itself immediately instead of waiting a
+    # day. Evidence files are excluded, or the job's own commit would retrigger
+    # it forever.
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "scripts/seo/**"
+      - "lib/marketing/procurement-sources.ts"
+      - ".github/workflows/backlink-verify.yml"
+
+concurrency:
+  group: backlink-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Everything below depends on this runner being able to reach the open
+      # web. Probed first and printed, because if egress is restricted here too
+      # then every later step reports "nothing found" and that would be read as
+      # a fact about the world rather than about the network.
+      - name: Egress preflight
+        run: |
+          echo "Probing the hosts this automation needs:"
+          for host in \
+            https://brostco.com/ \
+            https://en.wikipedia.org/ \
+            https://api.openalex.org/works?per-page=1 \
+            https://api.crossref.org/works?rows=1 \
+            https://index.commoncrawl.org/ \
+            https://api.indexnow.org/ \
+            https://purchasing.idaho.gov/ \
+            https://sam.gov/
+          do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" -m 25 -L "$host" 2>/dev/null || echo "FAILED")
+            printf "  %-56s %s\n" "$host" "$code"
+          done
+
+      # First check after the preflight, and allowed to fail the run, because
+      # every other step here is meaningless if our own site is not serving. The
+      # earlier version of this workflow checked other people's links and public
+      # indexes while never once asking whether brostco.com responded -- and it
+      # reported healthy through an outage where all nine critical URLs answered
+      # 500. continue-on-error so the remaining checks still produce their
+      # evidence; the gate at the end turns this into the issue.
+      - name: Our own critical pages are serving
+        id: health
+        continue-on-error: true
+        run: node scripts/seo/check-site-health.mjs --json docs/seo/site-health.json
+
+      - name: Official source links still resolve
+        run: node scripts/seo/check-source-links.mjs --json docs/seo/source-link-check.json
+
+      - name: Discover citations of our published reference data
+        run: node scripts/seo/discover-citations.mjs --json docs/seo/citation-discovery.json
+
+      # Runs after discovery so anything newly found is checked in the same run.
+      # Non-blocking: this step's job is to record the truth, and the gate below
+      # decides whether that truth needs a person.
+      - name: Read the live link attribute of every recorded placement
+        id: verify
+        continue-on-error: true
+        run: node scripts/seo/verify-backlinks.mjs --json docs/seo/backlink-verification.json
+
+      # Only on the default branch, and that restriction is load-bearing.
+      #
+      # Committing evidence onto a feature branch makes the bot's own commit the
+      # head of whatever pull request that branch is for. The commit carries
+      # [skip ci], so the head then has no check results at all: a reviewer sees
+      # an unchecked head, and under required status checks the pull request
+      # cannot merge until somebody pushes again. It also means an automated job
+      # rewrites a branch a human may be reviewing.
+      #
+      # On the default branch none of that applies -- there is no pull request to
+      # disturb, and an audit trail of daily evidence commits is the point. Every
+      # other branch keeps its evidence in the artifact uploaded below, which is
+      # all a test run needs.
+      - name: Commit the evidence
+        id: commit
+        if: github.ref_name == github.event.repository.default_branch
+        run: |
+          git config user.name "brostco-backlink-bot"
+          git config user.email "noreply@anthropic.com"
+          git add docs/seo/ || true
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No change in the evidence files."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          # [skip ci] so committing evidence cannot trigger another run. The
+          # push paths already exclude docs/seo, and this is the second belt.
+          git commit -m "Record backlink verification evidence [skip ci]" \
+                     -m "Automated by .github/workflows/backlink-verify.yml."
+          git push origin "HEAD:${GITHUB_REF_NAME}" || echo "Push refused; evidence is in the job artifacts instead."
+
+      - name: Preserve evidence regardless
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlink-evidence
+          path: docs/seo/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The only path that ever asks for attention. A placement that stopped
+      # being dofollow is the one finding a person has to act on, because it
+      # means a recorded win is no longer real.
+      # Written to a file and posted by one Python script rather than assembled
+      # in shell. Three levels of quoting (YAML, bash, JSON) around a body that
+      # contains backticks and em-dashes is how a notification step silently
+      # stops notifying.
+      - name: Raise an issue if our site is down or a placement stopped verifying
+        if: steps.verify.outcome == 'failure' || steps.health.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          cat > issue-body.md <<'BODY'
+          The scheduled backlink check needs attention. Evidence is committed under `docs/seo/` and attached to this run as an artifact.
+
+          ## If the site health check failed — fix this first
+
+          `docs/seo/site-health.json` lists which of our own critical URLs did not return 200, each after a retry.
+
+          This outranks everything else in this repository's SEO work, and it is worse than lost traffic:
+
+          - A 5xx on `/robots.txt` is read by Google as **do not crawl**, not as "no rules". Prolonged, it withdraws crawl access to the whole site.
+          - A 5xx on `/sitemap.xml` removes the only URL list a crawler was given.
+          - A citable page that errors while somebody is deciding whether to cite it does not get cited, and they do not come back.
+          - Earned links pointing at error pages get removed.
+
+          Reproduce with `node scripts/seo/check-site-health.mjs`.
+
+          ## If the placement verification failed
+
+          A placement recorded as `published` no longer verifies as dofollow. `docs/seo/backlink-verification.json` names which case applies:
+
+          - `nofollow` / `sponsored` / `ugc` — the platform changed how it marks outbound links. The placement no longer passes authority and should not be counted.
+          - `link-absent` — the page was served and our link is not on it. It was edited out or removed.
+          - `blocked` — we were refused before the page was served (bot protection or network policy). This says nothing about the link, and needs no action.
+
+          Reproduce with `node scripts/seo/verify-backlinks.mjs`.
+
+          ---
+          _Generated by [Claude Code](https://claude.ai/code)_
+          BODY
+          {
+            echo ""
+            echo "Which gate fired: site health \`${HEALTH_OUTCOME}\`, placement verification \`${VERIFY_OUTCOME}\`."
+          } >> issue-body.md
+          python3 - <<'PY'
+          import json, os, urllib.request
+
+          api = os.environ["GITHUB_API_URL"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          body = open("issue-body.md").read() + f"\nRun: {os.environ['RUN_URL']}\n"
+
+          def call(method, url, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, method=method)
+              req.add_header("Authorization", f"Bearer {token}")
+              req.add_header("Accept", "application/vnd.github+json")
+              if data:
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.loads(response.read() or "null")
+
+          # One issue, reused. A daily job that opens a fresh issue every morning
+          # trains everyone to ignore the label.
+          open_issues = call(
+              "GET",
+              f"{api}/repos/{repo}/issues?state=open&labels=backlink-verification&per_page=1",
+          )
+          if open_issues:
+              number = open_issues[0]["number"]
+              call("POST", f"{api}/repos/{repo}/issues/{number}/comments", {"body": body})
+              print(f"Commented on existing issue #{number}.")
+          else:
+              created = call(
+                  "POST",
+                  f"{api}/repos/{repo}/issues",
+                  {
+                      "title": "A recorded backlink stopped verifying as dofollow",
+                      "body": body,
+                      "labels": ["backlink-verification"],
+                  },
+              )
+              print(f"Opened issue #{created['number']}.")
+          PY

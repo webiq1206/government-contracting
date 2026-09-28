@@ -1,0 +1,412 @@
+{
+  "checkedAt": "2026-09-27T05:02:15.367Z",
+  "results": [
+    {
+      "platform": "AlternativeTo (software directory)",
+      "placementUrl": "https://alternativeto.net/software/slack/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.423Z",
+      "httpStatus": 403,
+      "finalUrl": "https://alternativeto.net/software/slack/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "SaaSHub (software directory)",
+      "placementUrl": "https://www.saashub.com/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.622Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.saashub.com/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "StackShare (tech stack directory)",
+      "placementUrl": "https://stackshare.io/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.673Z",
+      "httpStatus": 403,
+      "finalUrl": "https://stackshare.io/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Product Hunt",
+      "placementUrl": "https://www.producthunt.com/products/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.939Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.producthunt.com/products/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "G2",
+      "placementUrl": "https://www.g2.com/products/slack/reviews",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.964Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.g2.com/products/slack/reviews",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Capterra",
+      "placementUrl": "https://www.capterra.com/p/135003/Slack/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:11.988Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.capterra.com/p/135003/Slack/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Crunchbase",
+      "placementUrl": "https://www.crunchbase.com/organization/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.038Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.crunchbase.com/organization/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "SourceForge",
+      "placementUrl": "https://sourceforge.net/projects/sevenzip/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.050Z",
+      "httpStatus": 200,
+      "finalUrl": "https://sourceforge.net/projects/sevenzip/",
+      "pageDirectives": null,
+      "pageNofollow": false,
+      "links": [
+        {
+          "href": "http://www.7-zip.org/",
+          "via": null,
+          "anchorText": "7-Zip Web Site",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        }
+      ],
+      "verdict": "nofollow",
+      "detail": "nofollow, passes no authority"
+    },
+    {
+      "platform": "PyPI (package registry)",
+      "placementUrl": "https://pypi.org/project/requests/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.648Z",
+      "httpStatus": 200,
+      "finalUrl": "https://pypi.org/project/requests/",
+      "pageDirectives": null,
+      "pageNofollow": false,
+      "links": [],
+      "verdict": "link-absent",
+      "detail": "no link to python-requests.org found in the served markup"
+    },
+    {
+      "platform": "npm (package registry)",
+      "placementUrl": "https://www.npmjs.com/package/next",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.762Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.npmjs.com/package/next",
+      "verdict": "unreachable",
+      "detail": "HTTP 403"
+    },
+    {
+      "platform": "Read the Docs",
+      "placementUrl": "https://requests.readthedocs.io/en/latest/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.838Z",
+      "httpStatus": 403,
+      "finalUrl": "https://requests.readthedocs.io/en/latest/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "dev.to",
+      "placementUrl": "https://dev.to/ben/the-dev-to-story-2gkd",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.878Z",
+      "httpStatus": 403,
+      "finalUrl": "https://dev.to/ben/the-dev-to-story-2gkd",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Hashnode",
+      "placementUrl": "https://hashnode.com/blog",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:12.901Z",
+      "httpStatus": 403,
+      "finalUrl": "https://hashnode.com/blog",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Medium",
+      "placementUrl": "https://medium.com/about",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.028Z",
+      "httpStatus": 403,
+      "finalUrl": "https://medium.com/about",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Substack",
+      "placementUrl": "https://on.substack.com/p/substack-is-a-place-to-build-something",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.052Z",
+      "httpStatus": 403,
+      "finalUrl": "https://on.substack.com/p/substack-is-a-place-to-build-something",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Reddit",
+      "placementUrl": "https://www.reddit.com/r/govcon/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.132Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.reddit.com/r/govcon/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Wikipedia",
+      "placementUrl": "https://en.wikipedia.org/wiki/System_for_Award_Management",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.154Z",
+      "httpStatus": 403,
+      "finalUrl": "https://en.wikipedia.org/wiki/System_for_Award_Management",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Stack Overflow",
+      "placementUrl": "https://stackoverflow.com/questions/tagged/next.js",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.185Z",
+      "httpStatus": 403,
+      "finalUrl": "https://stackoverflow.com/questions/tagged/next.js",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "U.S. SBA",
+      "placementUrl": "https://www.sba.gov/local-assistance/resource-partners",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.302Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.sba.gov/local-assistance/resource-partners",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "APEX Accelerators",
+      "placementUrl": "https://www.apexaccelerators.us/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.507Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.apexaccelerators.us/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Idaho Commerce",
+      "placementUrl": "https://commerce.idaho.gov/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.637Z",
+      "httpStatus": 403,
+      "finalUrl": "https://commerce.idaho.gov/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Idaho SBDC",
+      "placementUrl": "https://idahosbdc.org/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.727Z",
+      "httpStatus": 403,
+      "finalUrl": "https://idahosbdc.org/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Boise Metro Chamber",
+      "placementUrl": "https://boisechamber.org/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:13.911Z",
+      "httpStatus": 403,
+      "finalUrl": "https://boisechamber.org/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "GitHub (repository README)",
+      "placementUrl": "https://github.com/vercel/next.js",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:14.000Z",
+      "httpStatus": 200,
+      "finalUrl": "https://github.com/vercel/next.js",
+      "pageDirectives": null,
+      "pageNofollow": false,
+      "links": [
+        {
+          "href": "https://nextjs.org/",
+          "via": null,
+          "anchorText": "",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        },
+        {
+          "href": "https://nextjs.org/learn",
+          "via": null,
+          "anchorText": "Learn Next.js",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        },
+        {
+          "href": "https://nextjs.org/showcase",
+          "via": null,
+          "anchorText": "Next.js Showcase",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        },
+        {
+          "href": "https://nextjs.org/docs",
+          "via": null,
+          "anchorText": "https://nextjs.org/docs",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        },
+        {
+          "href": "https://nextjs.org/discord",
+          "via": null,
+          "anchorText": "Discord",
+          "rel": "nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        },
+        {
+          "href": "https://nextjs.org/",
+          "via": null,
+          "anchorText": "nextjs.org",
+          "rel": "noopener noreferrer nofollow",
+          "attribute": "nofollow",
+          "passesAuthority": false,
+          "reason": "nofollow, passes no authority"
+        }
+      ],
+      "verdict": "nofollow",
+      "detail": "nofollow, passes no authority"
+    },
+    {
+      "platform": "GitLab",
+      "placementUrl": "https://gitlab.com/gitlab-org/gitlab",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:14.460Z",
+      "httpStatus": 200,
+      "finalUrl": "https://gitlab.com/gitlab-org/gitlab",
+      "pageDirectives": null,
+      "pageNofollow": false,
+      "links": [],
+      "verdict": "link-absent",
+      "detail": "no link to about.gitlab.com found in the served markup"
+    },
+    {
+      "platform": "Trustpilot",
+      "placementUrl": "https://www.trustpilot.com/review/slack.com",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:14.879Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.trustpilot.com/review/slack.com",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Clutch",
+      "placementUrl": "https://clutch.co/profile/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:14.902Z",
+      "httpStatus": 403,
+      "finalUrl": "https://clutch.co/profile/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "GoodFirms",
+      "placementUrl": "https://www.goodfirms.co/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:14.995Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.goodfirms.co/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "F6S",
+      "placementUrl": "https://www.f6s.com/slack",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:15.106Z",
+      "httpStatus": 403,
+      "finalUrl": "https://www.f6s.com/slack",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    },
+    {
+      "platform": "Slashdot",
+      "placementUrl": "https://slashdot.org/software/p/Slack/",
+      "destination": null,
+      "claimedStatus": "probe",
+      "checkedAt": "2026-09-27T05:02:15.303Z",
+      "httpStatus": 403,
+      "finalUrl": "https://slashdot.org/software/p/Slack/",
+      "verdict": "blocked",
+      "detail": "HTTP 403 with no HTML body: the request was refused before the page was served (network egress policy or bot protection). This is not a finding about the platform's link attributes."
+    }
+  ]
+}

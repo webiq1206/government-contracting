@@ -1,0 +1,112 @@
+# Push changed URLs to the search engines the moment they change.
+#
+# Triggered by content changing rather than by a clock, which is the whole point
+# of IndexNow and also its etiquette: the protocol is for announcing that a URL
+# changed, and re-submitting unchanged pages on a timer is the one thing its
+# operators ask sites not to do.
+#
+# Why this matters to a backlink programme at all: the register on this site is
+# written to be cited, and a page nobody can find is a page nobody cites. Left
+# to ordinary crawling, a new reference page can sit unindexed for weeks. This
+# closes that to minutes on Bing, Yandex, Seznam and Naver, which share one
+# IndexNow network. Google does not participate and reads the sitemap instead,
+# so nothing here is aimed at it.
+#
+# Fully unattended and permanently so: ownership is proved by the key file this
+# app serves at /indexnow-key.txt, so there is no account, no token to rotate
+# and nothing to renew.
+#
+# Runs only on the default branch. Submitting URLs while a feature branch is
+# being iterated on would ask the engines to recrawl pages that are not live.
+
+name: IndexNow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # The public surface, and the things that define it. A change anywhere in
+      # here can alter what a crawler should see.
+      - "app/(marketing)/**"
+      - "app/page.tsx"
+      - "app/sitemap.ts"
+      - "app/robots.ts"
+      - "app/llms.txt/**"
+      - "lib/domain/public-routes.ts"
+      - "lib/marketing/**"
+      - "components/marketing/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List the URLs without submitting them"
+        type: boolean
+        default: false
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Needed now, and it was not always. The submitter used to read the route
+      # declaration as text with only Node built-ins, so this step was skipped on
+      # purpose. It now imports lib/domain/public-routes.ts and runs under tsx --
+      # which ends a whole class of under-counting bug, but does mean the install
+      # is no longer optional. Dropping this step would fail every submission with
+      # a module-resolution error.
+      - run: npm ci
+
+      # Refuse to submit a site that is not serving.
+      #
+      # IndexNow means "these URLs changed, please come and fetch them". Sending
+      # it while the site returns 5xx asks four search engines to crawl a set of
+      # error pages, which is strictly worse than staying quiet: a crawler that
+      # arrives at an error learns the URL is broken, and being told so on
+      # request is how a page gets dropped rather than indexed.
+      #
+      # This is not hypothetical. A deployment outage during this work had every
+      # public URL answering 500 for hours, and a merge to main in that window
+      # would have submitted thirty-four of them.
+      #
+      # Checked against the home page and the key file, because those two cover
+      # both failure modes: the site being down, and the site being up but not
+      # yet redeployed with the current key.
+      - name: Refuse to submit while the site is unhealthy
+        run: |
+          home=$(curl -sS -o /dev/null -w "%{http_code}" -m 25 -L "https://brostco.com/" || echo 000)
+          echo "home page: HTTP $home"
+          if [ "$home" != "200" ]; then
+            echo "::error::brostco.com returned HTTP $home. Nothing is submitted: pointing crawlers at error pages costs indexing rather than gaining it. Re-run this workflow once the site is serving."
+            exit 1
+          fi
+
+          # A submission whose key file does not match is rejected with a 403
+          # and no explanation, so the file is checked here and the mismatch
+          # named rather than guessed at from the endpoint's silence.
+          expected=$(grep -oE 'INDEXNOW_KEY = "[^"]+"' lib/marketing/indexnow.ts | grep -oE '[0-9a-f]{32}')
+          served=$(curl -sS -m 25 "https://brostco.com/indexnow-key.txt" || echo "")
+          echo "expected: $expected"
+          echo "served  : $served"
+          if [ "$expected" != "$served" ]; then
+            echo "::warning::The deployed key file does not match the repository. The site may not have redeployed yet; submitting anyway, and a 403 below means exactly this."
+          fi
+
+      - name: Submit
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node --import tsx scripts/seo/indexnow-submit.ts --dry-run
+          else
+            node --import tsx scripts/seo/indexnow-submit.ts
+          fi

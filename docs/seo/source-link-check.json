@@ -1,0 +1,68 @@
+{
+  "checkedAt": "2026-09-28T03:59:33.551Z",
+  "results": [
+    {
+      "url": "https://sam.gov/contracting",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://sam.gov/contracting",
+      "method": "HEAD",
+      "verdict": "ok"
+    },
+    {
+      "url": "https://purchasing.idaho.gov/open-and-future-solicitations/",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://purchasing.idaho.gov/open-and-future-solicitations/",
+      "method": "HEAD",
+      "verdict": "ok"
+    },
+    {
+      "url": "https://dpw.idaho.gov/construction/",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://dpw.idaho.gov/construction/",
+      "method": "HEAD",
+      "verdict": "ok"
+    },
+    {
+      "url": "https://itd.idaho.gov/contractor-bidding/",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://itd.idaho.gov/contractor-bidding/",
+      "method": "HEAD",
+      "verdict": "ok"
+    },
+    {
+      "url": "https://www.cityofboise.org/departments/finance/purchasing/vendor-information-and-registration/",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://www.cityofboise.org/departments/finance/purchasing/vendor-information-and-registration/",
+      "method": "HEAD",
+      "verdict": "ok"
+    },
+    {
+      "url": "https://www.achdidaho.org/projects/bids-procurement",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 403,
+      "finalUrl": "https://www.achdidaho.org/projects/bids-procurement",
+      "method": "GET",
+      "verdict": "blocked"
+    },
+    {
+      "url": "https://www.idahoapexaccelerator.com/",
+      "origin": "register",
+      "file": "lib/marketing/procurement-sources.ts",
+      "status": 200,
+      "finalUrl": "https://www.idahoapexaccelerator.com/",
+      "method": "HEAD",
+      "verdict": "ok"
+    }
+  ]
+}
