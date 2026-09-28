@@ -259,3 +259,21 @@ jobs:
               )
               print(f"Opened issue #{created['number']}.")
           PY
+
+      # The run's own status is a signal too, and it was lying.
+      #
+      # Site health is continue-on-error so the later steps still gather their
+      # evidence, and the issue above is the alert channel. But that left the
+      # job concluding "success" while every public URL on the site returned
+      # 500 -- a green tick in the Actions list, next to a run whose own
+      # evidence said the site was down. That is the same failure the health
+      # check was added to prevent, one layer up: a healthy-looking report over
+      # an unhealthy system.
+      #
+      # Last, deliberately. The evidence is committed and the issue is raised
+      # before this runs, so failing the run costs no information.
+      - name: Fail the run when something needed attention
+        if: steps.verify.outcome == 'failure' || steps.health.outcome == 'failure'
+        run: |
+          echo "::error::Site health '${{ steps.health.outcome }}', placement verification '${{ steps.verify.outcome }}'. Details are in the issue labelled backlink-verification and in docs/seo/. This run is marked failed so its status matches its findings."
+          exit 1
