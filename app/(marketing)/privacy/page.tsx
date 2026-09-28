@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-3 text-sm text-slate-500">
-          Last updated: September 26, 2026
+          Last updated: September 27, 2026
         </p>
         <p className="mt-5">
           <Link href="/security">Read the security and data overview</Link> for
@@ -58,7 +58,10 @@ export default function PrivacyPage() {
               Product usage events (page views, CTA clicks, checkout milestones)
               to improve the service.
               Anonymous marketing interaction events do not include form values,
-              URL query strings, referrers, visitor identifiers or tracking cookies.
+              raw URL query strings, referrers, visitor identifiers or tracking cookies.
+              Recognized campaign labels are kept in this tab’s session storage and attached to
+              interaction and trial-start events to measure which resources help people find BrostCo.
+              Free-tool entries are processed only in your browser and are not uploaded.
               Browser interaction tracking honors Do Not Track and Global Privacy Control.
             </li>
           </ul>

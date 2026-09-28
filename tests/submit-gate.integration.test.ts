@@ -69,8 +69,8 @@ d("bid submission gate (integration)", () => {
     );
     // A bid package that is NOT ready and carries a blocker.
     await query(
-      `insert into bids (org_id, opportunity_id, package_ready, validation_json, audit_findings)
-       values ($1,$2,false,$3::jsonb,'[]'::jsonb)`,
+      `insert into bids (org_id, opportunity_id, package_ready, validation_json, audit_findings, audit_status)
+       values ($1,$2,false,$3::jsonb,'[]'::jsonb,'clean')`,
       [org.id, opp.id, JSON.stringify({ blockers: ["SF1449 not signed"] })]
     );
   });
@@ -86,6 +86,8 @@ d("bid submission gate (integration)", () => {
   });
 
   it("blocks submission when a required trade is unpriced, and force cannot bypass it", async () => {
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, opp.id]);
     const res = await POST(req({ force: true }), { params: { id: opp.id } });
     expect(res.status).toBe(409);
     const json = await res.json();
@@ -113,6 +115,8 @@ d("bid submission gate (integration)", () => {
        values ($1,$2,$3,'plumbing',30000)`,
       [org.id, opp.id, sub.id]
     );
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, opp.id]);
     const res = await POST(req({}), { params: { id: opp.id } });
     expect(res.status).toBe(409);
     const json = await res.json();
@@ -136,6 +140,8 @@ d("bid submission gate (integration)", () => {
      * make from this screen: the agency finds the package non-responsive, the
      * bid is gone, and nothing visible at the moment of forcing says so.
      */
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, opp.id]);
     const res = await POST(req({ force: true }), { params: { id: opp.id } });
     expect(res.status).toBe(409);
     const json = await res.json();
@@ -146,6 +152,8 @@ d("bid submission gate (integration)", () => {
   it("names the blockers it refused, rather than only refusing", async () => {
     // A 409 with no list sends the operator hunting. The blockers array is the
     // difference between "not ready" and "sign this one form".
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, opp.id]);
     const res = await POST(req({ force: true }), { params: { id: opp.id } });
     const json = await res.json();
     expect(Array.isArray(json.blockers)).toBe(true);
@@ -160,6 +168,8 @@ d("bid submission gate (integration)", () => {
       [org.id]
     ).catch(() => null);
     // Use a random UUID not owned by this org.
+    // Pricing edits invalidate the audit. Complete it before exercising downstream gates.
+    await query(`update bids set audit_status='clean' where org_id=$1 and opportunity_id=$2`, [org.id, opp.id]);
     const res = await POST(req({}), { params: { id: randomUUID() } });
     expect(res.status).toBe(404);
     if (other?.id) await query(`delete from opportunities where id=$1`, [other.id]).catch(() => {});

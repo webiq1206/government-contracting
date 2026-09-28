@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { campaignAttribution } from "@/lib/marketing/campaigns";
 import { signupAccount } from "@/lib/auth-signup";
 import { setSessionCookie } from "@/lib/auth";
 import { trackEvent } from "@/lib/analytics";
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     companyName?: string;
     plan?: string;
     interval?: string;
+    attribution?: unknown;
   };
 
   const result = await signupAccount({
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
     orgId: result.orgId,
     userId: result.user.id,
     path: "/signup",
-    meta: { plan: body.plan === "founding" ? "founding" : "standard" },
+    meta: { plan: body.plan === "founding" ? "founding" : "standard", ...(req.headers.get("dnt") === "1" || req.headers.get("sec-gpc") === "1" ? {} : campaignAttribution(body.attribution)) },
   });
 
   return NextResponse.json({ redirect: "/today" });

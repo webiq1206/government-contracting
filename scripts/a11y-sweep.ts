@@ -120,6 +120,14 @@ const ROUTES = [
  * cannot silently turn "I measured the login page" into "I measured Today".
  */
 const SIGNED_OUT_ROUTES = [
+  "/tools",
+  "/tools/bid-no-bid",
+  "/tools/capability-statement",
+  "/tools/compliance-matrix",
+  "/contract-opportunities",
+  "/contract-opportunities/construction",
+  "/contract-opportunities/cleaning",
+  "/contract-opportunities/it-services",
   "/resources",
   "/resources/idaho-government-contracts",
   "/resources/boise-government-bids",

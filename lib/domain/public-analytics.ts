@@ -1,6 +1,7 @@
+import { campaignAttribution } from "../marketing/campaigns";
 import { PUBLIC_ROUTES } from "./public-routes";
 
-export const PUBLIC_EVENTS = ["marketing_page_view", "cta_click", "signup_started", "signup_error", "walkthrough_play"] as const;
+export const PUBLIC_EVENTS = ["marketing_page_view", "cta_click", "signup_started", "signup_error", "walkthrough_play", "resource_download", "tool_completed"] as const;
 export type PublicEvent = typeof PUBLIC_EVENTS[number];
 const paths = new Set(PUBLIC_ROUTES.map((route) => route.path));
 
@@ -12,5 +13,6 @@ export function publicEventPayload(input: unknown): { event: PublicEvent; path: 
   const meta: Record<string, string> = {};
   if (typeof value.target === "string" && paths.has(value.target)) meta.target = value.target;
   if (value.location === "header" || value.location === "footer" || value.location === "content" || value.location === "form") meta.location = value.location;
+  Object.assign(meta, campaignAttribution(value.attribution));
   return { event: value.event as PublicEvent, path: value.path, meta };
 }

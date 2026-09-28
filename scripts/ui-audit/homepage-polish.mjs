@@ -8,7 +8,7 @@ export async function auditHomepagePolish(page, { device, width, height, out }) 
       await page.evaluate(()=>scrollTo(0,0));
       const ribbon = await page.locator('.bco-industry-ribbon').boundingBox();
       assert(ribbon.y>=viewport.height-1,'Industry section begins below the desktop fold');
-      const cta=await page.locator('.bco-hero-centered .bco-button').boundingBox();
+      const cta=await page.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)').boundingBox();
       assert(cta.y+cta.height<viewport.height,'Desktop trial CTA stays above fold');
       await page.screenshot({path:join(out,`${device}-hero-scene-${viewport.width}.png`)});
     }
@@ -24,7 +24,7 @@ export async function auditHomepagePolish(page, { device, width, height, out }) 
       });
       assert(heading.left >= 24 && heading.right <= mobileWidth - 24, 'Mobile heading has breathing room');
       assert(heading.size <= 38 && heading.align === 'left' && !heading.overflow, 'Mobile heading is readable and unclipped');
-      const cta = await page.locator('.bco-hero-centered .bco-button').boundingBox();
+      const cta = await page.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)').boundingBox();
       assert(cta && cta.y + cta.height < 844, 'Trial remains visible in the first screen');
       await page.screenshot({ path: join(out, `${device}-hero-scene-${mobileWidth}.png`), animations: 'disabled' });
     }
