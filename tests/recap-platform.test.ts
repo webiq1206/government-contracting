@@ -29,6 +29,22 @@ function facts(over: Partial<PlatformRecapFacts> = {}): PlatformRecapFacts {
 const ctx = { localDate: "2026-08-29", timezone: "America/Denver", now: NOW };
 
 describe("the platform recap", () => {
+  it("explains outstanding drafts and document holds even on a day without send failures", () => {
+    const recap = buildPlatformRecap(facts({pendingMail: [{
+      orgId: "org-1", orgName: "BROST CO", drafts: 12, blockedOpportunities: 2,
+    }]}), ctx);
+    expect(recap.urgentCount).toBe(1);
+    const draft = recap.sections.find((s) => s.key === "review")!.items[0]!;
+    expect(draft.title).toContain("12 unsent drafts");
+    expect(draft.detail).toContain("human send");
+    expect(draft.detail).toContain("not a delivery failure");
+    expect(recap.sections.find((s) => s.key === "urgent")!.items[0]!.title)
+      .toContain("outreach is held on 2 active opportunities");
+    const sent = recap.sections.find((s) => s.key === "totals")!.totals
+      .find((t) => t.label === "Recorded emails sent")!;
+    expect(sent.value).toBe(0);
+    expect(sent.note).toContain("Excludes system recaps");
+  });
   it("belongs to no account, so a tenant filter can never leak into it", () => {
     const recap = buildPlatformRecap(facts(), ctx);
     expect(recap.scope).toBe("platform");
@@ -169,8 +185,8 @@ describe("the platform recap", () => {
     expect(bounced.sections.find((s) => s.key === "urgent")!.items[0]!.title).toBe(
       "6 emails bounced for BROST CO"
     );
-    const sent = bounced.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Emails sent")!;
-    expect(sent.note).toBe("6 bounced");
+    const sent = bounced.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Recorded emails sent")!;
+    expect(sent.note).toBe("6 bounced. Excludes system recaps and alerts.");
 
     const never = buildPlatformRecap(
       facts({
@@ -186,7 +202,7 @@ describe("the platform recap", () => {
     expect(item.title).toBe("10 emails never left for BROST CO");
     expect(item.detail).toContain("never handed to a provider");
     expect(
-      never.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Emails sent")!.note
-    ).toBe("10 never left");
+      never.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Recorded emails sent")!.note
+    ).toBe("10 never left. Excludes system recaps and alerts.");
   });
 });

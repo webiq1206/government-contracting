@@ -75,6 +75,7 @@ export default async function PlatformHealthPage() {
     },
     providerCapacity: providerCapacityState(failures.rows),
     queueDepth: depth,
+    emailActivity: { sent: impact.sentEmail, failed: impact.undeliveredEmail },
   });
   const platform = platformStatus(services);
   const incidents = platformIncidents(failures.rows);

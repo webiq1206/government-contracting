@@ -8,7 +8,7 @@
  */
 import { query, queryOne } from "../db";
 import { classifyFailure } from "../domain/automation-health";
-import { failedEmailSql } from "../domain/email-reporting";
+import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
 import type { AgentRunFacts, FailureRow, ServiceState } from "../domain/platform-health";
 
 /** The window every figure on the page is measured over. */
@@ -94,12 +94,14 @@ export async function platformImpact(): Promise<{
   unscored: number;
   awaitingOutreach: number;
   undeliveredEmail: number;
+  sentEmail: number;
 }> {
   const row = await queryOne<{
     orgs_affected: number;
     unscored: number;
     awaiting_outreach: number;
     undelivered: number;
+    sent_email: number;
   }>(
     `select
        (select count(distinct org_id)::int from agent_logs
@@ -110,6 +112,9 @@ export async function platformImpact(): Promise<{
            and stage in ('monitoring','scoring')) as unscored,
        (select count(*)::int from opportunities
          where status = 'open' and stage = 'outreach') as awaiting_outreach,
+       (select count(*)::int from communications c
+         where ${sentEmailSql()}
+           and c.created_at >= now() - interval '24 hours') as sent_email,
        (select count(*)::int from communications c
          where (${failedEmailSql()})
            and c.created_at >= now() - interval '24 hours') as undelivered`
@@ -122,6 +127,7 @@ export async function platformImpact(): Promise<{
     unscored: Number(row.unscored),
     awaitingOutreach: Number(row.awaiting_outreach),
     undeliveredEmail: Number(row.undelivered),
+    sentEmail: Number(row.sent_email),
   };
 }
 

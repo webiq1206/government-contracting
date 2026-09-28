@@ -85,6 +85,8 @@ export interface PlatformRecapFacts {
   spendingHolds: SpendingHold[];
   mailTrouble: MailTrouble[];
   quietAccounts: QuietAccount[];
+  /** Current unsent work, including holds older than the recap's day. */
+  pendingMail?: { orgId: string; orgName: string; drafts: number; blockedOpportunities: number }[];
   accounts: number;
   activeAccounts: number;
   emailsSent: number;
@@ -114,6 +116,7 @@ export async function gatherPlatformFacts(
     mail,
     quiet,
     counts,
+    pendingMail,
   ] = await Promise.all([
     query<{ org_id: string; org_name: string; provider: string; last_error: string | null }>(
       `select t.org_id, coalesce(o.name, 'Unnamed account') as org_name,
@@ -237,6 +240,27 @@ export async function gatherPlatformFacts(
            where submitted_at >= $1 and submitted_at < $2) as bids_submitted`,
       [start, end]
     ),
+    query<{ org_id: string; org_name: string; drafts: number; blocked_opportunities: number }>(
+      `select o.id as org_id, o.name as org_name,
+         (select count(*)::int from communications c
+            left join opportunities p on p.id = c.opportunity_id and p.org_id = c.org_id
+           where c.org_id = o.id and c.direction = 'outbound' and c.channel = 'email'
+             and c.delivery_state in ('draft','held') and c.provider is null
+             and (c.opportunity_id is null or (p.status = 'open'
+               and coalesce(p.pursuit_state, 'active') = 'active'
+               and (p.deadline is null or p.deadline > now())))) as drafts,
+         (select count(*)::int from opportunities p
+           where p.org_id = o.id and p.status = 'open'
+             and coalesce(p.pursuit_state, 'active') = 'active'
+             and (p.deadline is null or p.deadline > now())
+             and 'outreach_incomplete' = any(coalesce(p.risk_flags, '{}'))
+             and exists (select 1 from opportunity_subs os where os.opportunity_id = p.id
+               and os.removed_at is null and os.outreach_state in ('pending','draft','send_failed')))
+           as blocked_opportunities
+       from organizations o
+       where o.suspended_at is null
+       order by o.name`
+    ),
   ]);
 
   const c = counts[0];
@@ -277,6 +301,10 @@ export async function gatherPlatformFacts(
       lastActivity: r.last_activity instanceof Date ? r.last_activity.toISOString() : null,
       days: Number(r.days) || 0,
     })),
+    pendingMail: pendingMail.map((r) => ({
+      orgId: r.org_id, orgName: r.org_name,
+      drafts: Number(r.drafts), blockedOpportunities: Number(r.blocked_opportunities),
+    })).filter((r) => r.drafts > 0 || r.blockedOpportunities > 0),
     accounts: Number(c.accounts ?? 0),
     activeAccounts: Number(c.active_accounts ?? 0),
     emailsSent: Number(c.emails_sent ?? 0),
@@ -405,14 +433,31 @@ export function buildPlatformRecap(
     href: `/admin/accounts/${q.orgId}`,
     severity: "normal",
   }));
+  for (const pending of facts.pendingMail ?? []) {
+    if (pending.drafts > 0) review.push({
+      key: `platform-drafts:${pending.orgId}`,
+      title: `${pending.orgName} has ${pending.drafts} unsent draft${pending.drafts === 1 ? "" : "s"} or held email${pending.drafts === 1 ? "" : "s"}`,
+      detail: "Current outstanding work on active opportunities, including older drafts. Sources Sought responses require review and a human send; a draft is not a delivery failure.",
+      href: `/admin/accounts/${pending.orgId}`,
+      reason: "Email review required", severity: "normal",
+    });
+    if (pending.blockedOpportunities > 0) urgent.push({
+      key: `platform-outreach-blocked:${pending.orgId}`,
+      title: `${pending.orgName}: outreach is held on ${pending.blockedOpportunities} active opportunit${pending.blockedOpportunities === 1 ? "y" : "ies"}`,
+      detail: "The quote request or document package is incomplete. These holds can prevent sending even when Gmail is connected and no jobs failed today. Review the affected opportunities and repair the missing inputs.",
+      href: `/admin/accounts/${pending.orgId}`,
+      reason: "Outreach blocked before sending", severity: "warning",
+    });
+  }
 
   const totals: RecapTotal[] = [
     { label: "Accounts", value: facts.accounts, href: "/admin/accounts" },
     { label: "Accounts that did something", value: facts.activeAccounts },
     {
-      label: "Emails sent",
+      label: "Recorded emails sent",
       value: facts.emailsSent,
-      note: undeliveredNote(facts.emailsBounced ?? 0, facts.emailsNeverSent ?? 0),
+      note: [undeliveredNote(facts.emailsBounced ?? 0, facts.emailsNeverSent ?? 0),
+        "Excludes system recaps and alerts."].filter(Boolean).join(". "),
     },
     {
       label: "Jobs run",
