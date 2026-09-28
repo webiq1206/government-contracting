@@ -124,3 +124,14 @@ conventions worth keeping, because both were learned the hard way here:
 - **Fail the run only on something a person must act on.** A source being
   unreachable is weather. A recorded dofollow link turning into a nofollow is
   work.
+- **A relevance search is not a substring search**, and this one cost a
+  correction. The first live discovery run asked Crossref for `brostco.com` and
+  got fifty confident results, led by Las Vegas Sands litigation and a Brazilian
+  theatre anthology — then wrote all fifty into the ledger as citations. Crossref
+  did nothing wrong; a fuzzy query was answered fuzzily. Any API that ranks by
+  relevance needs its results filtered on the domain actually appearing in the
+  record, and any step that writes to the ledger needs a cap that refuses a
+  suspiciously large batch rather than trusting it. Both are now in
+  `discover-citations.mjs`.
+- **Fail closed when writing.** A missed real citation is found again tomorrow.
+  A batch of fictional ones has to be noticed and unpicked by hand.

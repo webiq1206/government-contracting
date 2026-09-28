@@ -115,32 +115,57 @@ async function wikimedia(domain) {
   return { found, failures };
 }
 
-/** Scholarly works mentioning the domain. */
+/**
+ * Does this record actually mention the domain, or did the search engine guess?
+ *
+ * This guard is not paranoia, it is the lesson from the first live run. Both
+ * Crossref and OpenAlex expose relevance search, not substring search: asking
+ * Crossref for "brostco.com" returned fifty confident results whose top hits
+ * were Las Vegas Sands litigation and a Brazilian theatre anthology. Nothing was
+ * wrong with Crossref -- a fuzzy query answered fuzzily -- but taken at face
+ * value it wrote fifty fictional citations into the ledger, which is precisely
+ * the unverified claim this whole programme exists to prevent.
+ *
+ * So a hit counts only if the domain appears literally somewhere in the record.
+ * A work that genuinely cites brostco.com carries the string; one the relevance
+ * ranker merely liked does not. Cheap, and it fails closed.
+ */
+function mentionsDomain(record, domain) {
+  return JSON.stringify(record).toLowerCase().includes(domain.toLowerCase());
+}
+
+/** Scholarly works that actually name the domain. */
 async function openAlex(domain) {
   const url = `https://api.openalex.org/works?search=${encodeURIComponent(domain)}&per-page=50`;
   const result = await getJson(url);
   if (!result.ok) return { found: [], failures: [{ source: "OpenAlex", error: result.error }] };
-  const found = (result.data?.results ?? []).map((work) => ({
-    source: "OpenAlex",
-    placementUrl: work.doi ?? work.id,
-    title: work.display_name,
-    expectedAttribute: "unverified",
-  }));
-  return { found, failures: [] };
+  const all = result.data?.results ?? [];
+  const found = all
+    .filter((work) => mentionsDomain(work, domain))
+    .map((work) => ({
+      source: "OpenAlex",
+      placementUrl: work.doi ?? work.id,
+      title: work.display_name,
+      expectedAttribute: "unverified",
+    }));
+  return { found, failures: [], considered: all.length, discarded: all.length - found.length };
 }
 
-/** Registered DOIs mentioning the domain. */
+/** Registered DOIs that actually name the domain. */
 async function crossref(domain) {
   const url = `https://api.crossref.org/works?query=${encodeURIComponent(domain)}&rows=50`;
   const result = await getJson(url);
   if (!result.ok) return { found: [], failures: [{ source: "Crossref", error: result.error }] };
-  const found = (result.data?.message?.items ?? []).map((item) => ({
-    source: "Crossref",
-    placementUrl: item.URL,
-    title: Array.isArray(item.title) ? item.title[0] : item.title,
-    expectedAttribute: "unverified",
-  }));
-  return { found, failures: [] };
+  const all = result.data?.message?.items ?? [];
+  const found = all
+    .filter((item) => mentionsDomain(item, domain))
+    .map((item) => ({
+      source: "Crossref",
+      placementUrl: item.URL,
+      title: Array.isArray(item.title) ? item.title[0] : item.title,
+      expectedAttribute: "unverified",
+    }));
+  return { found, failures: [], considered: all.length, discarded: all.length - found.length };
 }
 
 /**
@@ -152,7 +177,22 @@ async function crossref(domain) {
  * from it, so an absence here explains a silence everywhere else.
  */
 async function commonCrawlPresence(domain) {
-  const url = `https://index.commoncrawl.org/CC-MAIN-2025-05-index?url=${encodeURIComponent(`${domain}/*`)}&output=json&limit=200`;
+  /**
+   * Ask which crawls exist rather than naming one.
+   *
+   * A hardcoded crawl id (CC-MAIN-2025-05) is wrong the moment the next crawl
+   * lands: the index either 404s or, as the first live run showed, times out
+   * with a 504, and the report then says "not in the crawl" about a crawl that
+   * was never queried. collinfo.json lists the collections newest first.
+   */
+  let index = "CC-MAIN-latest-index";
+  const collections = await getJson("https://index.commoncrawl.org/collinfo.json");
+  if (collections.ok && Array.isArray(collections.data) && collections.data[0]?.["cdx-api"]) {
+    index = collections.data[0]["cdx-api"];
+  }
+  const url = index.startsWith("http")
+    ? `${index}?url=${encodeURIComponent(`${domain}/*`)}&output=json&limit=200`
+    : `https://index.commoncrawl.org/${index}?url=${encodeURIComponent(`${domain}/*`)}&output=json&limit=200`;
   try {
     const response = await fetch(url, {
       headers: { "user-agent": UA },
@@ -189,6 +229,18 @@ async function commonCrawlPresence(domain) {
  * not duplicate it, and so a human's own notes on an entry are never
  * overwritten by the next scheduled run.
  */
+/**
+ * How many new entries one run may add before it refuses.
+ *
+ * A citation programme for a young site gains findings one or two at a time. A
+ * run proposing dozens is not a windfall, it is a broken filter -- which is
+ * exactly what happened when a relevance search was trusted as a substring
+ * search and fifty unrelated works arrived at once. Refusing is the safe
+ * direction: a missed real citation is found again tomorrow, whereas fifty
+ * fictional ones have to be noticed and unpicked by hand.
+ */
+const MAX_NEW_PER_RUN = 12;
+
 function recordInLedger(found) {
   const ledger = JSON.parse(readFileSync(LEDGER, "utf8"));
   const known = new Set(ledger.placements.map((p) => p.placementUrl).filter(Boolean));
@@ -205,12 +257,19 @@ function recordInLedger(found) {
       evidence: `Found by scripts/seo/discover-citations.mjs on ${new Date().toISOString().slice(0, 10)}. Attribute not yet read from the live page; run the verifier.`,
     });
   }
+  if (added.length > MAX_NEW_PER_RUN) {
+    return {
+      added: [],
+      refused: added.length,
+      reason: `${added.length} new entries in one run exceeds the ${MAX_NEW_PER_RUN} allowed. Nothing was written. This almost always means a source's filter is matching too broadly; check docs/seo/citation-discovery.json before raising the cap.`,
+    };
+  }
   if (added.length) {
     ledger.placements.push(...added);
     ledger.asOf = new Date().toISOString().slice(0, 10);
     writeFileSync(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
   }
-  return added;
+  return { added, refused: 0 };
 }
 
 async function main() {
@@ -226,9 +285,15 @@ async function main() {
 
   const found = [...wiki.found, ...alex.found, ...cross.found];
   const failures = [...wiki.failures, ...alex.failures, ...cross.failures];
+  const discarded =
+    (alex.discarded ?? 0) + (cross.discarded ?? 0);
 
   console.log(`Citation discovery for ${domain}`);
   console.log(`  citations found : ${found.length}`);
+  // Printed even when zero, so the filter's work is visible. A run that
+  // considered fifty records and kept none is a healthy run, not a broken one,
+  // and it should not look like the sources returned nothing.
+  console.log(`  discarded       : ${discarded} relevance-search hit(s) that never mention ${domain}`);
   console.log(`  crawl presence  : ${crawl.pages.length} page(s)${crawl.error ? ` (error: ${crawl.error})` : ""}${crawl.note ? ` (${crawl.note})` : ""}`);
   if (failures.length) {
     console.log("  sources unreachable:");
@@ -239,10 +304,18 @@ async function main() {
   }
 
   let added = [];
+  let refusal = null;
   if (opts.ledger && found.length) {
-    added = recordInLedger(found);
-    console.log(`\n${added.length} new ledger entr${added.length === 1 ? "y" : "ies"} recorded as "discovered".`);
-    if (added.length) console.log("Run scripts/seo/verify-backlinks.mjs to read their actual link attributes.");
+    const result = recordInLedger(found);
+    added = result.added;
+    if (result.refused) {
+      refusal = result.reason;
+      console.error(`\nRefused to write to the ledger: ${result.reason}`);
+      process.exitCode = 1;
+    } else {
+      console.log(`\n${added.length} new ledger entr${added.length === 1 ? "y" : "ies"} recorded as "discovered".`);
+      if (added.length) console.log("Run scripts/seo/verify-backlinks.mjs to read their actual link attributes.");
+    }
   }
 
   mkdirSync(dirname(opts.json), { recursive: true });
@@ -254,10 +327,14 @@ async function main() {
         domain,
         coverage:
           "Free keyless sources only (Wikimedia, OpenAlex, Crossref, Common Crawl). This is NOT a complete inbound-link picture: enumerating backlinks needs a paid index, and directory listings or blog mentions will not appear here.",
+        filtering:
+          "OpenAlex and Crossref expose relevance search, not substring search, so a hit is kept only when the domain appears literally in the record. `discardedRelevanceHits` counts results the ranker returned that never mention the domain; a high number there is the filter working.",
         citations: found,
+        discardedRelevanceHits: discarded,
         crawlPresence: crawl,
         unreachableSources: failures,
         newLedgerEntries: added.length,
+        ledgerWriteRefused: refusal,
       },
       null,
       2,
