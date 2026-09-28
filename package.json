@@ -40,7 +40,8 @@
     "perf": "tsx scripts/perf-sweep.ts",
     "edge-cases": "tsx scripts/edge-case-sweep.ts",
     "repair:email-history": "tsx scripts/repair-email-history.ts",
-    "purge-test-orgs": "tsx scripts/purge-test-orgs.ts"
+    "purge-test-orgs": "tsx scripts/purge-test-orgs.ts",
+    "indexnow": "node scripts/indexnow.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
