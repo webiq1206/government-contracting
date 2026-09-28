@@ -53,8 +53,8 @@ d("the pricing sheet as the submit gate", () => {
     );
     const bid = await queryOne<{ id: string }>(
       `insert into bids (org_id, opportunity_id, package_ready, submission_state,
-                         validation_json, audit_findings, bid_amount)
-       values ($1,$2,true,'package_ready','{"blockers":[]}'::jsonb,'[]'::jsonb, 130000)
+                         validation_json, audit_findings, bid_amount, audit_status)
+       values ($1,$2,true,'package_ready','{"blockers":[]}'::jsonb,'[]'::jsonb, 130000,'clean')
        returning id`,
       [org.id, opp!.id]
     );

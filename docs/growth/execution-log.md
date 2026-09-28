@@ -17,3 +17,5 @@ Metrics: traffic, signups, activation, retention and sales unknown. No productio
 Automation: weekday morning research and website-maintenance task created successfully; includes a Friday report. Scheduled publishing is not enabled for disconnected channels.
 
 Release: using a pull request to preserve the repository CI workflow. The repository is public and its workflows use standard ubuntu-latest runners, eligible for free GitHub Actions. No payment settings changed.
+
+Release check update: pull request #157 saved the exact locally tested application tree. Database CI passed 800 tests and found eight failures in two existing submit/pricing suites: their fixtures inherited pending audit status and never reached their intended downstream guards. The fixtures now explicitly represent a completed clean audit, with production approval gates unchanged. Validation continues.

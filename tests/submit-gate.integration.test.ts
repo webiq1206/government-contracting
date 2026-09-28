@@ -69,8 +69,8 @@ d("bid submission gate (integration)", () => {
     );
     // A bid package that is NOT ready and carries a blocker.
     await query(
-      `insert into bids (org_id, opportunity_id, package_ready, validation_json, audit_findings)
-       values ($1,$2,false,$3::jsonb,'[]'::jsonb)`,
+      `insert into bids (org_id, opportunity_id, package_ready, validation_json, audit_findings, audit_status)
+       values ($1,$2,false,$3::jsonb,'[]'::jsonb,'clean')`,
       [org.id, opp.id, JSON.stringify({ blockers: ["SF1449 not signed"] })]
     );
   });
