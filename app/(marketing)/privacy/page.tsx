@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-3 text-sm text-slate-500">
-          Last updated: September 27, 2026
+          Last updated: September 28, 2026
         </p>
         <p className="mt-5">
           <Link href="/security">Read the security and data overview</Link> for
@@ -68,6 +68,18 @@ export default function PrivacyPage() {
           <h2 className="font-display text-2xl text-foreground">
             How we use information
           </h2>
+          <p>
+            With your permission, we also use Microsoft Clarity for heatmaps and
+            masked session recordings to understand navigation and improve usability.
+            This optional service processes interaction, device, and page data and
+            uses analytics cookies. We mask page text and entered content and do not
+            send account identities through Clarity&apos;s identification API.
+            Advertising storage is disabled. Clarity is not loaded until you select
+            Allow analytics, and is disabled for Do Not Track or Global Privacy Control.
+            You can withdraw consent through Analytics preferences at any time.
+            See the <a className="underline" href="https://www.microsoft.com/privacy/privacystatement">Microsoft Privacy Statement</a> for
+            Microsoft&apos;s data handling practices.
+          </p>
           <p>
             We use your data to provide the Brost Co platform, run automation on
             your behalf, bill your subscription, secure accounts, and improve

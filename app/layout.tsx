@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { themeInitScript } from "@/lib/theme";
+import { ClarityAnalytics } from "@/components/marketing/clarity-analytics";
 import "./globals.css";
 import "./simplified-shell.css";
 
@@ -64,8 +65,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+      <body data-clarity-mask="true" className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ThemeProvider>{children}</ThemeProvider>
+        <ClarityAnalytics />
       </body>
     </html>
   );
