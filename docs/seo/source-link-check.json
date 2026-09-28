@@ -1,50 +1,50 @@
 {
-  "checkedAt": "2026-09-27T05:08:35.969Z",
+  "checkedAt": "2026-09-28T03:54:16.007Z",
   "results": [
     {
       "url": "https://sam.gov/contracting",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://sam.gov/contracting",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     },
     {
       "url": "https://purchasing.idaho.gov/open-and-future-solicitations/",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://purchasing.idaho.gov/open-and-future-solicitations/",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     },
     {
       "url": "https://dpw.idaho.gov/construction/",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://dpw.idaho.gov/construction/",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     },
     {
       "url": "https://itd.idaho.gov/contractor-bidding/",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://itd.idaho.gov/contractor-bidding/",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     },
     {
       "url": "https://www.cityofboise.org/departments/finance/purchasing/vendor-information-and-registration/",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://www.cityofboise.org/departments/finance/purchasing/vendor-information-and-registration/",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     },
     {
       "url": "https://www.achdidaho.org/projects/bids-procurement",
@@ -59,10 +59,10 @@
       "url": "https://www.idahoapexaccelerator.com/",
       "origin": "register",
       "file": "lib/marketing/procurement-sources.ts",
-      "status": 403,
+      "status": 200,
       "finalUrl": "https://www.idahoapexaccelerator.com/",
-      "method": "GET",
-      "verdict": "blocked"
+      "method": "HEAD",
+      "verdict": "ok"
     }
   ]
 }
