@@ -165,6 +165,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          SITE_URL: brostco.com
         run: |
           cat > issue-body.md <<'BODY'
           The scheduled backlink check needs attention. Evidence is committed under `docs/seo/` and attached to this run as an artifact.
@@ -217,8 +218,28 @@ jobs:
               with urllib.request.urlopen(req, timeout=30) as response:
                   return json.loads(response.read() or "null")
 
+          # The title has to say which gate fired, because the title is the only
+          # part most people read. The first real alert this produced was headed
+          # "A recorded backlink stopped verifying as dofollow" while the body
+          # said site health had failed and verification had passed -- so an
+          # outage taking down every public URL was announced under a headline
+          # about one link's rel attribute. A hardcoded title on a gate with two
+          # causes buries whichever cause it was not written for, and here it
+          # buried the far more urgent one.
+          health_failed = os.environ["HEALTH_OUTCOME"] == "failure"
+          verify_failed = os.environ["VERIFY_OUTCOME"] == "failure"
+          site = os.environ.get("SITE_URL", "the site")
+          if health_failed and verify_failed:
+              title = f"{site} is not serving, and a recorded backlink stopped verifying"
+          elif health_failed:
+              title = f"{site} is not serving: critical URLs are failing"
+          else:
+              title = "A recorded backlink stopped verifying as dofollow"
+
           # One issue, reused. A daily job that opens a fresh issue every morning
-          # trains everyone to ignore the label.
+          # trains everyone to ignore the label. Reused also means the title can
+          # be stale relative to today's cause, so it is corrected on each
+          # comment rather than left describing the first failure forever.
           open_issues = call(
               "GET",
               f"{api}/repos/{repo}/issues?state=open&labels=backlink-verification&per_page=1",
@@ -226,16 +247,15 @@ jobs:
           if open_issues:
               number = open_issues[0]["number"]
               call("POST", f"{api}/repos/{repo}/issues/{number}/comments", {"body": body})
+              if open_issues[0]["title"] != title:
+                  call("PATCH", f"{api}/repos/{repo}/issues/{number}", {"title": title})
+                  print(f"Retitled issue #{number} to match the current cause.")
               print(f"Commented on existing issue #{number}.")
           else:
               created = call(
                   "POST",
                   f"{api}/repos/{repo}/issues",
-                  {
-                      "title": "A recorded backlink stopped verifying as dofollow",
-                      "body": body,
-                      "labels": ["backlink-verification"],
-                  },
+                  {"title": title, "body": body, "labels": ["backlink-verification"]},
               )
               print(f"Opened issue #{created['number']}.")
           PY
