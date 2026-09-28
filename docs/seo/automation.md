@@ -24,19 +24,32 @@ Each run:
    status. First, deliberately: if a runner were also restricted, every later
    step would report "nothing found", and that reads as a fact about the world
    rather than about the network.
-2. **`check-source-links.mjs`** — every official source the register points at
+2. **`check-site-health.mjs`** — are *our own* critical pages serving? This was
+   added after the automation reported healthy straight through an outage in
+   which all nine of them answered 500, because nothing was looking here: every
+   other check reads somebody else's server. For a backlink programme this is the
+   most expensive failure available. A 5xx on `/robots.txt` is read by Google as
+   **do not crawl** rather than "no rules", a 5xx on `/sitemap.xml` removes the
+   only URL list a crawler was given, a citable page that errors while somebody
+   is deciding whether to cite it does not get cited, and earned links pointing
+   at error pages get removed. It fails the run and raises the issue.
+3. **`check-source-links.mjs`** — every official source the register points at
    still resolves. A moved state purchasing URL is caught before a reader hits a
    404. Distinguishes `moved` (works now, will not forever), `blocked` (a refusal,
    not a finding) and `broken` (genuinely dead); only `broken` fails.
-3. **`discover-citations.mjs`** — asks the free keyless indexes who is citing us
+4. **`discover-citations.mjs`** — asks the free keyless indexes who is citing us
    and appends anything new to the ledger as `discovered`.
-4. **`verify-backlinks.mjs`** — reads the live link attribute of every recorded
+5. **`verify-backlinks.mjs`** — reads the live link attribute of every recorded
    placement, including whatever discovery just added. This is the step that
    catches a dofollow link quietly becoming nofollow.
-5. **Commits the evidence back**, so the repository is the audit trail.
-6. **Opens one issue, only if** a placement recorded as `published` stopped
-   verifying. Reuses a single issue rather than opening one a day, because a
-   label that fires every morning is a label everyone learns to ignore.
+6. **Commits the evidence back** — on the default branch only. On a feature
+   branch the bot's commit would become that branch's pull-request head, carry a
+   skip-CI marker, and leave the head with no check results at all; every other
+   branch keeps its evidence in the uploaded artifact instead.
+7. **Opens one issue, only if** our own site is failing or a placement recorded
+   as `published` stopped verifying. Reuses a single issue rather than opening one
+   a day, because a label that fires every morning is a label everyone learns to
+   ignore.
 
 The schedule begins when this file reaches the default branch — GitHub only runs
 `schedule` from there.
