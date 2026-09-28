@@ -39,6 +39,7 @@
 
 import { PUBLIC_ROUTES, absoluteUrl } from "../../lib/domain/public-routes";
 import { INDEXNOW_KEY } from "../../lib/marketing/indexnow";
+import { looksLikeSitemapUrlSet } from "../../lib/domain/sitemap-shape";
 
 const ENDPOINT = "https://api.indexnow.org/IndexNow";
 
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
       signal: AbortSignal.timeout(20000),
     });
     if (!live.ok) throw new Error(`${path} returned HTTP ${live.status}; nothing submitted.`);
-    if (path === "/sitemap.xml" && !/<urlset[\\s>]/.test(await live.text())) {
+    if (path === "/sitemap.xml" && !looksLikeSitemapUrlSet(await live.text())) {
       throw new Error("The live sitemap is not an XML URL set; nothing submitted.");
     }
     if (path === "/indexnow-key.txt" && (await live.text()).trim() !== INDEXNOW_KEY) {
