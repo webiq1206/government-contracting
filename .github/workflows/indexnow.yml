@@ -100,7 +100,8 @@ jobs:
           echo "expected: $expected"
           echo "served  : $served"
           if [ "$expected" != "$served" ]; then
-            echo "::warning::The deployed key file does not match the repository. The site may not have redeployed yet; submitting anyway, and a 403 below means exactly this."
+            echo "::error::The deployed key file does not match the repository. Deploy the current key before submitting."
+            exit 1
           fi
 
       - name: Submit

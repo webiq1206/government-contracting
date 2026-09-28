@@ -104,7 +104,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  const allowed = new Set([...PUBLIC_ROUTES.map(route => absoluteUrl(siteUrl, route.path)), ...EXTRA_PATHS.map(path => absoluteUrl(siteUrl, path))]);
+  if (urlList.length > 10000 || urlList.some(url => !allowed.has(url))) {
+    throw new Error("Only declared canonical public URLs may be submitted (maximum 10,000).");
+  }
+  for (const path of ["/", "/sitemap.xml", "/indexnow-key.txt"]) {
+    const live = await fetch(`${siteUrl}${path}`, {
+      redirect: "error",
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!live.ok) throw new Error(`${path} returned HTTP ${live.status}; nothing submitted.`);
+    if (path === "/sitemap.xml" && !/<urlset[\\s>]/.test(await live.text())) {
+      throw new Error("The live sitemap is not an XML URL set; nothing submitted.");
+    }
+    if (path === "/indexnow-key.txt" && (await live.text()).trim() !== INDEXNOW_KEY) {
+      throw new Error("The live ownership key does not match; nothing submitted.");
+    }
+  }
+
   const response = await fetch(ENDPOINT, {
+    signal: AbortSignal.timeout(20000),
     method: "POST",
     headers: { "content-type": "application/json; charset=utf-8" },
     body: JSON.stringify({
