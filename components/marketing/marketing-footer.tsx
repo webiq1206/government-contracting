@@ -24,6 +24,8 @@ export function MarketingFooter({
         ["/compare", "Compare approaches"],
         ["/get-started", "Getting started"],
         ["/resources", "Contractor resources"],
+        ["/tools", "Free contractor tools"],
+        ["/contract-opportunities", "Opportunity sources"],
         ["/#industries", "Industries"],
         ["/#faq", "Common questions"],
       ],

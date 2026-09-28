@@ -26,6 +26,8 @@
  */
 
 import { CONTRACTOR_GUIDES } from "../marketing/resources";
+import { FREE_TOOLS } from "../marketing/free-tools";
+import { OPPORTUNITY_SECTORS } from "../marketing/opportunity-sectors";
 
 export type RouteGroup = "Product" | "Get started" | "Legal" | "Reference" | "Company";
 
@@ -47,6 +49,10 @@ export interface PublicRoute {
  * them.
  */
 export const PUBLIC_ROUTES: PublicRoute[] = [
+  { path: "/tools", label: "Free contractor tools", summary: "Free bid decision, capability statement and proposal compliance worksheets with local downloads and no signup.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
+  ...FREE_TOOLS.map((tool): PublicRoute => ({ path: `/tools/${tool.slug}`, label: tool.title, summary: tool.description, changeFrequency: "monthly", priority: 0.8, group: "Reference" })),
+  { path: "/contract-opportunities", label: "Contract opportunity sources", summary: "Find official construction, cleaning and IT contracting sources and check whether an opportunity fits your business.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
+  ...OPPORTUNITY_SECTORS.map((sector): PublicRoute => ({ path: `/contract-opportunities/${sector.slug}`, label: sector.title, summary: sector.description, changeFrequency: "monthly", priority: 0.7, group: "Reference" })),
   { path: "/resources", label: "Contractor resources", summary: "Official-source Idaho and Boise contracting guides and practical checklists for preparing government bids.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
   ...CONTRACTOR_GUIDES.map((guide): PublicRoute => ({
     path: `/resources/${guide.slug}`, label: guide.title, summary: guide.description,
