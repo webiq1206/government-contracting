@@ -68,11 +68,33 @@ jobs:
       # a module-resolution error.
       - run: npm ci
 
-      - name: Confirm the key file is live before submitting
+      # Refuse to submit a site that is not serving.
+      #
+      # IndexNow means "these URLs changed, please come and fetch them". Sending
+      # it while the site returns 5xx asks four search engines to crawl a set of
+      # error pages, which is strictly worse than staying quiet: a crawler that
+      # arrives at an error learns the URL is broken, and being told so on
+      # request is how a page gets dropped rather than indexed.
+      #
+      # This is not hypothetical. A deployment outage during this work had every
+      # public URL answering 500 for hours, and a merge to main in that window
+      # would have submitted thirty-four of them.
+      #
+      # Checked against the home page and the key file, because those two cover
+      # both failure modes: the site being down, and the site being up but not
+      # yet redeployed with the current key.
+      - name: Refuse to submit while the site is unhealthy
         run: |
+          home=$(curl -sS -o /dev/null -w "%{http_code}" -m 25 -L "https://brostco.com/" || echo 000)
+          echo "home page: HTTP $home"
+          if [ "$home" != "200" ]; then
+            echo "::error::brostco.com returned HTTP $home. Nothing is submitted: pointing crawlers at error pages costs indexing rather than gaining it. Re-run this workflow once the site is serving."
+            exit 1
+          fi
+
           # A submission whose key file does not match is rejected with a 403
-          # and no explanation, so the file is checked first and the mismatch
-          # named here rather than guessed at from the endpoint's silence.
+          # and no explanation, so the file is checked here and the mismatch
+          # named rather than guessed at from the endpoint's silence.
           expected=$(grep -oE 'INDEXNOW_KEY = "[^"]+"' lib/marketing/indexnow.ts | grep -oE '[0-9a-f]{32}')
           served=$(curl -sS -m 25 "https://brostco.com/indexnow-key.txt" || echo "")
           echo "expected: $expected"
