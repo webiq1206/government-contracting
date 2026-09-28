@@ -24,6 +24,7 @@ import {
 import { professionalStem, uniqueFilename } from "./domain/attachment-naming";
 import { amendmentNumber, classifyDocumentName } from "./domain/document-inventory";
 import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
+import { canonicalAttachmentUrl } from "./domain/attachment-identity";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
 const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
@@ -67,6 +68,7 @@ type AttachmentJsonEntry = { name?: string; url?: string; storage_path?: string;
 
 type DocRow = {
   name: string;
+  source_url: string | null;
   storage_path: string | null;
   storage_backend: string;
   mime: string | null;
@@ -132,11 +134,13 @@ export function prioritizeDocsForAttach<T extends { name: string }>(
 async function loadDocs(orgId: string, oppId: string): Promise<DocRow[]> {
   if (!orgId.trim()) throw new Error("An organization is required to gather documents.");
   return query<DocRow>(
-    `select name, storage_path, storage_backend, mime,
+    `select name, coalesce(source_url, meta->>'source_url') as source_url,
+            storage_path, storage_backend, mime,
             document_class, amendment_number, trade_relevance, relevant_to_all
        from documents
       where opportunity_id = $1 and org_id = $2
         and kind in ('solicitation','sow')
+        and superseded_by is null
       order by created_at asc, id asc`,
     [oppId, orgId]
   );
@@ -265,12 +269,27 @@ async function materializeDocs(
   const raw = Array.isArray(opp.attachments_json)
     ? (opp.attachments_json as AttachmentJsonEntry[])
     : [];
+  // The analyst stores a file in documents but keeps its original URL on the
+  // notice. Use that source identity, not its filename, to recognize one file.
+  // Otherwise a fully attached packet gets an extra unverified package link
+  // and every email is held. Apply this to omitted documents too, so the raw
+  // notice cannot undo the analyst's trade selection. Failed storage reads
+  // remain represented by the blocking stored link above.
+  const inventoriedSources = new Set(
+    docs.filter((d) => d.storage_path && d.source_url)
+      .map((d) => canonicalAttachmentUrl(d.source_url))
+  );
+  const inventoriedPaths = new Set(docs.map((d) => d.storage_path).filter(Boolean));
+  const unrepresented = raw.filter((a) =>
+    !(a.storage_path && inventoriedPaths.has(a.storage_path)) &&
+    !(a.url && inventoriedSources.has(canonicalAttachmentUrl(a.url)))
+  );
   /*
    * The notice's own attachment list rides through the same selection as the
    * stored documents: same trades, same prime-only material, same reasons.
    */
   const jsonSelection = selectDocumentsForTrade(
-    raw.map((a) => ({ name: a.name ?? "Attachment", mime: a.mime, entry: a })),
+    unrepresented.map((a) => ({ name: a.name ?? "Attachment", mime: a.mime, entry: a })),
     trade
   );
   for (const o of jsonSelection.omitted) {

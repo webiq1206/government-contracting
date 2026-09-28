@@ -95,4 +95,63 @@ describe("opportunity attachment tenant and completeness safety", () => {
       })
     );
   });
+
+  it("does not append an unverified source link when the same file is already attached", async () => {
+    const source = "https://sam.gov/api/prod/opps/v3/opportunities/resources/files/sow?api_key=old";
+    mocks.query.mockResolvedValueOnce([{ ...doc(1), source_url: source }]);
+    const gathered = await gatherTradeAttachments(ORG_ID, {
+      id: OPP_ID,
+      attachments_json: [{ name: "attachment", url: source.replace("old", "new") }],
+    }, "HVAC");
+    expect(gathered.files).toHaveLength(1);
+    expect(gathered.links).toEqual([]);
+    expect(assessAttachmentPackage(gathered).ok).toBe(true);
+  });
+
+  it("does not reintroduce another trade's stored document through its raw URL", async () => {
+    const source = "https://sam.gov/api/prod/opps/v3/opportunities/resources/files/electrical";
+    mocks.query.mockResolvedValueOnce([{
+      ...doc(1), source_url: source, relevant_to_all: false,
+      trade_relevance: ["Electrical"],
+    }]);
+    const gathered = await gatherTradeAttachments(ORG_ID, {
+      id: OPP_ID, attachments_json: [{ name: "attachment", url: source }],
+    }, "HVAC");
+    expect(gathered.files).toEqual([]);
+    expect(gathered.links).toEqual([]);
+    expect(gathered.omitted).toHaveLength(1);
+    expect(gathered.expected).toBe(false);
+  });
+
+  it("keeps a different document selector even when filenames match", async () => {
+    const source = "https://sam.gov/document?id=one";
+    mocks.query.mockResolvedValueOnce([{ ...doc(1), source_url: source }]);
+    const gathered = await gatherOpportunityAttachments(ORG_ID, {
+      id: OPP_ID, attachments_json: [{ name: doc(1).name, url: "https://sam.gov/document?id=two" }],
+    });
+    expect(gathered.files).toHaveLength(1);
+    expect(gathered.links).toHaveLength(1);
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
+  });
+
+  it("keeps failed storage reads blocking even when the raw source is deduplicated", async () => {
+    const source = "https://sam.gov/document?id=one";
+    mocks.query.mockResolvedValueOnce([{ ...doc(1), source_url: source }]);
+    mocks.download.mockRejectedValue(new Error("Storage unavailable"));
+    const gathered = await gatherOpportunityAttachments(ORG_ID, {
+      id: OPP_ID, attachments_json: [{ name: doc(1).name, url: source }],
+    });
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
+    expect(gathered.links[0]?.reachable).toBe(false);
+  });
+
+  it("uses a raw source when an inventory row has no stored bytes yet", async () => {
+    const source = "https://sam.gov/document?id=one";
+    mocks.query.mockResolvedValueOnce([{ ...doc(1), source_url: source, storage_path: null }]);
+    const gathered = await gatherOpportunityAttachments(ORG_ID, {
+      id: OPP_ID, attachments_json: [{ name: doc(1).name, url: source }],
+    });
+    expect(gathered.links).toHaveLength(1);
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
+  });
 });

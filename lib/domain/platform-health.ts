@@ -163,9 +163,12 @@ export function serviceStatuses(
     providerCapacity: { state: ServiceState; detail: string };
     /** Queue depth, or null when this deployment cannot measure it. */
     queueDepth: number | null;
+    /** Provider handoffs, not successful no-op maintenance jobs. */
+    emailActivity?: { sent: number; failed: number };
   }
 ): ServiceStatus[] {
   const byAgent = new Map(facts.map((f) => [f.agent, f]));
+  const mappedAgents = new Set(SERVICES.flatMap((s) => s.agents));
   return SERVICES.map((def) => {
     if (def.key === "billing_webhooks") {
       return {
@@ -214,7 +217,13 @@ export function serviceStatuses(
     let errors = 0;
     let lastRunAt: string | null = null;
     let affectedOrgs = 0;
-    for (const name of def.agents) {
+    // A newly added scheduled agent must not disappear from the overall
+    // assessment. In particular, daily-recap failures used to sit below a
+    // headline claiming "No failures anywhere" because it was not listed.
+    const agents = def.key === "scheduled_automation"
+      ? [...def.agents, ...facts.filter((f) => !mappedAgents.has(f.agent)).map((f) => f.agent)]
+      : def.agents;
+    for (const name of agents) {
       const f = byAgent.get(name);
       if (!f) continue;
       runs += f.runs;
@@ -223,9 +232,25 @@ export function serviceStatuses(
       if (f.lastRunAt && (!lastRunAt || f.lastRunAt > lastRunAt)) lastRunAt = f.lastRunAt;
     }
     const state = stateFor(runs, errors);
+    if (def.key === "email_delivery" && extras.emailActivity) {
+      const { sent, failed } = extras.emailActivity;
+      return {
+        ...def, runs, errors, lastRunAt, affectedOrgs,
+        state: failed > 0 || errors > 0 ? "degraded" : sent > 0 ? "healthy" : "unknown",
+        stateWord: failed === 0 && errors === 0 && sent === 0 ? "No sends recorded" : undefined,
+        failureRate: null,
+        detail: `${sent} email${sent === 1 ? "" : "s"} handed to the provider; ${failed} failed or bounced in this window. ${errors > 0 ? `${errors} sending workflow error(s). ` : ""}A completed sweep does not prove delivery. System recaps and alerts are separate.`,
+      };
+    }
+    // A successful sweep can find no work. It does not prove that an email
+    // was sent. Keep failures visible but label an idle sending path unknown.
+    const sendRuns = def.key === "email_delivery"
+      ? (byAgent.get("outreach")?.runs ?? 0) + (byAgent.get("outreach-followup")?.runs ?? 0)
+      : runs;
+    const idleSending = def.key === "email_delivery" && errors === 0 && sendRuns === 0;
     return {
       ...def,
-      state,
+      state: idleSending ? "unknown" : state,
       runs,
       errors,
       // Never nought over nothing: a service that has not run has no rate.
@@ -233,7 +258,9 @@ export function serviceStatuses(
       lastRunAt,
       affectedOrgs,
       detail:
-        runs === 0
+        idleSending
+          ? "No outreach or follow-up sending job ran in this window. Recovery checks alone do not confirm email delivery."
+          : runs === 0
           ? "Nothing has run in this window, so there is no evidence either way. That is expected on a quiet deployment and a warning on a busy one."
           : errors === 0
             ? `${runs} run${runs === 1 ? "" : "s"}, none failed.`

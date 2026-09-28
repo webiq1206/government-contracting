@@ -1232,6 +1232,9 @@ async function followUpForOrg(
  * (fresh attachments, current template, current profile) and re-runs every
  * completeness and safety check. Singleton keys make re-runs within the
  * window harmless.
+ * Verified pairings held before the transport call are also retried: those
+ * retain pending plus outreach_incomplete rather than becoming a draft.
+ * The normal agent rechecks the repaired packet, recipient and pursuit.
  *
  * Deliberately does NOT touch email_unverified or no_email: those are not
  * transport failures, and retrying them would loop.
@@ -1240,7 +1243,7 @@ export const outreachRecoverySweep: AgentDefinition = {
   name: "outreach-recovery-sweep",
   label: "Outreach Recovery",
   description:
-    "Re-sends initial outreach that failed or was stored as a draft, once the organization's inbox is connected again.",
+    "Rechecks unsent drafts, failed sends and verified document holds through the normal outreach checks when the inbox is connected.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     const fanout = await orgsToSweep("outreach-recovery-sweep");
@@ -1270,8 +1273,13 @@ export const outreachRecoverySweep: AgentDefinition = {
               and coalesce(o.pursuit_state, 'active') = 'active'
               and coalesce(o.work_mode, '${orgRules.work_execution}') <> 'self'
               and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
+              and (o.deadline is null or o.deadline > now())
               and os.removed_at is null
-              and os.outreach_state in ('draft', 'send_failed')
+              and (
+                os.outreach_state in ('draft', 'send_failed')
+                or (os.outreach_state = 'pending' and os.verified = true
+                  and 'outreach_incomplete' = any(coalesce(o.risk_flags, '{}')))
+              )
             order by os.created_at asc
             limit 25`,
           [org.id]
@@ -1304,7 +1312,7 @@ export const outreachRecoverySweep: AgentDefinition = {
           agent: "outreach-recovery-sweep",
           action: "recover",
           level: "info",
-          message: `The inbox is connected again, so ${stuck.length} outreach email(s) that never went out are being re-sent through the normal outreach checks.`,
+          message: `The inbox is connected. Rechecking ${stuck.length} unsent outreach item(s), including verified document holds, through the normal outreach checks.`,
         });
       });
     }

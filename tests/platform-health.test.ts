@@ -27,6 +27,29 @@ function facts(over: Partial<AgentRunFacts> & { agent: string }): AgentRunFacts 
 }
 
 describe("serviceStatuses", () => {
+  it("uses recorded handoffs rather than no-op follow-ups to assess email sending", () => {
+    const runs = [facts({agent: "outreach-followup", runs: 12})];
+    const noSends = serviceStatuses(runs, {...EXTRAS, emailActivity: {sent: 0, failed: 0}});
+    expect(noSends.find((s) => s.key === "email_delivery")?.state).toBe("unknown");
+    const failed = serviceStatuses(runs, {...EXTRAS, emailActivity: {sent: 0, failed: 2}});
+    expect(failed.find((s) => s.key === "email_delivery")?.state).toBe("degraded");
+    const sent = serviceStatuses(runs, {...EXTRAS, emailActivity: {sent: 3, failed: 0}});
+    expect(sent.find((s) => s.key === "email_delivery")?.state).toBe("healthy");
+  });
+  it("includes recap and newly added agent failures in the overall status", () => {
+    for (const agent of ["daily-recap", "new-scheduled-agent"]) {
+      const services = serviceStatuses([facts({ agent, runs: 6, errors: 6 })], EXTRAS);
+      expect(platformStatus(services).state).toBe("major_outage");
+      expect(services.find((s) => s.key === "scheduled_automation")?.errors).toBe(6);
+    }
+  });
+
+  it("does not use an idle recovery sweep as evidence that email sending works", () => {
+    const services = serviceStatuses([facts({ agent: "outreach-recovery-sweep" })], EXTRAS);
+    expect(services.find((s) => s.key === "email_delivery")?.state).toBe("unknown");
+    expect(services.find((s) => s.key === "email_delivery")?.detail).toContain("do not confirm email delivery");
+  });
+
   it("names the nine services the audit lists", () => {
     expect(SERVICES.map((s) => s.key)).toEqual([
       "ingestion",
@@ -181,6 +204,14 @@ describe("platformStatus", () => {
 });
 
 describe("platformIncidents", () => {
+  it("identifies the actual platform sender problem", () => {
+    const [incident] = platformIncidents([{
+      agent: "daily-recap", orgId: null,
+      error: "The platform Gmail connection or verified sender identity is not ready, so no recaps were sent.",
+      at: "2026-09-28T18:00:00Z",
+    }]);
+    expect(incident.cause).toBe("integration_auth");
+  });
   const rows: FailureRow[] = [
     { agent: "scoring-engine", orgId: "a", error: "credit balance too low", at: "2026-08-26T09:00:00Z" },
     { agent: "solicitation-analyst", orgId: "b", error: "Your credit balance is too low", at: "2026-08-26T10:00:00Z" },
