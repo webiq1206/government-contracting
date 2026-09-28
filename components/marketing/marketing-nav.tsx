@@ -19,6 +19,7 @@ export function MarketingNav({
   return (
     <header className={`bco-nav${variant === "dark" ? " bco-nav-dark" : ""}`}>
       <MarketingAnalytics />
+      <link rel="alternate" type="application/rss+xml" title="BrostCo contractor resources" href="/resources/feed.xml" />
       <div className="bco-container bco-nav-inner">
         <Link href="/" aria-label="BrostCo home" className="bco-brand-link">
           <Wordmark

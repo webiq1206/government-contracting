@@ -30,6 +30,7 @@ export function ContractorGuidePage({ slug }: { slug: string }) {
       </section>)}
       <aside className="bco-guide-note"><h2>Official sources and further help</h2><ul>{guide.sources.map((source) => <li key={source.href}><a href={source.href} rel="noopener noreferrer">{source.label}</a></li>)}</ul><p>These are independent resources, not endorsements of BrostCo. This guide is a workflow aid, not legal advice or an assurance of bid eligibility.</p></aside>
       <section><h2>Put the next step in one place</h2><p>BrostCo helps organize supported opportunity analysis, subcontractor coordination and draft bid work. Your team verifies source requirements and submits the response. Local notice imports require your own amendment checks.</p><Link className="bco-text-link" href={guide.productHref}>{guide.productLabel} ↗</Link></section>
+      <section><h2>A worksheet for your next step</h2><p>Turn this guidance into a document your team can use. The free tools run in your browser and require no account.</p><Link className="bco-text-link" href={slug === "proposal-compliance-matrix" ? "/tools/compliance-matrix" : slug === "government-bid-no-bid-checklist" ? "/tools/bid-no-bid" : "/tools"}>Open the free worksheet ↗</Link></section>
       <nav aria-label="Related guides"><h2>Related guides</h2><ul>{guide.related.map((related) => <li key={related}><Link href={`/resources/${related}`}>{contractorGuide(related).title}</Link></li>)}</ul></nav>
     </article>
     <TrialCTA title="Review your next opportunity with a clearer plan." />

@@ -17,7 +17,10 @@ export async function POST(req: Request) {
   } | null;
 
   const event = typeof body?.event === "string" ? body.event.trim() : "";
-  if (!event || event.length > 80) {
+  // Conversion milestones are recorded by successful server actions only.
+  // A signed-in client must not be able to manufacture acquisition results.
+  const serverEvents = ["trial_started", "account_created", "subscription_completed", "company_profile_saved"];
+  if (!event || event.length > 80 || serverEvents.includes(event)) {
     return NextResponse.json({ error: "Invalid event." }, { status: 400 });
   }
 

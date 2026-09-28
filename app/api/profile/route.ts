@@ -1,3 +1,4 @@
+import { trackEvent } from "@/lib/analytics";
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import {
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
 
   const text = renderProfileText(merged);
   const profile = await publishProfile(merged, text, ctx.user.email);
+  await trackEvent({ event: "company_profile_saved", orgId: ctx.orgId, userId: ctx.user.id, path: "/settings/profile" });
   return NextResponse.json({ ok: true, version: profile.version });
 }
 

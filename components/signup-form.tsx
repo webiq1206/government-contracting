@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { actionError } from "@/lib/client/action-request";
 import Link from "next/link";
+import { growthAttribution } from "@/lib/client/growth-attribution";
 import { marketingEvent } from "@/lib/client/marketing-event";
 
 export function SignupForm({
@@ -38,6 +39,7 @@ export function SignupForm({
           email: String(fd.get("email") || ""),
           password: String(fd.get("password") || ""),
           plan,
+          attribution: growthAttribution(),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

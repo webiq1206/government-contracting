@@ -143,8 +143,9 @@ try {
         await p.evaluate(()=>window.scrollTo(0,0));
         await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-centered-hero.png`)});
         assert.equal(await p.locator('.bco-hero-centered h1').count(),1);
-        assert.equal(await p.locator('.bco-hero-centered .bco-button').count(),1,'Hero has one primary action');
-        const heroCta=p.locator('.bco-hero-centered .bco-button');
+        assert.equal(await p.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)').count(),1,'Hero has one primary action');
+        assert.equal(await p.locator('.bco-hero-centered .bco-button-secondary[href="/demo#recordings"]').count(),1,'Hero provides the walkthrough as a secondary action');
+        const heroCta=p.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)');
         const ctaBox=await heroCta.boundingBox();
         assert(ctaBox&&ctaBox.y>=0&&ctaBox.y+ctaBox.height<height,'Trial CTA is visible without scrolling');
         const contrast=await heroCta.evaluate(el=>{
@@ -172,7 +173,7 @@ try {
         } else {
           await film.waitFor({state:'visible'});
           await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
-          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline&&el.preload==='auto'),'Film loops silently and loads eagerly');
+          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline&&el.preload==='none'),'Film loops silently without eager preloading');
           await film.evaluate(el=>{el.currentTime=7;});
           await p.waitForFunction(()=>{const v=document.querySelector('.bco-hero-background-film');return v.currentTime>7.2&&!v.paused;});
           await film.evaluate(el=>{el.currentTime=29.8;});

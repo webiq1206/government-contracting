@@ -31,7 +31,7 @@ try {
   await plain.goto(base, { waitUntil: 'networkidle' });
   await plain.screenshot({ path: 'artifacts/ui-audit/webkit/mobile-no-js.png', fullPage: true });
   assert(await plain.locator('h1').isVisible(), 'Heading does not depend on JS');
-  assert(await plain.locator('.bco-hero-centered .bco-button').isVisible(), 'Trial does not depend on JS');
+  assert(await plain.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)').isVisible(), 'Trial does not depend on JS');
   assert(await plain.locator('.bco-chapter-copy h2').first().isVisible(), 'Reveals never hide essential content');
   assert.equal(await plain.locator('.bco-ribbon-track ul:not([aria-hidden]) li').count(), 20, 'All industry sectors survive without JS');
   await fallback.close();

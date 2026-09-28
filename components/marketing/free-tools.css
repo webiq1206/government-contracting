@@ -1,0 +1,26 @@
+.bco-tool-section { padding-bottom: 64px; }
+.bco-tool-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.bco-tool-privacy { background: var(--bco-soft); border-radius: 12px; padding: 16px 20px; margin-bottom: 28px; font-size: 14px; }
+.bco-tool-question, .bco-matrix-row { min-width: 0; padding: 20px; margin: 0 0 20px; border: 1px solid var(--bco-line); border-radius: 16px; background: #fff; }
+.bco-tool-question legend, .bco-matrix-row legend { font-weight: 600; padding: 0 8px; max-width: 100%; }
+.bco-tool-question p { font-size: 14px; margin: 0 0 16px; }
+.bco-tool-options { display: flex; flex-wrap: wrap; gap: 12px; }
+.bco-tool-options label { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; padding: 8px 12px; background: #f4f6f6; border-radius: 8px; cursor: pointer; }
+.bco-tool-options input { width: 18px; height: 18px; accent-color: var(--bco-teal); }
+.bco-tool-result { padding: 28px; border: 1px solid var(--bco-line); background: #fff; border-radius: 20px; }
+.bco-tool-result h2 { font-size: 28px; }
+.bco-tool-result p { margin-block: 14px; }
+.bco-tool-result progress { width: 100%; accent-color: var(--bco-teal); }
+.bco-tool-result .bco-tool-number { font-size: 56px; color: var(--bco-teal); font-weight: 700; margin: 16px 0 0; line-height: 1.2; }
+.bco-tool-number span { font-size: 26px; color: var(--bco-muted); }
+.bco-tool-field { display: block; font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+.bco-tool-field textarea, .bco-tool-field input, .bco-tool-field select { display: block; width: 100%; border: 1px solid #9db2b4; border-radius: 8px; padding: 12px; margin-top: 7px; background: #fff; color: var(--bco-ink); font: inherit; font-size: 16px; font-weight: 400; }
+.bco-tool-field textarea { resize: vertical; }
+.bco-tool-preview { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; max-height: 480px; overflow: auto; background: #f4f6f6; padding: 16px; margin-block: 16px; }
+.bco-tool-section button { cursor: pointer; min-height: 44px; }
+.bco-tool-section button:disabled { cursor: not-allowed; opacity: .5; }
+.bco-tool-section .bco-text-link { display: block; margin-top: 14px; }
+.bco-tool-related { margin-top: 32px; }
+.bco-tool-related a { text-decoration: underline; text-underline-offset: 4px; }
+.bco-matrix-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+@media (max-width: 760px) { .bco-tool-grid, .bco-matrix-row { grid-template-columns: minmax(0, 1fr); } .bco-tool-result { padding: 20px; } }
