@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-09-28T03:59:36.450Z",
+  "domain": "brostco.com",
+  "coverage": "Free keyless sources only (Wikimedia, OpenAlex, Crossref, Common Crawl). This is NOT a complete inbound-link picture: enumerating backlinks needs a paid index, and directory listings or blog mentions will not appear here.",
+  "filtering": "OpenAlex and Crossref expose relevance search, not substring search, so a hit is kept only when the domain appears literally in the record. `discardedRelevanceHits` counts results the ranker returned that never mention the domain; a high number there is the filter working.",
+  "citations": [],
+  "discardedRelevanceHits": 50,
+  "crawlPresence": {
+    "pages": [],
+    "note": "no pages of this domain in the queried crawl index"
+  },
+  "unreachableSources": [],
+  "newLedgerEntries": 0,
+  "ledgerWriteRefused": null
+}

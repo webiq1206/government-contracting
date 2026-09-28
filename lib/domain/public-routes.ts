@@ -54,6 +54,22 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/contract-opportunities", label: "Contract opportunity sources", summary: "Find official construction, cleaning and IT contracting sources and check whether an opportunity fits your business.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
   ...OPPORTUNITY_SECTORS.map((sector): PublicRoute => ({ path: `/contract-opportunities/${sector.slug}`, label: sector.title, summary: sector.description, changeFrequency: "monthly", priority: 0.7, group: "Reference" })),
   { path: "/resources", label: "Contractor resources", summary: "Official-source Idaho and Boise contracting guides and practical checklists for preparing government bids.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
+  /**
+   * Declared by hand rather than through CONTRACTOR_GUIDES, because it is not
+   * a guide. It is a maintained register of buying authorities with its own
+   * shape, its own JSON and CSV distributions at /data.json and /data.csv, and
+   * a reuse licence, and flattening it into the guide catalog to save a line
+   * here would have meant giving it a guide's prose-and-checklist structure.
+   */
+  {
+    path: "/resources/idaho-procurement-sources",
+    label: "Idaho public procurement sources",
+    summary:
+      "A maintained register of which Idaho authority advertises which public work, on which official bid source, and what each source leaves out. Free to cite, and available as JSON and CSV.",
+    changeFrequency: "monthly",
+    priority: 0.8,
+    group: "Reference",
+  },
   ...CONTRACTOR_GUIDES.map((guide): PublicRoute => ({
     path: `/resources/${guide.slug}`, label: guide.title, summary: guide.description,
     changeFrequency: "monthly", priority: 0.7, group: "Reference",

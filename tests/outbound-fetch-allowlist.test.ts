@@ -70,6 +70,10 @@ const ALLOWED = new Map<string, string>([
     "scripts/perf-sweep.ts",
     "Measures the local server this script started. The URL is this process's own.",
   ],
+  [
+    "scripts/seo/indexnow-submit.ts",
+    "Posts to the IndexNow endpoint, a constant in this file. The URLs it submits are built from this application's own PUBLIC_ROUTES against our own APP_URL origin, so nothing a notice or an operator supplied can become a destination. A maintenance script, never reached by a request.",
+  ],
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {

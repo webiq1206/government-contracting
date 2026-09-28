@@ -137,6 +137,7 @@ const SIGNED_OUT_ROUTES = [
   "/resources/proposal-compliance-matrix",
   "/resources/subcontractor-quote-request-checklist",
   "/resources/sam-gov-opportunity-search",
+  "/resources/idaho-procurement-sources",
   "/platform",
   "/ai",
   "/subcontractors",
