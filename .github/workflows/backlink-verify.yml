@@ -98,8 +98,22 @@ jobs:
         continue-on-error: true
         run: node scripts/seo/verify-backlinks.mjs --json docs/seo/backlink-verification.json
 
+      # Only on the default branch, and that restriction is load-bearing.
+      #
+      # Committing evidence onto a feature branch makes the bot's own commit the
+      # head of whatever pull request that branch is for. The commit carries
+      # [skip ci], so the head then has no check results at all: a reviewer sees
+      # an unchecked head, and under required status checks the pull request
+      # cannot merge until somebody pushes again. It also means an automated job
+      # rewrites a branch a human may be reviewing.
+      #
+      # On the default branch none of that applies -- there is no pull request to
+      # disturb, and an audit trail of daily evidence commits is the point. Every
+      # other branch keeps its evidence in the artifact uploaded below, which is
+      # all a test run needs.
       - name: Commit the evidence
         id: commit
+        if: github.ref_name == github.event.repository.default_branch
         run: |
           git config user.name "brostco-backlink-bot"
           git config user.email "noreply@anthropic.com"
