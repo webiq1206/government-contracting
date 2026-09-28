@@ -58,10 +58,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      # No npm ci: the submitter reads the route declaration as text and uses
-      # only Node built-ins, so an install would add a minute to every run and
-      # a dependency tree to something that needs neither.
+      # Needed now, and it was not always. The submitter used to read the route
+      # declaration as text with only Node built-ins, so this step was skipped on
+      # purpose. It now imports lib/domain/public-routes.ts and runs under tsx --
+      # which ends a whole class of under-counting bug, but does mean the install
+      # is no longer optional. Dropping this step would fail every submission with
+      # a module-resolution error.
+      - run: npm ci
+
       - name: Confirm the key file is live before submitting
         run: |
           # A submission whose key file does not match is rejected with a 403
@@ -78,7 +84,7 @@ jobs:
       - name: Submit
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            node scripts/seo/indexnow-submit.mjs --dry-run
+            node --import tsx scripts/seo/indexnow-submit.ts --dry-run
           else
-            node scripts/seo/indexnow-submit.mjs
+            node --import tsx scripts/seo/indexnow-submit.ts
           fi
