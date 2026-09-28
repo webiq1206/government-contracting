@@ -143,8 +143,9 @@ try {
         await p.evaluate(()=>window.scrollTo(0,0));
         await p.locator('.bco-hero-centered').screenshot({path:join(out,`${device}-centered-hero.png`)});
         assert.equal(await p.locator('.bco-hero-centered h1').count(),1);
-        assert.equal(await p.locator('.bco-hero-centered .bco-button').count(),1,'Hero has one primary action');
-        const heroCta=p.locator('.bco-hero-centered .bco-button');
+        assert.equal(await p.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)').count(),1,'Hero has one primary action');
+        assert.equal(await p.locator('.bco-hero-centered .bco-button-secondary[href="/demo#recordings"]').count(),1,'Hero provides the walkthrough as a secondary action');
+        const heroCta=p.locator('.bco-hero-centered .bco-button:not(.bco-button-secondary)');
         const ctaBox=await heroCta.boundingBox();
         assert(ctaBox&&ctaBox.y>=0&&ctaBox.y+ctaBox.height<height,'Trial CTA is visible without scrolling');
         const contrast=await heroCta.evaluate(el=>{
