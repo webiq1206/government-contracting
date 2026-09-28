@@ -1,0 +1,87 @@
+{
+  "checkedAt": "2026-09-28T14:12:50.298Z",
+  "site": "https://brostco.com",
+  "results": [
+    {
+      "path": "/",
+      "url": "https://brostco.com/",
+      "why": "home page",
+      "status": 502,
+      "ms": 224,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/robots.txt",
+      "url": "https://brostco.com/robots.txt",
+      "why": "crawl rules; a 5xx here reads as 'do not crawl' to Google",
+      "status": 500,
+      "ms": 337,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/sitemap.xml",
+      "url": "https://brostco.com/sitemap.xml",
+      "why": "the URL list given to crawlers",
+      "status": 500,
+      "ms": 252,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/llms.txt",
+      "url": "https://brostco.com/llms.txt",
+      "why": "what answer engines are told about the business",
+      "status": 500,
+      "ms": 306,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/resources",
+      "url": "https://brostco.com/resources",
+      "why": "the resource index",
+      "status": 500,
+      "ms": 248,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/resources/idaho-procurement-sources",
+      "url": "https://brostco.com/resources/idaho-procurement-sources",
+      "why": "the citable register, the link-earning asset",
+      "status": 500,
+      "ms": 308,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/resources/idaho-procurement-sources/data.json",
+      "url": "https://brostco.com/resources/idaho-procurement-sources/data.json",
+      "why": "the register's machine-readable distribution",
+      "status": 500,
+      "ms": 306,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/resources/idaho-procurement-sources/data.csv",
+      "url": "https://brostco.com/resources/idaho-procurement-sources/data.csv",
+      "why": "the register's spreadsheet distribution",
+      "status": 500,
+      "ms": 246,
+      "attempts": 2,
+      "ok": false
+    },
+    {
+      "path": "/indexnow-key.txt",
+      "url": "https://brostco.com/indexnow-key.txt",
+      "why": "IndexNow ownership proof; a 5xx here silently breaks index submission",
+      "status": 500,
+      "ms": 256,
+      "attempts": 2,
+      "ok": false
+    }
+  ]
+}
