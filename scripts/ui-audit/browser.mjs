@@ -173,7 +173,7 @@ try {
         } else {
           await film.waitFor({state:'visible'});
           await p.waitForFunction(()=>document.querySelector('.bco-hero-background-film')?.videoWidth>0);
-          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline&&el.preload==='auto'),'Film loops silently and loads eagerly');
+          assert(await film.evaluate(el=>el.muted&&el.loop&&el.playsInline&&el.preload==='none'),'Film loops silently without eager preloading');
           await film.evaluate(el=>{el.currentTime=7;});
           await p.waitForFunction(()=>{const v=document.querySelector('.bco-hero-background-film');return v.currentTime>7.2&&!v.paused;});
           await film.evaluate(el=>{el.currentTime=29.8;});
