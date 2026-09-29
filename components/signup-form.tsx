@@ -5,6 +5,7 @@ import { actionError } from "@/lib/client/action-request";
 import Link from "next/link";
 import { growthAttribution } from "@/lib/client/growth-attribution";
 import { marketingEvent } from "@/lib/client/marketing-event";
+import { ga4Signup } from "@/lib/client/ga4";
 
 export function SignupForm({
   initialPlan,
@@ -53,6 +54,7 @@ export function SignupForm({
         setPending(false);
         return;
       }
+      await ga4Signup(plan);
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         return;

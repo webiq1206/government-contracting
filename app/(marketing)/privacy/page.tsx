@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-3 text-sm text-slate-500">
-          Last updated: September 28, 2026
+          Last updated: September 29, 2026
         </p>
         <p className="mt-5">
           <Link href="/security">Read the security and data overview</Link> for
@@ -68,6 +68,19 @@ export default function PrivacyPage() {
           <h2 className="font-display text-2xl text-foreground">
             How we use information
           </h2>
+          <p>
+            With your permission, Google Analytics measures public website visits,
+            campaign performance, website interactions, successful trial signups,
+            and verified purchases. It uses analytics cookies and processes device
+            and interaction data. Our custom events exclude names, email addresses,
+            form entries, private workspace records, and raw URL query strings.
+            Purchase events use a hashed transaction reference and the amount
+            confirmed by our payment processor. Advertising storage and advertising
+            personalization are disabled. Google Analytics is not loaded before
+            you select Allow analytics, and tracking honors Do Not Track and Global
+            Privacy Control. Use Analytics preferences to withdraw permission.
+            See <a className="underline" href="https://policies.google.com/technologies/partner-sites">how Google uses information from sites that use its services</a>.
+          </p>
           <p>
             With your permission, we also use Microsoft Clarity for heatmaps and
             masked session recordings to understand navigation and improve usability.

@@ -5,6 +5,8 @@ import { getOrganization } from "@/lib/organizations";
 import { hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
 import { SessionLoadFailure } from "@/components/session-load-failure";
+import { verifiedGa4Purchase } from "@/lib/billing/ga4-purchase";
+import { Ga4PurchaseEvent } from "@/components/marketing/ga4-purchase";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ export default async function BillingSuccessPage(
   if (!auth.ok) return <SessionLoadFailure />;
   const user = auth.user;
   if (!user) redirect("/login");
+  const purchase = user.organizationId && !user.impersonatedBy
+    ? await verifiedGa4Purchase(searchParams?.session_id, user.organizationId)
+    : null;
   if (user.organizationId) {
     const org = await getOrganization(user.organizationId);
     if (org && hasAccess(org)) {
@@ -39,6 +44,7 @@ export default async function BillingSuccessPage(
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface px-4">
+      {purchase && <Ga4PurchaseEvent purchase={purchase} />}
       <div className="card max-w-lg text-center">
         <p className="eyebrow text-pursue">Subscription active</p>
         <h1 className="mt-2 font-display text-3xl text-foreground">
