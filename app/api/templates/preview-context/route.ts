@@ -53,9 +53,10 @@ export async function GET(req: Request) {
               o.title as opportunity_title, s.company_name
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
-         join subcontractors s on s.id = os.subcontractor_id
+         join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
         where o.org_id = $1
           and o.status = 'open'
+          and os.removed_at is null
           and s.email is not null
         order by o.created_at desc, s.company_name asc
         limit 25`,
@@ -139,13 +140,16 @@ export async function GET(req: Request) {
    * into a whole-project one. Read it from the pairing when one exists; a
    * hypothetical pairing has no row, so the caller passes the trade it offered.
    */
+  const requestedTrade = url.searchParams.get("trade");
   const pairing = await queryOne<{ trade: string | null }>(
     `select trade from opportunity_subs
       where opportunity_id = $1 and subcontractor_id = $2
+        and removed_at is null
+        and ($3::text is null or coalesce(trade,'') = $3)
       order by created_at desc limit 1`,
-    [opportunityId, subcontractorId]
+    [opportunityId, subcontractorId, requestedTrade]
   );
-  const trade = pairing?.trade ?? url.searchParams.get("trade") ?? null;
+  const trade = pairing?.trade ?? requestedTrade ?? null;
   const profile = await getProfileJson();
 
   const resolved = resolveOutreachVars({
@@ -174,7 +178,8 @@ export async function GET(req: Request) {
     `select name, document_class, amendment_number, trade_relevance, relevant_to_all, mime
        from documents
       where opportunity_id = $1 and kind in ('solicitation','sow')
-      order by created_at asc limit 40`,
+        and superseded_by is null and disposition <> 'excluded'
+      order by created_at asc`,
     [opportunityId]
   );
   const selection = selectDocumentsForTrade(

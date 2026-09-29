@@ -47,6 +47,11 @@ test. The recipient must not replace an existing subcontractor's address.
 - All outreach transport callers now receive an error when Gmail returns no
   message receipt. The error instructs the operator to inspect Sent before
   retrying because acceptance can be uncertain.
+- Production's real-context selector offered a pairing that the detail endpoint
+  returned as Not found. Its list query now enforces matching account ownership
+  and excludes removed pairs. Trade selection is preserved and the preview
+  excludes superseded/excluded documents. A real PostgreSQL-compatible test
+  verifies that foreign-account and removed pairings cannot be offered.
 - The runner records a result requiring human action as a warning/skipped
   result instead of a successful activity entry, without repeatedly retrying
   the same held work.
