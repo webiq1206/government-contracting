@@ -44,7 +44,7 @@ const rows = [
 export default function AIPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/ai"
         eyebrow="How AI works"
         title="AI does the preparation and follow-through."
         copy="Set your direction, connect your services, and let BrostCo run the routine work: matching opportunities, reading documents, coordinating outreach, following up, and preparing bids. You handle calls, exceptions, and final decisions."

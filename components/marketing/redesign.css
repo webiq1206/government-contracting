@@ -707,7 +707,7 @@
 
 /* Stable brand surfaces, independent of the application theme preference. */
 .bco-site :is(h1, h2, h3) {
-  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  font-family: var(--font-manrope), "Manrope", var(--font-inter), "Inter", system-ui, sans-serif;
   font-weight: 700;
 }
 .bco-hero-band { background: #0b1720; color: #fff; }

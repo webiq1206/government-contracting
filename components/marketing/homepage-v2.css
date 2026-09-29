@@ -52,7 +52,7 @@
   margin: 0;
   max-width: 800px;
   color: #fff;
-  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  font-family: var(--font-manrope), "Manrope", var(--font-inter), "Inter", system-ui, sans-serif;
   font-size: clamp(48px, 6.6vw, 84px);
   line-height: .98;
   letter-spacing: -.055em;
@@ -90,7 +90,7 @@
 .bco-pricing h2,
 .bco-faq h2,
 .bco-final h2 {
-  font-family: "Manrope", "Inter", system-ui, sans-serif;
+  font-family: var(--font-manrope), "Manrope", var(--font-inter), "Inter", system-ui, sans-serif;
   letter-spacing: -.04em;
   font-weight: 700;
 }

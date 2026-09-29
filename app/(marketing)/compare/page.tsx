@@ -47,7 +47,7 @@ const approaches = [
 export default function ComparePage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/compare"
         eyebrow="Compare approaches"
         title="Choose around the work that slows you down."
         copy="Different tools solve different parts of government contracting. BrostCo is built for the work between finding an opportunity and having the people, quotes, and documents ready for bid review."

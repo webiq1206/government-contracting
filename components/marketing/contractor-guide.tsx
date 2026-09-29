@@ -1,27 +1,44 @@
 import Link from "next/link";
-import { contractorGuide } from "@/lib/marketing/resources";
+import { GUIDES_PUBLISHED_ON, GUIDES_UPDATED_ON, contractorGuide, longDate } from "@/lib/marketing/resources";
+import { breadcrumbSchema, jsonLdGraph, jsonLdString, organizationRef, organizationSchema, siteImage, siteUrl } from "@/lib/marketing/schema";
 import { MarketingShell, TrialCTA } from "./site-shell";
 
 export function ContractorGuidePage({ slug }: { slug: string }) {
   const guide = contractorGuide(slug);
-  const site = (process.env.APP_URL || "https://brostco.com").replace(/\/$/, "");
+  const site = siteUrl();
   const url = `${site}/resources/${slug}`;
-  const schema = [
-    { "@context": "https://schema.org", "@type": "Article", headline: guide.title, description: guide.description, mainEntityOfPage: url, author: { "@type": "Organization", name: "BrostCo", url: site }, publisher: { "@type": "Organization", name: "BrostCo", url: site } },
-    { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: site },
-      { "@type": "ListItem", position: 2, name: "Resources", item: `${site}/resources` },
-      { "@type": "ListItem", position: 3, name: guide.title, item: url },
-    ] },
-  ];
+  const schema = jsonLdGraph([
+    organizationSchema(site),
+    {
+      "@type": "Article",
+      "@id": `${url}#article`,
+      headline: guide.title,
+      description: guide.description,
+      url,
+      mainEntityOfPage: url,
+      inLanguage: "en-US",
+      isAccessibleForFree: true,
+      datePublished: GUIDES_PUBLISHED_ON,
+      dateModified: GUIDES_UPDATED_ON,
+      image: siteImage(site),
+      author: organizationRef(site),
+      publisher: organizationRef(site),
+      about: guide.category === "Idaho contracting" ? "Idaho government contracting" : "Government bid preparation",
+    },
+    breadcrumbSchema([
+      { name: "Home", path: "/" },
+      { name: "Resources", path: "/resources" },
+      { name: guide.title, path: `/resources/${slug}` },
+    ], site),
+  ]);
   return <MarketingShell>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(schema) }} />
     <article className="bco-container bco-guide">
       <nav className="bco-breadcrumb" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><Link href="/resources">Resources</Link><span aria-hidden="true">/</span><span aria-current="page">{guide.category}</span></nav>
       <p className="bco-kicker">{guide.category}</p>
       <h1>{guide.title}</h1>
       <p className="bco-lead">{guide.intro}</p>
-      <p className="bco-caption">By BrostCo · Source links checked September 26, 2026. Verify current instructions with the buying agency.</p>
+      <p className="bco-caption">By BrostCo · Published {longDate(GUIDES_PUBLISHED_ON)} · Source links checked {longDate(GUIDES_UPDATED_ON)}. Verify current instructions with the buying agency.</p>
       <nav className="bco-guide-toc" aria-label="In this guide"><h2>In this guide</h2><ol>{guide.sections.map((section, i) => <li key={section.heading}><a href={`#section-${i + 1}`}>{section.heading}</a></li>)}</ol></nav>
       {guide.sections.map((section, i) => <section key={section.heading} id={`section-${i + 1}`}>
         <h2>{section.heading}</h2>

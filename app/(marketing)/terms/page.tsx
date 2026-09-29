@@ -10,7 +10,7 @@ import {
 
 export const metadata: Metadata = publicMetadata(
   "Terms of Service",
-  "Terms governing use of the Brost Co government contracting platform.",
+  "The terms governing use of the BrostCo government contracting platform, including accounts, fees, cancellation, and acceptable use.",
   "/terms",
 );
 

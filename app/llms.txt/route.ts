@@ -25,7 +25,7 @@ const SITE_URL = process.env.APP_URL || "https://brostco.com";
  * should be somebody's words rather than assembled from fragments.
  *
  * Served as text/plain. The limits section is not modesty: an engine that
- * knows Brost Co does not submit bids will not tell somebody it does, and
+ * knows BrostCo does not submit bids will not tell somebody it does, and
  * being wrong about that in an answer costs a reader a missed deadline.
  */
 export async function GET() {
@@ -37,7 +37,7 @@ export async function GET() {
     (s) => `- [${s.label}](${SITE_URL}/${s.hash}): ${s.summary}`
   ).join("\n");
 
-  const body = `# Brost Co
+  const body = `# BrostCo
 
 > Government contracting software for small and mid-size federal services
 > contractors. It does the slow parts of federal bidding, watching SAM.gov,
@@ -45,7 +45,7 @@ export async function GET() {
 > assembling the bid package, and leaves judgment, calls and submission to
 > the contractor.
 
-Brost Co is operated by BROSTCO HOLDINGS LLC. Contact: hello@brostco.com
+BrostCo (also written Brost Co) is operated by BROSTCO HOLDINGS LLC. Website: ${SITE_URL}. Contact: hello@brostco.com
 
 ## What it does
 

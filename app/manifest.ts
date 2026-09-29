@@ -1,16 +1,16 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Web app manifest: makes BROST CO installable to a phone's home screen so the
+ * Web app manifest: makes BrostCo installable to a phone's home screen so the
  * Call Queue and Today work like an app in the field (standalone window, own
  * icon), no store, no build step, just "Add to Home Screen".
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "BROST CO Procurement Execution",
-    short_name: "BROST CO",
+    name: "BrostCo",
+    short_name: "BrostCo",
     description:
-      "Autonomous government-contracting pipeline: opportunities found, scored, and worked automatically; you handle the calls and sign-offs.",
+      "AI for government contractors: opportunities found and scored, subcontractors coordinated, and bids prepared for your review.",
     start_url: "/today",
     display: "standalone",
     background_color: "#F7F5F3",

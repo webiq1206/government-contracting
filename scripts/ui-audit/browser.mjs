@@ -24,12 +24,23 @@ function checkpoint() {
  writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic browser regression; live integrations and production performance are not verified.',results,failures},null,2));
  writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
 }
+/** Keep every request on this origin; tolerate a route another handler already settled. */
+const localOnly=async route=>{
+  try { if(new URL(route.request().url()).origin===base) await route.continue(); else await route.abort(); }
+  catch(error) { if(!/already handled/i.test(String(error?.message))) throw error; }
+};
 try {
  for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]].filter(([name]) => !process.env.AUDIT_DEVICE || process.env.AUDIT_DEVICE === name)) {
   try {
   const ctx=await browser.newContext({viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'});
   // Provider traffic is never part of this local UI regression.
-  await ctx.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
+  // A page-level handler (the stalled-navigation task on /agents holds and
+  // then releases requests) can complete a route moments before this
+  // context-level handler is invoked for the same request. Continuing it a
+  // second time throws "Route is already handled", which surfaced as an
+  // uncaught rejection and took the whole audit down after every workflow had
+  // passed. The request was already dealt with, so that case is not an error.
+  await ctx.route('**/*',localOnly);
   const page=await ctx.newPage();
   page.on('pageerror',e=>diagnostics.push({device,error:e.message}));
   page.on('console',m=>{if(m.type()==='error')diagnostics.push({device,error:m.text()});});
@@ -53,7 +64,7 @@ try {
     const route=resolve(entry.route);
     const publicPage=!entry.file.includes('(dash)')&&!entry.file.includes('(account)');
     const target=publicPage?await ctx.browser().newContext({viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'}):ctx;
-    if(publicPage) await target.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
+    if(publicPage) await target.route('**/*',localOnly);
     const p=publicPage?await target.newPage():page;
     const errors=[]; const onError=e=>errors.push(e.message);p.on('pageerror',onError);
     const onConsole=m=>{if(m.type()==='error'&&/hydrati|cannot be a descendant|cannot contain|did not match/i.test(m.text())) errors.push(m.text());};

@@ -1,3 +1,17 @@
+/**
+ * When the guides went live and when their source links were last checked by
+ * hand. Shown on every guide and carried into its Article markup and sitemap
+ * entry, so the three can never disagree. Update the second date when the
+ * links are re-checked, not when unrelated code changes.
+ */
+export const GUIDES_PUBLISHED_ON = "2026-09-26";
+export const GUIDES_UPDATED_ON = "2026-09-26";
+
+/** "2026-09-26" as "September 26, 2026", for captions. */
+export function longDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+}
+
 export interface ContractorGuide {
   slug: string;
   title: string;

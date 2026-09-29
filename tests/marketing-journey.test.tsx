@@ -94,9 +94,15 @@ describe("public visitor journey", () => {
     const { document: schemaDoc } = parseHTML(
       renderToStaticMarkup(<JsonLd {...props} />),
     );
-    const schemas = Array.from(schemaDoc.querySelectorAll("script")).map(
-      (script) => JSON.parse(script.textContent!),
+    // One script, one graph: every node shares the @context and can point at
+    // the Organization by @id.
+    const schemas = Array.from(schemaDoc.querySelectorAll("script")).flatMap(
+      (script) => {
+        const parsed = JSON.parse(script.textContent!);
+        return Array.isArray(parsed["@graph"]) ? parsed["@graph"] : [parsed];
+      },
     );
+    expect(schemas.map((schema) => schema["@type"])).toEqual(["Organization", "WebSite", "SoftwareApplication", "FAQPage"]);
     const faq = schemas.find((schema) => schema["@type"] === "FAQPage");
     expect(faq.mainEntity.map((entry: { name: string }) => entry.name)).toEqual(
       HOME_FAQ.map(([name]) => name),

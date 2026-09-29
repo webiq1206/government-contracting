@@ -5,6 +5,7 @@ import { TRIAL_COPY } from "./site-content";
 import { StickyColumn } from "./sticky-column";
 import { SectionReveals } from "./section-reveals";
 import "./site.css";
+import { breadcrumbSchema, jsonLdGraph, jsonLdString, type Crumb } from "@/lib/marketing/schema";
 
 export function MarketingShell({
   children,
@@ -34,17 +35,46 @@ export function PageIntro({
   eyebrow,
   title,
   copy,
+  path,
+  parent,
 }: {
   eyebrow: string;
   title: string;
   copy: string;
+  /**
+   * The page's own path. When given, the visible breadcrumb is also emitted
+   * as BreadcrumbList structured data, so the trail a visitor sees is the
+   * trail a search engine is told about, and nothing more.
+   */
+  path?: string;
+  /** An intermediate crumb between Home and this page, for nested pages. */
+  parent?: { label: string; href: string };
 }) {
+  const crumbs: Crumb[] = [
+    { name: "Home", path: "/" },
+    ...(parent ? [{ name: parent.label, path: parent.href }] : []),
+    // The visible trail ends in the section name for a top-level page and in
+    // the page title for a nested one, so the markup does the same.
+    ...(path ? [{ name: parent ? title : eyebrow, path }] : []),
+  ];
   return (
     <section className="bco-container bco-page-intro">
+      {path && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLdGraph([breadcrumbSchema(crumbs)])) }}
+        />
+      )}
       <nav className="bco-breadcrumb" aria-label="Breadcrumb">
         <Link href="/">Home</Link>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">{eyebrow}</span>
+        {parent && (
+          <>
+            <Link href={parent.href}>{parent.label}</Link>
+            <span aria-hidden="true">/</span>
+          </>
+        )}
+        <span aria-current="page">{parent ? title : eyebrow}</span>
       </nav>
       <p className="bco-kicker">{eyebrow}</p>
       <h1>{title}</h1>

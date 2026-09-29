@@ -16,7 +16,7 @@ export const metadata: Metadata = publicMetadata(
 export default function SecurityPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/security"
         eyebrow="Security & data"
         title="Understand how your work is handled."
         copy="Your pursuit contains company details, conversations, and bid documents. Here is how BrostCo organizes access, uses connected services, and keeps human review in the workflow."

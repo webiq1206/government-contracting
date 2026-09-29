@@ -78,8 +78,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['"Inter"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        display: ['"Manrope"', '"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", '"Inter"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        display: ["var(--font-manrope)", '"Manrope"', '"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ['"GFS Didot"', "Didot", "Georgia", '"Times New Roman"', "serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },

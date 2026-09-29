@@ -17,7 +17,7 @@ export const metadata: Metadata = publicMetadata(
 export default function SubcontractorsPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/subcontractors"
         eyebrow="Subcontractor coordination"
         title="AI handles outreach. You handle the relationships."
         copy="BrostCo finds subcontractors, sends quote requests, follows up, and processes replies under your rules. Your team makes the calls, resolves unclear responses, and confirms pricing."

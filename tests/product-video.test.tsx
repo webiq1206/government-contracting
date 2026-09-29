@@ -39,8 +39,15 @@ describe("recorded product video", () => {
     expect(video.hasAttribute("controls")).toBe(true);
     expect(video.hasAttribute("autoplay")).toBe(false);
     expect(video.querySelector("source")?.getAttribute("src")).toContain("/pipeline.mp4?v=");
-    expect(video.getAttribute("poster")).toContain("pipeline-desktop.jpg?v=");
     expect(video.querySelector("track")?.getAttribute("src")).toContain("pipeline.vtt?v=");
+  });
+  it("attaches the poster only once the player is near the viewport", async () => {
+    await act(async () => root.render(tour()));
+    const video = container.querySelector("video")!;
+    // Off screen: no still is requested for a tour nobody has scrolled to.
+    expect(video.hasAttribute("poster")).toBe(false);
+    await act(async () => observers.get(video)!([{ isIntersecting: true }]));
+    expect(video.getAttribute("poster")).toContain("pipeline-desktop.jpg?v=");
   });
   it("chooses native phone footage and keeps the selection after viewport changes", async () => {
     phone = true;

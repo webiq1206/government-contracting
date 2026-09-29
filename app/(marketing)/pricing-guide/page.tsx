@@ -19,7 +19,7 @@ import { loadPublicPromo } from "@/lib/billing/public-promo";
 import { TrialAllowances } from "@/components/marketing/trial-allowances";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = publicMetadata(
-  "Pricing and service usage",
+  "Pricing, free trial and service usage costs",
   "Compare BrostCo monthly and annual pricing, understand separate service usage costs, and estimate the value using your own bid volume and time savings.",
   "/pricing-guide",
 );
@@ -48,7 +48,7 @@ export default async function PricingGuidePage() {
   ] as const;
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/pricing-guide"
         eyebrow="Pricing"
         title="One platform. Clear subscription and usage costs."
         copy={`${TRIAL_DAYS} days free, with no credit card required. Explore the workflow before choosing a paid subscription. Service usage is separate.`}
