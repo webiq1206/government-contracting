@@ -466,6 +466,10 @@ export async function sendOutreachEmail(
       error: res.error ?? "Gmail became unavailable.",
     };
   }
+  if (!res.error && !res.messageId) {
+    return { provider: null,
+      error: "Gmail did not return a message receipt. Delivery is unconfirmed. Check the Gmail Sent folder before retrying to avoid a duplicate." };
+  }
   return {
     provider: "gmail",
     error: res.error,

@@ -173,6 +173,15 @@ describe("sendOutreachEmail — Gmail path", () => {
     expect(result.disabled).toBe(true);
   });
 
+  it("does not report a send as successful without a provider receipt", async () => {
+    mockGmailSend.mockResolvedValue({ threadId: "thread-1" });
+    const result = await sendOutreachEmail(BASE_PARAMS);
+    expect(result.provider).toBeNull();
+    expect(result.error).toContain("Delivery is unconfirmed");
+    expect(result.error).toContain("Sent folder before retrying");
+    expect(mockGmailSend).toHaveBeenCalledOnce();
+  });
+
   it("reports unconfirmed delivery when the Gmail call does not return", async () => {
     mockGmailSend.mockRejectedValue(new Error("connection state unavailable"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});

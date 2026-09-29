@@ -65,6 +65,16 @@ export const sourcesSoughtResponder: AgentDefinition = {
     );
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
+    // A redelivered job must not purchase another draft or overwrite the PDF
+    // referenced by the draft the operator is already reviewing.
+    const existing = await queryOne<{ id: string }>(
+      `select id from communications where opportunity_id=$1 and org_id=$2
+        and channel='email' and direction='outbound'
+        and meta->>'kind'='sources_sought_response' limit 1`,
+      [opportunityId, opp.org_id]);
+    if (existing) return { ok: true,
+      summary: "A Sources Sought response already exists for this notice. Kept it without another paid draft." };
+
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 

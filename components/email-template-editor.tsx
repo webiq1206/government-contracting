@@ -597,7 +597,8 @@ export function EmailTemplateEditor({
     }
   }
   const [testBusy, setTestBusy] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; email?: string; error?: string } | null>(null);
+  const [testRecipient, setTestRecipient] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; email?: string; messageId?: string; error?: string } | null>(null);
 
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -707,21 +708,25 @@ export function EmailTemplateEditor({
     setTestResult(null);
     setTestBusy(true);
     try {
+      const [opportunityId, subcontractorId, trade = ""] = pairKey.split("|");
       const res = await fetch(`/api/templates/${template.slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, body }),
+        body: JSON.stringify({ subject, body,
+          ...(testRecipient.trim() ? { recipient: testRecipient.trim() } : {}),
+          ...(pairKey ? { pair: { opportunityId, subcontractorId, trade } } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         sentTo?: string;
+        messageId?: string;
         error?: string;
       };
       if (!res.ok) {
         setTestResult({ ok: false, error: data.error ?? "Send failed" });
       } else {
-        setTestResult({ ok: true, email: data.sentTo });
-        setTimeout(() => setTestResult(null), 8000);
+        setTestResult({ ok: true, email: data.sentTo, messageId: data.messageId });
       }
     } catch (e) {
       setTestResult({ ok: false, error: (e as Error).message });
@@ -1195,6 +1200,17 @@ export function EmailTemplateEditor({
       )}
 
       {/* Actions */}
+      <div className="space-y-2 rounded-xl border border-line p-4">
+        <label className="label" htmlFor={`test-recipient-${template.slug}`}>Test email recipient</label>
+        <input id={`test-recipient-${template.slug}`} type="email" className="input w-full max-w-md"
+          value={testRecipient} onChange={e => { setTestRecipient(e.target.value); setTestResult(null); }}
+          placeholder="Leave blank to use your account email" disabled={testBusy} />
+        <p className="text-xs text-muted-foreground">
+          {pairKey ? "The selected bid and its checked documents will be copied to this address."
+            : "Uses clearly labeled sample project details. Choose a real bid in Preview email to test its actual documents and sending checks."}
+          {" "}Sends one test only. No subcontractor contact is changed and no follow-up is scheduled.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-3">
         <button
           className="btn-primary"
@@ -1225,7 +1241,7 @@ export function EmailTemplateEditor({
           className="btn-ghost"
           type="button"
           onClick={sendTestEmail}
-          disabled={testBusy || problems.length > 0}
+          disabled={testBusy || ctxBusy || Boolean(pairKey && !realCtx) || problems.length > 0}
           title={
             problems.length > 0
               ? "Fix the fill-in field problems listed above first."
@@ -1241,7 +1257,8 @@ export function EmailTemplateEditor({
         )}
         {testResult?.ok && (
           <span className="text-xs font-medium text-pursue">
-            ✓ Test email sent to {testResult.email}
+            Gmail accepted the test to {testResult.email}. Check that mailbox, including Spam, to verify arrival.
+            {testResult.messageId && <span className="block font-normal">Receipt: {testResult.messageId}</span>}
           </span>
         )}
         {testResult?.ok === false && (

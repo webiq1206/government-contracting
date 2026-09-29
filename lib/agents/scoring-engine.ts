@@ -270,11 +270,30 @@ async function scoreOpportunity(
   const intakeFlags = findings.map((f) => f.flag);
   const forceIntakeReview = gate === "review";
 
+  // These existing profile rules do not need an expensive document read to
+  // discover an already-known disqualification. Preserve active pursuits and
+  // ask for review instead of archiving from preliminary notice information.
+  const structuralExclusions = checkHardExclusions(opp, profile);
+  const preliminaryExclusions = structuralExclusions.filter(key =>
+    ["ineligible_set_aside", "deadline_too_soon", "value_below_min", "unrestricted_under_threshold"].includes(key));
+  if (preliminaryExclusions.length && !opts.preserveLifecycle && !opts.analysisComplete &&
+      ["monitoring", "scoring", "analysis"].includes(opp.stage) && documentReadiness.next === "analyze") {
+    await query(
+      `update opportunities set human_action_required=true,
+        risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || $2::text[])))
+       where id=$1 and org_id=$3`,
+      [opportunityId, preliminaryExclusions.map(key => `pre_analysis_${key}`), orgId]);
+    return { ok: true, humanActionRequired: true,
+      summary: `Paid document analysis held for review because the notice already triggers company rules: ${preliminaryExclusions.join(", ")}. No analysis was billed. Review the notice or company rules before requesting analysis.` };
+  }
+
   if (documentReadiness.next === "analyze") {
     await query(
       `update opportunities
           set stage='analysis', human_action_required=false,
-              risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || array['awaiting_document_analysis'])))
+              risk_flags=(select array(select distinct flag
+                from unnest(coalesce(risk_flags,'{}') || array['awaiting_document_analysis']) as flag
+                where flag not like 'pre_analysis_%'))
         where id=$1`,
       [opportunityId]
     );
@@ -304,9 +323,6 @@ async function scoreOpportunity(
       humanActionRequired: true,
     };
   }
-
-  // 1) Deterministic hard exclusions FIRST.
-  const structuralExclusions = checkHardExclusions(opp, profile);
 
   // Valid exclusion keys the model may return in extra_exclusions. Anything
   // outside this set is a hallucination and must be dropped, an unrecognized

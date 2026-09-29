@@ -673,8 +673,8 @@ export async function runAgent(
       logAgent({
         agent: def.name,
         action: result.spendingHeld ? "spending-held" : "run",
-        level: result.ok ? "success" : "warn",
-        status: result.ok ? "ok" : "error",
+        level: result.ok && !result.humanActionRequired ? "success" : "warn",
+        status: result.ok ? (result.humanActionRequired ? "skipped" : "ok") : "error",
         message: result.summary,
         reasoning: result.reasoning,
         ...recordRefs(payload),

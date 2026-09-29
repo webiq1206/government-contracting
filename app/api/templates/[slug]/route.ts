@@ -3,15 +3,14 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { saveTemplateVersion } from "@/lib/domain/template-versions";
 import { logAgent } from "@/lib/logger";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
-import { renderTemplate, plainToHtml } from "@/lib/domain/template-render";
 import { templateHistory } from "@/lib/domain/template-store";
-import {
-  TEMPLATE_TOKEN_SAMPLES,
-  previewBriefSections,
-} from "@/lib/domain/template-tokens";
-import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 import { validateTemplate } from "@/lib/domain/outreach-validation";
 import { isEditableTemplateSlug } from "@/lib/domain/template-slugs";
+import { buildOutreachTest } from "@/lib/outreach-test";
+import { consume } from "@/lib/rate-limit";
+import { runWithOrg } from "@/lib/tenant-context";
+import { can } from "@/lib/domain/roles";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,34 +67,39 @@ export async function GET(req: Request, props: { params: Promise<{ slug: string 
 }
 
 /**
- * Send a test copy of the current (unsaved) template to the logged-in
- * operator's email address.
+ * Send one controlled copy through the account's ordinary outreach transport.
+ * An optional recipient permits testing inbox placement in another mailbox.
+ * Real bid context uses the same packet and content checks as outreach.
  *
  * Body: { subject?: string; body: string }
  *
- * Renders with the same sample values shown in the preview modal, prefixes
- * the subject with "[TEST]", and fires through the existing outreach transport.
- * Does NOT mutate the database.
+ * No original contact is changed and no automated follow-up is scheduled.
  */
 export async function POST(req: Request, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
+  if (!can(auth.orgRole, "outreach")) {
+    return NextResponse.json({ error: "You do not have permission to send outreach." }, { status: 403 });
+  }
 
   const { slug } = params;
   if (!isEditableTemplateSlug(slug)) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
-  const body = (await req.json().catch(() => null)) as {
-    subject?: string;
-    body?: string;
-  } | null;
-
-  if (!body || typeof body.body !== "string" || !body.body.trim()) {
-    return NextResponse.json({ error: "body is required" }, { status: 400 });
+  const parsed = z.object({
+    subject: z.string().max(500).optional(),
+    body: z.string().trim().min(1).max(20000),
+    recipient: z.string().trim().email().max(254).optional(),
+    pair: z.object({ opportunityId: z.string().uuid(), subcontractorId: z.string().uuid(), trade: z.string().max(300) }).optional(),
+  }).safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Enter a valid template and one test email address." }, { status: 400 });
   }
+  const body = parsed.data;
+  const recipient = body.recipient ?? auth.email;
 
   const rawSubject = (typeof body.subject === "string" ? body.subject.trim() : "") || "(no subject)";
   const rawBody = body.body.trim();
@@ -103,16 +107,22 @@ export async function POST(req: Request, props: { params: Promise<{ slug: string
   const invalid = templateProblemResponse({ subject: rawSubject, body: rawBody });
   if (invalid) return invalid;
 
-  const renderedSubject = renderTemplate(rawSubject, TEMPLATE_TOKEN_SAMPLES);
-  const renderedBodyPlain = renderTemplate(rawBody, TEMPLATE_TOKEN_SAMPLES);
-  const details = renderOutreachBrief(previewBriefSections());
-  const renderedBodyHtml = plainToHtml(renderedBodyPlain) + details.html;
+  const limit = consume("outreach-template-test", orgId, { limit: 5, windowMs: 60 * 60_000 });
+  if (!limit.ok) return NextResponse.json({ error: "This account has reached five test sends per hour. Try again later." },
+    { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } });
+  let packet: Awaited<ReturnType<typeof buildOutreachTest>>;
+  try {
+    packet = await runWithOrg(orgId, () => buildOutreachTest(orgId, { subject: rawSubject, body: rawBody }, body.pair));
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 422 });
+  }
 
   const result = await sendOutreachEmail({
-    to: auth.email,
-    subject: `[TEST] ${renderedSubject}`,
-    html: renderedBodyHtml,
-    text: renderedBodyPlain + details.plain,
+    to: recipient,
+    subject: packet.subject,
+    html: packet.html,
+    text: packet.text,
+    attachments: packet.attachments,
     orgId,
   });
 
@@ -130,15 +140,21 @@ export async function POST(req: Request, props: { params: Promise<{ slug: string
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
+  if (!result.messageId) {
+    return NextResponse.json({ error: "Gmail did not return a message receipt. Delivery is unconfirmed. Check Sent before retrying." }, { status: 502 });
+  }
 
-  await logAgent({
+  await runWithOrg(orgId, () => logAgent({
     agent: "operator",
     action: "template-test-send",
     level: "info",
-    message: `${auth.email} sent a test email for ${slug}.`,
-  });
+    message: `${auth.email} sent a controlled ${packet.mode} test for ${slug} to ${recipient}. Gmail accepted message ${result.messageId}; inbox placement is not yet verified.`,
+    output: { recipient, mode: packet.mode, messageId: result.messageId, threadId: result.threadId,
+      attachmentCount: packet.attachments.length },
+  })).catch(error => console.error("[template-test] Gmail accepted the message, but the audit write failed", error));
 
-  return NextResponse.json({ ok: true, sentTo: auth.email });
+  return NextResponse.json({ ok: true, sentTo: recipient, messageId: result.messageId,
+    mode: packet.mode, attachmentCount: packet.attachments.length, delivery: "provider_accepted" });
 }
 
 /**

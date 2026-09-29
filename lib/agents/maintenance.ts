@@ -1828,6 +1828,10 @@ export const scoringRecoverySweep: AgentDefinition = {
             and stage in ('scoring','analysis')
             and score is not null
             and solicitation_analysis is null
+            and not exists (
+              select 1 from unnest(coalesce(risk_flags,'{}')) as flag
+              where flag like 'pre_analysis_%'
+            )
             and created_at < now() - interval '20 minutes'
           order by created_at asc
           limit 200`,

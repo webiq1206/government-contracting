@@ -59,6 +59,15 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("shows a held outreach job as a warning without retrying the held work", async () => {
+    mocks.handler.mockResolvedValueOnce({ ok: true, humanActionRequired: true, summary: "Bid documents are unverified. Nothing was sent." });
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(mocks.logAgent).toHaveBeenCalledWith(expect.objectContaining({
+      level: "warn", status: "skipped", message: "Bid documents are unverified. Nothing was sent.",
+    }));
+    expect(mocks.logAgent).not.toHaveBeenCalledWith(expect.objectContaining({ level: "success" }));
+  });
   it("does not immediately retry a normalized provider account allowance refusal", () => {
     expect(shouldQueueRetry({ ok: false, summary: "AI_UNAVAILABLE: The Anthropic account has reached its specified API usage limits. You will regain access on 2026-10-01." })).toBe(false);
     expect(shouldQueueRetry({ ok: false, summary: "AI_UNAVAILABLE: Anthropic is rate limiting this account" })).toBe(true);
