@@ -23,3 +23,21 @@ describe("expired session recovery", () => {
     expect(middleware(request).headers.get("x-middleware-next")).toBe("1");
   });
 });
+
+describe("one public host", () => {
+  it("sends www to the apex host permanently, keeping path and query", () => {
+    const response = middleware(new NextRequest("https://www.brostco.com/resources/idaho-government-contracts?ref=x", { headers: { host: "www.brostco.com" } }));
+    expect(response.status).toBe(301);
+    expect(response.headers.get("location")).toBe("https://brostco.com/resources/idaho-government-contracts?ref=x");
+  });
+  it("respects the forwarded scheme behind a proxy", () => {
+    const response = middleware(new NextRequest("http://www.brostco.com/", { headers: { host: "www.brostco.com", "x-forwarded-proto": "https" } }));
+    expect(response.headers.get("location")).toBe("https://brostco.com/");
+  });
+  it("leaves the apex host and preview hosts alone", () => {
+    for (const host of ["brostco.com", "localhost:3000", "abc.replit.dev"]) {
+      const response = middleware(new NextRequest(`https://${host}/platform`, { headers: { host } }));
+      expect(response.headers.get("location"), host).toBeNull();
+    }
+  });
+});

@@ -7,7 +7,7 @@ export const metadata = publicMetadata("Government contracting resources and Ida
 
 export default function ResourcesPage() {
   return <MarketingShell>
-    <PageIntro eyebrow="Contractor resources" title="Find the right work. Prepare a clearer response." copy="Official-source guides for Boise and Idaho contracting, plus practical checklists for federal opportunity review and bid preparation. No email gate." />
+    <PageIntro path="/resources" eyebrow="Contractor resources" title="Find the right work. Prepare a clearer response." copy="Official-source guides for Boise and Idaho contracting, plus practical checklists for federal opportunity review and bid preparation. No email gate." />
     <section className="bco-container bco-section"><h2>Put the guidance to work</h2><div className="bco-card-grid"><article className="bco-card"><h3>Free contractor tools</h3><p>Build a bid decision worksheet, capability statement or compliance matrix. Download your work without signing up.</p><Link className="bco-text-link" href="/tools">Use the free tools ↗</Link></article><article className="bco-card"><h3>Opportunity sources by industry</h3><p>Find official sources and practical checks for construction, cleaning and IT services.</p><Link className="bco-text-link" href="/contract-opportunities">Choose your industry ↗</Link></article><article className="bco-card"><h3>Follow new resources</h3><p>Add our free RSS feed to your reader. No account or email address required.</p><a className="bco-text-link" href="/resources/feed.xml">Open the resource feed ↗</a></article></div></section>
     <section className="bco-container bco-section">
       <h2>Reference</h2>

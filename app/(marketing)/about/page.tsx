@@ -15,7 +15,7 @@ export const metadata: Metadata = publicMetadata(
 export default function AboutPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/about"
         eyebrow="About BrostCo"
         title="Built around the work between opportunity and bid."
         copy="BrostCo is an AI platform for small and mid-size federal services contractors. It connects opportunity discovery, subcontractor coordination, and bid preparation so the team can spend more attention on the decisions that need them."

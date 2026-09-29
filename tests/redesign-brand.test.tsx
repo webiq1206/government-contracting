@@ -50,8 +50,14 @@ describe("approved BrostCo semantic system", () => {
     expect(contrast([163,58,49], [255,255,255])).toBeGreaterThanOrEqual(4.5);
   });
   it("uses the approved type families and reduced motion", () => {
-    expect(readFileSync("app/layout.tsx", "utf8")).toContain("family=Inter");
-    expect(readFileSync("app/layout.tsx", "utf8")).toContain("family=Manrope");
+    // Inter and Manrope are self-hosted through next/font/local, so the type
+    // system no longer depends on a third-party stylesheet at render time.
+    const layout = readFileSync("app/layout.tsx", "utf8");
+    expect(layout).toContain("inter-latin-variable.woff2");
+    expect(layout).toContain("manrope-latin-variable.woff2");
+    expect(layout).not.toContain("fonts.googleapis.com");
+    expect(readFileSync("tailwind.config.ts", "utf8")).toContain("var(--font-manrope)");
+    expect(readFileSync("components/marketing/site.css", "utf8")).toContain("var(--font-manrope)");
     expect(css).toContain("prefers-reduced-motion: reduce");
   });
 });

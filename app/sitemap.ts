@@ -15,8 +15,9 @@ import { PUBLIC_ROUTES, absoluteUrl } from "@/lib/domain/public-routes";
  */
 export const dynamic = "force-dynamic";
 
-// Omit lastModified until a reliable per-page editorial timestamp is available.
-// A process start is not a content update.
+// lastModified only where the declaration carries a real editorial date (a
+// hand-check date shown on the page, or the day content last changed). A
+// process start is not a content update, so pages without one omit it.
 
 /**
  * /sitemap.xml, generated from the declared public surface.
@@ -30,6 +31,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = process.env.APP_URL || "https://brostco.com";
   return PUBLIC_ROUTES.map((route) => ({
     url: absoluteUrl(siteUrl, route.path),
+    ...(route.lastModified ? { lastModified: route.lastModified } : {}),
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));

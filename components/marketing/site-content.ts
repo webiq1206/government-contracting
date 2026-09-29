@@ -6,6 +6,7 @@ export const MARKETING_LINKS = [
   { href: "/ai", label: "How AI works" },
   { href: "/demo", label: "Product tour" },
   { href: "/pricing-guide", label: "Pricing" },
+  { href: "/resources", label: "Resources" },
 ] as const;
 export const TRIAL_COPY = `${TRIAL_DAYS} days free. No credit card required. ${TRIAL_ALLOWANCE_COPY} Subscribe only when you choose.`;
 export const USAGE_COPY =

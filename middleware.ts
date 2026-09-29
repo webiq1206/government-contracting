@@ -85,8 +85,32 @@ function isPublic(pathname: string): boolean {
   );
 }
 
+/**
+ * One host for every public URL.
+ *
+ * www.brostco.com resolves to the same deployment as the apex, so without a
+ * redirect every page exists at two addresses. Canonical tags point search
+ * engines at the apex, but a redirect settles it for every reader, including
+ * the ones that never look at a canonical: link checkers, answer-engine
+ * fetchers, and people copying the address bar. Permanent, because the
+ * choice is permanent, and only the host changes: path and query survive.
+ */
+function apexRedirect(req: NextRequest): NextResponse | null {
+  const host = (req.headers.get("host") ?? "").toLowerCase();
+  if (!host.startsWith("www.")) return null;
+  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
+  const target = new URL(
+    `${req.nextUrl.pathname}${req.nextUrl.search}`,
+    `${proto === "http" ? "http" : "https"}://${host.slice(4)}`,
+  );
+  return NextResponse.redirect(target, 301);
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const apex = apexRedirect(req);
+  if (apex) return apex;
 
   if (isPublic(pathname)) {
     return NextResponse.next();

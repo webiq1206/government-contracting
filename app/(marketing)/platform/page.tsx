@@ -18,7 +18,7 @@ export const metadata: Metadata = publicMetadata(
 export default function PlatformPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/platform"
         eyebrow="Platform"
         title="AI moves the pursuit from discovery to draft."
         copy="After setup, BrostCo finds matching opportunities, analyzes requirements, coordinates subcontractor outreach, and prepares bid work under your rules. Your team handles calls, exceptions, final review, and submission."

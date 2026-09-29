@@ -4,9 +4,18 @@ import { MarketingShell, TrialCTA } from "@/components/marketing/site-shell";
 import { publicMetadata } from "@/lib/marketing/metadata";
 import {
   PROCUREMENT_SOURCES,
+  REGISTER_PUBLISHED_ON,
   lastVerifiedOn,
   procurementLevels,
 } from "@/lib/marketing/procurement-sources";
+import {
+  breadcrumbSchema,
+  jsonLdGraph,
+  jsonLdString,
+  organizationRef,
+  organizationSchema,
+  siteUrl,
+} from "@/lib/marketing/schema";
 
 const PATH = "/resources/idaho-procurement-sources";
 const TITLE = "Idaho public procurement sources, by buying authority";
@@ -32,7 +41,7 @@ export const metadata: Metadata = publicMetadata(TITLE, DESCRIPTION, PATH);
  * to an advertisement.
  */
 export default function IdahoProcurementSourcesPage() {
-  const site = (process.env.APP_URL || "https://brostco.com").replace(/\/$/, "");
+  const site = siteUrl();
   const url = `${site}${PATH}`;
   const verified = lastVerifiedOn();
 
@@ -43,19 +52,35 @@ export default function IdahoProcurementSourcesPage() {
    * search or answer engine treat it as a citable source of record rather than
    * as another blog post that happens to contain links.
    */
-  const schema = [
+  const schema = jsonLdGraph([
+    organizationSchema(site),
     {
-      "@context": "https://schema.org",
       "@type": "Dataset",
+      "@id": `${url}#dataset`,
       name: TITLE,
       description: DESCRIPTION,
       url,
       identifier: url,
+      datePublished: REGISTER_PUBLISHED_ON,
       dateModified: verified,
+      inLanguage: "en-US",
       isAccessibleForFree: true,
-      creator: { "@type": "Organization", name: "BrostCo", url: site },
-      publisher: { "@type": "Organization", name: "BrostCo", url: site },
+      // The terms are the page's own "Reuse and citation" section: free to
+      // quote, link to and build on, attribution requested.
+      license: `${url}#reuse`,
+      keywords: [
+        "Idaho public procurement",
+        "Idaho government bids",
+        "Boise government bids",
+        "Idaho Division of Purchasing",
+        "Idaho Division of Public Works",
+        "SAM.gov Idaho",
+        "government contracting sources",
+      ],
+      creator: organizationRef(site),
+      publisher: organizationRef(site),
       spatialCoverage: { "@type": "Place", name: "Idaho, United States" },
+      variableMeasured: "Buying authority, official bid source URL, scope covered, scope not covered, registration route, date last verified",
       distribution: [
         {
           "@type": "DataDownload",
@@ -69,22 +94,18 @@ export default function IdahoProcurementSourcesPage() {
         },
       ],
     },
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Home", item: site },
-        { "@type": "ListItem", position: 2, name: "Resources", item: `${site}/resources` },
-        { "@type": "ListItem", position: 3, name: TITLE, item: url },
-      ],
-    },
-  ];
+    breadcrumbSchema([
+      { name: "Home", path: "/" },
+      { name: "Resources", path: "/resources" },
+      { name: TITLE, path: PATH },
+    ], site),
+  ]);
 
   return (
     <MarketingShell>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }}
+        dangerouslySetInnerHTML={{ __html: jsonLdString(schema) }}
       />
       <article className="bco-container bco-guide">
         <nav className="bco-breadcrumb" aria-label="Breadcrumb">

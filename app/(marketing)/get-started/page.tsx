@@ -16,7 +16,7 @@ export const metadata: Metadata = publicMetadata(
 export default function GetStartedPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/get-started"
         eyebrow="Getting started"
         title="Your first goal: one opportunity you understand."
         copy={`Use your ${TRIAL_DAYS}-day trial to set up your company and review a real pursuit. No credit card is required to create your trial account.`}

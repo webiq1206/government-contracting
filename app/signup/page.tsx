@@ -16,15 +16,15 @@ import { trackEvent } from "@/lib/analytics";
 import { SessionLoadFailure } from "@/components/session-load-failure";
 import { TrialAllowances } from "@/components/marketing/trial-allowances";
 import { MarketingAnalytics } from "@/components/marketing/marketing-analytics";
+import { publicMetadata } from "@/lib/marketing/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Start your BrostCo free trial",
-  description:
-    "Start a no-card BrostCo trial for AI opportunity analysis, subcontractor coordination, and bid preparation.",
-  alternates: { canonical: "/signup" },
-};
+export const metadata: Metadata = publicMetadata(
+  "Start your free 7-day trial",
+  "Create a BrostCo account and start a free 7-day trial with no credit card: AI opportunity analysis, subcontractor coordination, and bid preparation.",
+  "/signup",
+);
 
 export default async function SignupPage(props: {
   searchParams?: Promise<{ plan?: string }>;

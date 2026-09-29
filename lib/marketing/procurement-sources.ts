@@ -186,6 +186,9 @@ export const PROCUREMENT_SOURCES: ProcurementSource[] = [
   },
 ];
 
+/** The day the register first went live on the site. */
+export const REGISTER_PUBLISHED_ON = "2026-09-27";
+
 /** A register entry by id, or undefined. */
 export function procurementSource(id: string): ProcurementSource | undefined {
   return PROCUREMENT_SOURCES.find((source) => source.id === id);

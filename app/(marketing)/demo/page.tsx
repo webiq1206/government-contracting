@@ -48,7 +48,7 @@ const recordings = [
 export default function DemoPage() {
   return (
     <MarketingShell>
-      <PageIntro
+      <PageIntro path="/demo"
         eyebrow="Product tour"
         title="See the work. Try the next step."
         copy="Explore a sample pursuit, then watch recorded desktop and mobile workflows with guided narration. No account or email required."

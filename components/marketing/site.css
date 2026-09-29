@@ -10,7 +10,7 @@
   color-scheme: light;
   background: #f4f6f6;
   color: var(--bco-ink);
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--font-inter), Inter, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.65;
   overflow-wrap: break-word;
@@ -23,7 +23,7 @@
 .bco-site h2,
 .bco-site h3,
 .bco-site h4 {
-  font-family: Manrope, Inter, Arial, sans-serif;
+  font-family: var(--font-manrope), Manrope, var(--font-inter), Inter, Arial, sans-serif;
   letter-spacing: -0.035em;
   font-weight: 700;
   line-height: 1.14;
@@ -172,7 +172,7 @@
   background: #f4f6f6f5;
   border-bottom: 1px solid #d9e2e2;
   backdrop-filter: blur(16px);
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--font-inter), Inter, Arial, sans-serif;
 }
 .bco-nav-inner {
   height: 80px;
@@ -820,7 +820,7 @@
   font-size: 48px;
   line-height: 1.2;
   letter-spacing: -0.045em;
-  font-family: Manrope, Inter, sans-serif;
+  font-family: var(--font-manrope), Manrope, var(--font-inter), Inter, sans-serif;
   font-weight: 700;
   margin: 10px 0 16px;
 }
@@ -934,7 +934,7 @@
   background: radial-gradient(ellipse at 90% 0, #28554b, transparent 65%), #10262b;
   color: #c2d0d4;
   padding: 64px 0 28px;
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--font-inter), Inter, Arial, sans-serif;
   font-size: 12px;
 }
 .bco-footer-grid {
@@ -1121,7 +1121,7 @@
 .bco-chapter-tabs button[aria-selected="true"] { background: #fff; color: #143b39; border-color: #93b7ac; box-shadow: 0 4px 18px #183f3510; }
 .bco-chapter-tabs strong { display: block; font-size: 14px; font-weight: 650; line-height: 1.4; }
 .bco-chapter-tabs small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.6; color: #52696b; }
-.bco-chapter-tab-number { font-size: 11px; color: #5b7f74; }
+.bco-chapter-tab-number { font-size: 11px; color: #3f625a; }
 .bco-chapter-tab-arrow { margin-left: auto; opacity: 0; color: #0e6f75; }
 .bco-chapter-tabs [aria-selected="true"] .bco-chapter-tab-arrow { opacity: 1; }
 .bco-chapter-tabs .bco-chapter-tab-short { display: none; }
@@ -2645,3 +2645,9 @@
 }
 .bco-motion-toggle { position: absolute; bottom: 12px; right: 16px; z-index: 4; min-height: 44px; padding: 8px 12px; border: 1px solid #ffffff80; border-radius: 8px; background: #0b1720d9; color: #fff; font-size: 12px; }
 .bco-motion-toggle:focus-visible { outline: 3px solid #5bd6c3; outline-offset: 3px; }
+
+/* NAICS table copy on the sector pages. */
+.bco-site .bco-sector-naics > p { max-width: 720px; }
+.bco-site .bco-sector-naics .bco-table { max-width: 760px; }
+.bco-site .bco-sector-naics .bco-table th, .bco-site .bco-sector-naics .bco-table td { padding: 12px 16px; min-width: 0; }
+.bco-site .bco-sector-naics code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }

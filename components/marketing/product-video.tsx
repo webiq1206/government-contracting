@@ -4,13 +4,25 @@ import { useEffect, useRef, useState } from "react";
 const RESPONSIVE_DEMOS = new Set(["hero-preview", "platform-walkthrough", "pipeline", "review", "subs", "communications", "opportunity", "activity"]);
 const MEDIA_REVISION = "2026-09-16-recorded";
 
-/** Native, keyboard-accessible media with an explicit recovery path. No autoplay. */
+/**
+ * Native, keyboard-accessible media with an explicit recovery path. No autoplay.
+ *
+ * The poster is attached only once the player is within a screen of the
+ * viewport. A poster is fetched the moment the attribute exists, whether or
+ * not the element is visible, and the home page carries eight players: with
+ * eager posters every visitor downloaded around two megabytes of stills for
+ * tours they had not scrolled to, including the hidden tab panels, and on a
+ * phone the desktop still and then the phone still for each. Waiting until
+ * the player is near also means the phone/desktop choice has already been
+ * made, so each player fetches one image, once.
+ */
 export function ProductVideo({ slug, poster, title, className = "" }: {
   slug: string; poster: string; title: string; className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [mobile, setMobile] = useState(false);
+  const [near, setNear] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   // Choose native phone footage once. Rotating a device must not restart a tour.
   useEffect(() => setMobile(window.matchMedia("(max-width: 640px)").matches), []);
@@ -26,8 +38,9 @@ export function ProductVideo({ slug, poster, title, className = "" }: {
       if ((event as CustomEvent).detail !== element) pause();
     };
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) pause();
-    });
+      if (entry.isIntersecting) setNear(true);
+      else pause();
+    }, { rootMargin: "400px 0px" });
     observer.observe(element);
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("brostco:product-play", onOtherPlayback);
@@ -45,7 +58,7 @@ export function ProductVideo({ slug, poster, title, className = "" }: {
   return <div className="bco-product-video">
     <video ref={video} key={`${slug}-${attempt}-${format}`} className={className} controls playsInline preload="none"
       data-product-video data-responsive={responsive} data-format={format} width={format === "mobile" ? 720 : 1600} height={format === "mobile" ? 1600 : 1000}
-      poster={currentPoster} aria-label={title} onError={() => setFailed(true)}
+      poster={near ? currentPoster : undefined} aria-label={title} onError={() => setFailed(true)}
       onPlay={(event) => document.dispatchEvent(new CustomEvent("brostco:product-play", { detail: event.currentTarget }))}>
       <source src={source} type="video/mp4" onError={() => setFailed(true)} />
       <track kind="captions" src={`/demos/${slug}.vtt?v=${MEDIA_REVISION}`} srcLang="en" label="English" default />

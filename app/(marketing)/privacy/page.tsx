@@ -6,7 +6,7 @@ import { MarketingFooter } from "@/components/marketing/marketing-footer";
 
 export const metadata: Metadata = publicMetadata(
   "Privacy Policy",
-  "How Brost Co collects, uses, and protects customer information.",
+  "How BrostCo collects, uses, and protects customer information, which processors are involved, and how long data is kept.",
   "/privacy",
 );
 

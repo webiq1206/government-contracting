@@ -35,7 +35,9 @@ export function ThemeWordmark({
     <>
       <img
         src="/brand/wordmark-dark.png"
-        alt="BROST.co"
+        alt="BrostCo"
+        width={696}
+        height={159}
         className={`${cls} dark:hidden`}
         draggable={false}
         decoding="async"
@@ -43,7 +45,9 @@ export function ThemeWordmark({
       />
       <img
         src="/brand/wordmark-light.png"
-        alt="BROST.co"
+        alt="BrostCo"
+        width={699}
+        height={160}
         className={`${cls} hidden dark:block`}
         draggable={false}
         decoding="async"

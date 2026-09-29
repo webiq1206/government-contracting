@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { themeInitScript } from "@/lib/theme";
 import { ClarityAnalytics } from "@/components/marketing/clarity-analytics";
@@ -6,6 +7,32 @@ import "./globals.css";
 import "./simplified-shell.css";
 
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
+
+/*
+ * Inter and Manrope, self-hosted.
+ *
+ * These used to arrive as a render-blocking stylesheet from Google Fonts,
+ * which cost every first visit two extra origins (the CSS host and the font
+ * host) before text could be drawn in the right face. The same two variable
+ * fonts, Latin subset, now ship from this origin with the page: no third-party
+ * round trip, a cache-forever hash in the URL, and a metric-matched fallback
+ * face while they load so headings do not jump when they arrive. Both are
+ * licensed under the SIL Open Font License (see app/fonts/README.md).
+ */
+const inter = localFont({
+  src: "./fonts/inter-latin-variable.woff2",
+  weight: "400 700",
+  display: "swap",
+  variable: "--font-inter",
+  adjustFontFallback: "Arial",
+});
+const manrope = localFont({
+  src: "./fonts/manrope-latin-variable.woff2",
+  weight: "600 800",
+  display: "swap",
+  variable: "--font-manrope",
+  adjustFontFallback: "Arial",
+});
 const DESCRIPTION =
   "BrostCo is an AI platform for government contractors that finds matching federal opportunities, coordinates subcontractor work, prepares bids, and shows teams exactly what needs attention next.";
 
@@ -55,15 +82,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${manrope.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript() }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap"
-          rel="stylesheet"
-        />
       </head>
       <body data-clarity-mask="true" className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ThemeProvider>{children}</ThemeProvider>

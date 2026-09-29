@@ -40,7 +40,7 @@ export default function SiteMapPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
       />
-      <PageIntro
+      <PageIntro path="/sitemap"
         eyebrow="Site map"
         title="Find your way around BrostCo."
         copy="Explore the product, see how AI fits the workflow, understand costs, or get ready for your first trial."

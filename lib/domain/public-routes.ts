@@ -25,9 +25,10 @@
  * Pure declarations. The resource catalog contains no server dependencies.
  */
 
-import { CONTRACTOR_GUIDES } from "../marketing/resources";
-import { FREE_TOOLS } from "../marketing/free-tools";
-import { OPPORTUNITY_SECTORS } from "../marketing/opportunity-sectors";
+import { CONTRACTOR_GUIDES, GUIDES_UPDATED_ON } from "../marketing/resources";
+import { FREE_TOOLS, TOOLS_UPDATED_ON } from "../marketing/free-tools";
+import { OPPORTUNITY_SECTORS, SECTORS_UPDATED_ON } from "../marketing/opportunity-sectors";
+import { lastVerifiedOn } from "../marketing/procurement-sources";
 
 export type RouteGroup = "Product" | "Get started" | "Legal" | "Reference" | "Company";
 
@@ -42,6 +43,14 @@ export interface PublicRoute {
   /** Relative to the rest of this list, which is all a priority means. */
   priority: number;
   group: RouteGroup;
+  /**
+   * ISO date of the last editorial change, for the sitemap's lastmod. Only
+   * set where a real date exists: a hand-check date shown on the page, or the
+   * day a page's content last changed. A process start or a deploy is not a
+   * content update, and a lastmod that moves without the content moving
+   * teaches a crawler to ignore it.
+   */
+  lastModified?: string;
 }
 
 /**
@@ -49,10 +58,10 @@ export interface PublicRoute {
  * them.
  */
 export const PUBLIC_ROUTES: PublicRoute[] = [
-  { path: "/tools", label: "Free contractor tools", summary: "Free bid decision, capability statement and proposal compliance worksheets with local downloads and no signup.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
-  ...FREE_TOOLS.map((tool): PublicRoute => ({ path: `/tools/${tool.slug}`, label: tool.title, summary: tool.description, changeFrequency: "monthly", priority: 0.8, group: "Reference" })),
-  { path: "/contract-opportunities", label: "Contract opportunity sources", summary: "Find official construction, cleaning and IT contracting sources and check whether an opportunity fits your business.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
-  ...OPPORTUNITY_SECTORS.map((sector): PublicRoute => ({ path: `/contract-opportunities/${sector.slug}`, label: sector.title, summary: sector.description, changeFrequency: "monthly", priority: 0.7, group: "Reference" })),
+  { path: "/tools", label: "Free contractor tools", summary: "Free bid decision, capability statement and proposal compliance worksheets with local downloads and no signup.", changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: TOOLS_UPDATED_ON },
+  ...FREE_TOOLS.map((tool): PublicRoute => ({ path: `/tools/${tool.slug}`, label: tool.title, summary: tool.description, changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: TOOLS_UPDATED_ON })),
+  { path: "/contract-opportunities", label: "Contract opportunity sources", summary: "Find official construction, cleaning and IT contracting sources and check whether an opportunity fits your business.", changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: SECTORS_UPDATED_ON },
+  ...OPPORTUNITY_SECTORS.map((sector): PublicRoute => ({ path: `/contract-opportunities/${sector.slug}`, label: sector.title, summary: sector.description, changeFrequency: "monthly", priority: 0.7, group: "Reference", lastModified: SECTORS_UPDATED_ON })),
   { path: "/resources", label: "Contractor resources", summary: "Official-source Idaho and Boise contracting guides and practical checklists for preparing government bids.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
   /**
    * Declared by hand rather than through CONTRACTOR_GUIDES, because it is not
@@ -69,10 +78,11 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     changeFrequency: "monthly",
     priority: 0.8,
     group: "Reference",
+    lastModified: lastVerifiedOn(),
   },
   ...CONTRACTOR_GUIDES.map((guide): PublicRoute => ({
     path: `/resources/${guide.slug}`, label: guide.title, summary: guide.description,
-    changeFrequency: "monthly", priority: 0.7, group: "Reference",
+    changeFrequency: "monthly", priority: 0.7, group: "Reference", lastModified: GUIDES_UPDATED_ON,
   })),
   { path: "/platform", label: "Platform overview", summary: "How BrostCo connects opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/ai", label: "How AI works", summary: "What AI reads and prepares, what depends on connected services and rules, and where your team reviews the work.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
@@ -85,7 +95,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/",
     label: "Home",
     summary:
-      "What Brost Co does: watches SAM.gov for matching work, scores each opportunity, sources and emails subcontractors, and prepares the bid package. Includes pricing, the workflow, a product film, and answers to common questions.",
+      "What BrostCo does: watches SAM.gov for matching work, scores each opportunity, sources and emails subcontractors, and prepares the bid package. Includes pricing, the workflow, a product film, and answers to common questions.",
     changeFrequency: "weekly",
     priority: 1,
     group: "Product",
@@ -112,7 +122,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/pricing-guide",
     label: "Pricing explained",
     summary:
-      "What Brost Co costs monthly and annually, what the free trial includes, how separate service usage and eligible provider connections work, and how to work out whether it pays for itself on your bid volume.",
+      "What BrostCo costs monthly and annually, what the free trial includes, how separate service usage and eligible provider connections work, and how to work out whether it pays for itself on your bid volume.",
     changeFrequency: "monthly",
     priority: 0.8,
     group: "Product",
@@ -130,7 +140,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/privacy",
     label: "Privacy Policy",
     summary:
-      "What Brost Co collects, how it is used, who processes it, and how long it is kept.",
+      "What BrostCo collects, how it is used, who processes it, and how long it is kept.",
     changeFrequency: "yearly",
     priority: 0.3,
     group: "Legal",
@@ -138,7 +148,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   {
     path: "/terms",
     label: "Terms of Service",
-    summary: "The agreement covering use of the Brost Co application.",
+    summary: "The agreement covering use of the BrostCo application.",
     changeFrequency: "yearly",
     priority: 0.3,
     group: "Legal",
@@ -249,14 +259,28 @@ export function crawlability(route: string): Crawlability {
  * disallow it explicitly rather than deleting it, so the choice is visible.
  */
 export const AI_CRAWLERS = [
+  // OpenAI: training, ChatGPT search index, and user-initiated fetches.
   "GPTBot",
   "OAI-SearchBot",
   "ChatGPT-User",
+  // Anthropic: training, Claude's search index, and user-initiated fetches.
+  // "anthropic-ai" and "Claude-Web" are older tokens kept for crawlers that
+  // still announce them.
   "ClaudeBot",
+  "Claude-SearchBot",
+  "Claude-User",
   "anthropic-ai",
   "Claude-Web",
+  // Perplexity: index and user-initiated fetches.
   "PerplexityBot",
+  "Perplexity-User",
+  // Google's AI training control (Search itself is Googlebot, under *).
   "Google-Extended",
+  // Other answer engines and assistants that publish a token.
+  "DuckAssistBot",
+  "Applebot",
+  "Amazonbot",
+  "meta-externalagent",
   "CCBot",
 ] as const;
 
