@@ -11,13 +11,13 @@ public URLs. The command checks the homepage, sitemap and live ownership key
 before submitting. A 200 or 202 response means receipt, not guaranteed indexing.
 An ambiguous timeout should not trigger an automatic retry loop.
 
-Submit https://brostco.com/sitemap.xml in verified Google and Bing properties
-only after the live sitemap returns valid XML. Account connection is required
-for Bing. Clarity still needs a BrostCo project ID and tracking installation;
-the Composio connector exports analytics but cannot create projects.
-Keep Clarity collection off private procurement, billing and document pages.
+## Established setup
 
-On September 28, 2026, the homepage, sitemap, robots and health endpoint returned
-server errors. Replit's connector reported successful deployment, but its browser
-security verification blocked runtime-log access. The runtime cause remains
-unconfirmed. Do not bypass the schema check before web startup.
+The owner's completed setup record confirms Bing ownership and sitemap acceptance, Google sitemap acceptance, Clarity project ypg5p3oq1h with consent and masking, and IndexNow acceptance of 34 URLs (HTTP 202):
+https://github.com/webiq1206/government-contracting/actions/runs/36462293271
+
+Do not recreate these integrations or routinely resubmit unchanged URLs. Acceptance is not proof of indexing.
+
+September 30 live checks returned HTTP 200 for the homepage, /tools, /tools/bid-no-bid and /signup. Google Search Console owner access for sc-domain:brostco.com was reconfirmed. Earlier September 28 outage statements are historical.
+
+Traffic and conversion outcomes remain unknown. Keep optional analytics off private procurement, billing and document pages. Preserve the schema check before web startup.

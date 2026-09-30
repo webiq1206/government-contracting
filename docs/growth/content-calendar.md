@@ -1,20 +1,15 @@
 # BrostCo starter distribution queue
 
-Prepared September 27, 2026. Status: unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
+Prepared September 27, 2026. Updated September 30: post 1 published and independently verified on LinkedIn; five launch posts remain unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
 
 ## 1. Bid decision worksheet
 
-Before you spend a day preparing a bid, answer three questions:
+Published and independently verified September 30, 2026 on Jared Brost's verified personal LinkedIn profile with explicit BrostCo branding.
 
-Can we meet the requirements? Can we hit every mandatory date? Can we actually deliver the work?
+Post ID: urn:li:share:7511065018671591424
+Post URL: https://www.linkedin.com/feed/update/urn:li:share:7511065018671591424/
 
-If any answer is unclear, that's the next task. Writing a longer proposal won't resolve it.
-
-We built a free BrostCo bid/no-bid worksheet to make those checks easier to discuss with your team. Seven checks, a downloadable record, and no signup.
-
-https://brostco.com/tools/bid-no-bid?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=bid-scorecard
-
-Visual: a real screenshot of the scorecard with a clearly labeled illustrative answer set. Never call readiness a win probability.
+API creation succeeded. API readback returned 403, but public HTTPS retrieval verified the complete post, publication timestamp and author profile. Do not republish. See execution-log.md for exact copy, destination checks and verification limitations. This entry is no longer a launch draft.
 
 ## 2. Capability statement
 
