@@ -1,15 +1,15 @@
 # BrostCo starter distribution queue
 
-Prepared September 27, 2026. Updated September 30: post 1 accepted by LinkedIn; five launch posts remain unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
+Prepared September 27, 2026. Updated September 30: post 1 published and independently verified on LinkedIn; five launch posts remain unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
 
 ## 1. Bid decision worksheet
 
-Publication accepted September 30, 2026 on Jared Brost's verified personal LinkedIn profile with explicit BrostCo branding.
+Published and independently verified September 30, 2026 on Jared Brost's verified personal LinkedIn profile with explicit BrostCo branding.
 
 Post ID: urn:li:share:7511065018671591424
 Post URL: https://www.linkedin.com/feed/update/urn:li:share:7511065018671591424/
 
-API creation succeeded; independent readback returned 403. Do not republish. See execution-log.md for exact copy, destination checks and verification limitations. This entry is no longer a launch draft.
+API creation succeeded. API readback returned 403, but public HTTPS retrieval verified the complete post, publication timestamp and author profile. Do not republish. See execution-log.md for exact copy, destination checks and verification limitations. This entry is no longer a launch draft.
 
 ## 2. Capability statement
 
