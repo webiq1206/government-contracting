@@ -35,3 +35,32 @@ Release check update: pull request #157 saved the exact locally tested applicati
 - Spend: $0 additional. Publications: none. No social or email writes, paid provider calls, account signups, deployment or database changes.
 
 Independent production observation: GitHub Actions run https://github.com/webiq1206/government-contracting/actions/runs/36433693276 checked September 28 at 14:08:27 UTC. Both brostco.com and www.brostco.com resolved and completed valid TLS. All 12 paths per host returned HTTP 500, including the static favicon, homepage, health endpoint, robots, sitemap, tools and RSS. This corroborates a production serving problem beyond this workspace; headers do not identify its cause. Replit runtime/deployment logs remain needed. Google reports /tools unknown, with no crawl result. The historical indexed homepage result does not clear the current failure.
+
+## September 30, 2026, America/Boise: first LinkedIn scorecard publication
+
+- Read current main, OPERATIONS.md, content-calendar.md, conversation-watch.md and this log before acting. No AGENTS.md appeared in the recursive tree. No application, database, deployment or unrelated client changes.
+- Production checks: homepage, /tools, /tools/bid-no-bid and /signup returned HTTP 200. Live scorecard interaction confirmed that five Yes and two Need to verify answers produce 5/7 and Clarify before committing. The download button enabled, but a browser download event could not be confirmed. Publication copy makes no tested-download claim.
+- Verified LinkedIn author: Jared Brost, urn:li:person:UyZYeCarOB, https://www.linkedin.com/in/jared-brost. Account alias WebIQ. No shared profile settings or other clients' content changed.
+- Publication request accepted September 30 at approximately 14:11 UTC: LINKEDIN_CREATE_LINKED_IN_POST returned success with ID urn:li:share:7511065018671591424, with PUBLIC visibility and PUBLISHED lifecycle requested. Post URL derived from the returned ID: https://www.linkedin.com/feed/update/urn:li:share:7511065018671591424/ . Independent readback could not be completed: GET_POST_CONTENT returned 403; public retrieval was unavailable. No retry of the write.
+- Campaign destination: https://brostco.com/tools/bid-no-bid?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=bid-scorecard . Brand affiliation is explicit in the copy. No customer proof, win guarantees, engagement requests, private messages or tags.
+- Deduplication: checked repository publication records and searched for indexed Jared Brost/BrostCo posts and the exact scorecard URL; no duplicate found. Recent activity was behind a sign-in wall, so the full history remains unavailable.
+- Platform source reviewed September 30: https://www.linkedin.com/help/linkedin/answer/a1338787 . Kept the post original, relevant and nonrepetitive, without engagement manipulation.
+- Facebook managed-page read returned no BrostCo page. No unrelated page used.
+- GSC reconfirmed owner permission for sc-domain:brostco.com. Final web search data by page for 2026-08-30 through 2026-09-27 returned no rows. Search traffic, post reach, trial starts, activation and revenue are unknown. No growth gain claimed.
+- No Bing, GSC or IndexNow resubmissions of unchanged URLs. Spend: $0 incremental.
+- Documentation reconciliation: removed stale active outage and disconnected-LinkedIn statements from OPERATIONS.md; marked launch post 1 as publication accepted, with five launch drafts remaining. Checks for this documentation-only PR run through the existing repository workflow.
+
+### Exact accepted post copy
+
+Before your team spends a day writing a government bid, make the open questions visible.
+
+Can you meet the eligibility requirements? Complete the mandatory site visit? Staff the work? Support the price with current quotes?
+
+A practical review: mark each answer Yes, No, or Need to verify. For anything unresolved, write down the source you need, the person responsible, and when you'll have an answer.
+
+For a construction contractor, that might mean confirming the drawing revision and subcontractor availability. For a cleaning company, it might mean checking service hours and which consumables are included.
+
+At BrostCo, we built a free seven-check bid/no-bid scorecard for that conversation. It works without signup and flags questions to clarify before committing. The result measures checklist readiness, not your probability of winning.
+
+Try the scorecard:
+https://brostco.com/tools/bid-no-bid?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=bid-scorecard

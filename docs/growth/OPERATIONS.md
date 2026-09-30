@@ -67,14 +67,17 @@ An email digest is not enabled. It requires a verified BrostCo sender, confirmed
 
 ## Current access evidence
 
-- GitHub: PR #157 merged to main as f7a1986b23be609ed4fc6a0d240ade66ab1fb6ba, confirmed September 28. This establishes repository release, not production deployment.
-- Replit connector: app discovered and existing deployment reported success. Source sync has not been established.
-- Replit browser: Cloudflare security verification persisted after one reload; stop browser attempts. See https://help.openai.com/articles/20001280-using-cloud-browser-in-chatgpt#when-a-website-blocks-the-task.
-- brostco.com: September 28 GitHub Actions diagnostic independently returned HTTP 500 for all 12 checked paths on both apex and www, including static favicon, homepage, health, sitemap and tools. DNS and TLS succeeded. Evidence: https://github.com/webiq1206/government-contracting/actions/runs/36433693276. This is a corroborated serving failure; root cause requires hosting logs. Hold promotion. Do not retry the known Replit browser security challenge. Google reports /tools unknown.
-- LinkedIn and Google Analytics through Composio: no active accounts. Do not schedule writes requiring these connections.
-- Google Search Console: the actual google_search_console Composio connection is active. Owner access to sc-domain:brostco.com verified September 28. Use this free existing connection, not the paid GSC Wizard. Sitemap https://brostco.com/sitemap.xml was submitted September 28 at 14:02:43 UTC; readback at approximately 14:06 UTC shows pending with one error. Avoid repeated submissions while processing.
-- Google URL Inspection reports the homepage submitted and indexed, canonical https://brostco.com/, with a successful mobile crawl September 26 at 11:07:52 UTC. This historical crawl does not prove present availability. Search Analytics returned no rows for August 29 through September 25; traffic and conversion outcomes remain unknown.
-- No new third-party account has been created and no social post, outreach email, or ad has been published by this run.
+Refreshed September 30, 2026. Earlier September 28 outage notes are historical.
+
+- Production: direct HTTPS returned 200 for homepage, /tools, /tools/bid-no-bid and /signup. Live browser review confirmed all seven scorecard inputs, the calculated result, and the trial link. Five Yes answers and two Need to verify answers produced 5/7 and Clarify before committing.
+- Download validation: the button became enabled, but the cloud browser did not emit a download event after activation. Download completion is unverified; this does not prove a site defect. Do not claim the download was tested successfully.
+- GitHub: current main was 3cef983e22c8d036fd6c0c2a77c96317f4b5c5f9 before this documentation update. No AGENTS.md appeared in the recursive tree. Use the existing PR checks and preserve concurrent work.
+- LinkedIn: active connection verified as Jared Brost, https://www.linkedin.com/in/jared-brost, member UyZYeCarOB. The account alias is WebIQ; the actual author is Jared's personal profile. An explicitly branded BrostCo post was accepted with PUBLISHED state requested on September 30. Post ID: urn:li:share:7511065018671591424. The API returned success and this ID, but GET_POST_CONTENT returned 403 and public retrieval was unavailable. Do not duplicate the write. Independent post readback remains blocked by permissions.
+- Facebook: managed-page enumeration succeeded but returned no BrostCo page. No page was renamed or repurposed, and no Facebook post was created.
+- Google Search Console: live GET_SITE reconfirmed owner access to sc-domain:brostco.com. Final web Search Analytics by page for August 30 through September 27 returned no rows. Traffic and conversion outcomes remain unknown.
+- Prior completed setup from the owner's conversation: Bing ownership verified and sitemap accepted; Clarity project ypg5p3oq1h installed with consent controls and masking; IndexNow accepted 34 URLs in run 36462293271. These were not recreated or routinely resubmitted today.
+- LinkedIn recent activity required browser sign-in. Repository publication records were checked and public search found no indexed duplicate, but that does not establish a complete activity history. Keep the exact new post ID as the deduplication key.
+- No account was created, no private outreach was sent, and no paid service was used.
 
 ## Measurement
 
@@ -82,4 +85,4 @@ Report actual actions separately from outcomes. Built, tested, committed, deploy
 
 ## Recurring work
 
-Enabled weekday morning task: BrostCo organic growth, America/Boise, approximately 08:00. Friday runs include a concise progress report. The active scheduled scope uses verified GitHub and public web access for research, website maintenance and reporting. Social and email publishing remain inactive until channel access and production destinations are verified.
+Enabled weekday morning task: BrostCo organic growth, America/Boise, approximately 08:00. Friday runs include a concise progress report. The active scope includes autonomous free public publishing through verified authorized identities, public research and website maintenance. LinkedIn publishing access was established September 30. BrostCo Facebook publishing and email delivery remain unavailable under the current verified access.
