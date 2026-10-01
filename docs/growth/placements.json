@@ -35,7 +35,13 @@
       "linkAttribute": "shortened_link_with_interstitial; no ranking attribute claim",
       "crawlable": "Public GET returned 200 with full SocialMediaPosting text; crawler-specific policy unverified",
       "indexed": "unverified",
-      "nextReview": "2026-10-02"
+      "nextReview": "2026-10-02",
+      "engagementObserved": {
+        "date": "2026-10-01",
+        "reactions": 0,
+        "publicComments": 0,
+        "limitations": "Logged-out SocialMediaPosting data only; not complete account monitoring."
+      }
     }
   ]
 }
