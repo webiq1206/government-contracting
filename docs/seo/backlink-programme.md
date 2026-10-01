@@ -1,5 +1,7 @@
 # Dofollow backlink programme
 
+> October 1 scope correction: this is a historical September 27 record. Its network limitations and blanket dofollow-only prioritization are not current operating rules. Follow docs/growth/PROGRAM.md and placements.json for the expanded program. Relevant nofollow links, redirects and brand mentions can be useful referral placements. A sampled page does not establish sitewide attributes or ranking impact. Keep the existing verifier's narrower published status intact, and record other verified publications in the inclusive placement ledger.
+
 **Date:** 2026-09-27
 **Target site:** https://brostco.com
 

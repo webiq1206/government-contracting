@@ -2,6 +2,8 @@
 
 Owner authorization: September 27, 2026, America/Boise. Execute the approved organic growth program autonomously, keeping BrostCo's brand and zero incremental spend. This record supersedes paid tactics in older plans.
 
+Expanded October 1 instructions: see [PROGRAM.md](PROGRAM.md), [owner-growth-brief.txt](owner-growth-brief.txt) and [placements.json](placements.json). These add all twelve requested channels, verified GA4/GSC measurement, engagement review and eligibility checks. They supersede older dofollow-only channel prioritization. The weekday task remains enabled.
+
 ## Budget and operating rules
 
 - Advertising, new subscriptions, premium listings, lead purchases, credits and commissions: $0.

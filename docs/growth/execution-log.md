@@ -64,3 +64,38 @@ At BrostCo, we built a free seven-check bid/no-bid scorecard for that conversati
 
 Try the scorecard:
 https://brostco.com/tools/bid-no-bid?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=bid-scorecard
+
+## October 1, 2026, America/Boise: expanded program and capability resource publication
+
+- Read current main b548732c185fb86f7824726a6a526ed361f9f34a, all growth operating records and the backlink ledger. Recursive tree contained no AGENTS.md. Preserved the owner's full growth brief and implemented its scope in PROGRAM.md and the existing hosted task.
+- Verified native GitHub access, actual GSC owner property and GA4 BrostCo stream. Composio GitHub is not connected, but the separate native GitHub app works. No redundant connection was created.
+- Updated existing weekday task 6ab9dd1e16888191aca9d2d171114e41 without creating a duplicate. Enabled status and revised prompt read back successfully. Prior run September 30 established the existing process; the expanded scheduled run is not yet observed.
+- Search and analytics baseline and data limits are recorded in PROGRAM.md. No traffic or customer growth is claimed. No sitemap or IndexNow resubmission because URLs did not change.
+- Live capability builder returned HTTP 200. In the browser, filled required fields with an explicitly fictional company, capabilities and example@example.com; Prepare statement rendered exactly the supplied information, omitting empty optional sections. No signup, provider AI call or lead submission. Download button was present; file-download completion not asserted.
+- Verified LinkedIn author Jared Brost (UyZYeCarOB). Checked shared publication records and a public exact-topic search; no prior capability-builder publication found. Full signed-in post history is unavailable, so this does not establish exhaustive account history.
+- Published one text post at 2026-10-01T13:47:23.196Z. LinkedIn accepted ID urn:li:share:7511421506946523136. Public HTTPS returned 200 and SocialMediaPosting verified full copy, author profile and timestamp. Canonical URL: https://www.linkedin.com/posts/jared-brost_a-capability-statement-should-help-a-buyer-activity-7511421508951400448-Zspo
+- Short link https://lnkd.in/gkUgK7-X presents an outbound anchor to https://brostco.com/tools/capability-statement?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=capability-builder . Redirect/interstitial behavior is recorded; dofollow status and search indexing are not claimed.
+- Reviewed prior scorecard post publicly: 3 reactions, 0 public comments in returned structured data. Logged-out visibility can be incomplete; no private engagement or complete monitoring claim.
+- Reviewed LinkedIn spam policy https://www.linkedin.com/help/linkedin/answer/a1338787. Original, relevant, affiliation-disclosed advice; no tagging or engagement manipulation.
+- Reviewed Google's official business eligibility rules, which exclude online-only businesses. No physical customer-facing BrostCo location was established; no invented local listing.
+- Competitor placement research found GovDash on RFP Software Tools. Its current contact page permits vendor updates via email only. No email sent. Capterra's former signup URL is 404; vendor-route retrieval did not expose verified free terms. No directory submission claimed.
+- Reconciled historical link policy: useful nofollow/referral placements remain in scope. The legacy dofollow-only verifier retains its original schema; new placements.json distinguishes publication and link attributes.
+- Spend: $0 incremental. No application, database, pricing, or deployment changes. Repository documentation and tracking update follows the existing PR checks.
+
+### Exact October 1 published copy
+
+A capability statement should help a buyer answer three questions: What work can you do, what experience supports it, and who should they contact?
+
+Before sending yours, check these details:
+
+• Name the services you actually deliver. “Full-service solutions” doesn't tell a buyer much.
+• Describe relevant work with a clear scope and your role. Label subcontracting experience accurately.
+• Keep business identifiers and certifications current. Leave out anything you can't verify.
+• Make the contact information easy to find.
+• Tailor the document to the audience. If you're responding to a notice, follow its specific instructions.
+
+At BrostCo, we built a free capability statement builder to organize your own information into a draft you can review. It doesn't invent experience or credentials, and there's no account or email required to use it.
+
+Try it here:
+https://brostco.com/tools/capability-statement?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=capability-builder
+
