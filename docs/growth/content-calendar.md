@@ -1,6 +1,6 @@
 # BrostCo starter distribution queue
 
-Prepared September 27, 2026. Updated September 30: post 1 published and independently verified on LinkedIn; five launch posts remain unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
+Prepared September 27, 2026. Updated October 1: posts 1 and 2 published and independently verified on LinkedIn; four launch posts remain unpublished. Each destination must be verified live before publishing. Use an owned BrostCo channel or an explicitly permitted promotional venue. Never present these as customer testimonials. Do not publish verbatim into a community that prohibits AI-written contributions.
 
 ## 1. Bid decision worksheet
 
@@ -12,6 +12,12 @@ Post URL: https://www.linkedin.com/feed/update/urn:li:share:7511065018671591424/
 API creation succeeded. API readback returned 403, but public HTTPS retrieval verified the complete post, publication timestamp and author profile. Do not republish. See execution-log.md for exact copy, destination checks and verification limitations. This entry is no longer a launch draft.
 
 ## 2. Capability statement
+
+Published October 1, 2026 at 13:47:23 UTC with revised, more useful checklist copy. Author: Jared Brost. ID: urn:li:share:7511421506946523136.
+
+Public URL: https://www.linkedin.com/posts/jared-brost_a-capability-statement-should-help-a-buyer-activity-7511421508951400448-Zspo
+
+Public HTTPS and SocialMediaPosting data verified text, author and timestamp. LinkedIn's shortened URL was inspected and points to the exact capability-builder campaign URL below. See execution-log.md for exact published copy; the older draft below is retained only as history, not a pending post. Do not republish.
 
 A capability statement should make it easy to understand what your company can do.
 

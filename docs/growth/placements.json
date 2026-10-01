@@ -1,0 +1,41 @@
+{
+  "asOf": "2026-10-01",
+  "scope": "https://brostco.com",
+  "note": "Inclusive distribution record. Legacy docs/seo/backlink-ledger.json published status remains dofollow-only for compatibility. Publication does not imply indexing, traffic or customer acquisition.",
+  "placements": [
+    {
+      "platform": "LinkedIn",
+      "author": "Jared Brost",
+      "authorUrn": "urn:li:person:UyZYeCarOB",
+      "id": "urn:li:share:7511065018671591424",
+      "url": "https://www.linkedin.com/posts/jared-brost_before-your-team-spends-a-day-writing-a-government-activity-7511065019367923712-c37-",
+      "destination": "https://brostco.com/tools/bid-no-bid?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=bid-scorecard",
+      "publishedAt": "2026-09-30T14:10:49.456Z",
+      "status": "published_publicly_verified",
+      "linkAttribute": "not_evaluated",
+      "indexed": "unverified",
+      "engagementObserved": {
+        "date": "2026-10-01",
+        "reactions": 3,
+        "publicComments": 0,
+        "limitations": "Public structured data only; full account activity unavailable."
+      },
+      "nextReview": "2026-10-02"
+    },
+    {
+      "platform": "LinkedIn",
+      "author": "Jared Brost",
+      "authorUrn": "urn:li:person:UyZYeCarOB",
+      "id": "urn:li:share:7511421506946523136",
+      "url": "https://www.linkedin.com/posts/jared-brost_a-capability-statement-should-help-a-buyer-activity-7511421508951400448-Zspo",
+      "destination": "https://brostco.com/tools/capability-statement?utm_source=linkedin&utm_medium=organic&utm_campaign=free-tools&utm_content=capability-builder",
+      "shortUrl": "https://lnkd.in/gkUgK7-X",
+      "publishedAt": "2026-10-01T13:47:23.196Z",
+      "status": "published_publicly_verified",
+      "linkAttribute": "shortened_link_with_interstitial; no ranking attribute claim",
+      "crawlable": "Public GET returned 200 with full SocialMediaPosting text; crawler-specific policy unverified",
+      "indexed": "unverified",
+      "nextReview": "2026-10-02"
+    }
+  ]
+}
