@@ -25,3 +25,15 @@ On return from paid checkout, the server verifies a live, complete, paid Stripe 
 The focused tests exercise consent, privacy signals, production-host restrictions, route deduplication, private-page exclusion, parameter filtering, signup delivery timeout, purchase deduplication, Stripe ownership checks, actual paid amount, and provider failures.
 
 After deployment, accept analytics on a production public page, navigate to another public page, and confirm `page_view` and interactions in GA4 Realtime. Decline analytics in a fresh context and confirm the Google tag is absent. Successful signup and purchase events must come from actual successful workflows; do not create fake production conversions for verification.
+
+## Free-tool completion semantics (October 1, 2026)
+
+`tool_completed` records one completed use per mounted tool or explicit reset:
+
+- Bid scorecard: all seven questions have an answer. No and Need to verify both count as answered; completion does not mean the bid is ready or eligible.
+- Capability builder: the statement is prepared. Editing and preparing it again does not count again until Clear all fields.
+- Compliance matrix: the first CSV export containing at least one requirement is requested. Clearing the last row resets the count. Completion does not certify the requirements or prove that the browser saved the file.
+
+`resource_download` remains a separate download-request event and can repeat. Neither event represents a unique person, a qualified lead, a trial or a purchase. Use the sanitized page path to compare tools. The existing GA4 consent, production-host, DNT/GPC and public-route gates still apply; no answers, requirements, company details or scores are included. No new key event or monetary value was configured.
+
+Before this change, only the capability builder emitted `tool_completed`, on every preparation. Do not compare counts across this instrumentation change as if collection were consistent. Source: Google's custom-event setup guidance, https://developers.google.com/analytics/devguides/collection/ga4/events, reviewed October 1. Repository completion tests exercise the actual React components, including repeated interactions, explicit resets and payload limits. Deployment and GA4 receipt require separate verification.
