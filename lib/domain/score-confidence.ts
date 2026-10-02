@@ -169,3 +169,32 @@ export function capUnsupportedDimensions(
   });
   return { dims: out, capped };
 }
+
+/** Score facts are not a measurement of document extraction coverage. */
+export const SCORE_CONFIDENCE_LABEL: Record<ConfidenceLevel, string> = {
+  high: "High score confidence",
+  medium: "Medium score confidence",
+  low: "Low score confidence",
+};
+
+export function readScoreConfidence(value: unknown): {
+  level: ConfidenceLevel;
+  percent: number | null;
+  summary: string | null;
+} | null {
+  const data = typeof value === "string" ? { level: value } : value;
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const level = record.level;
+  if (level !== "high" && level !== "medium" && level !== "low") return null;
+  const percent = typeof record.percent === "number" && Number.isFinite(record.percent)
+    && record.percent >= 0 && record.percent <= 100 ? record.percent : null;
+  return { level, percent, summary: typeof record.summary === "string" ? record.summary : null };
+}
+
+export function describeScoreConfidence(value: unknown): string | null {
+  const confidence = readScoreConfidence(value);
+  if (!confidence) return null;
+  return SCORE_CONFIDENCE_LABEL[confidence.level]
+    + (confidence.percent === null ? "" : ` · ${confidence.percent}% of scoring facts known`);
+}

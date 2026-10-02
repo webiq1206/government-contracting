@@ -114,15 +114,16 @@ export function allocateExtractionBudget(
 }
 
 /**
- * One line an operator can read, and the analyst can log, saying what the
- * model actually got to see.
+ * One line an operator can read, and the analyst can log, saying which context blocks
+ * fit the prompt. Context may describe an extraction failure; use attachment
+ * outcomes, not this budget measurement, for document reading coverage.
  *
  * Deliberately not "processed N attachments". That was the old line, and it
  * counted files the code had already thrown away.
  */
 export function coverageSummary(plan: BudgetPlan): string {
   const whole = plan.allocations.filter((a) => !a.trimmed && !a.omitted).length;
-  const parts = [`${whole} of ${plan.allocations.length} document(s) read in full`];
+  const parts = [`${whole} of ${plan.allocations.length} document context(s) included in full`];
   if (plan.trimmed.length > 0) {
     parts.push(`${plan.trimmed.length} shortened to fit`);
   }

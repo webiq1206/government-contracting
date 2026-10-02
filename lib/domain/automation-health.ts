@@ -100,7 +100,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     effect:
       "Work using the affected provider is waiting for credit or its account allowance to reset. Other connected services may still work.",
     repair: "Check billing and usage limits at the provider named in the failure. Respect its reset time and your approved budget; replacing a valid key will not reset an allowance.",
-    repairHref: "/settings/integrations#claude",
+    repairHref: "/settings/integrations",
     blocking: true,
   },
   provider_auth: {
@@ -108,7 +108,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     effect:
       "Requests using this provider connection are blocked. Check the affected workflows below; this does not mean every integration has stopped.",
     repair: "Check the provider named in the failure and update only that connection under Settings, Integrations. Confirm recovery before retrying affected work.",
-    repairHref: "/settings/integrations#claude",
+    repairHref: "/settings/integrations",
     blocking: true,
   },
   provider_rate_limit: {
@@ -184,8 +184,20 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
   },
 };
 
-export function causeSpec(cause: IncidentCause): IncidentSpec {
-  return CAUSES[cause];
+export function causeSpec(cause: IncidentCause, errors: readonly string[] = []): IncidentSpec {
+  const spec = CAUSES[cause];
+  if (cause !== "provider_credit" && cause !== "provider_auth") return spec;
+  // A grouped incident may involve several providers. Only deep-link when
+  // every failure identifies the same provider; ambiguity goes to the overview.
+  const providers = errors.map((error) => {
+    const openai = /\bopenai\b/i.test(error);
+    const claude = /\banthropic\b|\bclaude\b/i.test(error);
+    return openai === claude ? null : openai ? "openai" : "claude";
+  });
+  const provider = providers[0];
+  return provider && providers.every((p) => p === provider)
+    ? { ...spec, repairHref: `/settings/integrations#${provider}` }
+    : spec;
 }
 
 /**
@@ -392,6 +404,11 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
       lastSeen: now.toISOString(),
       sample: `worker phase: ${input.phase}`,
     });
+  }
+
+  for (const incident of byCause.values()) {
+    incident.spec = causeSpec(incident.cause,
+      failures.filter((run) => classifyFailure(run.error) === incident.cause).map((run) => run.error ?? ""));
   }
 
   const incidents = [...byCause.values()].sort((a, b) => {

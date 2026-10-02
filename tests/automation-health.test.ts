@@ -301,3 +301,26 @@ describe("automation health evidence", () => {
 it("routes budget holds to spending controls rather than a credit top-up", () => {
   expect(classifyFailure("API_BUDGET: You reached today's request limit.")).toBe("spending_limit");
 });
+
+describe("affected-provider recovery links", () => {
+  it.each([
+    ["OpenAI has insufficient credit", "/settings/integrations#openai"],
+    ["OpenAI rejected the API key", "/settings/integrations#openai"],
+    ["Anthropic credit balance too low", "/settings/integrations#claude"],
+    ["Claude rejected the API key", "/settings/integrations#claude"],
+    ["insufficient credit", "/settings/integrations"],
+    ["OpenAI and Anthropic have insufficient credit", "/settings/integrations"],
+  ])("routes %s to the affected connection", (error, href) => {
+    const health = assessAutomation({ ...BEATING, runs: [run({ status: "error", error })] });
+    expect(health.incidents[0].spec.repairHref).toBe(href);
+  });
+  it("keeps mixed-provider and unidentified failures on the overview regardless of ordering", () => {
+    for (const other of ["Anthropic has insufficient credit", "insufficient credit"]) {
+      for (const errors of [["OpenAI has insufficient credit", other], [other, "OpenAI has insufficient credit"]]) {
+        const health = assessAutomation({ ...BEATING, runs: errors.map(error => run({status:"error",error})) });
+        expect(health.incidents).toHaveLength(1);
+        expect(health.incidents[0].spec.repairHref).toBe("/settings/integrations");
+      }
+    }
+  });
+});

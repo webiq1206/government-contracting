@@ -48,8 +48,8 @@ describe("what it refuses to claim", () => {
     expect(BAR).toContain("No deadline in the notice");
   });
 
-  it("does not call an unmeasured readability low", () => {
-    expect(BAR).toContain("Readability not measured");
+  it("does not call an unmeasured confidence low", () => {
+    expect(BAR).toContain("Score confidence not measured");
   });
 
   it("does not report a readiness nobody computed", () => {

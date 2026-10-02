@@ -1,3 +1,4 @@
+import { readAmendmentNumber } from "@/lib/domain/document-inventory";
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
@@ -199,7 +200,7 @@ export async function GET(req: Request) {
       normalizeAttachmentMeta({
         filename: professionalStem(d.name, {
           documentClass: d.document_class,
-          amendmentNumber: d.amendment_number,
+          amendmentNumber: readAmendmentNumber(d.name, d.amendment_number),
           solicitationNumber: opp.solicitation_number,
           index: i + 1,
         }),

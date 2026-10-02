@@ -1,3 +1,4 @@
+import { attachmentReadingCoverage, extractionStateFor } from "../domain/attachment-reading";
 import { sourceEvidenceMatches } from "../domain/source-evidence";
 import { reviewAnalysis } from "../ai/analysis-review";
 /**
@@ -21,7 +22,7 @@ import { completeJson, ClaudeNotConfiguredError, JSON_RETRY_TOKEN_CAP } from "..
 import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
-import { assembleAttachmentContext, coverageSummary } from "../domain/extraction-budget";
+import { assembleAttachmentContext } from "../domain/extraction-budget";
 import {
   dedupeRequirements,
   extractClauses,
@@ -58,6 +59,7 @@ import {
 } from "../domain/attachment-identity";
 import {
   amendmentNumber,
+  readAmendmentNumber,
   classifyDocumentName,
   changeSummary,
   documentChanges,
@@ -66,7 +68,6 @@ import {
   withPageMarkers,
   type CitationTarget,
   type InventorySnapshot,
-  type ExtractionState,
   type OcrState,
 } from "../domain/document-inventory";
 import { createHash } from "node:crypto";
@@ -91,33 +92,6 @@ import type {
  * forty-file limit that was losing amendments.
  */
 const ATTACHMENT_CONCURRENCY = 5;
-
-/**
- * What the inventory should say about a document, once it is known whether its
- * text reached the analysis.
- *
- * `unsupported` maps to "no text to read" rather than to a failure: a .dwg
- * drawing has no text and was never going to. An archive is the opposite case
- * and maps to "stored but not read", because it certainly contains documents
- * and none of them were opened.
- */
-function extractionStateFor(status: AttachmentFetchStatus, trimmed: boolean): ExtractionState {
-  switch (status) {
-    case "fetched":
-      return trimmed ? "partial" : "extracted";
-    case "partial":
-      return "partial";
-    case "not_read":
-    case "archive":
-      return "not_read";
-    case "no_text":
-      return "unreadable";
-    case "unsupported":
-      return "not_read";
-    default:
-      return "pending";
-  }
-}
 
 /**
  * The inventory as it stands, keyed by storage path.
@@ -146,7 +120,7 @@ async function readInventorySnapshot(opportunityId: string): Promise<InventorySn
     name: r.name,
     contentHash: r.content_hash,
     documentClass: parseDocumentClass(r.document_class),
-    amendmentNumber: r.amendment_number,
+    amendmentNumber: readAmendmentNumber(r.name, r.amendment_number),
   }));
 }
 
@@ -1653,16 +1627,17 @@ export const solicitationAnalyst: AgentDefinition = {
     // run even though the prompt contained the previous bytes.
     const analyzedSourceHash = await computeAnalysisInputHash(opportunityId, opp);
 
+    const readingCoverage = attachmentReadingCoverage(attachmentOutcomes);
     await logAgent({
       agent: "solicitation-analyst",
       action: "attachments",
       opportunityId,
-      level: plan.complete ? "info" : "warn",
+      level: readingCoverage.complete ? "info" : "warn",
       // Counts what happened, not what was asked for. The old line reported
       // `attachments.length` while the code had already discarded everything
       // past the fortieth, so a notice with fifty-seven attachments logged
       // fifty-seven processed and analysed forty.
-      message: `${attachments.length} attachment(s) on the notice, ${processed.length} processed, ${parsedChars} chars extracted. Coverage: ${coverageSummary(plan)}. Outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
+      message: `${attachments.length} attachment(s) on the notice, ${processed.length} processed, ${parsedChars} chars extracted. Coverage: ${readingCoverage.summary}. Outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
     });
 
     let analysis: SolicitationAnalysis;

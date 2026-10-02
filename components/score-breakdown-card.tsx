@@ -1,3 +1,4 @@
+import { describeScoreConfidence, readScoreConfidence } from "@/lib/domain/score-confidence";
 import type { ScoreBreakdown } from "@/lib/types";
 import type { DataConfidence } from "@/lib/domain/score-confidence";
 import { InfoTip } from "@/components/info-tip";
@@ -8,23 +9,18 @@ const CONFIDENCE_TONE: Record<DataConfidence["level"], string> = {
   low: "bg-risk/15 text-risk",
 };
 
-const CONFIDENCE_LABEL: Record<DataConfidence["level"], string> = {
-  high: "Read in full",
-  medium: "Partly known",
-  low: "Mostly unknown",
-};
-
 function ConfidenceLine({ confidence }: { confidence?: DataConfidence }) {
   // Scored before confidence was measured. Saying nothing is right: an absent
   // measurement is not the same as a complete reading, and inventing "high"
   // here would recreate the exact false certainty this exists to remove.
-  if (!confidence) return null;
+  const measured = readScoreConfidence(confidence);
+  if (!measured) return null;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <span className={`badge shrink-0 ${CONFIDENCE_TONE[confidence.level]}`}>
-        {CONFIDENCE_LABEL[confidence.level]} · {confidence.percent}%
+      <span className={`badge shrink-0 ${CONFIDENCE_TONE[measured.level]}`}>
+        {describeScoreConfidence(confidence)}
       </span>
-      <p className="min-w-0 flex-1 text-xs text-muted-foreground">{confidence.summary}</p>
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">{measured.summary} Document reading coverage is shown on the Documents tab.</p>
     </div>
   );
 }

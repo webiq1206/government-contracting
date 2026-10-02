@@ -1,3 +1,4 @@
+import { SCORE_CONFIDENCE_LABEL, readScoreConfidence } from "@/lib/domain/score-confidence";
 import { flagSummary } from "@/lib/flag-labels";
 import { describeOwner, type Owner } from "@/lib/domain/ownership";
 import type { TradeCoverage } from "@/lib/data";
@@ -37,21 +38,12 @@ export function ConfidenceChip({ breakdown }: { breakdown: unknown }) {
       : level === "medium"
         ? "bg-review/15 text-review"
         : "bg-risk/15 text-risk";
-  return <span className={`badge ${tone}`}>{LEVEL_WORD[level]}</span>;
+  return <span className={`badge ${tone}`}>{SCORE_CONFIDENCE_LABEL[level]}</span>;
 }
-
-const LEVEL_WORD: Record<string, string> = {
-  high: "Read in full",
-  medium: "Partly read",
-  low: "Barely read",
-};
 
 export function readConfidence(breakdown: unknown): "high" | "medium" | "low" | null {
   if (!breakdown || typeof breakdown !== "object") return null;
-  const dc = (breakdown as Record<string, unknown>).data_confidence;
-  if (!dc || typeof dc !== "object") return null;
-  const level = (dc as Record<string, unknown>).level;
-  return level === "high" || level === "medium" || level === "low" ? level : null;
+  return readScoreConfidence((breakdown as Record<string, unknown>).data_confidence)?.level ?? null;
 }
 
 /**

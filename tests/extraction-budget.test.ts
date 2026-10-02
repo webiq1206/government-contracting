@@ -105,14 +105,14 @@ describe("what the coverage line says", () => {
   it("says how many were shortened, separately from how many were dropped", () => {
     const plan = allocateExtractionBudget([doc("wage", 1_000), doc("spec", 900_000)], 240_000);
     const line = coverageSummary(plan);
-    expect(line).toContain("1 of 2 document(s) read in full");
+    expect(line).toContain("1 of 2 document context(s) included in full");
     expect(line).toContain("1 shortened to fit");
     expect(line).not.toContain("left out");
   });
 
   it("does not claim anything when nothing needed saying", () => {
     const plan = allocateExtractionBudget([doc("a", 10)], 240_000);
-    expect(coverageSummary(plan)).toBe("1 of 1 document(s) read in full");
+    expect(coverageSummary(plan)).toBe("1 of 1 document context(s) included in full");
   });
 });
 

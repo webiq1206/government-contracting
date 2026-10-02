@@ -22,7 +22,7 @@ import {
   type SelectableDocument,
 } from "./domain/attachment-selection";
 import { professionalStem, uniqueFilename } from "./domain/attachment-naming";
-import { amendmentNumber, classifyDocumentName } from "./domain/document-inventory";
+import { amendmentNumber, readAmendmentNumber, classifyDocumentName } from "./domain/document-inventory";
 import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
 import { canonicalAttachmentUrl } from "./domain/attachment-identity";
 
@@ -229,7 +229,7 @@ async function materializeDocs(
       }
       const meta = presentName(
         d.name,
-        { documentClass: d.document_class, amendmentNumber: d.amendment_number },
+        { documentClass: d.document_class, amendmentNumber: readAmendmentNumber(d.name, d.amendment_number) },
         bytes,
         d.mime,
         position
@@ -257,7 +257,7 @@ async function materializeDocs(
       );
       const meta = presentName(
         d.name,
-        { documentClass: d.document_class, amendmentNumber: d.amendment_number },
+        { documentClass: d.document_class, amendmentNumber: readAmendmentNumber(d.name, d.amendment_number) },
         null,
         d.mime,
         position

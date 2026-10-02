@@ -1,3 +1,4 @@
+import { describeScoreConfidence } from "./domain/score-confidence";
 /**
  * What the Quick View drawer reads, for the record kinds that need a read.
  *
@@ -158,7 +159,7 @@ export async function opportunityQuickViewData(
   );
 
   const o = peek.opp;
-  const breakdown = o.score_breakdown as { data_confidence?: string } | null;
+  const breakdown = o.score_breakdown as { data_confidence?: unknown } | null;
 
   const view = opportunityQuickView({
     id,
@@ -175,7 +176,7 @@ export async function opportunityQuickViewData(
     value: num(o.value_estimated),
     valueSource: str(o.value_estimated_source),
     score: num(o.score),
-    confidence: str(breakdown?.data_confidence),
+    confidence: describeScoreConfidence(breakdown?.data_confidence),
     snoozedUntil: str(o.snoozed_until),
     pursuitState: str(o.pursuit_state),
     requiredTrades: peek.requiredTrades,

@@ -175,10 +175,20 @@ export function classifyDocumentName(name: string, mime?: string | null): Docume
  * zero" are different facts and a solicitation genuinely has neither.
  */
 export function amendmentNumber(name: string): number | null {
-  const m = /(?:amend(?:ment)?|modification|mod|addend(?:um)?)\D{0,6}(\d{1,4})/i.exec(name);
+  // Separators may contain an explicit No./Number label, never arbitrary
+  // letters: Amendment_W912... names a solicitation, not amendment 912.
+  const m = /(?:^|[^a-z0-9])(?:amend(?:ment)?|modification|mod|addend(?:um)?)[\s_.#:-]*(?:(?:no\.?|number)[\s_.#:-]*)?(\d{1,4})(?![a-z0-9])/i.exec(name);
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Suppress known legacy filename misparses without rewriting stored records. */
+export function readAmendmentNumber(name: string, recorded: number | null): number | null {
+  const parsed = amendmentNumber(name);
+  const legacy = /(?:amend(?:ment)?|modification|mod|addend(?:um)?)\D{0,6}(\d{1,4})/i.exec(name);
+  if (legacy && recorded === Number(legacy[1]) && parsed !== recorded) return parsed;
+  return recorded ?? parsed;
 }
 
 export interface InventoryRow {
@@ -648,7 +658,7 @@ export function toDocumentRecord(row: Record<string, unknown>): DocumentRecord {
     name: String(row.name ?? "Untitled"),
     documentClass: parseDocumentClass(row.document_class),
     version: num(row.version) ?? 1,
-    amendmentNumber: num(row.amendment_number),
+    amendmentNumber: readAmendmentNumber(String(row.name ?? ""), num(row.amendment_number)),
     pageCount: num(row.page_count),
     extractionState: parseExtractionState(row.extraction_state),
     ocrState: row.ocr_state == null ? null : parseOcrState(row.ocr_state),

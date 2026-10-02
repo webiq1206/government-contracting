@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   amendmentNumber,
+  readAmendmentNumber,
   classifyDocumentName,
   extractionIsComplete,
   inventoryCoverage,
@@ -630,5 +631,25 @@ describe("previewKind", () => {
 
   it("is case-insensitive about the recorded type", () => {
     expect(previewKind({ mime: "APPLICATION/PDF", storagePath: "a/b" })).toBe("pdf");
+  });
+});
+
+describe("amendment filename identity regressions", () => {
+  const names = ["A21_-_Solicitation_Amendment_W912PM26QA0480001_SF_30.pdf", "A21_-_Solicitation_Amendment_W912PM26QA0480002_SF_30.pdf"];
+  it.each(names)("does not use solicitation digits from %s", name => {
+    expect(amendmentNumber(name)).toBeNull();
+    expect(readAmendmentNumber(name, 912)).toBeNull();
+    expect(toDocumentRecord({name,amendment_number:912}).amendmentNumber).toBeNull();
+  });
+  it("recognizes explicit amendment labels without splitting larger identifiers", () => {
+    expect(amendmentNumber("Questions_and_Responses_Amendment_002.pdf")).toBe(2);
+    expect(amendmentNumber("Modification No. 3.pdf")).toBe(3);
+    expect(amendmentNumber("Amendment Number 0004.pdf")).toBe(4);
+    expect(amendmentNumber("Amendment 12345.pdf")).toBeNull();
+    expect(amendmentNumber("Amendment 2026ABC.pdf")).toBeNull();
+  });
+  it("preserves a separately recorded number when the filename says nothing", () => {
+    expect(readAmendmentNumber("attachment.pdf", 2)).toBe(2);
+    expect(readAmendmentNumber(names[0], 1)).toBe(1);
   });
 });

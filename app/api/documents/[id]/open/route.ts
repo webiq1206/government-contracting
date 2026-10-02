@@ -42,7 +42,14 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
 
   const page = Number(new URL(req.url).searchParams.get("page"));
   const fragment = Number.isInteger(page) && page > 0 ? `#page=${page}` : "";
-  return NextResponse.redirect(
-    new URL(`/api/files/${doc.storage_path}${fragment}`, req.url)
-  );
+  // req.url can carry the reverse proxy's internal localhost origin. A
+  // relative Location keeps the authenticated browser on its public origin.
+  const key = doc.storage_path.split("/").map(encodeURIComponent).join("/");
+  return new NextResponse(null, {
+    status: 307,
+    headers: {
+      Location: `/api/files/${key}${fragment}`,
+      "Cache-Control": "private, no-store, max-age=0",
+    },
+  });
 }

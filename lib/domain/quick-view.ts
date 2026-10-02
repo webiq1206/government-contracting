@@ -263,7 +263,7 @@ export interface OpportunityQuickFacts {
   value?: number | null;
   valueSource?: string | null;
   score?: number | null;
-  /** How much of the notice could be read when it was scored. */
+  /** How many scoring facts are known. Check Documents separately for unread files. */
   confidence?: string | null;
   snoozedUntil?: string | null;
   pursuitState?: string | null;
@@ -336,7 +336,7 @@ export function opportunityQuickView(
         {
           label: "Confidence",
           value: o.confidence ?? null,
-          hint: "How much of the notice could be read when it was scored.",
+          hint: "How many scoring facts are known. Check Documents separately for unread files.",
         },
         { label: "Owner", value: o.owner ?? null },
       ],

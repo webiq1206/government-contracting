@@ -1,3 +1,4 @@
+import { SCORE_CONFIDENCE_LABEL } from "@/lib/domain/score-confidence";
 import Link from "next/link";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { describeOwner, type Owner } from "@/lib/domain/ownership";
@@ -72,7 +73,7 @@ export function OpportunityStatusBar({
       </span>
 
       <span className="shrink-0 text-muted-foreground">
-        {confidence ? `Notice ${CONFIDENCE_WORD[confidence]}` : "Readability not measured"}
+        {confidence ? SCORE_CONFIDENCE_LABEL[confidence] : "Score confidence not measured"}
       </span>
 
       <span className="shrink-0 text-muted-foreground">{describeOwner(owner, viewerId)}</span>
@@ -113,9 +114,3 @@ export function OpportunityStatusBar({
     </div>
   );
 }
-
-const CONFIDENCE_WORD: Record<string, string> = {
-  high: "read in full",
-  medium: "partly read",
-  low: "barely read",
-};
