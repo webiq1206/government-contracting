@@ -47,10 +47,11 @@ export async function recentAiTrouble(orgId?: string, provider?: "Anthropic" | "
   const providers = provider ? [provider] : ["Anthropic", "OpenAI"] as const;
   const facts = await Promise.all(providers.map(p => currentProviderFacts(p, orgId)));
   const failed = facts.filter(f => providerProblem(f));
-  failed.sort((a,b) => +new Date(b!.last_failure_at!) - +new Date(a!.last_failure_at!));
+  const problemAt = (f: typeof facts[number]) => f?.pending_started_at ?? f?.last_failure_at ?? null;
+  failed.sort((a,b) => +new Date(problemAt(b) ?? 0) - +new Date(problemAt(a) ?? 0));
   const latest = failed[0];
   return { count: failed.length, reason: providerProblem(latest ?? null),
-    lastAt: latest?.last_failure_at ?? null, lastSuccessAt: latest?.last_success_at ?? null };
+    lastAt: problemAt(latest ?? null), lastSuccessAt: latest?.last_success_at ?? null };
 }
 
 export function troubleSummary(t: ServiceTrouble, now = new Date()): string | null {

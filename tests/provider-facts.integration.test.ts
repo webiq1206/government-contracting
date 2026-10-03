@@ -4,11 +4,21 @@ import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "tenant" as RequestIdentity["source"],
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
-  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null }));
+  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, transactions: 0 }));
 vi.mock("../lib/db", () => ({
-  queryOne: async (sql: string, params: unknown[]) => (await state.db.query(sql, params)).rows[0] ?? null,
-  transaction: async (fn: any) => state.db.transaction((tx: any) => fn({ query: async (sql: string, params: unknown[]) =>
-    sql.includes("pg_try_advisory_xact_lock") ? { rows: [{ acquired: !state.busy }] } : tx.query(sql, params) })),
+  queryOne: async (sql: string, params: unknown[]) => {
+    if (state.failSettlement && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic completion database outage");
+    return (await state.db.query(sql, params)).rows[0] ?? null;
+  },
+  transaction: async (fn: any) => {
+    state.transactions++;
+    try {
+      const value = await state.db.transaction((tx: any) => fn({ query: async (sql: string, params: unknown[]) =>
+        sql.includes("pg_try_advisory_xact_lock") ? { rows: [{ acquired: !state.busy }] } : tx.query(sql, params) }));
+      if (state.failClaimAck) throw new Error("synthetic lost claim commit acknowledgement");
+      return value;
+    } finally { state.transactions--; }
+  },
 }));
 vi.mock("../lib/tenant", () => ({ resolveTenantOrgId: async () => state.org }));
 vi.mock("../lib/integration-keys", () => ({
@@ -39,11 +49,12 @@ const ok = { id: "fake", text: "synthetic", usage: { input_tokens: 1, output_tok
 beforeAll(async () => {
   state.db = new PGlite();
   await state.db.exec(readFileSync("db/migrations/125_ai_provider_facts.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/126_ai_provider_attempts.sql", "utf8"));
 }, 60_000);
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
   await state.db.exec("truncate ai_provider_facts");
-  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null;
+  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
   state.anthropic.mockReset().mockResolvedValue({ content: [{ type: "text", text: "synthetic" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
@@ -147,9 +158,9 @@ describe("durable provider/account/current-credential evidence", () => {
 it("does not turn ledger preparation failures into durable provider refusals", async () => {
   state.meteringError = new Error("billing ledger connection timeout");
   await expect(call()).rejects.toBe(state.meteringError);
-  expect(await currentProviderFacts("OpenAI")).toBeNull();
+  expect(providerProblem(await currentProviderFacts("OpenAI"))).toBeNull();
   await expect(VALIDATORS.openai(state.keys)).rejects.toBe(state.meteringError);
-  expect(await currentProviderFacts("OpenAI")).toBeNull();
+  expect(providerProblem(await currentProviderFacts("OpenAI"))).toBeNull();
   expect(state.attempts).toBe(0);
 });
 it.each([401,403])("persists HTTP %i credential refusals without another model call", async status => {
@@ -165,4 +176,64 @@ it("persists Anthropic account allowance refusals independently", async () => {
   await expect(call()).rejects.toMatchObject({ provider: "Anthropic", retryable: false });
   expect(state.attempts).toBe(1);
   expect(await currentProviderFacts("OpenAI")).toBeNull();
+});
+
+
+describe("short durable provider claims", () => {
+  it("releases its transaction before provider I/O and makes pending health and admission non-green", async () => {
+    state.openai.mockRejectedValueOnce({ status: 503, message: "unavailable" });
+    await expect(call()).rejects.toThrow();
+    await call();
+    let started!: () => void; let release!: () => void;
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    state.openai.mockImplementationOnce(async () => { started(); await wait; return ok; });
+    const first = call();
+    await entered;
+    try {
+      expect(state.transactions).toBe(0);
+      expect((await state.db.query("select 1 as available")).rows[0].available).toBe(1);
+      expect(await providerEnqueueHold(state.org, "routine")).toContain("unresolved outcome");
+      expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("unresolved outcome");
+      await expect(call()).rejects.toMatchObject({ retryable: true });
+      expect(troubleSummary(await recentAiTrouble(state.org, "OpenAI"))).toContain("unresolved outcome");
+      expect(state.attempts).toBe(3);
+    } finally { release(); }
+    await first;
+    expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
+  });
+  it.each(["success", "refusal"])("keeps a durable unknown hold when %s evidence cannot be written", async result => {
+    if (result === "refusal") state.openai.mockRejectedValueOnce(quota());
+    state.failSettlement = true;
+    await expect(call()).rejects.toThrow("completion database outage");
+    state.failSettlement = false;
+    // Simulate restart and an arbitrarily old claim: age does not authorize takeover.
+    await state.db.exec("update ai_provider_facts set pending_started_at=now()-interval '40 days'");
+    for (let sweep = 0; sweep < 3; sweep++) {
+      expect(await providerEnqueueHold(state.org, "routine")).toContain("unresolved outcome");
+      await expect(call()).rejects.toMatchObject({ retryable: true });
+    }
+    await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("unresolved outcome");
+    expect(state.attempts).toBe(1);
+    expect((await currentProviderFacts("OpenAI"))?.pending_attempt).toBeTruthy();
+  });
+  it("never starts I/O after an uncertain claim commit, and preserves the committed claim", async () => {
+    state.failClaimAck = true;
+    await expect(call()).rejects.toThrow("lost claim commit acknowledgement");
+    state.failClaimAck = false;
+    await expect(call()).rejects.toThrow("unresolved outcome");
+    expect(state.attempts).toBe(0);
+    expect((await currentProviderFacts("OpenAI"))?.pending_attempt).toBeTruthy();
+  });
+  it("fences a late completion from clearing a different attempt or newer refusal", async () => {
+    state.openai.mockImplementationOnce(async () => {
+      await state.db.exec("update ai_provider_facts set pending_attempt='00000000-0000-4000-8000-000000000001',refusal_reason='newer refusal'");
+      return ok;
+    });
+    await expect(call()).rejects.toThrow("ownership changed");
+    const facts = await currentProviderFacts("OpenAI");
+    expect(facts?.pending_attempt).toBe("00000000-0000-4000-8000-000000000001");
+    expect(facts?.refusal_reason).toBe("newer refusal");
+    expect(facts?.last_success_at).toBeNull();
+  });
 });

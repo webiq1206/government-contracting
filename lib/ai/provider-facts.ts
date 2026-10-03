@@ -1,9 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { queryOne, transaction } from "../db";
 import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
 
 export interface ProviderFacts {
+  pending_attempt?: string | null;
+  pending_started_at?: Date | null;
   last_success_at: Date | null;
   last_failure_at: Date | null;
   failure_reason: string | null;
@@ -48,69 +50,76 @@ export async function currentProviderFacts(provider: AiProvider, orgId?: string)
 /** Latest failure stays visible until a genuinely newer success, without a TTL. */
 export function providerProblem(f: ProviderFacts | null): string | null {
   if (!f) return null;
+  if (f.pending_attempt) return "A provider request is in progress or has an unresolved outcome. Recovery requires reconciliation if its worker stopped.";
   if (f.refusal_reason) return f.refusal_reason;
   return f.last_failure_at && (!f.last_success_at || +new Date(f.last_failure_at) >= +new Date(f.last_success_at))
     ? f.failure_reason : null;
 }
 
-export async function providerRouteRefusal(orgId: string, tier: AiTier): Promise<ProviderRefusalError | null> {
+export async function providerRouteRefusal(orgId: string, tier: AiTier, includePending = false): Promise<ProviderRefusalError | null> {
   const { planRoute } = await import("./claude");
   const plan = await planRoute({ complexity: tier }, orgId);
   if (!plan) return null;
   const primary = await currentProviderFacts(plan.primary.provider, orgId);
-  if (!primary?.refusal_reason) return null;
-  if (plan.fallback && !(await currentProviderFacts(plan.fallback.provider, orgId))?.refusal_reason) return null;
-  return new ProviderRefusalError(plan.primary.provider, primary.refusal_reason, primary.refusal_status);
+  const held = (facts: ProviderFacts | null) => facts?.refusal_reason || (includePending && facts?.pending_attempt ? providerProblem(facts) : null);
+  const reason = held(primary);
+  if (!reason) return null;
+  if (plan.fallback && !held(await currentProviderFacts(plan.fallback.provider, orgId))) return null;
+  return new ProviderRefusalError(plan.primary.provider, reason, primary?.refusal_status ?? null);
 }
 
 export async function providerEnqueueHold(orgId: string, tier: AiTier): Promise<string | null> {
-  return (await providerRouteRefusal(orgId, tier))?.message ?? null;
+  return (await providerRouteRefusal(orgId, tier, true))?.message ?? null;
 }
 
 /**
- * Hold a non-waiting account lock through the request and evidence commit.
- * Other workers back off before metering/I/O. Returning the error from the
- * transaction (then throwing) is essential: throwing inside rolls back the
- * refusal. A deliberate connection test may probe recovery, with all existing
- * spending checks still inside execute. No scheduled job gets that override.
+ * Commit an attempt token before I/O, then release the database connection.
+ * Tokens never expire: a stopped worker or failed evidence write leaves an
+ * unresolved hold, even for explicit recovery tests. Clearing that hold needs
+ * reconciliation, not a timer that could overlap an unknown/billed request.
  */
 export async function withProviderFacts<T>(identity: RequestIdentity, provider: AiProvider,
   execute: () => Promise<T>, recoveryTest = false): Promise<T> {
   const scope = providerScope(identity, provider);
-  const outcome = await transaction(async client => {
+  const attempt = randomUUID();
+  const busy = () => Object.assign(new Error(`AI_UNAVAILABLE: ${provider} has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.`),
+    { provider, retryable: true });
+  await transaction(async client => {
     const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired", [JSON.stringify(scope)]);
-    if (!lock.rows[0]?.acquired) {
-      throw Object.assign(new Error(`AI_UNAVAILABLE: ${provider} already has a request in progress. Retry shortly.`),
-        { provider, retryable: true });
-    }
+    if (!lock.rows[0]?.acquired) throw busy();
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts
       where account_scope=$1 and provider=$2 and credential_hash=$3`, scope)).rows[0];
+    if (row?.pending_attempt) throw busy();
     if (row?.refusal_reason && !recoveryTest) {
-      return { error: new ProviderRefusalError(provider, row.refusal_reason, row.refusal_status) };
+      throw new ProviderRefusalError(provider, row.refusal_reason, row.refusal_status);
     }
-    try {
-      const value = await execute();
-      await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,last_success_at)
-        values($1,$2,$3,clock_timestamp()) on conflict(account_scope,provider,credential_hash) do update
-        set last_success_at=excluded.last_success_at, refusal_reason=null, refusal_status=null`, scope);
-      return { value };
-    } catch (error) {
-      const e = error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null };
-      // Local budget/configuration/persistence failures are not provider facts.
-      if (e?.provider === provider && typeof e.retryable === "boolean" && e.reason) {
-        await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,
-          last_failure_at,failure_reason,failure_status,refusal_reason,refusal_status)
-          values($1,$2,$3,clock_timestamp(),$4,$5,$6,$7)
-          on conflict(account_scope,provider,credential_hash) do update set
-          last_failure_at=excluded.last_failure_at,failure_reason=excluded.failure_reason,
-          failure_status=excluded.failure_status,
-          refusal_reason=coalesce(excluded.refusal_reason,ai_provider_facts.refusal_reason),
-          refusal_status=coalesce(excluded.refusal_status,ai_provider_facts.refusal_status)`,
-        [...scope, e.reason, e.status ?? null, e.retryable ? null : e.reason, e.retryable ? null : e.status ?? null]);
-      }
-      return { error };
-    }
+    await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
+      values($1,$2,$3,$4,clock_timestamp()) on conflict(account_scope,provider,credential_hash) do update
+      set pending_attempt=excluded.pending_attempt,pending_started_at=excluded.pending_started_at`, [...scope, attempt]);
   });
+
+  // Do not catch completion persistence errors as if they were provider errors.
+  // An uncertain claim commit also never reaches execute().
+  let outcome: { value: T } | { error: unknown };
+  try { outcome = { value: await execute() }; }
+  catch (error) { outcome = { error }; }
+  const success = "value" in outcome;
+  const e = "error" in outcome ? outcome.error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null } : null;
+  const observed = e?.provider === provider && typeof e.retryable === "boolean" && Boolean(e.reason);
+  const reason = observed ? e!.reason! : null;
+  const status = observed ? e!.status ?? null : null;
+  const permanent = observed && e!.retryable === false;
+  const saved = await queryOne<{ saved: boolean }>(`update ai_provider_facts set
+    last_success_at=case when $5 then clock_timestamp() else last_success_at end,
+    last_failure_at=case when $6::text is not null then clock_timestamp() else last_failure_at end,
+    failure_reason=coalesce($6,failure_reason),
+    failure_status=case when $6::text is not null then $7::integer else failure_status end,
+    refusal_reason=case when $5 then null when $8 then $6 else refusal_reason end,
+    refusal_status=case when $5 then null when $8 then $7::integer else refusal_status end,
+    pending_attempt=null,pending_started_at=null
+    where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent]);
+  if (!saved) throw new Error("Provider attempt ownership changed; completion needs reconciliation.");
   if ("error" in outcome) throw outcome.error;
   return outcome.value;
 }
