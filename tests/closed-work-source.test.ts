@@ -184,7 +184,7 @@ describe("operator pages keep the names and chrome they already have", () => {
   });
 
   it("treats a successful scoring run as Claude having been used", () => {
-    expect(INTEGRATIONS_PAGE).toContain("lastAiSuccess");
+    expect(INTEGRATIONS_PAGE).toContain('lastProviderSuccess("Anthropic")');
     expect(INTEGRATIONS_PAGE).toContain('def.id === "claude"');
   });
 

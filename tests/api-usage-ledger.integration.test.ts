@@ -12,6 +12,7 @@ import { PGlite } from "@electric-sql/pglite";
 const state = vi.hoisted(() => ({
   db: null as any,
   failFinish: false,
+  failFacts: false,
   stripeCalls: [] as any[],
   failItem: false,
 }));
@@ -24,12 +25,15 @@ vi.mock("../lib/db", () => ({
       throw new Error("write failed");
     return (await state.db.query(sql, params)).rows;
   },
-  queryOne: async (sql: string, params: unknown[] = []) =>
-    (await state.db.query(sql, params)).rows[0] ?? null,
+  queryOne: async (sql: string, params: unknown[] = []) => {
+    if (state.failFacts && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic facts write failure");
+    return (await state.db.query(sql, params)).rows[0] ?? null;
+  },
   transaction: async (fn: any) =>
     state.db.transaction((tx: any) =>
       fn({
         query: async (sql: string, params: unknown[] = []) => {
+          if (sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ acquired: true }] };
           if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
           return tx.query(sql, params);
         },
@@ -57,6 +61,7 @@ vi.mock("../lib/billing/stripe", () => ({
     },
   }),
 }));
+import { withProviderFacts, readProviderFacts } from "../lib/ai/provider-facts";
 import { createUsageInvoice } from "../lib/api-usage/invoice";
 import {
   beginUsage,
@@ -90,6 +95,8 @@ beforeAll(async () => {
   await state.db.exec(readFileSync("db/migrations/113_api_spending_controls.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/116_api_safe_defaults.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/118_openai_provider.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/125_ai_provider_facts.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/126_ai_provider_attempts.sql", "utf8"));
   await state.db.query(
     "insert into organizations(id,name) values($1,$2),($3,$4)",
     [org, "Test account", other, "Other account"],
@@ -99,11 +106,11 @@ afterAll(async () => {
   await state.db?.close();
 });
 beforeEach(async () => {
-  state.failFinish = false;
+  state.failFinish = false; state.failFacts = false;
   state.failItem = false;
   state.stripeCalls = [];
   await state.db.exec(
-    "truncate api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
+    "truncate ai_provider_facts,api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
   );
   await state.db.query("insert into api_account_budgets(org_id) values($1),($2)",[org,other]);
 });
@@ -558,5 +565,42 @@ describe("unpriced services and stuck allowances", () => {
     expect(rows.find((r: any) => r.id === stale).error_code).toMatch(/Abandoned/);
     expect(Number(rows.find((r: any) => r.id === stale).reserved_cost)).toBe(2);
     expect(rows.find((r: any) => r.id === fresh)).toMatchObject({ outcome: "pending" });
+  });
+});
+
+
+describe("durable provider claims with real metering", () => {
+  it.each([undefined, 429])("keeps accounting intact when status %s is followed by a facts write outage", async status => {
+    await seedHaiku();
+    const failure = Object.assign(new Error("synthetic provider failure"), {
+      provider: "Anthropic", reason: "synthetic provider failure", retryable: status == null, status,
+    });
+    const execute = vi.fn(async () => { throw failure; });
+    const run = () => withProviderFacts(identity, "Anthropic", () =>
+      metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", execute));
+    state.failFacts = true;
+    await expect(run()).rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
+    state.failFacts = false;
+    await expect(run()).rejects.toThrow("unresolved outcome");
+    expect(execute).toHaveBeenCalledTimes(1);
+    const rows = (await state.db.query("select outcome,budget_cost,reserved_cost from api_usage_events")).rows;
+    expect(rows).toHaveLength(1); // failed attempt stays counted; blocked retries add no usage
+    expect(rows[0].outcome).toBe("failed");
+    expect(Number(rows[0].reserved_cost)).toBe(2);
+    if (status == null) expect(rows[0].budget_cost).toBeNull();
+    else expect(Number(rows[0].budget_cost)).toBe(0);
+    expect((await readProviderFacts(identity, "Anthropic"))?.pending_attempt).toBeTruthy();
+  });
+  it("retains uncertain reservations when ledger settlement fails and later abandonment runs", async () => {
+    await seedHaiku(); state.failFinish = true; state.failFacts = true;
+    await expect(withProviderFacts(identity, "Anthropic", () =>
+      metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", async () => { throw new Error("timeout"); })))
+      .rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
+    state.failFinish = false; state.failFacts = false;
+    await state.db.exec("update api_usage_events set started_at=now()-interval '3 hours'");
+    expect(await settleAbandonedUsage()).toBe(1);
+    const row = (await state.db.query("select outcome,budget_cost,reserved_cost from api_usage_events")).rows[0];
+    expect(row.outcome).toBe("failed"); expect(row.budget_cost).toBeNull(); expect(Number(row.reserved_cost)).toBe(2);
+    await expect(withProviderFacts(identity, "Anthropic", async () => "must not run", true)).rejects.toThrow("unresolved outcome");
   });
 });

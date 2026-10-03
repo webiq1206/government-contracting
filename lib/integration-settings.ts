@@ -358,6 +358,18 @@ export async function settingSources(): Promise<
           : { source: "none", masked: null };
     }
   }
+  // AI evidence follows the exact effective key, including environment/platform
+  // credentials without saved rows. Never inherit another key's old validation.
+  const { currentProviderEvidence, providerProblem } = await import("./ai/provider-facts");
+  for (const [key, provider] of [["ANTHROPIC_API_KEY", "Anthropic"], ["OPENAI_API_KEY", "OpenAI"]] as const) {
+    const evidence = await currentProviderEvidence(provider, org);
+    const { facts } = evidence;
+    out[key] = { ...out[key],
+      source: !evidence.configured ? "none" : out[key].source !== "none" ? out[key].source : evidence.source === "platform" ? "platform" : "ui",
+      last_error: providerProblem(facts),
+      last_success_at: facts?.last_success_at ? new Date(facts.last_success_at).toISOString() : null,
+      last_validated_at: null, last_tested_at: null };
+  }
   return out;
 }
 

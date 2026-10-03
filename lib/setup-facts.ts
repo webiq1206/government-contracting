@@ -118,6 +118,23 @@ export async function accountSetup(
     const row = byKey.get(envKey);
     const configured = integrations[step as keyof typeof PROOF_KEYS];
     if (!configured) continue;
+    if (step === "claude") {
+      // The checklist represents the selected routine route, not an arbitrary
+      // saved Anthropic key or a configured-but-never-used environment value.
+      proof.claude = { configured: true };
+      try {
+        const { planRoute } = await import("./ai/claude");
+        const { currentProviderFacts, providerProblem } = await import("./ai/provider-facts");
+        const route = await planRoute({ complexity: "routine" });
+        if (route) {
+          const facts = await currentProviderFacts(route.primary.provider);
+          proof.claude = { configured: true, lastSuccessAt: facts?.last_success_at ? new Date(facts.last_success_at).toISOString() : null, lastError: providerProblem(facts) };
+        }
+      } catch {
+        warnings.push("Current AI provider health could not be verified, so this setup step remains unproven.");
+      }
+      continue;
+    }
     // A failed history read must not turn `configured` into proof that the
     // credential works. An empty proof object makes the pure checklist say it
     // is saved but untested, while the visible warning explains why no test
