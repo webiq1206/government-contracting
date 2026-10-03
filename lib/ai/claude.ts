@@ -418,6 +418,9 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
     return { ...res, usage: { ...res.usage, fallback_from: plan.primary.provider } };
   } catch (err) {
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+    // Local persistence/claim failures retain their retry policy, even when
+    // the primary had a transient provider refusal. Never replay an uncertain completion.
+    if (!(err instanceof AiUnavailableError) && !(err instanceof ProviderRefusalError)) throw err;
     const second = err instanceof AiUnavailableError ? err.reason : (err as Error).message;
     // Named after the primary so the incident classifies as the primary's
     // problem (credit, key, rate limit), with the fallback's story attached.

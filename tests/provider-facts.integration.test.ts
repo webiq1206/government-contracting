@@ -4,12 +4,12 @@ import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "tenant" as RequestIdentity["source"],
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
-  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, transactions: 0 }));
+  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, failSettlementProvider: null as string | null, transactions: 0 }));
 vi.mock("../lib/db", () => ({
   queryOne: async (sql: string, params: unknown[]) => {
     if (state.failSettlement && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic completion database outage");
     const row = (await state.db.query(sql, params)).rows[0] ?? null;
-    if (state.failSettlementAck && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic lost completion acknowledgement");
+    if (state.failSettlementAck && sql.startsWith("update ai_provider_facts") && (!state.failSettlementProvider || params[1] === state.failSettlementProvider)) throw new Error("synthetic lost completion acknowledgement");
     return row;
   },
   transaction: async (fn: any) => {
@@ -56,7 +56,7 @@ beforeAll(async () => {
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
   await state.db.exec("truncate ai_provider_facts");
-  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.transactions = 0;
+  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.failSettlementProvider = null; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
   state.anthropic.mockReset().mockResolvedValue({ content: [{ type: "text", text: "synthetic" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
@@ -247,4 +247,14 @@ it("does not request replay when completion committed but its acknowledgement wa
   expect(facts?.pending_attempt).toBeNull();
   expect(facts?.last_success_at).not.toBeNull();
   expect(state.attempts).toBe(1);
+});
+
+it("preserves non-retryable uncertain fallback completion after a transient primary failure", async () => {
+  config.ai.fallback = true;
+  state.openai.mockRejectedValueOnce({ status: 503, message: "unavailable" });
+  state.failSettlementAck = true; state.failSettlementProvider = "Anthropic";
+  await expect(call()).rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
+  expect(state.attempts).toBe(2);
+  expect(state.openai).toHaveBeenCalledTimes(1); expect(state.anthropic).toHaveBeenCalledTimes(1);
+  expect((await currentProviderFacts("Anthropic"))?.last_success_at).not.toBeNull();
 });
