@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-02T13:51:55.282Z",
+  "checkedAt": "2026-10-03T12:33:49.567Z",
   "site": "https://brostco.com",
   "results": [
     {
@@ -7,7 +7,7 @@
       "url": "https://brostco.com/",
       "why": "home page",
       "status": 200,
-      "ms": 212,
+      "ms": 453,
       "attempts": 1,
       "ok": true
     },
@@ -16,7 +16,7 @@
       "url": "https://brostco.com/robots.txt",
       "why": "crawl rules; a 5xx here reads as 'do not crawl' to Google",
       "status": 200,
-      "ms": 174,
+      "ms": 272,
       "attempts": 1,
       "ok": true
     },
@@ -25,7 +25,7 @@
       "url": "https://brostco.com/sitemap.xml",
       "why": "the URL list given to crawlers",
       "status": 200,
-      "ms": 61,
+      "ms": 103,
       "attempts": 1,
       "ok": true
     },
@@ -34,7 +34,7 @@
       "url": "https://brostco.com/llms.txt",
       "why": "what answer engines are told about the business",
       "status": 200,
-      "ms": 67,
+      "ms": 111,
       "attempts": 1,
       "ok": true
     },
@@ -43,7 +43,7 @@
       "url": "https://brostco.com/resources",
       "why": "the resource index",
       "status": 200,
-      "ms": 35,
+      "ms": 105,
       "attempts": 1,
       "ok": true
     },
@@ -52,7 +52,7 @@
       "url": "https://brostco.com/resources/idaho-procurement-sources",
       "why": "the citable register, the link-earning asset",
       "status": 200,
-      "ms": 67,
+      "ms": 267,
       "attempts": 1,
       "ok": true
     },
@@ -61,7 +61,7 @@
       "url": "https://brostco.com/resources/idaho-procurement-sources/data.json",
       "why": "the register's machine-readable distribution",
       "status": 200,
-      "ms": 34,
+      "ms": 230,
       "attempts": 1,
       "ok": true
     },
@@ -70,7 +70,7 @@
       "url": "https://brostco.com/resources/idaho-procurement-sources/data.csv",
       "why": "the register's spreadsheet distribution",
       "status": 200,
-      "ms": 32,
+      "ms": 105,
       "attempts": 1,
       "ok": true
     },
@@ -79,7 +79,7 @@
       "url": "https://brostco.com/indexnow-key.txt",
       "why": "IndexNow ownership proof; a 5xx here silently breaks index submission",
       "status": 200,
-      "ms": 56,
+      "ms": 103,
       "attempts": 1,
       "ok": true
     }
