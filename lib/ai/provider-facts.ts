@@ -109,6 +109,9 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const reason = observed ? e!.reason! : null;
   const status = observed ? e!.status ?? null : null;
   const permanent = observed && e!.retryable === false;
+  const completionError = (cause?: unknown) => Object.assign(
+    new Error("Provider completion needs reconciliation; do not replay this work.", { cause }),
+    { provider, retryable: false });
   const saved = await queryOne<{ saved: boolean }>(`update ai_provider_facts set
     last_success_at=case when $5 then clock_timestamp() else last_success_at end,
     last_failure_at=case when $6::text is not null then clock_timestamp() else last_failure_at end,
@@ -118,8 +121,8 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     refusal_status=case when $5 then null when $8 then $7::integer else refusal_status end,
     pending_attempt=null,pending_started_at=null
     where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
-    returning true as saved`, [...scope, attempt, success, reason, status, permanent]);
-  if (!saved) throw new Error("Provider attempt ownership changed; completion needs reconciliation.");
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent]).catch(error => { throw completionError(error); });
+  if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
   if ("error" in outcome) throw outcome.error;
   return outcome.value;
 }

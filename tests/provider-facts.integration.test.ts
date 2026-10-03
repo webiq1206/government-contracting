@@ -4,11 +4,13 @@ import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "tenant" as RequestIdentity["source"],
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
-  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, transactions: 0 }));
+  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, transactions: 0 }));
 vi.mock("../lib/db", () => ({
   queryOne: async (sql: string, params: unknown[]) => {
     if (state.failSettlement && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic completion database outage");
-    return (await state.db.query(sql, params)).rows[0] ?? null;
+    const row = (await state.db.query(sql, params)).rows[0] ?? null;
+    if (state.failSettlementAck && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic lost completion acknowledgement");
+    return row;
   },
   transaction: async (fn: any) => {
     state.transactions++;
@@ -54,7 +56,7 @@ beforeAll(async () => {
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
   await state.db.exec("truncate ai_provider_facts");
-  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.transactions = 0;
+  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
   state.anthropic.mockReset().mockResolvedValue({ content: [{ type: "text", text: "synthetic" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
@@ -205,7 +207,7 @@ describe("short durable provider claims", () => {
   it.each(["success", "refusal"])("keeps a durable unknown hold when %s evidence cannot be written", async result => {
     if (result === "refusal") state.openai.mockRejectedValueOnce(quota());
     state.failSettlement = true;
-    await expect(call()).rejects.toThrow("completion database outage");
+    await expect(call()).rejects.toMatchObject({ retryable: false, provider: "OpenAI" });
     state.failSettlement = false;
     // Simulate restart and an arbitrarily old claim: age does not authorize takeover.
     await state.db.exec("update ai_provider_facts set pending_started_at=now()-interval '40 days'");
@@ -230,10 +232,19 @@ describe("short durable provider claims", () => {
       await state.db.exec("update ai_provider_facts set pending_attempt='00000000-0000-4000-8000-000000000001',refusal_reason='newer refusal'");
       return ok;
     });
-    await expect(call()).rejects.toThrow("ownership changed");
+    await expect(call()).rejects.toMatchObject({ retryable: false, provider: "OpenAI" });
     const facts = await currentProviderFacts("OpenAI");
     expect(facts?.pending_attempt).toBe("00000000-0000-4000-8000-000000000001");
     expect(facts?.refusal_reason).toBe("newer refusal");
     expect(facts?.last_success_at).toBeNull();
   });
+});
+
+it("does not request replay when completion committed but its acknowledgement was lost", async () => {
+  state.failSettlementAck = true;
+  await expect(call()).rejects.toMatchObject({ retryable: false, provider: "OpenAI" });
+  const facts = await currentProviderFacts("OpenAI");
+  expect(facts?.pending_attempt).toBeNull();
+  expect(facts?.last_success_at).not.toBeNull();
+  expect(state.attempts).toBe(1);
 });

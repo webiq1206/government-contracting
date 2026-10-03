@@ -579,7 +579,7 @@ describe("durable provider claims with real metering", () => {
     const run = () => withProviderFacts(identity, "Anthropic", () =>
       metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", execute));
     state.failFacts = true;
-    await expect(run()).rejects.toThrow("facts write failure");
+    await expect(run()).rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
     state.failFacts = false;
     await expect(run()).rejects.toThrow("unresolved outcome");
     expect(execute).toHaveBeenCalledTimes(1);
@@ -595,7 +595,7 @@ describe("durable provider claims with real metering", () => {
     await seedHaiku(); state.failFinish = true; state.failFacts = true;
     await expect(withProviderFacts(identity, "Anthropic", () =>
       metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", async () => { throw new Error("timeout"); })))
-      .rejects.toThrow("facts write failure");
+      .rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
     state.failFinish = false; state.failFacts = false;
     await state.db.exec("update api_usage_events set started_at=now()-interval '3 hours'");
     expect(await settleAbandonedUsage()).toBe(1);
