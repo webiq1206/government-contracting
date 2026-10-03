@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "tenant" as RequestIdentity["source"],
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
-  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false }));
+  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null }));
 vi.mock("../lib/db", () => ({
   queryOne: async (sql: string, params: unknown[]) => (await state.db.query(sql, params)).rows[0] ?? null,
   transaction: async (fn: any) => state.db.transaction((tx: any) => fn({ query: async (sql: string, params: unknown[]) =>
@@ -18,6 +18,7 @@ vi.mock("../lib/integration-keys", () => ({
 vi.mock("../lib/api-usage/ledger", () => ({
   requestIdentity: async (envKey: string, value: string, orgId?: string) => ({ orgId: orgId ?? state.org, envKey, value, source: state.source, accepted: false }),
   metered: async (_i: unknown, _p: unknown, _s: unknown, _f: unknown, execute: () => Promise<unknown>) => {
+    if (state.meteringError) throw state.meteringError;
     if (state.budgetHeld) throw Object.assign(new Error("API_BUDGET: daily limit"), { name: "ApiUsageBlockedError" });
     state.attempts++;
     return execute();
@@ -42,7 +43,7 @@ beforeAll(async () => {
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
   await state.db.exec("truncate ai_provider_facts");
-  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false;
+  state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
   state.anthropic.mockReset().mockResolvedValue({ content: [{ type: "text", text: "synthetic" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
@@ -141,4 +142,27 @@ describe("durable provider/account/current-credential evidence", () => {
     config.ai.fallback = false;
     expect(await providerEnqueueHold(state.org, "routine")).not.toBeNull();
   });
+});
+
+it("does not turn ledger preparation failures into durable provider refusals", async () => {
+  state.meteringError = new Error("billing ledger connection timeout");
+  await expect(call()).rejects.toBe(state.meteringError);
+  expect(await currentProviderFacts("OpenAI")).toBeNull();
+  await expect(VALIDATORS.openai(state.keys)).rejects.toBe(state.meteringError);
+  expect(await currentProviderFacts("OpenAI")).toBeNull();
+  expect(state.attempts).toBe(0);
+});
+it.each([401,403])("persists HTTP %i credential refusals without another model call", async status => {
+  state.openai.mockRejectedValueOnce({ status, message: "invalid API key" });
+  await expect(call()).rejects.toMatchObject({ status, retryable: false, provider: "OpenAI" });
+  await expect(call()).rejects.toMatchObject({ status, retryable: false, provider: "OpenAI" });
+  expect(state.attempts).toBe(1);
+});
+it("persists Anthropic account allowance refusals independently", async () => {
+  config.ai.routineProvider = "Anthropic";
+  state.anthropic.mockRejectedValueOnce({ status: 400, message: "specified API usage limits" });
+  await expect(call()).rejects.toMatchObject({ provider: "Anthropic", retryable: false });
+  await expect(call()).rejects.toMatchObject({ provider: "Anthropic", retryable: false });
+  expect(state.attempts).toBe(1);
+  expect(await currentProviderFacts("OpenAI")).toBeNull();
 });

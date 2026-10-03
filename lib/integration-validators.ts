@@ -40,7 +40,9 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     const identity = await requestIdentity(keyInfo.envKey,keyInfo.value);
     // Validators explicitly receive draft tenant keys, which are not saved yet.
     if (identity.source === 'unknown') identity.source = 'tenant';
+    let transportStarted = false;
     const execute = () => metered(identity,keyInfo.provider,'Connection test','API connection check',async()=>{
+      transportStarted = true;
       const res = await fetch(url,{...init,signal:ctl.signal});
       const body = await res.clone().json().catch(()=>null);
       return {res,body};
@@ -55,6 +57,7 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     try {
       return await withProviderFacts(identity, provider, async () => {
         const { res, body } = await execute().catch(error => {
+          if (!transportStarted) throw error;
           if (error instanceof Error && error.name === "ApiUsageBlockedError") throw error;
           const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
           if (cause) throw new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable);

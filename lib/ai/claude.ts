@@ -447,21 +447,19 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
   const identity = await requestIdentity(route.envKey, apiKey);
   const feature = opts.feature ?? "AI assistance";
 
-  return withProviderFacts(identity, route.provider, async () => {
-    try {
-      const out = route.provider === "Anthropic"
-        ? await runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
-        : await runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature);
-      return out;
-    } catch (err) {
-      // A local spending hold never reached the provider and must not mark its key as broken.
-      if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
-      const cause = route.provider === "Anthropic" ? describeClaudeFailure(err) : describeOpenAiFailure(err);
+  return withProviderFacts(identity, route.provider, () => route.provider === "Anthropic"
+    ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
+    : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature));
+}
 
-      if (cause) throw unavailable(route.provider, cause.reason, cause.status, cause.retryable);
-      throw err;
-    }
-  });
+/** Normalize only transport errors, never ledger/database preparation failures. */
+async function providerRequest<T>(provider: AiProvider, execute: () => Promise<T>): Promise<T> {
+  try { return await execute(); }
+  catch (error) {
+    const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
+    if (cause) throw unavailable(provider, cause.reason, cause.status, cause.retryable);
+    throw error;
+  }
 }
 
 type Metered = typeof import("../api-usage/ledger").metered;
@@ -523,11 +521,11 @@ async function runAnthropic(
   }
 
   const res: Anthropic.Messages.Message = await metered(identity, "Anthropic", model, feature,
-    () => anthropic.messages.create(
+    () => providerRequest("Anthropic", () => anthropic.messages.create(
       body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
       { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
         maxRetries: 0 }
-    ),
+    )),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   const rawText = res.content
@@ -573,7 +571,7 @@ async function runOpenAi(
   // prompt cache matches on.
   const instructions = system.map((b) => b.text).join("\n\n") || null;
   const res = await metered(identity, "OpenAI", model, feature,
-    () => openAiResponse({
+    () => providerRequest("OpenAI", () => openAiResponse({
       apiKey,
       model,
       instructions,
@@ -587,7 +585,7 @@ async function runOpenAi(
       temperature: opts.temperature ?? 0.2,
       timeoutMs: opts.timeoutMs,
       cacheKey: `brostco:${identity.orgId}`,
-    }),
+    })),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   return {
