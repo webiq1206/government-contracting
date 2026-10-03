@@ -94,11 +94,13 @@ export interface AccountIntegration {
  *
  * The same verdict the customer sees on their own Integrations page, from
  * the same function, so support and the customer are never looking at two
- * different answers to "is it working". Secrets are never read: only the
- * fact that a value exists, and what happened the last time it was used.
+ * different answers to "is it working". AI evidence follows the resolved
+ * credential fingerprint; no secret is returned in the account summary.
  */
 export async function accountIntegrations(orgId: string): Promise<AccountIntegration[]> {
   const stored = await listSettings(orgId);
+  const { currentProviderEvidence, providerProblem } = await import("../ai/provider-facts");
+  const [anthropic, openai] = await Promise.all([currentProviderEvidence("Anthropic", orgId), currentProviderEvidence("OpenAI", orgId)]);
   const byKey = new Map(stored.map((s) => [s.env_key, s]));
 
   // Customer-facing integrations only. The platform's own (Ahrefs, storage)
@@ -108,7 +110,8 @@ export async function accountIntegrations(orgId: string): Promise<AccountIntegra
     const rows = keys
       .map((k) => byKey.get(k))
       .filter((r): r is NonNullable<typeof r> => r != null);
-    const configured =
+    const ai = def.id === "claude" ? anthropic : def.id === "openai" ? openai : null;
+    const configured = ai ? ai.configured :
       keys.length > 0 &&
       rows.length === keys.length &&
       rows.every((r) => (r.value ?? "").length > 0);
@@ -118,9 +121,9 @@ export async function accountIntegrations(orgId: string): Promise<AccountIntegra
       const values = rows.map(pick).filter((v): v is string => v != null);
       return values.length > 0 ? values[values.length - 1] : null;
     };
-    const lastError = newest((r) => r.last_error);
-    const lastTestedAt = newest((r) => r.last_tested_at ?? r.last_validated_at);
-    const lastSuccessAt = newest((r) => r.last_success_at);
+    const lastError = ai ? providerProblem(ai.facts) : newest((r) => r.last_error);
+    const lastTestedAt = ai ? null : newest((r) => r.last_tested_at ?? r.last_validated_at);
+    const lastSuccessAt = ai ? (ai.facts?.last_success_at ? new Date(ai.facts.last_success_at).toISOString() : null) : newest((r) => r.last_success_at);
     return {
       id: def.id,
       label: def.name,
