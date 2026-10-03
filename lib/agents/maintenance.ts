@@ -1763,6 +1763,13 @@ export const scoringRecoverySweep: AgentDefinition = {
         try {
           // Against whichever provider and model the router would pick now,
           // so the sweep never reserves against a model that will not run.
+          const { providerEnqueueHold } = await import("../ai/provider-facts");
+          const refusal = await providerEnqueueHold(orgId, tier);
+          if (refusal) {
+            await logAgent({ agent: "scoring-recovery-sweep", action: "provider-held", level: "warn", status: "skipped",
+              message: refusal });
+            return false;
+          }
           const { checkAiSpending } = await import("../api-usage/check-spending");
           await checkAiSpending(orgId, tier, feature);
           return true;

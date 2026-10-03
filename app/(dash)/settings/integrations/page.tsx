@@ -11,7 +11,6 @@ import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
 import {
-  lastAiSuccess,
   lastPricingSuccess,
   recentAiTrouble,
   troubleSummary,
@@ -78,7 +77,7 @@ export default async function IntegrationsPage(
         loadWarnings.push("Recent Gmail delivery activity could not be checked.");
         return null;
       }),
-    lastAiSuccess().catch(() => {
+    lastProviderSuccess("Anthropic").catch(() => {
       loadWarnings.push("The most recent successful AI run could not be checked.");
       return null;
     }),
@@ -209,9 +208,7 @@ export default async function IntegrationsPage(
             ? (def.last_success_at ?? gmailUsed?.at ?? null)
             : def.id === "claude"
               ? (def.last_success_at ?? claudeUsed ?? null)
-              // OpenAI has no agent history of its own to borrow: the AI
-              // agents' last success is Claude's, and lending it here made
-              // a never-used OpenAI key read as recently working.
+              // Each provider reads only evidence for its current credential.
               : def.id === "openai"
                 ? (def.last_success_at ?? openAiUsed ?? null)
               : def.id === "usaspending"

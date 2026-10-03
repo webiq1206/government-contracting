@@ -21,6 +21,7 @@
  * and the honest thing is to say so loudly rather than to keep flowing past it.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { withProviderFacts, ProviderRefusalError } from "./provider-facts";
 import { z } from "zod";
 import { config } from "../config";
 import { getProfileSystemText } from "./companyProfile";
@@ -29,7 +30,6 @@ import {
   chooseRoute,
   type AiProvider,
   type AiRoute,
-  type AiEnvKey,
   type RoutingConfig,
 } from "./routing";
 import { openAiResponse, describeOpenAiFailure } from "./openai";
@@ -52,8 +52,7 @@ export { ClaudeNotConfiguredError as AiNotConfiguredError };
 /**
  * Stable marker on the front of every AI-outage message.
  *
- * The message travels through the agent runner into `agent_logs`, and that row
- * is the only durable record of the failure. Matching on a marker we control
+ * The message travels through the agent runner into `agent_logs`, while provider-facts also keeps account/credential evidence for admission and health. Matching on a marker we control
  * beats grepping for Anthropic's own wording, which is theirs to reword.
  */
 export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
@@ -200,16 +199,6 @@ export function describeClaudeFailure(
   }
 
   return null;
-}
-
-/** Stamp the Integrations card with the org that actually made the call. */
-function recordProviderUse(envKey: AiEnvKey, outcome: { ok: boolean; error?: string }): void {
-  void Promise.all([import("../tenant"), import("../integration-settings")])
-    .then(async ([{ resolveTenantOrgId }, settings]) => {
-      const orgId = await resolveTenantOrgId();
-      await settings.recordIntegrationUse(envKey, { ...outcome, orgId });
-    })
-    .catch(() => undefined);
 }
 
 function routingConfig(): RoutingConfig {
@@ -414,8 +403,8 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
     // Anything but a provider refusing us is our own bug (or a parse
     // problem downstream). Switching providers would not fix a bad request.
-    if (!(err instanceof AiUnavailableError)) throw err;
-    primaryFailure = err;
+    if (!(err instanceof AiUnavailableError) && !(err instanceof ProviderRefusalError)) throw err;
+    primaryFailure = unavailable(err.provider, err.reason, err.status, err.retryable);
   }
 
   if (!plan.fallback) throw primaryFailure;
@@ -436,7 +425,7 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
       plan.primary.provider,
       `${primaryFailure.reason} The ${plan.fallback.provider} fallback also failed: ${second}`,
       primaryFailure.status,
-      primaryFailure.retryable
+      primaryFailure.retryable || (err as { retryable?: boolean })?.retryable !== false
     );
   }
 }
@@ -458,31 +447,21 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
   const identity = await requestIdentity(route.envKey, apiKey);
   const feature = opts.feature ?? "AI assistance";
 
-  try {
-    const out = route.provider === "Anthropic"
-      ? await runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
-      : await runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature);
-    /*
-     * Every AI call passes through here, so it is the one place that can
-     * record whether the provider is actually working for this account. The
-     * Integrations page claimed to show that and showed the last Test press
-     * instead, which on the day Anthropic refused for want of credit left the
-     * card reading as verified that morning.
-     *
-     * Imported lazily: integration-settings reaches the database, and this
-     * module is imported by code paths that must not pull a connection in
-     * just by being loaded.
-     */
-    void recordProviderUse(route.envKey, { ok: true });
-    return out;
-  } catch (err) {
-    // A local spending hold never reached the provider and must not mark its key as broken.
-    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
-    const cause = route.provider === "Anthropic" ? describeClaudeFailure(err) : describeOpenAiFailure(err);
-    void recordProviderUse(route.envKey, { ok: false, error: cause?.reason ?? (err as Error).message });
-    if (cause) throw unavailable(route.provider, cause.reason, cause.status, cause.retryable);
-    throw err;
-  }
+  return withProviderFacts(identity, route.provider, async () => {
+    try {
+      const out = route.provider === "Anthropic"
+        ? await runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
+        : await runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature);
+      return out;
+    } catch (err) {
+      // A local spending hold never reached the provider and must not mark its key as broken.
+      if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+      const cause = route.provider === "Anthropic" ? describeClaudeFailure(err) : describeOpenAiFailure(err);
+
+      if (cause) throw unavailable(route.provider, cause.reason, cause.status, cause.retryable);
+      throw err;
+    }
+  });
 }
 
 type Metered = typeof import("../api-usage/ledger").metered;

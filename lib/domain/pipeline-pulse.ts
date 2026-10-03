@@ -189,38 +189,14 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
   } else if (input.claudeFailures && input.claudeFailures.count > 0) {
     // Only when a key IS configured. Without one there is nothing to refuse
     // us, and "claude_off" above already owns that message.
-    const n = input.claudeFailures.count;
-    const lastAt = input.claudeFailures.lastAt ?? null;
-    /*
-     * Thirty minutes, matching lib/integration-health: two cycles of the
-     * fastest AI-using agents. Past that, failures have stopped, and saying
-     * otherwise sends somebody to fix an account that is already fixed.
-     */
-    const stopped = lastAt !== null && input.now.getTime() - lastAt.getTime() > 30 * 60_000;
-    findings.push(
-      stopped
-        ? {
-            key: "claude_failing",
-            severity: "warn",
-            title: `${n} AI job${n === 1 ? " failed" : "s failed"} in the last six hours.`,
-            detail:
-              "No new failures were recorded in the last half hour. A quiet period alone does not confirm recovery. " +
-              "Open Integrations to check the connection. Once it is working and automation is running, eligible unfinished work is picked back up automatically, according to its retry schedule. " +
-              `Last failure said: ${input.claudeFailures.reason ?? "the service refused the request."}`,
-            href: "/settings/integrations",
-            cta: "Open Integrations",
-          }
-        : {
-            key: "claude_failing",
-            severity: "down",
-            title: `${n} AI job${n === 1 ? " has" : "s have"} failed recently.`,
-            detail:
-              `${input.claudeFailures.reason ?? "The AI provider refused the request."} ` +
-              "Scoring, analysis, or drafting may be delayed. Open Integrations to check the connection and recovery steps.",
-            href: "/settings/integrations",
-            cta: "Open Integrations",
-          }
-    );
+    findings.push({
+      key: "claude_failing", severity: "down",
+      title: "AI provider recovery has not been confirmed.",
+      detail: `${input.claudeFailures.reason ?? "The AI provider refused the request."} ` +
+        "Open Integrations to check the connection and recovery steps. A quiet period does not confirm recovery. " +
+        "Once a successful request confirms recovery and spending controls allow it, eligible unfinished work is picked back up automatically according to its retry schedule.",
+      href: "/settings/integrations", cta: "Open Integrations",
+    });
   }
 
   if (input.activeOrgCount === 0) {

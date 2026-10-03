@@ -144,7 +144,8 @@ async function payloadOrgId(
  * comment above it and tested on its own.
  */
 export function shouldQueueRetry(result: AgentResult): boolean {
-  return !result.ok && !result.permanent && !result.spendingHeld && !providerNeedsIntervention(result.summary);
+  return !result.ok && !result.permanent && !result.spendingHeld &&
+    (result.retryable ?? !providerNeedsIntervention(result.summary));
 }
 
 /**
@@ -616,6 +617,11 @@ export async function runAgent(
   }
 
   try {
+    if (orgId && !def.worksWithoutClaude) {
+      const { providerRouteRefusal } = await import("../ai/provider-facts");
+      const refusal = await inOrg(() => providerRouteRefusal(orgId, def.aiTier ?? "routine"));
+      if (refusal) throw refusal;
+    }
     // Inside the org, like everything else that reads a credential. Outside
     // it, claudeEnabled() resolved to the founding organization: a tenant with
     // their own key had every AI agent skipped as "not set" whenever the
@@ -770,7 +776,9 @@ export async function runAgent(
   } catch (err) {
     const message = failureMessage(err);
     const spendingHeld = isSpendingHold(err);
+    const failure = err as { retryable?: boolean; provider?: AgentResult["provider"]; status?: number | null };
     const result: AgentResult = { ok: false, summary: message,
+      ...(typeof failure?.retryable === "boolean" ? { retryable: failure.retryable, provider: failure.provider, providerStatus: failure.status, humanActionRequired: !failure.retryable } : {}),
       ...(spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) };
     // Still an error row, so Automation Health keeps showing the hold as the
     // blocking incident it is, with its repair link. The action is what lets
@@ -814,6 +822,8 @@ async function finishJobRun(
     await query(
       `update job_runs set status=$2, finished_at=now(), error=$3, summary=$4 where id=$1`,
       [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data,
+        retryable: result.retryable, provider: result.provider, providerStatus: result.providerStatus,
+        humanActionRequired: result.humanActionRequired,
         ...(result.spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) })]
     );
     return null;

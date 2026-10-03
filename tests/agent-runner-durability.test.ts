@@ -281,3 +281,16 @@ describe("spending holds and wrapped errors", () => {
     );
   });
 });
+it.each([false, true])("preserves typed provider retryability %s through the runner and durable summary", async retryable => {
+  mocks.handler.mockRejectedValueOnce(Object.assign(new Error("AI_UNAVAILABLE: Synthetic refusal wording"), { provider: "OpenAI", retryable, status: 429 }));
+  const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+  expect(result).toMatchObject({ ok: false, retryable, provider: "OpenAI", providerStatus: 429 });
+  expect(shouldQueueRetry(result)).toBe(retryable);
+  const write = mocks.query.mock.calls.find(([sql]) => String(sql).includes("update job_runs set status"));
+  expect(JSON.parse(write![1][3])).toMatchObject({ retryable, provider: "OpenAI", providerStatus: 429 });
+});
+it("does not retry legacy OpenAI insufficient-credit wording, but typed transient takes precedence", () => {
+  const summary = "AI_UNAVAILABLE: OpenAI has insufficient credit (its billing quota is used up).";
+  expect(shouldQueueRetry({ ok: false, summary })).toBe(false);
+  expect(shouldQueueRetry({ ok: false, summary, retryable: true })).toBe(true);
+});
