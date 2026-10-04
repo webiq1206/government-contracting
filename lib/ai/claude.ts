@@ -45,6 +45,7 @@ export class ClaudeNotConfiguredError extends Error {
   constructor() {
     super("The selected AI provider is not connected. Configure its API key before retrying; automatic provider switching may be disabled.");
     this.name = "ClaudeNotConfiguredError";
+    this.name = "ClaudeNotConfiguredError";
   }
 }
 export { ClaudeNotConfiguredError as AiNotConfiguredError };
@@ -77,6 +78,7 @@ export class AiUnavailableError extends Error {
 
   constructor(provider: AiProvider, reason: string, status: number | null, retryable: boolean) {
     super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
+    this.name = "AiUnavailableError";
     this.name = "AiUnavailableError";
     this.provider = provider;
     this.reason = reason;
@@ -390,6 +392,12 @@ function validateCompletion(result: Completion, opts: CompleteOptions): Completi
 }
 
 export async function complete(prompt: string, opts: CompleteOptions = {}): Promise<Completion> {
+  const { apiUsageContext } = await import("../api-usage/context");
+  if (!apiUsageContext().workKey) return completeUnfenced(prompt,opts);
+  const { withAiWorkReceipt } = await import("./work-receipts");
+  return withAiWorkReceipt([prompt,opts],()=>completeUnfenced(prompt,opts));
+}
+async function completeUnfenced(prompt: string, opts: CompleteOptions): Promise<Completion> {
   const system = await buildSystem(opts);
   const plan = await planRoute(opts);
   if (!plan) throw new ClaudeNotConfiguredError();

@@ -121,6 +121,8 @@ export async function requestClarification(input: {
   ].join("\n");
 
   const res = await sendOutreachEmail({
+    scheduled: { key: JSON.stringify(["clarification", input.opportunityId, input.subcontractorId]),
+      meta: { kind: "clarification", gaps: input.gaps, trade: input.trade } },
     to: input.toEmail,
     subject,
     html,
@@ -141,7 +143,7 @@ export async function requestClarification(input: {
     return { sent: false, reason: res.error ?? "send unavailable" };
   }
 
-  await query(
+  if (!res.communicationId) await query(
     `insert into communications
        (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
         gmail_message_id, gmail_thread_id, rfc822_message_id, provider,
@@ -166,5 +168,5 @@ export async function requestClarification(input: {
     ]
   );
 
-  return { sent: true };
+  return { sent: !res.replayed };
 }

@@ -12,6 +12,7 @@ vi.mock('googleapis', () => ({ google: {
   auth: { OAuth2: class { setCredentials() {} } },
   gmail: () => ({ users: { settings: { sendAs: { list: mocks.list } }, messages: { send: mocks.send, get: mocks.get } } }),
 } }));
+import { query, queryOne } from '../lib/db';
 import { gmail, __resetSendAsCache } from '../lib/integrations/gmail';
 const params = { orgId: 'org-1', to: 'owner@example.com', from: 'BrostCo <hello@brostco.com>', subject: 'Test', html: '<p>Test</p>' };
 beforeEach(() => {
@@ -73,4 +74,19 @@ describe('Gmail sender checks at the provider boundary', () => {
     expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 
+});
+
+
+describe('grant-bound health writes',()=>{
+ it('does not revoke a reconnected grant on a late invalid_grant from the old client',async()=>{
+  const old='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',fresh='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let generation=old,status='connected';
+  vi.mocked(queryOne).mockImplementation(async()=>({data:{refresh_token:'synthetic'},connection_generation:generation}) as never);
+  vi.mocked(query).mockImplementation(async(sql:string,p:any[]=[])=>{if(sql.includes('set status =') && p[3]===generation)status=p[1];return [];});
+  mocks.send.mockImplementation(async()=>{generation=fresh;throw Error('invalid_grant');});
+  await gmail.send(params);
+  expect(status).toBe('connected');
+  const write=vi.mocked(query).mock.calls.find(([sql])=>sql.includes('set status ='));
+  expect(write?.[0]).toContain('connection_generation=$4::uuid');expect(write?.[1]?.[3]).toBe(old);
+ });
 });

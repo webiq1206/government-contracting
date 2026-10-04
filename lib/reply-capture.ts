@@ -19,6 +19,7 @@
  * organization gets hit by choosing when to reply, which is why the filter
  * cannot be left to the caller to remember.
  */
+import { withReplyProcessingLock } from "./reply-processing-lock";
 import { deepInboundText } from "./domain/inbound-text";
 import { query, queryOne } from "./db";
 import { actingOrgId, runWithOrg } from "./tenant-context";
@@ -33,7 +34,7 @@ import {
   normalizeEmail,
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
-import { decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
+import { blockingGaps, decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
 import { looksLikeBounce } from "./domain/email-delivery";
 import { enqueue } from "./queue";
 import { logAgent } from "./logger";
@@ -56,6 +57,8 @@ export interface MatchedComm {
 }
 
 export interface CaptureReplyInput {
+  /** Poller acknowledges its downstream effects separately before moving the cursor. */
+  deferProcessingComplete?: boolean;
   /** The organization that owns the conversation this reply belongs to. */
   orgId: string;
   comm: MatchedComm;
@@ -103,6 +106,7 @@ export interface CaptureReplyInput {
 }
 
 export interface CaptureReplyResult {
+  inboundId?: string;
   subId: string | null;
   companyName: string | null;
   extracted: ExtractedReply;
@@ -366,7 +370,24 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     throw new Error("Reply capture was refused because the opportunity and contact do not belong to this account.");
   }
   // Extraction, closeout, queueing and logs share the already-proven owner.
-  return runWithOrg(input.orgId, () => captureReplyInOrg(input));
+  const processReply = () => runWithOrg(input.orgId, async () => {
+    const result = await captureReplyInOrg(input);
+    if (result.inboundId && !result.duplicate) {
+      const gaps = blockingGaps(result.extracted,result.decision.outcome);
+      if (result.subId) await recordReplyEvent({orgId:input.orgId,subcontractorId:result.subId,
+        opportunityId:input.comm.opportunity_id,trade:result.trade,extracted:result.extracted,
+        originalMessage:input.replyText,gmailMessageId:input.messageId,gmailThreadId:input.threadId,
+        needsReview:result.decision.needsReview || gaps.length>0 || !!result.quoteRefusal,
+        reviewReason:result.decision.reviewReason ?? (gaps.length ? `Still needed before this can move forward: ${gaps.join(", ")}.` : result.quoteRefusal ?? null)});
+      await query(`update communications set meta=meta || jsonb_build_object('capture_result',$3::jsonb,
+        'capture_complete',true,'reply_processing_complete',$4::boolean) where id=$1 and org_id=$2`,
+        [result.inboundId,input.orgId,JSON.stringify(result),!input.deferProcessingComplete]);
+    }
+    return result;
+  });
+  return input.messageId
+    ? withReplyProcessingLock(input.orgId,input.messageId,processReply)
+    : processReply();
 }
 
 async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReplyResult> {
@@ -425,13 +446,17 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // re-scans a sliding window. If this provider message id was already
   // captured, skip all side effects (the unique index from migration 022
   // also guards the insert against races).
+  let resume: { id: string; subcontractor_id: string | null; meta?: {capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} } | null = null;
   if (input.messageId) {
-    const existing = await queryOne<{ id: string; subcontractor_id: string | null }>(
-      `select id, subcontractor_id from communications
+    const existing = await queryOne<NonNullable<typeof resume>>(
+      `select id, subcontractor_id, meta from communications
         where org_id = $2 and direction='inbound' and gmail_message_id = $1 limit 1`,
       [input.messageId, orgId]
     );
-    if (existing) {
+    if (existing?.meta?.capture_version === 1 && !existing.meta.reply_processing_complete) {
+      if (existing.meta.capture_result) return {...existing.meta.capture_result,inboundId:existing.id,duplicate:false};
+      resume = existing;
+    } else if (existing) {
       return {
         subId: existing.subcontractor_id ?? comm.subcontractor_id,
         companyName: comm.company_name,
@@ -473,7 +498,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       : null;
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
-  const extracted = deepInboundText(await extract(replyText, {
+  const extracted = resume?.meta?.capture_extracted ?? deepInboundText(await extract(replyText, {
     opportunityTitle: comm.opportunity_title,
     trade: osRow?.trade ?? null,
   }));
@@ -618,6 +643,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   }
 
   const meta = {
+    capture_version: 1, capture_extracted: extracted, reply_processing_complete: false,
     intent: extracted.intent,
     method: extracted.method,
     canPerform: extracted.canPerform,
@@ -648,7 +674,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // Record the inbound reply and mark the outbound as replied. The partial
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
-  const inbound = await queryOne<{ id: string }>(
+  const inbound = resume ?? await queryOne<{ id: string }>(
     `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
      values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
      on conflict (org_id, gmail_message_id)
@@ -677,25 +703,9 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // concurrent webhook and poller deliveries safe. Only the transaction that
   // won the unique insert may update status, save a quote, or send a closeout.
   if (!inbound) {
-    return {
-      subId: comm.subcontractor_id,
-      companyName: comm.company_name,
-      extracted: emptyExtracted(),
-      decision: {
-        outcome: "none",
-        proposed: null,
-        act: false,
-        needsReview: false,
-        reviewReason: null,
-      },
-      quoteSaved: false,
-      quoteSkippedExisting: false,
-      senderVerified: false,
-      trade: null,
-      duplicate: true,
-      declined: false,
-      thankYouSent: false,
-    };
+    // A concurrent insert won. It may still be processing, so do not advance
+    // the mailbox cursor or claim completion on its behalf.
+    throw new Error("Reply capture is already in progress; retry this mailbox page after it completes.");
   }
   // A reply is the strongest proof of delivery there is, so the stored state
   // follows the evidence. Nothing else ever wrote `delivered`, which left the
@@ -745,6 +755,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     });
 
     return {
+      inboundId: inbound.id,
       subId,
       companyName,
       extracted,
@@ -827,9 +838,10 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       );
     }
 
-    if (quoteSaved) {
+    if (quoteSaved || (resume && quoteSkippedExisting)) {
       try {
-        await enqueue("bid-builder", { opportunityId: comm.opportunity_id });
+        const queued = await enqueue("bid-builder", { opportunityId: comm.opportunity_id });
+        if (!queued) throw new Error("Bid build was held before queue admission.");
       } catch (error) {
         console.error("[reply-capture] bid build could not be queued:", error);
         decision = holdForReview(
@@ -894,6 +906,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   }
 
   return {
+    inboundId: inbound.id,
     subId,
     companyName,
     extracted,

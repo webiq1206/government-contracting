@@ -254,6 +254,7 @@ export async function matchMessage(
   };
 
   const captured = await captureReply({
+    deferProcessingComplete: true,
     orgId,
     comm: matched,
     strongMatch: true,
@@ -364,6 +365,7 @@ export async function matchMessage(
   if (finished.length === 0) {
     throw new Error("This reply match was changed by another request before it could finish.");
   }
+  await query(`update communications set meta=meta || jsonb_build_object('reply_processing_complete',true) where id=$1 and org_id=$2`,[comm.id,orgId]);
   return { communicationId: comm.id };
   } catch (err) {
     await query(

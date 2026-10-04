@@ -1,3 +1,4 @@
+import { withReplyProcessingLock } from "../reply-processing-lock";
 /**
  * Maintenance jobs, not part of the 13-agent roster, but the plumbing that
  * keeps time-based workflows moving:
@@ -245,6 +246,8 @@ async function lastCallForOrg(
     ];
     const text = lines.join("\n");
     const res = await sendOutreachEmail({
+      scheduled: { key: JSON.stringify(["final_nudge", row.opportunity_id, row.subcontractor_id]),
+        meta: { kind: "final_nudge", trade: row.trade } },
       to: row.email!,
       subject,
       html: plainToHtml(text),
@@ -275,7 +278,7 @@ async function lastCallForOrg(
       });
       continue;
     }
-    await query(
+    if (!res.communicationId) await query(
       `insert into communications
          (org_id, subcontractor_id, opportunity_id, channel, direction,
           subject, body, gmail_message_id, gmail_thread_id,
@@ -295,7 +298,7 @@ async function lastCallForOrg(
         JSON.stringify({ kind: "final_nudge", trade: row.trade ?? null }),
       ]
     );
-    sent++;
+    if (!res.replayed) sent++;
     await logAgent({
       agent: "outreach-followup",
       action: "last-call",
@@ -1013,6 +1016,10 @@ async function followUpForOrg(
         : null;
 
     const res = await sendOutreachEmail({
+      scheduled: { key: JSON.stringify(["followup", row.id]), followUpAt: nextFollowUpAt,
+        meta: { kind: "followup", trade: row.trade, threaded: canReplyInThread,
+          new_thread_reason: useFallback ? threadGap : null, attachments: attachedNames,
+          quote_due_at: row.orig_quote_due_at, quote_due_label: row.orig_quote_due_label } },
       to: row.email,
       subject,
       html,
@@ -1033,7 +1040,7 @@ async function followUpForOrg(
       trade: row.trade ?? null,
     });
     if (!res.disabled && !res.error) {
-      await query(
+      if (!res.communicationId) await query(
         // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
         // follow-up chains onto this one rather than restarting the thread.
         `insert into communications
@@ -1123,7 +1130,13 @@ async function followUpForOrg(
       await query(`update subcontractors set last_contacted = now() where id = $1`, [
         row.subcontractor_id,
       ]);
-      sent++;
+      if (!res.replayed) sent++;
+    } else if (res.outcome === "unknown" && res.retryable === false) {
+      failures++;
+      await query(`update communications set follow_up_at=null where id=$1 and org_id=$2`, [row.id,orgId]);
+      await logAgent({agent:"outreach-followup",action:"send-review",level:"error",status:"error",
+        opportunityId:row.opportunity_id,subcontractorId:row.subcontractor_id,
+        message:res.error ?? "Delivery needs review; automatic replay is disabled."});
     } else if (res.disabled && res.retryable === false) {
       // An abort, submission, closed record, stale pursuit generation, or
       // deleted opportunity can never become sendable by waiting. Clear the
@@ -2533,6 +2546,9 @@ export const replyPoll: AgentDefinition = {
 
 /** Poll one tenant's inbox. Runs inside that tenant's org context. */
 async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
+  return withReplyProcessingLock(orgId,"mailbox-poll",()=>pollRepliesInOrg(orgId));
+}
+async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
     if (!(await gmail.isConnected(orgId))) {
       return { ok: true, summary: "Inbox not connected, skipped." };
     }
@@ -2657,6 +2673,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     let processingFailures = 0;
     let unmatchedBounces = 0;
     const touchedOpportunities = new Set<string>();
+    const pendingReplyCompletions = new Set<string>();
     const opportunityTitles = new Map<string, string>();
     for (const r of replies) {
       // Match reply to an outbound communication by thread id (reliable), else
@@ -2815,6 +2832,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // (strong correlation + sender ownership + AI-confirmed price + no
       // existing quote).
       const result = await captureReply({
+        deferProcessingComplete: true,
         orgId,
         comm,
         strongMatch,
@@ -2852,6 +2870,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // Already captured (e.g. by the Resend inbound webhook or a previous
       // poll of the sliding window): skip notifications and re-enqueues.
       if (result.duplicate) continue;
+      if (result.inboundId) pendingReplyCompletions.add(result.inboundId);
       const {
         subId,
         companyName,
@@ -3129,6 +3148,17 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         message: "Some inbox delivery records could not be saved. Captured replies were kept and the same mailbox page will be retried." });
       return { ok: false, summary: `${matched} matched; ${processingFailures} delivery records need another attempt. Mailbox progress was preserved.`,
         enqueued, humanActionRequired: true };
+    }
+    // Queue downstream work before marking a reply processed or moving the
+    // cursor. A runner failure after returning cannot silently lose these jobs.
+    for (const job of enqueued) {
+      const queued = await enqueue(job.agent, job.payload, job.opts);
+      if (!queued) throw new Error("Reply downstream work was held before durable queue admission. Mailbox progress is preserved.");
+    }
+    enqueued.length = 0;
+    for (const inboundId of pendingReplyCompletions) {
+      await query(`update communications set meta=meta || jsonb_build_object('reply_processing_complete',true)
+        where id=$1 and org_id=$2 and direction='inbound'`,[inboundId,orgId]);
     }
     if (truncated) {
       if (!nextPageToken) {

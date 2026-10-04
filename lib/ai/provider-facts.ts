@@ -63,6 +63,10 @@ export async function providerRouteRefusal(orgId: string, tier: AiTier, includeP
   const primary = await currentProviderFacts(plan.primary.provider, orgId);
   const held = (facts: ProviderFacts | null) => facts?.refusal_reason || (includePending && facts?.pending_attempt ? providerProblem(facts) : null);
   const reason = held(primary);
+  // Runtime cannot route around an unresolved primary request. Admission must
+  // preserve that hold even when a healthy fallback exists.
+  if (includePending && primary?.pending_attempt)
+    return new ProviderRefusalError(plan.primary.provider, providerProblem(primary)!, null);
   if (!reason) return null;
   if (plan.fallback && !held(await currentProviderFacts(plan.fallback.provider, orgId))) return null;
   return new ProviderRefusalError(plan.primary.provider, reason, primary?.refusal_status ?? null);
@@ -83,7 +87,7 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const scope = providerScope(identity, provider);
   const attempt = randomUUID();
   const busy = () => Object.assign(new Error(`AI_UNAVAILABLE: ${provider} has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.`),
-    { provider, retryable: true });
+    { name: "ProviderAttemptBusyError", provider, retryable: true });
   await transaction(async client => {
     const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired", [JSON.stringify(scope)]);
     if (!lock.rows[0]?.acquired) throw busy();

@@ -659,7 +659,7 @@ export async function runAgent(
       );
     }
 
-    const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId, relatedId: pursuitId ?? undefined }, () => def.handler({ runId, trigger, payload })));
+    const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId, relatedId: pursuitId ?? undefined, workKey: JSON.stringify([def.name,payload,guardedPursuitVersion]) }, () => def.handler({ runId, trigger, payload })));
     const returned =
       pursuitId && guardedPursuitVersion != null
         ? await runWithPursuitVersion(

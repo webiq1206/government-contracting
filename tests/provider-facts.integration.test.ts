@@ -40,6 +40,7 @@ vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: (...
 vi.mock("../lib/ai/openai", async original => ({ ...(await original<typeof import("../lib/ai/openai")>()),
   openAiResponse: (...args: unknown[]) => state.openai(...args) }));
 import { complete } from "../lib/ai/claude";
+import { withApiUsageContext } from "../lib/api-usage/context";
 import { config } from "../lib/config";
 import { currentProviderFacts, providerProblem, providerEnqueueHold, providerScope } from "../lib/ai/provider-facts";
 import { recentAiTrouble, lastProviderSuccess, troubleSummary } from "../lib/integration-health";
@@ -50,12 +51,13 @@ const quota = () => ({ status: 429, code: "insufficient_quota", message: "Insuff
 const ok = { id: "fake", text: "synthetic", usage: { input_tokens: 1, output_tokens: 1 }, stopReason: "end_turn" };
 beforeAll(async () => {
   state.db = new PGlite();
+  await state.db.exec(`create table ai_work_receipts(org_id text,work_key text,scope_key text,input_hash text,owner uuid,state text,result jsonb,started_at timestamptz,completed_at timestamptz,primary key(org_id,work_key))`);
   await state.db.exec(readFileSync("db/migrations/125_ai_provider_facts.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/126_ai_provider_attempts.sql", "utf8"));
 }, 60_000);
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
-  await state.db.exec("truncate ai_provider_facts");
+  await state.db.exec("truncate ai_provider_facts,ai_work_receipts");
   state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.failSettlementProvider = null; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
@@ -258,3 +260,25 @@ it("preserves non-retryable uncertain fallback completion after a transient prim
   expect(state.openai).toHaveBeenCalledTimes(1); expect(state.anthropic).toHaveBeenCalledTimes(1);
   expect((await currentProviderFacts("Anthropic"))?.last_success_at).not.toBeNull();
 });
+
+
+describe("pending primary admission",()=>{
+ it("keeps an unresolved primary held even with a healthy fallback",async()=>{
+  config.ai.fallback=true;
+  const identity={orgId:state.org,envKey:"OPENAI_API_KEY",value:state.keys.OPENAI_API_KEY,source:state.source,accepted:false};
+  await state.db.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
+    values($1,$2,$3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now())`,providerScope(identity,"OpenAI"));
+  expect(await providerEnqueueHold(state.org,"routine")).toContain("unresolved");
+  expect(state.anthropic).not.toHaveBeenCalled();expect(state.openai).not.toHaveBeenCalled();
+ });
+});
+
+ it("does not pay again after provider settlement ACK loss even after the account pending token cleared",async()=>{
+  state.failSettlementAck=true;
+  const work=()=>withApiUsageContext({workKey:"scoring:opportunity",relatedId:"opportunity"},call);
+  await expect(work()).rejects.toMatchObject({retryable:false});
+  expect((await currentProviderFacts("OpenAI",state.org))?.pending_attempt).toBeNull();
+  state.failSettlementAck=false;
+  for(let n=0;n<3;n++)await expect(work()).rejects.toMatchObject({retryable:false});
+  expect(state.openai).toHaveBeenCalledTimes(1);expect(state.attempts).toBe(1);
+ });

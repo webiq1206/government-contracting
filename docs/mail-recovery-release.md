@@ -40,3 +40,31 @@ Sources checked: https://support.google.com/a/answer/81126 and https://resend.co
 5. Historical backfill requires message-level provenance, tenant/mailbox ownership and provider-ID deduplication. The existing repair script is dry-run by default; no live history rewrite was executed for this change.
 
 Screenshot review remains incomplete: Library resolved IMG_1124.png, IMG_1125.png, and IMG_1126.jpeg, but the supported Windows transfer helper failed at `os.setxattr` and left no readable files. No pixel review was claimed.
+
+
+## Recovery batch after independent review
+
+Scheduled outreach, follow-up, final-nudge, clarification, decline acknowledgement,
+and compliance chase sends now claim one communication before Gmail. Stable business
+keys survive new jobs and changed rendering. Receipt recovery reuses the original
+row; unknown/unfinished claims never expire into another send. Confirmed pre-send
+holds and HTTP refusals may retry using a new fenced owner. Compliance recurrence
+uses the previous accepted receipt and rechecks unresolved/recent requests.
+
+Inbound rows created by this version persist extraction and capture results. A
+failed post-insert effect resumes from those checkpoints; the poller marks completion
+only after downstream work is durably admitted. Database session ownership serializes
+capture and mailbox polling. Dedicated lock connections do not occupy the shared
+query pool. Historical rows without processing checkpoints are not blindly replayed.
+
+Migration 128 adds tenant-scoped AI work receipts. Agent retries and later recovery
+sweeps reuse completed output or hold unresolved work even if the provider-account
+settlement committed before its acknowledgement was lost. Inputs within a record job
+share an unresolved-work gate; independent mailbox inputs have separate scopes.
+Confirmed refusals retain backoff, while ambiguous handoffs retain their reservations.
+Gmail health mutations are fenced to the exact connection generation used by the call.
+
+This source batch still requires final exact-head CI and independent review before
+release. Production identity, source preservation, database/runtime role and backups,
+actual app Gmail authorization and historical raw receipts remain external preflight
+requirements. No live schema, provider call, mailbox setting, or deployment was changed.

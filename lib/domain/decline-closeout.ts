@@ -123,6 +123,7 @@ export interface CloseOutDeclinedSubInput {
   originalSubject?: string | null;
   /** Injectable for tests; defaults to sendOutreachEmail. */
   sendEmail?: (params: {
+    scheduled?: import("../scheduled-email").ScheduledEmail;
     to: string;
     subject: string;
     html: string;
@@ -325,6 +326,8 @@ export async function closeOutDeclinedSub(
           ? `Re: ${input.originalSubject.trim().replace(/^re:\s*/i, "")}`
           : mail.subject;
         const res = await sendEmail({
+          scheduled: { key: JSON.stringify(["decline_thank_you", opportunityId, subcontractorId, trade ?? ""]),
+            meta: { kind: "decline_thank_you", source, trade, in_reply_to: input.inReplyTo } },
           to,
           subject,
           html: mail.html,
@@ -338,8 +341,9 @@ export async function closeOutDeclinedSub(
           references: input.references ?? [],
         });
         if (!res.error && !res.disabled && !res.blocked) {
-          thankYouSent = true;
-          await query(
+          thankYouSent = !res.replayed;
+          alreadyThanked = !!res.replayed;
+          if (!res.communicationId) await query(
             `insert into communications
                (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
                 gmail_message_id, gmail_thread_id, rfc822_message_id, provider,

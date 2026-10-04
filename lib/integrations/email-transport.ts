@@ -33,6 +33,7 @@ export interface OutreachAttachment {
 }
 
 export interface OutreachSendParams {
+  scheduled?: import("../scheduled-email").ScheduledEmail;
   /** Commit durable attempt evidence before Gmail may send. Failure prevents sending. */
   beforeProviderSend?: (from: string) => Promise<void>;
   to: string;
@@ -80,6 +81,8 @@ export interface OutreachSendParams {
 export type OutreachProvider = "gmail";
 
 export interface OutreachSendResult {
+  communicationId?: string;
+  replayed?: boolean;
   outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
   provider: OutreachProvider | null;
   /** True when no inbox is connected. */
@@ -201,6 +204,11 @@ export async function sendOutreachEmail(
       error:
         "Blocked: this is a support session. Outreach is not sent while an administrator is signed in as this account.",
     };
+  }
+
+  if (params.scheduled) {
+    const { sendScheduledEmail } = await import("../scheduled-email");
+    return sendScheduledEmail(params, sendOutreachEmail);
   }
 
   /**
