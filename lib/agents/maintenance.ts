@@ -1,4 +1,5 @@
-import { withReplyProcessingLock } from "../reply-processing-lock";
+import type { QueryResultRow } from "pg";
+import { assertReplyProcessingOwnership, withReplyProcessingLock } from "../reply-processing-lock";
 /**
  * Maintenance jobs, not part of the 13-agent roster, but the plumbing that
  * keeps time-based workflows moving:
@@ -6,7 +7,9 @@ import { withReplyProcessingLock } from "../reply-processing-lock";
  *   - review-expiry-sweep : auto-dismiss review-tier items after the timer (spec)
  *   - reply-poll : detect sub replies via Gmail, mark responsive, trigger Call Prep
  */
-import { query, queryOne, transaction } from "../db";
+import { query as dbQuery, queryOne as dbQueryOne, transaction } from "../db";
+async function query<T extends QueryResultRow=QueryResultRow>(sql:string,params:unknown[]=[]):Promise<T[]> {await assertReplyProcessingOwnership();return dbQuery<T>(sql,params);}
+async function queryOne<T extends QueryResultRow=QueryResultRow>(sql:string,params:unknown[]=[]):Promise<T|null> {await assertReplyProcessingOwnership();return dbQueryOne<T>(sql,params);}
 import { recordUnmatched } from "../needs-matching";
 import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
@@ -2902,6 +2905,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       if (subId) {
         // History is written either way. A reply we did not act on is exactly
         // the one a human most needs to be able to read back.
+        await assertReplyProcessingOwnership();
         await recordReplyEvent({
           orgId,
           subcontractorId: subId,
@@ -2925,6 +2929,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         // "unavailable" or "not a fit" mark lands on this solicitation alone,
         // so the sub is still offered the next job.
         if (decision.act && !quoteNeedsReview && comm.opportunity_id) {
+          await assertReplyProcessingOwnership();
           const applied = await applyOutcomeToSolicitation({
             opportunityId: comm.opportunity_id,
             subcontractorId: subId,
@@ -3152,6 +3157,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
     // Queue downstream work before marking a reply processed or moving the
     // cursor. A runner failure after returning cannot silently lose these jobs.
     for (const job of enqueued) {
+      await assertReplyProcessingOwnership();
       const queued = await enqueue(job.agent, job.payload, job.opts);
       if (!queued) throw new Error("Reply downstream work was held before durable queue admission. Mailbox progress is preserved.");
     }

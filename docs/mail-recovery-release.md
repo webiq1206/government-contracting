@@ -10,7 +10,7 @@ It also fixes two current sent-count calculations, normalizes imported and extra
 - The current connected assistant apps do not expose `brostcoholdings@gmail.com`. This does not establish the app's OAuth status or erase that mailbox's history.
 - The supplied recap evidence names September NUL-byte ingestion failures, quota errors, and an October token-refresh failure. Current source already includes charset/NUL decoding and bounded Gmail pages. Additional persistence-boundary normalization closes remaining paths; this is not proof that current production uses that code.
 - The production mailbox, selected alias, current OAuth failure, automation pause/allowance, and the two cited unanswered reply records still require a read-only inspection of the actual production deployment. Do not reset counters, loosen safeguards, or replay the backlog to diagnose them.
-- Automated outreach has separate legacy send/record paths. The new durable manual-send claim does not establish crash-safe exactly-once behavior for every scheduled sender. Audit those paths before any backlog replay.
+- Scheduled subcontractor senders now use durable communication claims as described below. Historical ambiguous sends still require receipt reconciliation before any backlog recovery; no source change proves whether an old unrecorded send was accepted.
 
 ## Sender and signature
 
@@ -57,7 +57,7 @@ only after downstream work is durably admitted. Database session ownership seria
 capture and mailbox polling. Dedicated lock connections do not occupy the shared
 query pool. Historical rows without processing checkpoints are not blindly replayed.
 
-Migration 128 adds tenant-scoped AI work receipts. Agent retries and later recovery
+Migration 128 adds tenant-scoped AI work receipts. Reply extraction uses the stable Gmail message identity, independently of changing attachment text. Agent retries and later recovery
 sweeps reuse completed output or hold unresolved work even if the provider-account
 settlement committed before its acknowledgement was lost. Inputs within a record job
 share an unresolved-work gate; independent mailbox inputs have separate scopes.

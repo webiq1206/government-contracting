@@ -1,4 +1,4 @@
-vi.mock("../lib/reply-processing-lock",()=>({withReplyProcessingLock:async(_org:string,_id:string,fn:()=>Promise<unknown>)=>fn()}));
+vi.mock("../lib/reply-processing-lock",()=>({assertReplyProcessingOwnership:async()=>{},withReplyProcessingLock:async(_org:string,_id:string,fn:()=>Promise<unknown>)=>fn()}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtractedReply } from "@/lib/ai/reply-extract";
 

@@ -282,3 +282,14 @@ describe("pending primary admission",()=>{
   for(let n=0;n<3;n++)await expect(work()).rejects.toMatchObject({retryable:false});
   expect(state.openai).toHaveBeenCalledTimes(1);expect(state.attempts).toBe(1);
  });
+
+ it("preserves real subclass HTTP429 backoff while holding a timeout from the fallback",async()=>{
+  const work=()=>withApiUsageContext({workKey:"classify:record",relatedId:"record"},call);
+  state.openai.mockRejectedValueOnce({status:429,message:"rate limit"});
+  await expect(work()).rejects.toMatchObject({retryable:true});
+  await expect(work()).resolves.toMatchObject({text:"synthetic"});
+  config.ai.fallback=true;state.openai.mockRejectedValue({status:429,message:"rate limit"});state.anthropic.mockRejectedValue(new Error("socket timed out"));
+  const other=()=>withApiUsageContext({workKey:"classify:other",relatedId:"other"},call);
+  await expect(other()).rejects.toMatchObject({retryable:false});
+  const count=state.attempts;await expect(other()).rejects.toMatchObject({retryable:false});expect(state.attempts).toBe(count);
+ });

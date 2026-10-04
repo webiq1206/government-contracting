@@ -1,3 +1,4 @@
+import { assertReplyProcessingOwnership } from "./reply-processing-lock";
 import { createHash, randomUUID } from "node:crypto";
 import { queryOne } from "./db";
 import type { OutreachSendParams, OutreachSendResult } from "./integrations/email-transport";
@@ -66,6 +67,7 @@ export async function sendScheduledEmail(params: OutreachSendParams,
         communicationId: existing?.id, error: review };
     }
     const result = await send({...params,scheduled:undefined,beforeProviderSend:async (from) => {
+      await assertReplyProcessingOwnership();
       const stamped = await queryOne<{id:string}>(`update communications set delivery_state='attempting',
         sender_email=$4,provider_attempted_at=now(),delivery_updated_at=now()
         where id=$1 and org_id=$2 and request_fingerprint=$3 and delivery_state='queued' returning id`,

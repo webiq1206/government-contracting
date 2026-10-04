@@ -1,4 +1,4 @@
-vi.mock("../lib/reply-processing-lock",()=>({withReplyProcessingLock:async(_org:string,_id:string,fn:()=>Promise<unknown>)=>fn()}));
+vi.mock("../lib/reply-processing-lock",()=>({assertReplyProcessingOwnership:async()=>{},withReplyProcessingLock:async(_org:string,_id:string,fn:()=>Promise<unknown>)=>fn()}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ query:vi.fn(),queryOne:vi.fn(),log:vi.fn(),fetch:vi.fn(),match:vi.fn(),record:vi.fn(),capture:vi.fn(),suppress:vi.fn() }));
 vi.mock("../lib/db", () => ({query:m.query,queryOne:m.queryOne,transaction:vi.fn()}));

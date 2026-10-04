@@ -30,9 +30,9 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
   if (admitted.cached) return admitted.result;
   let result:T;
   try { result=await execute(); } catch(error) {
-    const e=error as {name?:string;reason?:string;status?:number;retryable?:boolean};
+    const e=error as {name?:string;reason?:string;status?:number;retryable?:boolean;handoffUncertain?:boolean};
     const local = ['ApiUsageBlockedError','ClaudeNotConfiguredError','ProviderAttemptBusyError','ProviderRefusalError'].includes(e.name ?? '');
-    const refusal = e.name === 'AiUnavailableError' && !!e.reason && [400,401,403,404,413,422,429].includes(e.status ?? 0);
+    const refusal = ['AiUnavailableError','ClaudeUnavailableError','OpenAiUnavailableError'].includes(e.name ?? '') && e.handoffUncertain !== true && !!e.reason && [400,401,403,404,413,422,429].includes(e.status ?? 0);
     if (local || refusal) {
       await queryOne(`update ai_work_receipts set state='retryable' where org_id=$1 and work_key=$2 and owner=$3 returning owner`,[org,key,owner]);
       throw error;

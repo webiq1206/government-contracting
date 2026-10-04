@@ -1,3 +1,4 @@
+import type { QueryResultRow } from "pg";
 /**
  * Shared inbound-reply capture pipeline, used by the Gmail reply poller
  * (lib/agents/maintenance.ts) and written to be reusable by an inbound-mail
@@ -19,9 +20,12 @@
  * organization gets hit by choosing when to reply, which is why the filter
  * cannot be left to the caller to remember.
  */
-import { withReplyProcessingLock } from "./reply-processing-lock";
+import { assertReplyProcessingOwnership, withReplyProcessingLock } from "./reply-processing-lock";
 import { deepInboundText } from "./domain/inbound-text";
-import { query, queryOne } from "./db";
+import { query as dbQuery, queryOne as dbQueryOne } from "./db";
+import { withApiUsageContext } from "./api-usage/context";
+async function query<T extends QueryResultRow=QueryResultRow>(sql:string,params:unknown[]=[]):Promise<T[]> {await assertReplyProcessingOwnership();return dbQuery<T>(sql,params);}
+async function queryOne<T extends QueryResultRow=QueryResultRow>(sql:string,params:unknown[]=[]):Promise<T|null> {await assertReplyProcessingOwnership();return dbQueryOne<T>(sql,params);}
 import { actingOrgId, runWithOrg } from "./tenant-context";
 import {
   extractReplyFromReply,
@@ -446,9 +450,10 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // re-scans a sliding window. If this provider message id was already
   // captured, skip all side effects (the unique index from migration 022
   // also guards the insert against races).
-  let resume: { id: string; subcontractor_id: string | null; meta?: {capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} } | null = null;
+  type SavedCapture = { id: string; subcontractor_id: string | null; meta?: {capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} };
+  let resume: SavedCapture | null = null;
   if (input.messageId) {
-    const existing = await queryOne<NonNullable<typeof resume>>(
+    const existing = await queryOne<SavedCapture>(
       `select id, subcontractor_id, meta from communications
         where org_id = $2 and direction='inbound' and gmail_message_id = $1 limit 1`,
       [input.messageId, orgId]
@@ -498,10 +503,11 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       : null;
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
-  const extracted = resume?.meta?.capture_extracted ?? deepInboundText(await extract(replyText, {
-    opportunityTitle: comm.opportunity_title,
-    trade: osRow?.trade ?? null,
-  }));
+  const extractOnce = () => extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
+  const extracted = resume?.meta?.capture_extracted ?? deepInboundText(await (input.messageId
+    ? withApiUsageContext({workKey:`reply-extract:${orgId}:${input.messageId}`,relatedId:input.messageId},extractOnce)
+    : extractOnce()));
+  await assertReplyProcessingOwnership();
 
   /**
    * Decide whether this reading may change anything, BEFORE anything is
@@ -739,6 +745,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       .filter(Boolean)
       .join(" ");
 
+    await assertReplyProcessingOwnership();
     const close = await closeOut({
       orgId,
       opportunityId: comm.opportunity_id,
@@ -816,6 +823,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
 
   if (autoSaveOk && subId && extracted.quoteAmount != null && proposal.ok) {
     try {
+      await assertReplyProcessingOwnership();
       const persisted = await persistReplyQuote({
         orgId,
         opportunityId: comm.opportunity_id,
@@ -840,6 +848,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
 
     if (quoteSaved || (resume && quoteSkippedExisting)) {
       try {
+        await assertReplyProcessingOwnership();
         const queued = await enqueue("bid-builder", { opportunityId: comm.opportunity_id });
         if (!queued) throw new Error("Bid build was held before queue admission.");
       } catch (error) {

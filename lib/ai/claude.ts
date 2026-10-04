@@ -45,7 +45,6 @@ export class ClaudeNotConfiguredError extends Error {
   constructor() {
     super("The selected AI provider is not connected. Configure its API key before retrying; automatic provider switching may be disabled.");
     this.name = "ClaudeNotConfiguredError";
-    this.name = "ClaudeNotConfiguredError";
   }
 }
 export { ClaudeNotConfiguredError as AiNotConfiguredError };
@@ -69,6 +68,7 @@ export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
  * which is the failure this class exists to make impossible.
  */
 export class AiUnavailableError extends Error {
+  handoffUncertain: boolean;
   readonly provider: AiProvider;
   /** Plain English, safe to show an operator. Never contains the key. */
   readonly reason: string;
@@ -79,7 +79,7 @@ export class AiUnavailableError extends Error {
   constructor(provider: AiProvider, reason: string, status: number | null, retryable: boolean) {
     super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
     this.name = "AiUnavailableError";
-    this.name = "AiUnavailableError";
+    this.handoffUncertain = ![400,401,403,404,413,422,429].includes(status ?? 0);
     this.provider = provider;
     this.reason = reason;
     this.status = status;
@@ -416,6 +416,7 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions): Promise<
   }
 
   if (!plan.fallback) throw primaryFailure;
+  if (primaryFailure.handoffUncertain && (await import("../api-usage/context")).apiUsageContext().workKey) throw primaryFailure;
 
   console.warn(
     `[ai] ${plan.primary.provider} (${plan.primary.model}) refused: ${primaryFailure.reason.slice(0, 160)} ` +
@@ -432,12 +433,15 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions): Promise<
     const second = err instanceof AiUnavailableError ? err.reason : (err as Error).message;
     // Named after the primary so the incident classifies as the primary's
     // problem (credit, key, rate limit), with the fallback's story attached.
-    throw unavailable(
+    const combined = unavailable(
       plan.primary.provider,
       `${primaryFailure.reason} The ${plan.fallback.provider} fallback also failed: ${second}`,
       primaryFailure.status,
       primaryFailure.retryable || (err as { retryable?: boolean })?.retryable !== false
     );
+    combined.handoffUncertain = primaryFailure.handoffUncertain ||
+      (err instanceof AiUnavailableError && err.handoffUncertain);
+    throw combined;
   }
 }
 
