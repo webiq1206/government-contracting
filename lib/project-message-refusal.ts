@@ -1,11 +1,20 @@
 import { queryOne } from "./db";
+type RefusalInput = {
+  orgId: string; actorId: string; requestKey: string; subcontractorId: string;
+  opportunityId: string; trade: string;
+};
+
+export async function projectMessageWasRefused(input: RefusalInput) {
+  return !!await queryOne<{ id: string }>(`select id from communications
+    where org_id=$1 and request_key=$2 and subcontractor_id=$3 and opportunity_id=$4
+      and meta->>'actor_id'=$5 and meta->>'trade'=$6
+      and meta->>'preflight_refused'='true' and delivery_state='held'`,
+    [input.orgId, input.requestKey, input.subcontractorId, input.opportunityId, input.actorId, input.trade]);
+}
 
 /** Fence a preflight refusal before permitting a replacement. An absent SELECT
  * alone cannot prove that a delayed copy of the original request will not send. */
-export async function refuseProjectMessage(input: {
-  orgId: string; actorId: string; requestKey: string; subcontractorId: string;
-  opportunityId: string; trade: string;
-}) {
+export async function refuseProjectMessage(input: RefusalInput) {
   const { orgId, actorId, requestKey, subcontractorId, opportunityId, trade } = input;
   const row = await queryOne<{ id: string }>(`insert into communications
     (org_id,subcontractor_id,opportunity_id,channel,direction,subject,body,

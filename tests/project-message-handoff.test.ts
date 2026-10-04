@@ -129,3 +129,12 @@ it("does not fence a foreign project or subcontractor", async () => {
   expect((await state.db!.query("select id from communications where org_id=$1", [state.org])).rows).toHaveLength(0);
   state.org = ownOrg; expect(state.deliveries).toBe(0);
 });
+it("recovers reset eligibility after a lost refusal response and restored recipient settings", async () => {
+  await state.db!.query("update subcontractors set email='changed@example.test' where id=$1", [body.subcontractorId]);
+  await POST(request()); // Refusal response is lost; caller retains only its original intent.
+  await state.db!.query("update subcontractors set email=$2 where id=$1", [body.subcontractorId, body.recipient]);
+  const retry = await POST(request());
+  expect(retry.status).toBe(409);
+  expect(await retry.json()).toMatchObject({ safeToCompose: true, error: expect.stringContaining("held before sending") });
+  expect(state.deliveries).toBe(0);
+});

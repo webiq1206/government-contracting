@@ -7,7 +7,7 @@ import { resolveOutreachSender } from "@/lib/domain/sender-identity";
 import { withMailSignature } from "@/lib/domain/mail-signature";
 import { sendManualEmail } from "@/lib/manual-email";
 import { runWithPursuitVersion } from "@/lib/pursuit-job-context";
-import { refuseProjectMessage } from "@/lib/project-message-refusal";
+import { refuseProjectMessage, projectMessageWasRefused } from "@/lib/project-message-refusal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +24,12 @@ export async function POST(req: Request) {
   const parsed = input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Check the recipient, subject and message before sending." }, { status: 400 });
   const body = parsed.data;
-  const refuse = () => refuseProjectMessage({ orgId, actorId: auth.id, requestKey: body.requestKey,
-    subcontractorId: body.subcontractorId, opportunityId: body.opportunityId, trade: body.trade });
+  const identity = { orgId, actorId: auth.id, requestKey: body.requestKey,
+    subcontractorId: body.subcontractorId, opportunityId: body.opportunityId, trade: body.trade };
+  if (await projectMessageWasRefused(identity)) return NextResponse.json({
+    error: "This request was held before sending. Explicitly prepare a new request after reviewing the current sender and recipient.", safeToCompose: true,
+  }, { status: 409 });
+  const refuse = () => refuseProjectMessage(identity);
   const target = await projectMessageTarget(orgId, body.subcontractorId, body.opportunityId, body.trade);
   if (!target) return NextResponse.json({ error: "This active project assignment is unavailable. No new send attempt was made. An earlier attempt may have been sent; check communication history before composing another message.", safeToCompose: await refuse() }, { status: 404 });
   const sender = await resolveOutreachSender(orgId);

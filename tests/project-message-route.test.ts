@@ -6,7 +6,7 @@ vi.mock("../lib/tenant", () => ({ resolveTenantOrgId: async () => "our-org" }));
 vi.mock("../lib/project-message", () => ({ projectMessageTarget: m.target }));
 vi.mock("../lib/domain/sender-identity", () => ({ resolveOutreachSender: m.sender }));
 vi.mock("../lib/manual-email", () => ({ sendManualEmail: m.send }));
-vi.mock("../lib/project-message-refusal", () => ({ refuseProjectMessage: async () => false }));
+vi.mock("../lib/project-message-refusal", () => ({ refuseProjectMessage: async () => false, projectMessageWasRefused: async () => false }));
 import { POST } from "../app/api/conversations/compose/route";
 const body = { requestKey: "11111111-1111-4111-8111-111111111111", subcontractorId: "22222222-2222-4222-8222-222222222222",
   opportunityId: "33333333-3333-4333-8333-333333333333", trade: "Paint", recipient: "saved@sub.test", sender: "owner@company.test", subject: "Project invitation", message: "Please quote this scope. <b>Plain text</b>" };
