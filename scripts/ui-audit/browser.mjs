@@ -14,6 +14,7 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 function walk(dir) {return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):e.name==='page.tsx'?[join(dir,e.name)]:[]);}
 const routes=walk('app').map(file=>({file,route:'/'+file.split('/').slice(1,-1).filter(s=>!s.startsWith('(')).join('/')})).filter(x=>!x.route.startsWith('/theme-qa'));
 function resolve(route) {
+  if (route === '/communications/compose') return `/communications/compose?sub=${ids.sub}&project=${ids.opportunity}&trade=Electrical`;
   return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]',ids.vendorToken);
 }
 const browser=await chromium.launch();
@@ -78,6 +79,20 @@ try {
         return nav?{responseMs:Math.round(nav.responseStart-nav.startTime),domMs:Math.round(nav.domContentLoadedEventEnd-nav.startTime),transferBytes:nav.transferSize}:null;
       });
       record.headings=await p.locator('h1').allTextContents();
+      if(entry.route==='/communications/compose') {
+        await p.getByRole('heading',{name:'Compose project message',exact:true}).waitFor();
+        assert(await p.getByRole('button',{name:'Send message',exact:true}).isDisabled(),'No live sender is configured in the synthetic audit');
+        await p.getByLabel('Subject',{exact:true}).fill('Synthetic project question');
+        await p.getByLabel('Message',{exact:true}).fill('Unsent synthetic draft for layout inspection.');
+        await p.getByLabel('Message',{exact:true}).fill('');
+      }
+      if(entry.route==='/communications/history') {
+        await p.getByRole('heading',{name:'Communications ledger',exact:true}).waitFor();
+        await p.getByLabel('Search messages',{exact:true}).fill('Ledger Audit');
+        await p.getByRole('button',{name:'Search',exact:true}).click();
+        await p.getByText('Synthetic wording for the ledger regression.',{exact:true}).waitFor();
+        assert(await p.getByText('Draft, not sent',{exact:true}).count()>0,'Draft history must remain explicitly unsent');
+      }
       await auditSiteSpacing(p, { device, width, out, route: entry.route });
       if(entry.route==='/opportunity/[id]') {
         const heading=await p.locator('h1').boundingBox();

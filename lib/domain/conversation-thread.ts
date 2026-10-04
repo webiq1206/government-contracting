@@ -11,6 +11,12 @@
  */
 
 export interface ConversationMessage {
+  sender_email?: string | null;
+  provider?: string | null;
+  delivery_detail?: string | null;
+  opened_at?: string | null;
+  clicked_at?: string | null;
+  replied_at?: string | null;
   delivery_state?: string | null;
   id: string;
   direction: "inbound" | "outbound";

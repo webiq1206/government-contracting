@@ -71,6 +71,7 @@ const ROUTES = [
   "/call-queue",
   "/subs",
   "/communications",
+  "/communications/history",
   "/contracts",
   "/compliance",
   "/analytics",

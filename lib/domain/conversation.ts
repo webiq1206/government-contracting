@@ -20,6 +20,12 @@ export { replyTarget } from "./conversation-thread";
 export type { Conversation, ConversationMessage };
 
 interface Row {
+  sender_email: string | null;
+  provider: string | null;
+  delivery_detail: string | null;
+  opened_at: string | null;
+  clicked_at: string | null;
+  replied_at: string | null;
   delivery_state: string | null;
   id: string;
   direction: string;
@@ -51,7 +57,8 @@ export async function subConversations(
         limit 500
      )
      select c.id, c.direction, c.subject, c.body, c.created_at,
-            c.recipient_email, c.delivery_state, c.gmail_thread_id, c.gmail_message_id,
+            c.recipient_email, c.sender_email, c.provider, c.delivery_detail,
+            c.opened_at, c.clicked_at, c.replied_at, c.delivery_state, c.gmail_thread_id, c.gmail_message_id,
             c.rfc822_message_id,
             c.opportunity_id, o.title as opportunity_title, c.meta
        from recent c
@@ -83,6 +90,8 @@ export async function subConversations(
     }
     const direction = r.direction === "inbound" ? "inbound" : "outbound";
     conv.messages.push({
+      sender_email: r.sender_email, provider: r.provider, delivery_detail: r.delivery_detail,
+      opened_at: r.opened_at, clicked_at: r.clicked_at, replied_at: r.replied_at,
       delivery_state: r.delivery_state,
       id: r.id,
       direction,

@@ -76,7 +76,7 @@ function isoOrNull(v: string | Date | null): string | null {
  * of one page. One row per conversation is small even for a busy account, and
  * the messages themselves are never loaded here.
  */
-export async function conversationList(opts: { q?: string } = {}): Promise<ConversationSummary[]> {
+export async function conversationList(opts: { q?: string; threadKey?: string } = {}): Promise<ConversationSummary[]> {
   const orgId = await currentOrg();
   const needle = opts.q?.trim() ? `%${opts.q.trim()}%` : null;
 
@@ -85,6 +85,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
        select c.*, ${THREAD_KEY_SQL} as thread_key
          from communications c
         where c.org_id = $1 and c.channel = 'email'
+          and ($4::text is null or ${THREAD_KEY_SQL} = $4)
      ),
      /*
       * One pass over the messages, with the per-thread facts the state machine
@@ -188,7 +189,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
              or lower(coalesce(o.title,'')) like lower($2))
       order by a.last_at desc
       limit 2000`,
-    [orgId, needle, AUTOMATIC_SUBJECT_SQL]
+    [orgId, needle, AUTOMATIC_SUBJECT_SQL, opts.threadKey ?? null]
   );
 
   return rows.map((r) => {
