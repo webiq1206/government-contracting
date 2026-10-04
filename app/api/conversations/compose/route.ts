@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Check the recipient, subject and message before sending." }, { status: 400 });
   const body = parsed.data;
   const target = await projectMessageTarget(orgId, body.subcontractorId, body.opportunityId, body.trade);
-  if (!target) return NextResponse.json({ error: "This active project assignment is unavailable. Nothing was sent." }, { status: 404 });
+  if (!target) return NextResponse.json({ error: "This active project assignment is unavailable. No new send attempt was made. An earlier attempt may have been sent; check communication history before composing another message." }, { status: 404 });
   const sender = await resolveOutreachSender(orgId);
   if (!target.email_verified || !target.email || target.email !== body.recipient || !sender.connected || sender.from !== body.sender)
     return NextResponse.json({ error: "The verified recipient or sender changed or is unavailable. Reload and review before sending." }, { status: 409 });

@@ -78,3 +78,26 @@ it.each(["unknown", "refused"])("retains %s evidence and will not replay the req
   const row = (await state.db!.query<any>("select delivery_state from communications where org_id=$1", [state.org])).rows[0];
   expect(row.delivery_state).toBe(outcome === "refused" ? "failed" : "unknown");
 });
+it.each(["accepted", "unknown"])("does not deny an earlier %s send after assignment removal and same-key retry", async outcome => {
+  state.outcome = outcome;
+  await POST(request()); // The caller may lose this response after the provider attempt.
+  const evidence = async () => (await state.db!.query<any>(
+    "select request_key,delivery_state,gmail_message_id,provider_attempted_at,provider_accepted_at from communications where org_id=$1",
+    [state.org],
+  )).rows;
+  const before = await evidence();
+  expect(before).toHaveLength(1);
+  expect(before[0]).toMatchObject({ request_key: body.requestKey,
+    delivery_state: outcome === "accepted" ? "sent" : "unknown",
+    gmail_message_id: outcome === "accepted" ? "receipt" : null });
+  await state.db!.query("update opportunity_subs set removed_at=now() where opportunity_id=$1", [body.opportunityId]);
+  const response = await POST(request());
+  expect(response.status).toBe(404);
+  const result = await response.json();
+  expect(result.error).toContain("No new send attempt was made.");
+  expect(result.error).toContain("An earlier attempt may have been sent; check communication history");
+  expect(result.error).not.toContain("Nothing was sent");
+  expect(result.safeToCompose).not.toBe(true);
+  expect(state.deliveries).toBe(1);
+  expect(await evidence()).toEqual(before);
+});
