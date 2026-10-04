@@ -412,7 +412,7 @@ describe("deliverability", () => {
     const messages = ["held", "queued", "attempting", "unknown", "failed"].map((delivery_state) => msg({ id: delivery_state, delivery_state }));
     expect(deliverability(messages)).toMatchObject({ sent: 0, failed: 1, deliveryRate: null, responseRate: null });
     for (const message of messages.filter((m) => m.state !== "failed")) {
-      expect(summarize(thread({ messages: [message] }), NOW).state).not.toBe("awaiting_them");
+      expect(summarize(thread({ messages: [message] }), NOW).state).toBe("send_review");
     }
   });
   it("does not count an unsent draft as a send or a successful delivery", () => {

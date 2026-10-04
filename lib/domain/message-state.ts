@@ -142,9 +142,9 @@ export function messageState(m: MessageRow): MessageState {
   if (ds === "failed") return "failed";
   if (ds === "draft") return "draft";
   if (ds === "held") return "held";
-  if (m.provider === null) return "unknown";
   if (ds === "bounced") return looksBlocked(m.delivery_detail) ? "blocked" : "bounced";
   if (ds === "deferred") return "delayed";
+  if (m.provider === null) return "unknown";
 
   if (m.replied_at) return "replied";
   if (m.clicked_at) return "clicked";
