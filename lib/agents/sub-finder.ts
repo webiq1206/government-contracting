@@ -153,6 +153,7 @@ async function sourceSubs(
   let reusedFromRoster = 0;
   let skippedNoContact = 0;
   let skippedDisabled = false;
+  let searchCompleted = true;
   let humanAction = false;
 
   for (const trade of trades) {
@@ -264,6 +265,7 @@ async function sourceSubs(
     // as local without a state to compare their addresses to. A wrong-area
     // sub who quotes anyway poisons the pricing.
     if (!location.trim() || !targetState) {
+      searchCompleted = false;
       await logAgent({
         agent: "sub-finder",
         action: "find-contractors",
@@ -286,6 +288,7 @@ async function sourceSubs(
     });
 
     if (search.disabled) {
+      searchCompleted = false;
       skippedDisabled = true;
       await logAgent({
         agent: "sub-finder",
@@ -303,6 +306,7 @@ async function sourceSubs(
     }
 
     if (search.error) {
+      searchCompleted = false;
       // The search FAILED; an empty result here is not "no contractors in
       // this area", and blaming the local market for an API outage sends the
       // operator hunting subs that the next run would have found itself.
@@ -322,6 +326,7 @@ async function sourceSubs(
     }
 
     if (!Array.isArray(search.results)) {
+      searchCompleted = false;
       await logAgent({
         agent: "sub-finder",
         action: "find-contractors",
@@ -427,7 +432,7 @@ async function sourceSubs(
 
   await query(
     `update opportunities set stage='sub_research', human_action_required=$2 where id=$1`,
-    [opportunityId, humanAction]
+    [opportunityId, humanAction || !searchCompleted]
   );
 
   const summaryParts = [
@@ -440,6 +445,7 @@ async function sourceSubs(
   if (thinTrades.length)
     summaryParts.push(`thin coverage on: ${thinTrades.join(", ")}`);
   if (skippedDisabled) summaryParts.push("Google Places disabled for some trades");
+  if (!searchCompleted) summaryParts.push("Search incomplete; no exhaustion conclusion was drawn");
 
   return {
     ok: true,
@@ -448,6 +454,7 @@ async function sourceSubs(
       ", "
     )}] in "${location}"; empty-contact shells are never paired.`,
     data: {
+      searchCompleted,
       trades: trades.length,
       candidates: totalCandidates,
       reusedFromRoster,
@@ -456,7 +463,7 @@ async function sourceSubs(
       verifyEnqueued: enqueued.length,
     },
     enqueued,
-    humanActionRequired: humanAction,
+    humanActionRequired: humanAction || !searchCompleted,
   };
 }
 

@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "tenant" as RequestIdentity["source"],
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
-  openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, failSettlementProvider: null as string | null, transactions: 0 }));
+  profile: "Original profile", openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, failSettlementProvider: null as string | null, transactions: 0 }));
 vi.mock("../lib/db", () => ({
   queryOne: async (sql: string, params: unknown[]) => {
     if (state.failSettlement && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic completion database outage");
@@ -22,6 +22,7 @@ vi.mock("../lib/db", () => ({
     } finally { state.transactions--; }
   },
 }));
+vi.mock("../lib/ai/companyProfile", () => ({getProfileSystemText:async()=>state.profile}));
 vi.mock("../lib/tenant", () => ({ resolveTenantOrgId: async () => state.org }));
 vi.mock("../lib/integration-keys", () => ({
   orgApiKey: async (key: string) => state.keys[key] ?? "",
@@ -39,6 +40,7 @@ vi.mock("../lib/api-usage/ledger", () => ({
 vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: (...args: unknown[]) => state.anthropic(...args) }; } }));
 vi.mock("../lib/ai/openai", async original => ({ ...(await original<typeof import("../lib/ai/openai")>()),
   openAiResponse: (...args: unknown[]) => state.openai(...args) }));
+import { agentWorkIdentity } from "../lib/ai/work-identity";
 import { complete } from "../lib/ai/claude";
 import { withApiUsageContext } from "../lib/api-usage/context";
 import { config } from "../lib/config";
@@ -292,4 +294,22 @@ describe("pending primary admission",()=>{
   const other=()=>withApiUsageContext({workKey:"classify:other",relatedId:"other"},call);
   await expect(other()).rejects.toMatchObject({retryable:false});
   const count=state.attempts;await expect(other()).rejects.toMatchObject({retryable:false});expect(state.attempts).toBe(count);
+ });
+
+ it("holds initial scoring across a differently shaped recovery payload after lost settlement ACK",async()=>{
+  const run=(payload:Record<string,unknown>)=>withApiUsageContext(agentWorkIdentity("scoring-engine",payload,1),()=>complete("same work",{injectProfile:false}));
+  state.failSettlementAck=true;
+  await expect(run({opportunityId:"record",briefOnly:true})).rejects.toMatchObject({retryable:false});
+  state.failSettlementAck=false;
+  await expect(run({opportunityId:"record",trigger:"recovery"})).rejects.toMatchObject({retryable:false});
+  expect(state.openai).toHaveBeenCalledTimes(1);
+ });
+ it("invalidates completed output for changed effective profile and route while keeping pending work held",async()=>{
+  const run=()=>withApiUsageContext(agentWorkIdentity("scoring-engine",{opportunityId:"record"},1),()=>complete("same prompt"));
+  state.profile="Profile A";await run();await run();expect(state.openai).toHaveBeenCalledTimes(1);
+  state.profile="Profile B with changed work mode";await run();expect(state.openai).toHaveBeenCalledTimes(2);
+  config.ai.routineProvider="Anthropic";await run();expect(state.anthropic).toHaveBeenCalledTimes(1);
+  state.profile="Profile C";state.failSettlementAck=true;await expect(run()).rejects.toThrow();state.failSettlementAck=false;
+  state.profile="Profile D";config.ai.routineProvider="OpenAI";await expect(run()).rejects.toMatchObject({retryable:false});
+  expect(state.openai).toHaveBeenCalledTimes(2);
  });

@@ -277,16 +277,19 @@ export async function closeOutDeclinedSub(
   let thankYouFailure: string | null = null;
 
   if (sendThankYou) {
-    const prior = await queryOne<{ id: string }>(
-      `select id from communications
+    const prior = await queryOne<{ id: string; delivery_state?: string }>(
+      `select id, delivery_state from communications
         where org_id=$3 and opportunity_id=$1 and subcontractor_id=$2
           and direction='outbound'
           and meta->>'kind' = 'decline_thank_you'
+          and (request_key is null or delivery_state not in ('held','failed'))
         limit 1`,
       [opportunityId, subcontractorId, orgId],
     );
     if (prior) {
-      alreadyThanked = true;
+      if (["queued","attempting","unknown"].includes(prior.delivery_state ?? "")) {
+        thankYouFailure = "The previous acknowledgment has uncertain delivery. Review its receipt before another send.";
+      } else alreadyThanked = true;
     } else {
       const sub = await queryOne<{
         email: string | null;

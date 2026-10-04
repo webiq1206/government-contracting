@@ -1,4 +1,6 @@
 import { withApiUsageContext } from '../api-usage/context';
+import { agentWorkIdentity } from "../ai/work-identity";
+import { SUB_SEARCH_INTENT_KEY, completeSubSearchIntent } from "../sub-search-intents";
 /**
  * Agent runner. Wraps every agent execution with: a job_runs audit row, an
  * agent_logs entry (success or error), downstream job enqueueing, the tenant
@@ -659,7 +661,8 @@ export async function runAgent(
       );
     }
 
-    const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId, relatedId: pursuitId ?? undefined, workKey: JSON.stringify([def.name,payload,guardedPursuitVersion]) }, () => def.handler({ runId, trigger, payload })));
+    const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId,
+      ...agentWorkIdentity(def.name,payload,guardedPursuitVersion ?? null) }, () => def.handler({ runId, trigger, payload })));
     const returned =
       pursuitId && guardedPursuitVersion != null
         ? await runWithPursuitVersion(
@@ -744,6 +747,10 @@ export async function runAgent(
     }
 
     const finalResult = withDownstreamEnqueueFailures(result, downstreamFailures);
+    if (def.name === "sub-finder" && finalResult.ok && finalResult.data?.searchCompleted === true &&
+        orgId && pursuitId && guardedPursuitVersion != null && typeof payload[SUB_SEARCH_INTENT_KEY] === "string") {
+      await completeSubSearchIntent(payload[SUB_SEARCH_INTENT_KEY] as string,orgId,pursuitId,guardedPursuitVersion);
+    }
     if (downstreamFailures.length > 0) {
       await inOrg(() =>
         logAgent({

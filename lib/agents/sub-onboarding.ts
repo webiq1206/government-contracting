@@ -133,6 +133,7 @@ async function chase(
       and delivery_state in ('sent','delivered','bounced','deferred') and gmail_message_id is not null
     order by provider_accepted_at desc nulls last,created_at desc limit 1`, [row.orgId,row.subcontractorId]);
   const res = await sendOutreachEmail({
+    postAwardCompliance: { contractId: row.contractId },
     scheduled: { key: JSON.stringify(["compliance-chase", row.subcontractorId, prior?.id ?? "first"]),
       meta: { kind: "compliance-chase" } },
     subcontractorId: row.subcontractorId,

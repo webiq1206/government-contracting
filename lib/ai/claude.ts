@@ -392,15 +392,16 @@ function validateCompletion(result: Completion, opts: CompleteOptions): Completi
 }
 
 export async function complete(prompt: string, opts: CompleteOptions = {}): Promise<Completion> {
-  const { apiUsageContext } = await import("../api-usage/context");
-  if (!apiUsageContext().workKey) return completeUnfenced(prompt,opts);
-  const { withAiWorkReceipt } = await import("./work-receipts");
-  return withAiWorkReceipt([prompt,opts],()=>completeUnfenced(prompt,opts));
-}
-async function completeUnfenced(prompt: string, opts: CompleteOptions): Promise<Completion> {
   const system = await buildSystem(opts);
   const plan = await planRoute(opts);
   if (!plan) throw new ClaudeNotConfiguredError();
+  const { apiUsageContext } = await import("../api-usage/context");
+  if (!apiUsageContext().workKey) return completeUnfenced(prompt,opts,system,plan);
+  const { withAiWorkReceipt } = await import("./work-receipts");
+  return withAiWorkReceipt([prompt,opts,system,plan],()=>completeUnfenced(prompt,opts,system,plan));
+}
+async function completeUnfenced(prompt: string, opts: CompleteOptions, system: SystemBlock[],
+  plan: NonNullable<Awaited<ReturnType<typeof planRoute>>>): Promise<Completion> {
 
   let primaryFailure: AiUnavailableError;
   try {

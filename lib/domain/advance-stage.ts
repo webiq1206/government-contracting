@@ -7,7 +7,8 @@
  * assessment is conservative: every trade we solicited must be covered by a
  * real quote, and nothing about the replies may still be in question.
  */
-import { query } from "../db";
+import { query, queryOne } from "../db";
+import { subSearchJob } from "../sub-search-intents";
 import { tradeSelfPerformed } from "./work-mode";
 import { logAgent } from "../logger";
 import { PRE_QUOTE_STAGES, STAGE_AFTER_CALLS } from "./call-step";
@@ -226,8 +227,8 @@ export async function closeIfSubsExhausted(
   const allExhausted = exhausted.length === trades.length;
   if (!allExhausted || anyCovered) return { action: "none", exhaustedTrades: exhausted };
 
-  const opp = await query<{ id: string; risk_flags: string[] | null; status: string }>(
-    `select id, risk_flags, status from opportunities where id = $1`,
+  const opp = await query<{ id: string; org_id: string; pursuit_version: number; risk_flags: string[] | null; status: string }>(
+    `select id, org_id, pursuit_version, risk_flags, status from opportunities where id = $1`,
     [opportunityId]
   );
   const record = opp[0];
@@ -236,15 +237,18 @@ export async function closeIfSubsExhausted(
   }
 
   const flags = record.risk_flags ?? [];
-  if (!flags.includes(RESOURCE_RETRY_FLAG)) {
-    await query(
-      `update opportunities
-          set risk_flags = (
-            select array(select distinct unnest(coalesce(risk_flags,'{}') || array[$2]))
-          )
-        where id = $1`,
-      [opportunityId, RESOURCE_RETRY_FLAG]
-    );
+  let intent = await queryOne<{id:string;state:string}>(`select id,state from sub_search_intents
+    where opportunity_id=$1 and org_id=$2 and pursuit_version=$3`,
+    [opportunityId,record.org_id,record.pursuit_version]);
+  // Historical "used" flags do not prove a search finished. Preserve for review.
+  if (!intent && flags.includes(RESOURCE_RETRY_FLAG)) return {action:"none",exhaustedTrades:exhausted};
+  if (!intent) {
+    intent = await queryOne<{id:string;state:string}>(`insert into sub_search_intents(org_id,opportunity_id,pursuit_version)
+      values($1,$2,$3) on conflict(opportunity_id,pursuit_version) do update set opportunity_id=excluded.opportunity_id
+      returning id,state`,[record.org_id,opportunityId,record.pursuit_version]);
+    if (!intent) throw new Error("The second-search intent could not be saved.");
+  }
+  if (intent.state === "requested") {
     await logAgent({
       agent: "reply-poll",
       action: "resourcing-subs",
@@ -258,13 +262,10 @@ export async function closeIfSubsExhausted(
     return {
       action: "resourced",
       exhaustedTrades: exhausted,
-      enqueue: {
-        agent: "sub-finder",
-        payload: { opportunityId },
-        opts: { singletonKey: `resub:${opportunityId}`, singletonSeconds: 24 * 3600 },
-      },
+      enqueue: subSearchJob(intent.id,opportunityId),
     };
   }
+  if (intent.state !== "completed") return {action:"none",exhaustedTrades:exhausted};
 
   // The second search already ran and its candidates have also all said no.
   const closed = await query<{ id: string }>(

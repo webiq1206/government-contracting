@@ -68,3 +68,13 @@ This source batch still requires final exact-head CI and independent review befo
 release. Production identity, source preservation, database/runtime role and backups,
 actual app Gmail authorization and historical raw receipts remain external preflight
 requirements. No live schema, provider call, mailbox setting, or deployment was changed.
+
+## Additional recovery review
+
+Post-award compliance mail uses a narrow, revalidated active-contract and named-recipient path. It retains account/pursuit pause, generation, tenant, recipient verification, suppression, work-mode and durable send checks. Ordinary won-pursuit outreach remains blocked.
+
+Clarification, decline acknowledgments and final nudges distinguish safe held/refused retries from accepted or uncertain communications. Accepted outreach receipts resume unfinished workflow updates without reconstructing or sending another email, and preserve later workflow progress.
+
+AI reconciliation scope uses canonical agent/record/pursuit identity, independent of incidental queue payload options. Completed-result identity includes the assembled profile/system input and effective model route; changing those inputs cannot bypass a pending work hold.
+
+Migration 129 adds durable second-search intents. Requested, dispatching, queued and completed are distinct. Pre-admission holds leave a requested intent recoverable by the scheduled sweep. An uncertain queue handoff never expires into another attempt. Only an actual completed sub-finder result permits exhaustion closure. Historical used flags without completion evidence remain held for review. Apply migrations 125 through 129 in order before this runtime, after validating the actual runtime role against an isolated restored database. No runtime grants were broadened.

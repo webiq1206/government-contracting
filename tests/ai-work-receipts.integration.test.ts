@@ -52,3 +52,12 @@ describe("AI work reconciliation across recovery sweeps",()=>{
   await run("bid:record","step-a",execute);await run("bid:record","step-b",execute);
   await run("bid:record","step-b",execute);expect(execute).toHaveBeenCalledTimes(4);
  });
+
+it("normalizes UUID spellings before unresolved-work scope lookup",async()=>{
+ const {agentWorkIdentity}=await import("../lib/ai/work-identity");
+ const id="abcabcab-1234-4234-a234-abcdefabcdef";
+ const invoke=(opportunityId:string)=>withApiUsageContext(agentWorkIdentity("scoring-engine",{opportunityId},1),()=>withAiWorkReceipt("prompt",execute));
+ const execute=vi.fn(async()=>{throw Error("lost result");});
+ await expect(invoke(id)).rejects.toThrow();await expect(invoke(id.toUpperCase())).rejects.toThrow();
+ expect(execute).toHaveBeenCalledTimes(1);
+});

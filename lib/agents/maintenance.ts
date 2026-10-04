@@ -176,7 +176,7 @@ export const outreachFollowup: AgentDefinition = {
  * follow-up, then the unresponsive mark, then nothing until the operator
  * noticed the deadline themselves.
  */
-async function lastCallForOrg(
+export async function lastCallForOrg(
   orgId: string
 ): Promise<{ sent: number; due: number; failures: number }> {
   const due = await query<{
@@ -217,6 +217,7 @@ async function lastCallForOrg(
                  and c.subcontractor_id = os.subcontractor_id
                  and c.direction = 'outbound'
                  and c.meta->>'kind' = 'final_nudge'
+                 and (c.request_key is null or c.delivery_state not in ('held','failed'))
             )
       limit 25`,
     [orgId]
@@ -1752,6 +1753,8 @@ export const scoringRecoverySweep: AgentDefinition = {
     const orgs = await listActiveOrganizations();
     const unscored: { id: string; title: string | null; orgId: string }[] = [];
     for (const org of orgs) {
+      const { recoverRequestedSubSearches } = await import("../sub-search-intents");
+      await recoverRequestedSubSearches(org.id);
       const rows = await query<{ id: string; title: string | null }>(
         `select id, title from opportunities
           where org_id = $1

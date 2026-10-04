@@ -19,9 +19,9 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
     const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired", [JSON.stringify([org,scope])]);
     if (!lock.rows[0]?.acquired) throw hold();
     const prior = (await client.query<{state:string;result:T}>("select state,result from ai_work_receipts where org_id=$1 and work_key=$2",[org,key])).rows[0];
-    if (prior?.state === "complete") return {cached:true as const,result:prior.result};
     const pending = await client.query("select owner from ai_work_receipts where org_id=$1 and scope_key=$2 and state='pending' limit 1",[org,scope]);
     if (pending.rows.length) throw hold();
+    if (prior?.state === "complete") return {cached:true as const,result:prior.result};
     await client.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
       values($1,$2,$3,$4,$5,'pending') on conflict(org_id,work_key) do update
       set owner=excluded.owner,state='pending',started_at=now()`,[org,key,scope,inputHash,owner]);

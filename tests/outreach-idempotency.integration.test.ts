@@ -136,6 +136,35 @@ d("outreach idempotency (integration)", () => {
     expect(await commCount()).toBe(1); // still one genuine send
   });
 
+  it("finishes workflow updates after a crash following the accepted receipt, with one send", async () => {
+    await query(`delete from communications where org_id=$1`,[org.id]);
+    await query(`update opportunity_subs set outreach_state='pending',quote_due_at=null where opportunity_id=$1`,[opp.id]);
+    await query(`update opportunities set stage='sub_research' where id=$1`,[opp.id]);
+    await query(`update subcontractors set last_contacted=null where id=$1`,[sub.id]);
+    sendSpy.mockImplementationOnce(async (params) => {
+      await query(`insert into communications(org_id,opportunity_id,subcontractor_id,channel,direction,subject,body,
+        provider,gmail_message_id,delivery_state,provider_accepted_at,meta)
+        values($1,$2,$3,'email','outbound',$4,$5,'gmail','accepted-before-crash','sent',now(),$6::jsonb)`,
+        [org.id,opp.id,sub.id,params.subject,params.text,JSON.stringify(params.scheduled.meta)]);
+      throw new Error("process stopped after accepted receipt");
+    });
+    await expect(run()).rejects.toThrow("process stopped after accepted receipt");
+    expect((await queryOne<{outreach_state:string}>(`select outreach_state from opportunity_subs where opportunity_id=$1`,[opp.id]))?.outreach_state).toBe("pending");
+    expect((await run()).data).toMatchObject({sent:false,replayed:true,messageId:"accepted-before-crash"});
+    expect(sendSpy).toHaveBeenCalledTimes(1);expect(await commCount()).toBe(1);
+    expect((await queryOne<{outreach_state:string;quote_due_at:string}>(`select outreach_state,quote_due_at from opportunity_subs where opportunity_id=$1`,[opp.id]))).toMatchObject({outreach_state:"sent",quote_due_at:expect.anything()});
+    const accepted=(await queryOne<{last_contacted:string}>(`select last_contacted from subcontractors where id=$1`,[sub.id]))?.last_contacted;
+    expect(accepted).toBeTruthy();
+    // Later progress must not be moved backward by another receipt recovery.
+    await query(`update opportunity_subs set outreach_state='replied' where opportunity_id=$1`,[opp.id]);
+    await query(`update opportunities set stage='quote_entry' where id=$1`,[opp.id]);
+    await run();
+    expect((await queryOne<{stage:string}>(`select stage from opportunities where id=$1`,[opp.id]))?.stage).toBe("quote_entry");
+    expect((await queryOne<{outreach_state:string}>(`select outreach_state from opportunity_subs where opportunity_id=$1`,[opp.id]))?.outreach_state).toBe("replied");
+    expect((await queryOne<{last_contacted:string}>(`select last_contacted from subcontractors where id=$1`,[sub.id]))?.last_contacted).toEqual(accepted);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("a pairing whose prior send FAILED is still sent on re-run (recovery works)", async () => {
     // Simulate a failed prior send: a comm row exists but with null provider.
     const o2 = await queryOne<{ id: string }>(`insert into organizations (name, subscription_status) values ($1,'active') returning id`, [`out2-${randomUUID()}`]);

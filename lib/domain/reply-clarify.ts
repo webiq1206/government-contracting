@@ -76,12 +76,13 @@ export async function requestClarification(input: {
 
   // One ask per sub per solicitation. Without this, every re-poll of the
   // sliding window would send another near-identical email.
-  let already: { id: string } | null;
+  let already: { id: string; delivery_state?: string } | null;
   try {
-    already = await queryOne<{ id: string }>(
-      `select id from communications
+    already = await queryOne<{ id: string; delivery_state?: string }>(
+      `select id, delivery_state from communications
         where org_id = $3 and subcontractor_id = $1 and opportunity_id = $2
           and direction = 'outbound' and meta->>'kind' = 'clarification'
+          and (request_key is null or delivery_state not in ('held','failed'))
         limit 1`,
       [input.subcontractorId, input.opportunityId, input.orgId]
     );
@@ -92,7 +93,10 @@ export async function requestClarification(input: {
         "Could not verify whether a clarification was already sent. Nothing was sent; retry after the connection recovers.",
     };
   }
-  if (already) return { sent: false, reason: "already asked" };
+  if (already) return { sent: false, reason:
+    ["queued","attempting","unknown"].includes(already.delivery_state ?? "")
+      ? "A previous clarification has an uncertain delivery. Review its receipt before another send."
+      : "already asked" };
 
   const job = input.opportunityTitle ?? "the project we contacted you about";
   const items = input.gaps.map(describeGap);
