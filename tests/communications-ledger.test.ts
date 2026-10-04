@@ -48,3 +48,10 @@ it("keeps failed, uncertain, replied and held evidence separate, with missing pr
   expect((await communicationsLedger(org, { q: "outcomes", status: "replied" })).rows.map(r => r.state)).toEqual(["replied"]);
   expect((await communicationsLedger(org, { q: "outcomes", status: "held" })).rows.map(r => r.state)).toEqual(["held"]);
 });
+it("keeps deferred delivery ahead of engagement, and hides raw policy diagnostics", async () => {
+  await db.query("insert into communications(org_id,subject,delivery_state,provider,replied_at,delivery_detail) values($1,'delivery precedence','deferred','gmail',now(),null),($1,'delivery precedence','deferred',null,now(),null),($1,'delivery precedence','bounced','gmail',null,'550 blocked private-host')", [org]);
+  expect((await communicationsLedger(org, { q: "delivery precedence", status: "sent" })).rows.map(r => r.state)).toEqual(["delayed"]);
+  expect((await communicationsLedger(org, { q: "delivery precedence", status: "unknown" })).rows.map(r => r.state)).toEqual(["unknown"]);
+  const [refused] = (await communicationsLedger(org, { q: "delivery precedence", status: "refused" })).rows;
+  expect(refused.state).toBe("blocked"); expect(refused.delivery_detail).toBeNull();
+});

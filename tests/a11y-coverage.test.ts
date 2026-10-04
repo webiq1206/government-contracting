@@ -40,6 +40,7 @@ const EXEMPT = new Map<string, string>([
   ["/opportunity/[id]", "Needs a record id."],
   ["/opportunity/[id]/requirements", "Needs a record id, and a solicitation with extracted requirements."],
   ["/subs/[id]", "Needs a record id."],
+  ["/communications/compose", "Needs an active contact/project/trade assignment; exercised with disposable fixtures in scripts/ui-audit/browser.mjs on all three devices."],
   ["/contracts/[id]", "Needs a record id."],
   ["/admin/accounts/[id]", "Needs a record id."],
 ]);

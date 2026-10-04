@@ -42,6 +42,7 @@ export async function communicationsLedger(orgId: string, opts: LedgerOptions = 
         when c.delivery_state = 'held' then 'held'
         when c.delivery_state = 'draft' then 'draft'
         when c.delivery_state is null or c.delivery_state in ('queued','attempting','unknown') or c.provider is null then 'unknown'
+        when c.delivery_state = 'deferred' then 'sent'
         when c.replied_at is not null then 'replied'
         else 'sent' end as category
       from communications c
@@ -64,7 +65,8 @@ export async function communicationsLedger(orgId: string, opts: LedgerOptions = 
   const shown = rows.slice(0, 50);
   const last = shown.at(-1);
   return {
-    rows: shown.map(row => ({ ...row, delivery_detail: null, state: messageState(row) })),
+    rows: shown.map(row => ({ ...row, delivery_detail: null,
+      state: row.category === "unknown" && row.provider === null ? "unknown" as const : messageState(row) })),
     next: rows.length > 50 && last ? Buffer.from(JSON.stringify({ at: last.created_at, id: last.id })).toString("base64url") : null,
   };
 }
