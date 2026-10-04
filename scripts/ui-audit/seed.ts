@@ -17,6 +17,7 @@ try {
   const sub=await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,trade_categories,state,city) values($1,'Sample Electrical Services',array['Electrical'],'ID','Boise') returning id`,[org!.id]);
   const contract=await queryOne<{id:string}>(`insert into contracts(org_id,opportunity_id,contract_number,award_amount,status) values($1,$2,'AUDIT-001',25000,'active') returning id`,[org!.id,opp!.id]);
   await query("update subcontractors set phone = '2085550100' where id = $1", [sub!.id]);
+  await query("insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,'Electrical','draft')", [opp!.id,sub!.id]);
   const call=await queryOne<{id:string}>(`insert into call_cards(org_id,opportunity_id,subcontractor_id,card_json,status) values($1,$2,$3,'{}','pending') returning id`,[org!.id,opp!.id,sub!.id]);
   await query(`insert into organizations(name,slug,subscription_status,classification)
     select 'Pagination Audit '||lpad(n::text,3,'0'),'pagination-audit-'||n,'active','test' from generate_series(1,57) n`);

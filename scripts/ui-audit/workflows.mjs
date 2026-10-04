@@ -336,7 +336,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
 }
 
 export async function auditRoles({ browser, device, width, height, base, out, results, failures, checkpoint }) {
-  const routes = ['/today', '/pipeline', '/subs', '/communications', '/contracts', '/compliance', '/settings/profile', '/settings/content', '/settings/integrations', '/settings/api-usage', '/settings/rules', '/settings/billing', '/more'];
+  const routes = ['/today', '/pipeline', '/subs', '/communications', '/communications/history', '/contracts', '/compliance', '/settings/profile', '/settings/content', '/settings/integrations', '/settings/api-usage', '/settings/rules', '/settings/billing', '/more'];
   for (const role of ['tenant-owner', 'admin', 'operator', 'member', 'viewer']) {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: device !== 'desktop', hasTouch: device !== 'desktop' });
     await context.route('**/*', r => new URL(r.request().url()).origin === base ? r.continue() : r.abort());
