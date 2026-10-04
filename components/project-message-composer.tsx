@@ -36,8 +36,8 @@ export function ProjectMessageComposer({ subId, projectId, trade, recipient, sen
     <p className="break-all text-sm">From: {sender || "No sending identity available"}<br />To: {recipient || "No email on file"}</p>
     <p className="text-sm text-muted-foreground">Starts a new conversation for this project. To answer an existing message, open its conversation in the history below. Your account signature is added when sent.</p>
     {!ready && <p className="text-sm text-review">A verified contact email and connected sending identity are required. Review the contact and integration settings.</p>}
-    <label className="block text-sm">Subject<input className="input mt-1 w-full" value={subject} maxLength={250} onChange={e => setSubject(e.target.value)} disabled={sent || busy} /></label>
-    <label className="block text-sm">Message<textarea className="input mt-1 min-h-48 w-full" value={message} maxLength={20000} onChange={e => setMessage(e.target.value)} disabled={sent || busy} /></label>
+    <div><label htmlFor="project-message-subject" className="block text-sm">Subject</label><input id="project-message-subject" className="input mt-1 w-full" value={subject} maxLength={250} onChange={e => setSubject(e.target.value)} disabled={sent || busy} /></div>
+    <div><label htmlFor="project-message-body" className="block text-sm">Message</label><textarea id="project-message-body" className="input mt-1 min-h-48 w-full" value={message} maxLength={20000} onChange={e => setMessage(e.target.value)} disabled={sent || busy} /></div>
     {outcome && <p role="status" className="text-sm">{outcome}</p>}
     {!sent && <button type="button" className="btn-primary" onClick={send} disabled={busy || !ready || !subject.trim() || !message.trim()}>{busy ? "Sending…" : "Send message"}</button>}
     {safe && <button type="button" className="btn-secondary" onClick={() => {
