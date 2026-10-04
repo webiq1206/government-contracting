@@ -7,7 +7,7 @@ type RefusalInput = {
 export async function projectMessageWasRefused(input: RefusalInput) {
   return !!await queryOne<{ id: string }>(`select id from communications
     where org_id=$1 and request_key=$2 and subcontractor_id=$3 and opportunity_id=$4
-      and meta->>'actor_id'=$5 and meta->>'trade'=$6
+      and meta->>'actor_id'=$5 and coalesce(meta->>'trade','')=$6
       and meta->>'preflight_refused'='true' and delivery_state='held'`,
     [input.orgId, input.requestKey, input.subcontractorId, input.opportunityId, input.actorId, input.trade]);
 }
@@ -29,7 +29,7 @@ export async function refuseProjectMessage(input: RefusalInput) {
   if (row) return true;
   const existing = await queryOne<{ delivery_state: string }>(`select delivery_state from communications
     where org_id=$1 and request_key=$2 and subcontractor_id=$3 and opportunity_id=$4
-      and meta->>'actor_id'=$5 and meta->>'trade'=$6`,
+      and meta->>'actor_id'=$5 and coalesce(meta->>'trade','')=$6`,
     [orgId, requestKey, subcontractorId, opportunityId, actorId, trade]);
   return !!existing && ["held", "failed"].includes(existing.delivery_state);
 }

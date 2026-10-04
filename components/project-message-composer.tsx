@@ -5,9 +5,15 @@ import { UnsavedGuard } from "./unsaved-guard";
 import { preserveSendRequest } from "@/lib/client/manual-send-request";
 type Intent = { requestKey: string; subcontractorId: string; opportunityId: string; trade: string; recipient: string; sender: string; subject: string; message: string };
 
-export function ProjectMessageComposer({ subId, projectId, trade, recipient, sender, ready }: {
+type ComposerProps = {
   subId: string; projectId: string; trade: string; recipient: string; sender: string; ready: boolean;
-}) {
+};
+export function ProjectMessageComposer(props: ComposerProps) {
+  // Each target owns its component state and async callbacks. A delayed response
+  // can still save that target's receipt, but cannot update another target's UI.
+  return <TargetMessageComposer key={JSON.stringify([props.subId, props.projectId, props.trade])} {...props} />;
+}
+function TargetMessageComposer({ subId, projectId, trade, recipient, sender, ready }: ComposerProps) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);

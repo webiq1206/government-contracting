@@ -17,8 +17,8 @@ beforeEach(() => {
   container = window.document.querySelector("main")! as unknown as HTMLElement; root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); vi.unstubAllGlobals(); });
-async function mount() {
-  await act(async () => root.render(<ProjectMessageComposer subId="sub" projectId="project" trade="Paint" recipient="sub@example.test" sender="owner@example.test" ready />));
+async function mount(target = { subId: "sub", projectId: "project", trade: "Paint", recipient: "sub@example.test" }) {
+  await act(async () => root.render(<ProjectMessageComposer {...target} sender="owner@example.test" ready />));
 }
 async function remount() { await act(async () => root.unmount()); root = createRoot(container); await mount(); }
 function button(label: string) { return [...container.querySelectorAll("button")].find(b => b.textContent?.includes(label)); }
@@ -73,4 +73,52 @@ it("does not apply stale nondelivery evidence to another request key", async () 
   sessionStorage.setItem(key, "current-unknown"); sessionStorage.setItem(`${key}:confirmed-nondelivery`, "old-refused");
   await mount(); expect(button("Prepare a new request")).toBeUndefined(); expect(button("Retry original request")!.disabled).toBe(true);
   expect(fetchMock).not.toHaveBeenCalled();
+});
+it.each(["subId", "projectId", "trade"] as const)("clears an unsent draft when only %s changes on the same mounted wrapper", async changed => {
+  await mount(); await edit("project-message-subject", "Only for A"); await edit("project-message-body", "Private A draft");
+  await mount({ subId: "sub", projectId: "project", trade: "Paint", recipient: "sub@example.test", [changed]: "different" });
+  expect((container.querySelector("input") as HTMLInputElement).value).toBe("");
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  expect(button("Send message")!.disabled).toBe(true); expect(fetchMock).not.toHaveBeenCalled();
+});
+it.each(["accepted", "refused", "unknown"])("keeps a delayed A %s response out of B state while retaining A's claim", async outcome => {
+  let resolveA!: (response: Response) => void;
+  fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveA = resolve; }));
+  await mount(); await edit("project-message-subject", "A subject"); await edit("project-message-body", "A text"); await click("Send message");
+  const a = JSON.parse(fetchMock.mock.calls[0][1].body);
+  await mount({ subId: "sub-b", projectId: "project-b", trade: "Roof", recipient: "b@example.test" });
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  await edit("project-message-subject", "B subject"); await edit("project-message-body", "B text");
+  await act(async () => resolveA(new Response(JSON.stringify(outcome === "accepted" ? { ok: true } : { error: `A ${outcome}`, safeToCompose: outcome === "refused" }), { status: outcome === "accepted" ? 200 : 503 })));
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("B text");
+  expect(button("Send message")!.disabled).toBe(false);
+  expect(button("Start another message")).toBeUndefined(); expect(button("Prepare a new request")).toBeUndefined();
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(sessionStorage.getItem(key)).toBe(a.requestKey);
+  expect(sessionStorage.getItem("project-message:sub-b:project-b:Roof")).toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await mount();
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("A text");
+  if (outcome === "accepted") expect(button("Start another message")).toBeDefined();
+  else if (outcome === "refused") expect(button("Prepare a new request")).toBeDefined();
+  else {
+    expect((container.querySelector("textarea") as HTMLTextAreaElement).disabled).toBe(true);
+    expect(button("Prepare a new request")).toBeUndefined();
+  }
+});
+it("does not release B's in-flight guard when A completes after a target switch", async () => {
+  const pending: Array<(response: Response) => void> = [];
+  fetchMock.mockImplementation(() => new Promise<Response>(resolve => pending.push(resolve)));
+  await mount(); await edit("project-message-subject", "A subject"); await edit("project-message-body", "A text"); await click("Send message");
+  await mount({ subId: "sub-b", projectId: "project-b", trade: "Roof", recipient: "b@example.test" });
+  await edit("project-message-subject", "B subject"); await edit("project-message-body", "B text"); await click("Send message");
+  await act(async () => pending[0](new Response(JSON.stringify({ ok: true }), { status: 200 })));
+  expect(button("Sending")!.disabled).toBe(true);
+  expect(button("Start another message")).toBeUndefined();
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("B text");
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).disabled).toBe(true);
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ subcontractorId: "sub-b", opportunityId: "project-b", message: "B text" });
+  await act(async () => pending[1](new Response(JSON.stringify({ error: "B uncertain" }), { status: 503 })));
+  expect(container.textContent).toContain("B uncertain");
+  expect(button("Start another message")).toBeUndefined(); expect(fetchMock).toHaveBeenCalledTimes(2);
 });

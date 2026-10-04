@@ -138,3 +138,17 @@ it("recovers reset eligibility after a lost refusal response and restored recipi
   expect(await retry.json()).toMatchObject({ safeToCompose: true, error: expect.stringContaining("held before sending") });
   expect(state.deliveries).toBe(0);
 });
+it.each(["held", "refused", "accepted", "unknown"])("reconciles a null-trade %s claim after a lost response and changed recipient", async outcome => {
+  body.trade = "";
+  await state.db!.query("update opportunity_subs set trade=null where opportunity_id=$1", [body.opportunityId]);
+  state.paused = outcome === "held"; state.outcome = outcome === "held" ? "accepted" : outcome;
+  await POST(request()); // Caller loses the original response.
+  const rows = async () => (await state.db!.query<any>("select request_key,delivery_state,meta,provider_attempted_at,gmail_message_id from communications where org_id=$1", [state.org])).rows;
+  const before = await rows(); expect(before).toHaveLength(1); expect(before[0].meta.trade).toBeNull();
+  const attempts = state.deliveries;
+  state.paused = false;
+  await state.db!.query("update subcontractors set email='changed@example.test' where id=$1", [body.subcontractorId]);
+  const response = await POST(request()); expect(response.status).toBe(409);
+  expect((await response.json()).safeToCompose).toBe(outcome === "held" || outcome === "refused");
+  expect(await rows()).toEqual(before); expect(state.deliveries).toBe(attempts);
+});
