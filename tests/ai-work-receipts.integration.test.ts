@@ -59,5 +59,6 @@ it("normalizes UUID spellings before unresolved-work scope lookup",async()=>{
  const invoke=(opportunityId:string)=>withApiUsageContext(agentWorkIdentity("scoring-engine",{opportunityId},1),()=>withAiWorkReceipt("prompt",execute));
  const execute=vi.fn(async()=>{throw Error("lost result");});
  await expect(invoke(id)).rejects.toThrow();await expect(invoke(id.toUpperCase())).rejects.toThrow();
+ await expect(invoke(`{${id}}`)).rejects.toThrow();await expect(invoke(id.replace(/-/g,""))).rejects.toThrow();
  expect(execute).toHaveBeenCalledTimes(1);
 });

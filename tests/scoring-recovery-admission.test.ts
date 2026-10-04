@@ -12,7 +12,7 @@ import { scoringRecoverySweep } from "../lib/agents/maintenance";
 describe("recovery sweep admission outcomes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.query.mockImplementation(async (sql: string) => sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
+    mocks.query.mockImplementation(async (sql: string) => sql.includes("sub_search_intents") ? [] : sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
   });
   const run = () => scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
   it("leaves duplicate or safety-deferred jobs pending without inventing a queue outage", async () => {

@@ -349,6 +349,7 @@ async function sourceSubs(
       search.results,
       search.results.length
     );
+    if (enriched.some((candidate) => candidate.detailsUnavailable)) searchCompleted = false;
 
     // Drop firms whose own address puts them in a different state. Google
     // treats "in <place>" as a preference, not a promise, and will happily

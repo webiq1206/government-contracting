@@ -18,3 +18,9 @@ it("records a genuine completed empty search distinctly from a refused one",asyn
  const result=await subFinder.handler({runId:"run",trigger:"queue",payload:{opportunityId:"opp"}});
  expect(result.data?.searchCompleted).toBe(true);
 });
+
+it("does not complete a successful text search whose required Details lookups failed",async()=>{
+ m.search.mockResolvedValue({results:[{name:"Unknown contact",place_id:"place",detailsUnavailable:true}]});
+ const result=await subFinder.handler({runId:"run",trigger:"queue",payload:{opportunityId:"opp"}});
+ expect(result.data?.searchCompleted).toBe(false);expect(result.humanActionRequired).toBe(true);
+});

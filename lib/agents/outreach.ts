@@ -172,7 +172,7 @@ export const outreach: AgentDefinition = {
       quote_due_at: string | null; gmail_message_id: string | null }>(
       `select id, delivery_state, coalesce(provider_accepted_at,created_at) as accepted_at,
               meta->>'quote_due_at' as quote_due_at, gmail_message_id
-         from communications where org_id=$4 and opportunity_id=$1 and subcontractor_id=$2
+         from communications where org_id = $4 and opportunity_id = $1 and subcontractor_id = $2
           and channel='email' and direction='outbound'
           and ((provider is not null and delivery_state in ('sent','delivered','bounced','deferred'))
             or delivery_state in ('queued','attempting','unknown'))

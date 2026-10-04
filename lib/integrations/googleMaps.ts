@@ -19,6 +19,8 @@ const DETAILS = "https://maps.googleapis.com/maps/api/place/details/json";
 
 /** A contractor candidate from Text Search, optionally enriched with details. */
 export interface Contractor {
+  /** Required Details lookup failed; missing contact data is not an exhaustion finding. */
+  detailsUnavailable?: boolean;
   name: string;
   place_id: string;
   rating?: number;
@@ -150,10 +152,11 @@ export const googleMaps = {
     return results.map((c, i) => {
       if (i >= top.length) return c;
       const outcome = settled[i];
-      if (outcome.status !== "fulfilled" || !outcome.value) return c;
+      if (outcome.status !== "fulfilled" || !outcome.value) return {...c,detailsUnavailable:true};
       const d = outcome.value;
       return {
         ...c,
+        detailsUnavailable: false,
         phone: d.phone ?? c.phone,
         website: d.website ?? c.website,
         address: d.address ?? c.address,
