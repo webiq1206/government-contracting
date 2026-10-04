@@ -7,6 +7,7 @@ import { resolveOutreachSender } from "@/lib/domain/sender-identity";
 import { withMailSignature } from "@/lib/domain/mail-signature";
 import { sendManualEmail } from "@/lib/manual-email";
 import { runWithPursuitVersion } from "@/lib/pursuit-job-context";
+import { refuseProjectMessage } from "@/lib/project-message-refusal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,11 +24,13 @@ export async function POST(req: Request) {
   const parsed = input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Check the recipient, subject and message before sending." }, { status: 400 });
   const body = parsed.data;
+  const refuse = () => refuseProjectMessage({ orgId, actorId: auth.id, requestKey: body.requestKey,
+    subcontractorId: body.subcontractorId, opportunityId: body.opportunityId, trade: body.trade });
   const target = await projectMessageTarget(orgId, body.subcontractorId, body.opportunityId, body.trade);
-  if (!target) return NextResponse.json({ error: "This active project assignment is unavailable. No new send attempt was made. An earlier attempt may have been sent; check communication history before composing another message." }, { status: 404 });
+  if (!target) return NextResponse.json({ error: "This active project assignment is unavailable. No new send attempt was made. An earlier attempt may have been sent; check communication history before composing another message.", safeToCompose: await refuse() }, { status: 404 });
   const sender = await resolveOutreachSender(orgId);
   if (!target.email_verified || !target.email || target.email !== body.recipient || !sender.connected || sender.from !== body.sender)
-    return NextResponse.json({ error: "The verified recipient or sender changed or is unavailable. Reload and review before sending." }, { status: 409 });
+    return NextResponse.json({ error: "The verified recipient or sender changed or is unavailable. Reload and review before sending.", safeToCompose: await refuse() }, { status: 409 });
   const text = withMailSignature(body.message, orgId, sender.from);
   const html = `<div>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />")}</div>`;
   const result = await runWithPursuitVersion({ opportunityId: body.opportunityId, version: target.pursuit_version }, () => sendManualEmail({

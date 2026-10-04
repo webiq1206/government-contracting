@@ -20,8 +20,10 @@ vi.mock("../lib/integrations/gmail", () => ({ gmail: { isConnected: async () => 
 } } }));
 import { POST } from "../app/api/conversations/compose/route";
 import { projectMessageTarget } from "../lib/project-message";
+import { refuseProjectMessage } from "../lib/project-message-refusal";
 let body: { requestKey: string; subcontractorId: string; opportunityId: string; trade: string; recipient: string; sender: string; subject: string; message: string };
 const request = () => new Request("http://test/api/conversations/compose", { method: "POST", body: JSON.stringify(body) });
+const refuse = () => refuseProjectMessage({ orgId: state.org, actorId: "operator", ...body });
 beforeAll(async () => {
   state.db = new PGlite(); await state.db.exec(`
     create table opportunities(id uuid primary key,org_id uuid,title text,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer);
@@ -100,4 +102,30 @@ it.each(["accepted", "unknown"])("does not deny an earlier %s send after assignm
   expect(result.safeToCompose).not.toBe(true);
   expect(state.deliveries).toBe(1);
   expect(await evidence()).toEqual(before);
+});
+it("fences a denied request before allowing a replacement even if the original arrives later", async () => {
+  const originalRecipient = body.recipient;
+  body.recipient = "stale@example.test";
+  expect((await (await POST(request())).json()).safeToCompose).toBe(true);
+  body.recipient = originalRecipient;
+  await POST(request()); // Delayed original cannot acquire the already-fenced key.
+  expect(state.deliveries).toBe(0);
+  body.requestKey = randomUUID(); // Only an explicit replacement can send.
+  expect((await POST(request())).status).toBe(200); expect(state.deliveries).toBe(1);
+});
+it("does not release a request if its original claim wins the race with preflight refusal", async () => {
+  let entered!: () => void, release!: () => void;
+  const enteredPromise = new Promise<void>(resolve => { entered = resolve; });
+  const releasePromise = new Promise<void>(resolve => { release = resolve; });
+  state.before = async () => { entered(); await releasePromise; };
+  const sending = POST(request()); await enteredPromise;
+  expect(await refuse()).toBe(false);
+  release(); expect((await sending).status).toBe(200);
+  expect(await refuse()).toBe(false); expect(state.deliveries).toBe(1);
+});
+it("does not fence a foreign project or subcontractor", async () => {
+  const ownOrg = state.org; state.org = randomUUID();
+  expect(await refuse()).toBe(false);
+  expect((await state.db!.query("select id from communications where org_id=$1", [state.org])).rows).toHaveLength(0);
+  state.org = ownOrg; expect(state.deliveries).toBe(0);
 });

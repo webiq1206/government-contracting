@@ -37,7 +37,7 @@ it.each(["held", "refused"])("retains confirmed %s reset eligibility through edi
   await mount(); await edit("project-message-subject", "First subject"); await edit("project-message-body", "First text"); await click("Send message");
   const first = JSON.parse(fetchMock.mock.calls[0][1].body).requestKey;
   await edit("project-message-body", "Revised text");
-  expect(button("Send message")!.disabled).toBe(true);
+  expect(button("Retry original request")!.disabled).toBe(true);
   expect(sessionStorage.getItem(`${key}:confirmed-nondelivery`)).toBe(first);
   await remount();
   expect(button("Prepare a new request")).toBeDefined();
@@ -49,18 +49,28 @@ it.each(["held", "refused"])("retains confirmed %s reset eligibility through edi
   const second = JSON.parse(fetchMock.mock.calls[1][1].body);
   expect(second.requestKey).not.toBe(first); expect(second.message).toBe("Revised text");
 });
-it.each(["unknown", "accepted"])("locks %s intent across remount and never offers replacement", async outcome => {
-  fetchMock.mockImplementation(async () => new Response(JSON.stringify(outcome === "accepted" ? { ok: true } : { error: "unknown" }), { status: outcome === "accepted" ? 200 : 503 }));
+it("preserves unknown intent across remount and retries only the original payload", async () => {
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: "unknown" }), { status: 503 }));
   await mount(); await edit("project-message-subject", "Subject"); await edit("project-message-body", "Text"); await click("Send message");
-  const first = sessionStorage.getItem(key); expect(first).toBeTruthy();
+  const first = JSON.parse(fetchMock.mock.calls[0][1].body);
   await remount();
   expect(button("Prepare a new request")).toBeUndefined();
-  expect(button("Send message")!.disabled).toBe(true);
   expect((container.querySelector("textarea") as HTMLTextAreaElement).disabled).toBe(true);
-  expect(sessionStorage.getItem(key)).toBe(first); expect(fetchMock).toHaveBeenCalledTimes(1);
+  await click("Retry original request");
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(first);
+});
+it("requires explicit new-message preparation after accepted receipt, including remount", async () => {
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  await mount(); await edit("project-message-subject", "Subject"); await edit("project-message-body", "Text"); await click("Send message");
+  const first = JSON.parse(fetchMock.mock.calls[0][1].body).requestKey;
+  await remount();
+  expect((container.querySelector("textarea") as HTMLTextAreaElement).disabled).toBe(true);
+  await click("Start another message"); expect(fetchMock).toHaveBeenCalledTimes(1);
+  await edit("project-message-subject", "New subject"); await edit("project-message-body", "New text"); await click("Send message");
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body).requestKey).not.toBe(first);
 });
 it("does not apply stale nondelivery evidence to another request key", async () => {
   sessionStorage.setItem(key, "current-unknown"); sessionStorage.setItem(`${key}:confirmed-nondelivery`, "old-refused");
-  await mount(); expect(button("Prepare a new request")).toBeUndefined(); expect(button("Send message")!.disabled).toBe(true);
+  await mount(); expect(button("Prepare a new request")).toBeUndefined(); expect(button("Retry original request")!.disabled).toBe(true);
   expect(fetchMock).not.toHaveBeenCalled();
 });
