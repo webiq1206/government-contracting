@@ -24,7 +24,7 @@ export default async function CommunicationsHistory({ searchParams }: {
     for (const [key, value] of Object.entries({ ...opts, ...changes })) if (value) params.set(key, value);
     return `/communications/history?${params}`;
   }
-  return <main className="page-shell scroll-thin overflow-y-auto p-5">
+  return <div className="page-shell scroll-thin overflow-y-auto p-5">
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <header className="space-y-2">
         <Link href="/communications" className="text-sm text-accent">Back to inbox</Link>
@@ -70,5 +70,5 @@ export default async function CommunicationsHistory({ searchParams }: {
         {next && <Link className="btn-ghost" href={href({ before: next })}>Older records</Link>}
       </nav>
     </div>
-  </main>;
+  </div>;
 }
