@@ -482,7 +482,7 @@ export default async function SubDetailPage(
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
                 <Stat
                   label="Emails sent"
-                  hint="Outbound emails saved on this sub's record across every opportunity."
+                  hint="Emails recorded as handed to the provider, including later delivery failures. Held and uncertain requests are excluded."
                   href={stats.emails_sent > 0 ? "#communications" : undefined}
                   value={<span className="num">{stats.emails_sent}</span>}
                 />
@@ -526,6 +526,7 @@ export default async function SubDetailPage(
                 />
               </div>
               <SubEditor
+                canEdit={can(viewer?.orgRole, "manage_subs")}
                 sub={{
                   id: sub.id,
                   company_name: sub.company_name,
@@ -614,6 +615,8 @@ export default async function SubDetailPage(
                             </p>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            <Link className="text-xs text-accent" href={`/communications/history?sub=${sub.id}&project=${p.opportunity_id}`}>Invitation history</Link>
+                            {can(viewer?.orgRole, "outreach") && !p.removed_at && (p.pursuit_state ?? "active") === "active" && p.status === "open" && !["won", "lost", "archived"].includes(p.stage) && <Link className="btn-ghost text-xs" href={`/communications/compose?sub=${sub.id}&project=${p.opportunity_id}&trade=${encodeURIComponent(p.trade ?? "")}`}>Compose message</Link>}
                             <span
                               className={`badge inline-flex items-center gap-1 ${outreachBadgeClass(p.outreach_state)}`}
                               title={outreachHint(p.outreach_state)}
@@ -636,7 +639,8 @@ export default async function SubDetailPage(
             </div>
           }
           communications={
-            <div className="space-y-6 px-5 py-6">
+              <div className="space-y-6 px-5 py-6">
+                <Link className="btn-ghost" href={`/communications/history?sub=${sub.id}`}>Search all communications for this contact</Link>
               <div id="conversations">
               <Collapsible title="Email conversations" meta={conversations.length} defaultOpen>
                 <p className="mb-3 text-xs text-slate-500">
@@ -656,7 +660,7 @@ export default async function SubDetailPage(
 
               <div id="communications">
               <details className="card">
-                <summary className="min-h-11 cursor-pointer text-sm font-medium">Full history ({communications.length})</summary>
+                  <summary className="min-h-11 cursor-pointer text-sm font-medium">Recent history ({communications.length})</summary>
                 <p className="mb-3 text-xs text-slate-500">
                   Every email, reply, call, skip, and note is saved here automatically
                   as work happens across opportunities.

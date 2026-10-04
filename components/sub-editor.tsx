@@ -31,7 +31,7 @@ const LICENSE_OPTIONS = ["", "active", "expired", "unknown", "not_found"];
  * an operator can correct any field. The machine-maintained SAM check and
  * verification badge stay read-only.
  */
-export function SubEditor({ sub }: { sub: EditableSub }) {
+export function SubEditor({ sub, canEdit = false }: { sub: EditableSub; canEdit?: boolean }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,7 +79,7 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
     }
   }
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
@@ -144,9 +144,9 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Contact &amp; Verification</h2>
-        <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
+        {canEdit && <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
           Edit
-        </button>
+        </button>}
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         <div>

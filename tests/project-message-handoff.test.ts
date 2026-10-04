@@ -1,0 +1,80 @@
+import { beforeAll, afterAll, beforeEach, it, expect, vi } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import { randomUUID } from "node:crypto";
+const state = vi.hoisted(() => ({ db: null as PGlite | null, org: "", paused: false, suppressed: false, support: false,
+  before: null as null | (() => Promise<void>), outcome: "accepted", deliveries: 0 }));
+vi.mock("../lib/db", () => ({ queryOne: async (sql: string, p: unknown[] = []) => (await state.db!.query(sql, p)).rows[0] ?? null }));
+vi.mock("../lib/api-auth", () => ({ requireCapability: async () => ({ id: "operator" }) }));
+vi.mock("../lib/tenant", () => ({ resolveTenantOrgId: async () => state.org, tryResolveTenantOrgId: async () => state.org }));
+vi.mock("../lib/work-mode", () => ({ opportunityOutreachAllowed: async () => true }));
+vi.mock("../lib/impersonation", () => ({ currentImpersonator: async () => state.support ? "admin" : null }));
+vi.mock("../lib/app-settings", () => ({ isAutomationStopped: async () => state.paused, AUTOMATION_PAUSED_ERROR: "paused" }));
+vi.mock("../lib/domain/email-suppression", () => ({ isSuppressed: async () => state.suppressed }));
+vi.mock("../lib/suppressions", () => ({ suppressionBlocking: async () => null }));
+vi.mock("../lib/billing/trial-limits", () => ({ checkTrialQuota: async () => ({ allowed: true }) }));
+vi.mock("../lib/domain/sender-identity", () => ({ resolveOutreachSender: async () => ({ connected: true, from: "owner@example.test", replyTo: "owner@example.test" }) }));
+vi.mock("../lib/integrations/gmail", () => ({ gmail: { isConnected: async () => true, send: async (p: any) => {
+  await state.before?.(); await p.beforeProviderSend?.("owner@example.test"); state.deliveries++;
+  return state.outcome === "accepted" ? { messageId: "receipt", threadId: "thread", outcome: "accepted" }
+    : { error: state.outcome, outcome: state.outcome };
+} } }));
+import { POST } from "../app/api/conversations/compose/route";
+import { projectMessageTarget } from "../lib/project-message";
+let body: { requestKey: string; subcontractorId: string; opportunityId: string; trade: string; recipient: string; sender: string; subject: string; message: string };
+const request = () => new Request("http://test/api/conversations/compose", { method: "POST", body: JSON.stringify(body) });
+beforeAll(async () => {
+  state.db = new PGlite(); await state.db.exec(`
+    create table opportunities(id uuid primary key,org_id uuid,title text,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer);
+    create table subcontractors(id uuid primary key,org_id uuid,company_name text,email text,email_verified boolean,archived_at timestamptz);
+    create table opportunity_subs(id uuid default gen_random_uuid(),opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz);
+    create table communications(id uuid primary key default gen_random_uuid(),org_id uuid,subcontractor_id uuid,opportunity_id uuid,
+      channel text,direction text,subject text,body text,recipient_email text,gmail_thread_id text,gmail_message_id text,
+      rfc822_message_id text,delivery_state text,request_key uuid,request_fingerprint text,meta jsonb,
+      sender_email text,provider text,delivery_detail text,provider_attempted_at timestamptz,provider_accepted_at timestamptz,
+      delivery_updated_at timestamptz,created_at timestamptz default now());
+    create unique index communications_request_key_unique on communications(org_id,request_key) where request_key is not null;
+  `);
+}, 30000);
+afterAll(async () => { await state.db?.close(); });
+beforeEach(async () => {
+  state.org = randomUUID(); state.paused = state.suppressed = state.support = false; state.before = null;
+  state.outcome = "accepted"; state.deliveries = 0;
+  body = { requestKey: randomUUID(), subcontractorId: randomUUID(), opportunityId: randomUUID(), trade: "Paint",
+    recipient: "sub@example.test", sender: "owner@example.test", subject: "Station painting", message: "Please provide a quote for the station painting project." };
+  await state.db!.query("insert into opportunities values($1,$2,'Station','outreach','open','active',null,1)", [body.opportunityId,state.org]);
+  await state.db!.query("insert into subcontractors values($1,$2,'Acme',$3,true,null)", [body.subcontractorId,state.org,body.recipient]);
+  await state.db!.query("insert into opportunity_subs(opportunity_id,subcontractor_id,trade) values($1,$2,'Paint')", [body.opportunityId,body.subcontractorId]);
+});
+it("real route, relationship query, durable claim and guarded transport send only once", async () => {
+  const results = await Promise.all([POST(request()), POST(request())]);
+  expect(results.some(r => r.status === 200)).toBe(true); expect(state.deliveries).toBe(1);
+  expect((await POST(request())).status).toBe(200); expect(state.deliveries).toBe(1);
+  const row = (await state.db!.query<any>("select * from communications where org_id=$1", [state.org])).rows[0];
+  expect(row).toMatchObject({ sender_email: body.sender, recipient_email: body.recipient, delivery_state: "sent", gmail_message_id: "receipt" });
+});
+it.each(["paused", "suppressed", "support"] as const)("preserves %s safety through the actual transport", async flag => {
+  state[flag] = true; expect((await POST(request())).status).not.toBe(200); expect(state.deliveries).toBe(0);
+});
+it("rejects archived and foreign contacts using the real tenant relationship lookup", async () => {
+  expect(await projectMessageTarget(randomUUID(), body.subcontractorId, body.opportunityId, "Paint")).toBeNull();
+  await state.db!.query("update subcontractors set archived_at=now() where id=$1", [body.subcontractorId]);
+  expect((await POST(request())).status).toBe(404); expect(state.deliveries).toBe(0);
+});
+it.each(["archive", "email", "remove", "version"])("revalidates %s change at handoff before recording a provider attempt", async change => {
+  state.before = async () => {
+    if (change === "archive") await state.db!.query("update subcontractors set archived_at=now() where id=$1", [body.subcontractorId]);
+    if (change === "email") await state.db!.query("update subcontractors set email='changed@example.test' where id=$1", [body.subcontractorId]);
+    if (change === "remove") await state.db!.query("update opportunity_subs set removed_at=now() where opportunity_id=$1", [body.opportunityId]);
+    if (change === "version") await state.db!.query("update opportunities set pursuit_version=2 where id=$1", [body.opportunityId]);
+  };
+  expect((await POST(request())).status).not.toBe(200); expect(state.deliveries).toBe(0);
+  const row = (await state.db!.query<any>("select delivery_state,provider_attempted_at from communications where org_id=$1", [state.org])).rows[0];
+  expect(row).toEqual({ delivery_state: "held", provider_attempted_at: null });
+});
+it.each(["unknown", "refused"])("retains %s evidence and will not replay the request", async outcome => {
+  state.outcome = outcome;
+  const response = await POST(request()); expect((await response.json()).safeToCompose).toBe(outcome === "refused");
+  await POST(request()); expect(state.deliveries).toBe(1);
+  const row = (await state.db!.query<any>("select delivery_state from communications where org_id=$1", [state.org])).rows[0];
+  expect(row.delivery_state).toBe(outcome === "refused" ? "failed" : "unknown");
+});

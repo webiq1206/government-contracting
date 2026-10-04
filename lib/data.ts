@@ -983,6 +983,8 @@ export interface SubContactStats {
 
 /** Opportunity pairings for the persistent sub record. */
 export interface SubPairingRow {
+  removed_at?: string | null;
+  pursuit_state?: string | null;
   opportunity_id: string;
   opportunity_title: string | null;
   stage: string;
@@ -1021,7 +1023,7 @@ export async function subDetail(id: string) {
     ),
     queryOne<SubContactStats>(
       `select
-         count(*) filter (where channel = 'email' and direction = 'outbound')::int as emails_sent,
+         count(*) filter (where channel = 'email' and direction = 'outbound' and provider is not null and delivery_state in ('sent','delivered','deferred','bounced'))::int as emails_sent,
          count(*) filter (where channel = 'email' and direction = 'inbound')::int as emails_in,
          count(*) filter (where channel = 'call')::int as calls_logged,
          count(*) filter (where channel = 'note')::int as notes_count,
@@ -1035,7 +1037,7 @@ export async function subDetail(id: string) {
     ),
     query<SubPairingRow>(
       `select os.opportunity_id, o.title as opportunity_title, o.stage, o.deadline, o.status,
-              os.trade, os.outreach_state, os.responded_at,
+                os.trade, os.outreach_state, os.responded_at, os.removed_at, o.pursuit_state,
               q.quote_amount
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
@@ -1049,8 +1051,7 @@ export async function subDetail(id: string) {
             limit 1
          ) q on true
         where os.subcontractor_id = $1 and o.org_id = $2
-        order by o.deadline asc nulls last, o.updated_at desc
-        limit 50`,
+          order by o.deadline asc nulls last, o.updated_at desc`,
       [id, orgId]
     ),
   ]);
@@ -2798,7 +2799,7 @@ export async function opportunityDetail(id: string) {
          join subcontractors s on s.id = os.subcontractor_id and s.org_id = $2
          left join lateral (
            select
-             count(*) filter (where channel = 'email' and direction = 'outbound') as emails_sent,
+             count(*) filter (where channel = 'email' and direction = 'outbound' and provider is not null and delivery_state in ('sent','delivered','deferred','bounced')) as emails_sent,
              count(*) filter (where channel = 'call') as calls_logged,
              count(*) filter (where channel = 'note') as notes_count,
              count(*) as touches,

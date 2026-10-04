@@ -294,6 +294,7 @@ export function ConversationThreadPane({
       </header>
 
       <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
+        <Link className="inline-block text-sm text-accent" href={`/communications/history?thread=${encodeURIComponent(conversation.threadKey)}`}>Search the complete stored thread</Link>
         <EmailTimeline messages={messages.map((m, index) => {
           const mine = m.direction === "outbound";
           return (

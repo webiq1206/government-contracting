@@ -41,6 +41,7 @@ export async function sendManualEmail({ requestKey, actorId, params }: ManualEma
   try {
     const result = await sendOutreachEmail({ ...params,
       beforeProviderSend: async (from) => {
+        await params.beforeProviderSend?.(from);
         const stamped = await queryOne<{ id: string }>(`update communications set
           delivery_state='attempting', sender_email=$3, provider_attempted_at=now(),
           delivery_updated_at=now() where id=$1 and org_id=$2 and delivery_state='queued' returning id`,

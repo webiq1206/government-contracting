@@ -157,7 +157,8 @@ export default async function CommunicationsPage(
     : all;
   const filtered = searched.filter((c) => matchesFilter(c, filter));
 
-  const selected = selectedKey ? all.find((c) => c.threadKey === selectedKey) ?? null : null;
+  const selected = selectedKey ? all.find((c) => c.threadKey === selectedKey)
+    ?? (await conversationList({ threadKey: selectedKey }))[0] ?? null : null;
   const selectedIndex = selectedKey
     ? filtered.findIndex((conversation) => conversation.threadKey === selectedKey)
     : -1;
@@ -265,6 +266,7 @@ export default async function CommunicationsPage(
         />
         <ShellDataWarning items={loadWarnings} />
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
+          <Link href="/communications/history" className="btn-ghost mb-3">Search full communications ledger</Link>
           <EmptyState
             title="No mail either way yet"
             description="Conversations appear here once outreach runs on an opportunity you are pursuing, and once subcontractors write back."
@@ -297,6 +299,8 @@ export default async function CommunicationsPage(
         />
 
         <PageToolbar>
+        <Link href="/communications/history" className="btn-ghost mb-2 text-sm">Search full communications ledger</Link>
+        {all.length >= 2000 && <p className="mb-2 text-xs text-muted-foreground">Inbox counts cover the most recent 2,000 conversations. Older records remain searchable in the full ledger.</p>}
         <form method="get" action="/communications" className="search-row">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           <input

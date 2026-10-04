@@ -22,6 +22,8 @@ import { replyTarget } from "@/lib/domain/conversation-thread";
 import { createDraftAutosave, type DraftSaveState } from "@/lib/client/draft-autosave";
 import { UnsavedGuard } from "@/components/unsaved-guard";
 import { EmailMessage, EmailTimeline } from "@/components/email-message";
+import { messageState, MESSAGE_STATE_LABEL } from "@/lib/domain/message-state";
+import { manualSendStorageKey, preserveSendRequest } from "@/lib/client/manual-send-request";
 import type {
   Conversation,
   ConversationMessage,
@@ -119,6 +121,8 @@ export function ConversationThreads({
     return seeded;
   });
   const [busy, setBusy] = useState<string | null>(null);
+  const [safeToCompose, setSafeToCompose] = useState<Record<string, boolean>>({});
+  const sending = useRef(false);
   const [drafting, setDrafting] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [saveStates, setSaveStates] = useState<Record<string, DraftSaveState>>({});
@@ -223,11 +227,21 @@ export function ConversationThreads({
   }
 
   async function send(c: Conversation) {
+    if (sending.current) return;
     const message = (drafts[c.key] ?? "").trim();
     if (!message) {
       setResult((r) => ({ ...r, [c.key]: { ok: false, text: "Write something first." } }));
       return;
     }
+    const storageKey = manualSendStorageKey(subcontractorId, c.threadId, c.opportunityId);
+    let requestKey: string;
+    try { requestKey = preserveSendRequest(sessionStorage, storageKey); }
+    catch {
+      setResult(r => ({ ...r, [c.key]: { ok: false, text: "The browser could not preserve this send request. Enable session storage before sending." } }));
+      return;
+    }
+    sending.current = true;
+    setSafeToCompose(s => ({ ...s, [c.key]: false }));
     setBusy(c.key);
     setResult((r) => ({ ...r, [c.key]: { ok: true, text: "Sending…" } }));
     try {
@@ -235,6 +249,7 @@ export function ConversationThreads({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          requestKey,
           subcontractorId,
           opportunityId: c.opportunityId,
           threadId: c.threadId,
@@ -245,12 +260,14 @@ export function ConversationThreads({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        setSafeToCompose(s => ({ ...s, [c.key]: data.safeToCompose === true }));
         setResult((r) => ({
           ...r,
-          [c.key]: { ok: false, text: data.error ?? "Could not send that." },
+          [c.key]: { ok: false, text: data.error ?? "Delivery is uncertain. Check this conversation and Gmail Sent before composing another message." },
         }));
         return;
       }
+      try { sessionStorage.removeItem(storageKey); } catch { /* Keeping the old key is safe. */ }
       // The send path discards the stored draft server-side, in the same
       // request. All that is left here is to stop a queued autosave from
       // writing the sent text back over it.
@@ -263,9 +280,10 @@ export function ConversationThreads({
       setWarnings((w) => ({ ...w, [c.key]: [] }));
       setResult((r) => ({ ...r, [c.key]: { ok: true, text: "Sent." } }));
       router.refresh();
-    } catch (e) {
-      setResult((r) => ({ ...r, [c.key]: { ok: false, text: (e as Error).message } }));
+    } catch {
+      setResult((r) => ({ ...r, [c.key]: { ok: false, text: "Delivery is uncertain. Check this conversation and Gmail Sent. This request will not be sent twice." } }));
     } finally {
+      sending.current = false;
       setBusy(null);
     }
   }
@@ -335,21 +353,21 @@ export function ConversationThreads({
                   </Link>
                 )}
 
+                <Link className="mb-3 inline-block text-sm text-accent" href={`/communications/history?sub=${subcontractorId}${c.opportunityId ? `&project=${c.opportunityId}` : ""}${c.threadId ? `&thread=${encodeURIComponent(c.threadId)}` : ""}`}>Search complete stored history</Link>
                 <EmailTimeline messages={c.messages.map((m, index) => {
                     const ours = m.direction === "outbound";
-                    const unsent =
-                      m.delivery_state === "draft" ||
-                      m.delivery_state === "failed" ||
-                      m.delivery_state === "held";
-                    const label = unsent ? null : kindLabel(m.kind);
+                    const state = messageState({ ...m, delivery_state: m.delivery_state ?? null,
+                      delivery_detail: m.delivery_detail ?? null, opened_at: m.opened_at ?? null,
+                      clicked_at: m.clicked_at ?? null, replied_at: m.replied_at ?? null });
+                    const label = ["sent", "delivered", "replied", "clicked", "opened", "delayed"].includes(state) ? kindLabel(m.kind) : null;
                     return (
                       <EmailMessage
                         key={m.id}
-                        body={m.body} direction={m.direction} contact={subcontractorName}
+                        body={m.body} sender={m.sender_email} subject={m.subject} direction={m.direction} contact={subcontractorName}
                         recipient={m.recipient_email} date={m.created_at}
                         latest={index === c.messages.length - 1}
                         label={!ours ? "Received email" : m.delivery_state === "draft" ? "Unsent draft" : m.delivery_state === "failed" ? "Send failed" : m.delivery_state === "held" ? "Held, not sent" : "Outgoing email"}
-                      >{label && <span className="text-xs text-muted-foreground">{label}</span>}</EmailMessage>
+                      ><span className="text-xs font-medium">{MESSAGE_STATE_LABEL[state]}</span>{label && <span className="text-xs text-muted-foreground">{label}</span>}</EmailMessage>
                     );
                   })} />
 
@@ -418,6 +436,11 @@ export function ConversationThreads({
                           {res.text}
                         </p>
                       )}
+                      {safeToCompose[c.key] && <button type="button" className="btn-secondary mt-2 text-xs" onClick={() => {
+                        try { sessionStorage.removeItem(manualSendStorageKey(subcontractorId, c.threadId, c.opportunityId)); } catch { return; }
+                        setSafeToCompose(s => ({ ...s, [c.key]: false }));
+                        setResult(r => ({ ...r, [c.key]: { ok: true, text: "Previous request was not accepted. Review your draft before sending a new request." } }));
+                      }}>Prepare a new request after confirmed hold or refusal</button>}
                       <button
                         type="button"
                         className="btn-primary mt-2 text-xs"

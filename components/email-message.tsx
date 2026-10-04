@@ -15,7 +15,8 @@ export function EmailMessage({ body, direction, contact, recipient, sender, subj
           <p className="mt-1 break-words text-sm font-semibold text-foreground">{inbound ? contact : "Your team"}</p>
           {subject && <p className="mt-1 break-words text-sm">Subject: {subject}</p>}
           {!inbound && <p className="mt-1 break-all text-xs text-muted-foreground">From: {sender || "Not recorded for this historical message"}</p>}
-          {!inbound && <p className="mt-0.5 break-all text-xs text-muted-foreground">To: {recipient || contact}</p>}
+          {inbound && <p className="mt-1 break-all text-xs text-muted-foreground">From: {sender || recipient || "Not recorded for this historical message"}</p>}
+          {!inbound && <p className="mt-0.5 break-all text-xs text-muted-foreground">To: {recipient || "Not recorded for this historical message"}</p>}
         </div>
         <time dateTime={date} className="text-xs text-muted-foreground">{new Date(date).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</time>
       </header>
