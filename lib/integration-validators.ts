@@ -40,12 +40,44 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     const identity = await requestIdentity(keyInfo.envKey,keyInfo.value);
     // Validators explicitly receive draft tenant keys, which are not saved yet.
     if (identity.source === 'unknown') identity.source = 'tenant';
-    const response = await metered(identity,keyInfo.provider,'Connection test','API connection check',async()=>{
+    let transportStarted = false;
+    const execute = () => metered(identity,keyInfo.provider,'Connection test','API connection check',async()=>{
+      transportStarted = true;
       const res = await fetch(url,{...init,signal:ctl.signal});
       const body = await res.clone().json().catch(()=>null);
       return {res,body};
     },({res,body})=>({requestId:body?.id,units:body?.usage ?? {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`}));
-    return response.res;
+    if (keyInfo.provider !== "Anthropic" && keyInfo.provider !== "OpenAI") return (await execute()).res;
+    const provider = keyInfo.provider;
+    const { withProviderFacts } = await import("./ai/provider-facts");
+    const { describeClaudeFailure, AiUnavailableError } = await import("./ai/claude");
+    const { describeOpenAiFailure } = await import("./ai/openai");
+    let refused: Response | undefined;
+    let observedFailure: Error | undefined;
+    try {
+      return await withProviderFacts(identity, provider, async () => {
+        const { res, body } = await execute().catch(error => {
+          if (!transportStarted) throw error;
+          if (error instanceof Error && error.name === "ApiUsageBlockedError") throw error;
+          const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
+          if (cause) throw new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable);
+          throw error;
+        });
+        if (!res.ok) {
+          const raw = { status: res.status, code: body?.error?.code,
+            message: body?.error?.message ?? "", error: { error: body?.error } };
+          const cause = provider === "Anthropic" ? describeClaudeFailure(raw) : describeOpenAiFailure(raw);
+          refused = res;
+          observedFailure = cause ? new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable)
+            : Object.assign(new Error("Provider connection test failed."), { provider, reason: "Provider connection test failed.", status: res.status, retryable: true });
+          throw observedFailure;
+        }
+        return res;
+      }, true);
+    } catch (error) {
+      if (error === observedFailure && refused) return refused;
+      throw error;
+    }
   } finally {
     clearTimeout(t);
   }

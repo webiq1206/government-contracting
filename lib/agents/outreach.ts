@@ -166,6 +166,45 @@ export const outreach: AgentDefinition = {
 
     const callsEnabled = await areCallsEnabled();
 
+    // Recover accepted delivery before rebuilding mutable copy or attachments.
+    // A receipt is not proof that the workflow updates after the send finished.
+    const priorSend = await queryOne<{ id: string; delivery_state: string; accepted_at: string;
+      quote_due_at: string | null; gmail_message_id: string | null }>(
+      `select id, delivery_state, coalesce(provider_accepted_at,created_at) as accepted_at,
+              meta->>'quote_due_at' as quote_due_at, gmail_message_id
+         from communications where org_id = $4 and opportunity_id = $1 and subcontractor_id = $2
+          and channel='email' and direction='outbound'
+          and ((provider is not null and delivery_state in ('sent','delivered','bounced','deferred'))
+            or delivery_state in ('queued','attempting','unknown'))
+          and coalesce(meta->>'trade','')=$3
+          and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
+         order by created_at limit 1`,[opportunityId,subcontractorId,trade,orgId]);
+    if (priorSend) {
+      if (["queued","attempting","unknown"].includes(priorSend.delivery_state))
+        return {ok:false,retryable:false,humanActionRequired:true,
+          summary:"A prior email has uncertain delivery. Review its communication and Gmail Sent before further outreach."};
+      const { pursuitStatus } = await import("../pursuit-guard");
+      const pursuit = await pursuitStatus(opportunityId);
+      if (!pursuit.mayAct) return {ok:false,retryable:pursuit.retryable,
+        summary:pursuit.reason ?? "This pursuit is stopped; the saved receipt was preserved."};
+      await query(`update opportunity_subs set
+        outreach_state=case when outreach_state in ('pending','draft','send_failed','email_unverified','no_email') then 'sent' else outreach_state end,
+        quote_due_at=coalesce(quote_due_at,$5::timestamptz)
+        where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null and coalesce(trade,'')=$3
+          and exists(select 1 from opportunities where id=$1 and org_id=$4)`,
+        [opportunityId,subcontractorId,trade,orgId,priorSend.quote_due_at]);
+      await query(`update subcontractors set last_contacted=greatest(last_contacted,$3::timestamptz)
+        where id=$1 and org_id=$2`,[subcontractorId,orgId,priorSend.accepted_at]);
+      await query(`update opportunities set stage='outreach' where id=$1 and org_id=$2
+        and status='open' and pursuit_state='active' and stage in ('sub_research','sub_verify')`,[opportunityId,orgId]);
+      if (!callsEnabled) await advancePastCallStep(opportunityId,{agent:"outreach",
+        reason:"Recovered the recorded email receipt; calling is off, so this moved to collecting quotes."});
+      return {ok:true,summary:`Already contacted ${sub.company_name}; recovered workflow progress without another send.`,
+        data:{sent:false,replayed:true,messageId:priorSend.gmail_message_id},
+        enqueued:callsEnabled ? [{agent:"call-prep",payload:{opportunityId,subcontractorId,trade,source:"outreach"},
+          opts:{singletonKey:`callprep:${opportunityId}:${subcontractorId}`,singletonSeconds:3600}}] : []};
+    }
+
     // Do not create dead-end draft emails for unreachable subs. Phone-only
     // firms go straight to Call Prep (or are left out entirely when calling is
     // off); zero-pathway firms are held for a human.
@@ -553,41 +592,6 @@ export const outreach: AgentDefinition = {
       };
     }
 
-    // Idempotency guard. pg-boss delivers at-least-once: a job whose handler
-    // sent the email but crashed before acking is redelivered, and a duplicate
-    // enqueue can slip past the singleton window. Either way, re-sending means
-    // a real subcontractor gets the same quote request twice. If an outbound
-    // email already exists for THIS opportunity+sub+trade, the send already
-    // happened, so skip it and report success rather than mailing again.
-    // `provider is not null` is the "actually sent" signal: a draft or a
-    // failed send stores a communications row with a null provider, and the
-    // outreach-recovery sweep legitimately re-runs outreach to send those, so
-    // this guard must NOT block them — only a genuine prior send.
-    const priorSend = await queryOne<{ id: string }>(
-      `select id from communications
-        where org_id = $4 and opportunity_id = $1 and subcontractor_id = $2
-          and channel = 'email' and direction = 'outbound'
-          and provider is not null
-          and coalesce(meta->>'trade', '') = $3
-          and coalesce(meta->>'kind', '') not in ('decline_thank_you', 'final_nudge')
-        limit 1`,
-      [opportunityId, subcontractorId, trade ?? "", orgId]
-    );
-    if (priorSend) {
-      await logAgent({
-        agent: "outreach",
-        action: "skip-duplicate",
-        level: "info",
-        opportunityId,
-        subcontractorId,
-        message: `${sub.company_name} was already emailed for ${trade || "this work"}; skipping a duplicate send (job redelivered or re-enqueued).`,
-      });
-      return {
-        ok: true,
-        summary: `Already contacted ${sub.company_name} for ${trade || "this work"}; no duplicate email sent.`,
-      };
-    }
-
     const trackingId = randomUUID();
     // The follow-up interval is a rule now rather than a constant here, and
     // `followup_max: 0` means the operator has asked not to chase at all, so
@@ -608,9 +612,15 @@ export const outreach: AgentDefinition = {
     let humanAction = false;
     let sent = false;
     let heldByRule = false;
+    let communicationId: string | undefined;
+    let replayed = false;
 
     if (sub.email && sub.email_verified) {
       const res = await sendOutreachEmail({
+        scheduled: { key: JSON.stringify(["outreach", opportunityId, subcontractorId, trade ?? ""]),
+          followUpAt, meta: { kind: "outreach", trade, quote_due_at: resolved.quote.at ?? null,
+            quote_due_label: vars.quote_due_date ?? null, attachments: gathered.files.map((f) => f.filename),
+            document_links: gathered.links.map((l) => ({ name: l.name, url: l.url })) } },
         to: sub.email,
         subject,
         html,
@@ -628,6 +638,8 @@ export const outreach: AgentDefinition = {
         subcontractorId: sub.id,
         trade,
       });
+      communicationId = res.communicationId;
+      replayed = !!res.replayed;
       if (res.disabled) {
         humanAction = true;
         outreachState = "draft";
@@ -653,7 +665,7 @@ export const outreach: AgentDefinition = {
           subcontractorId,
           message: res.blocked
             ? `Held email to ${sub.company_name}, nothing was sent. ${res.error}`
-            : `Gmail send failed: ${res.error}`,
+            : `Gmail send needs review: ${res.error}`,
         });
       } else {
         sent = true;
@@ -669,7 +681,7 @@ export const outreach: AgentDefinition = {
       outreachState = sub.email ? "email_unverified" : "no_email";
     }
 
-    await query(
+    if (!communicationId) await query(
       `insert into communications
          (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
@@ -828,13 +840,11 @@ export const outreach: AgentDefinition = {
       });
     }
 
-    const summary = sent
+    const summary = replayed ? `Recovered the recorded Gmail receipt for ${sub.company_name}; no new email sent.` : sent
       ? `Sent outreach to ${sub.company_name} <${sub.email}>; ${followUpAt ? `follow-up in ${rules.followup_hours}h` : "no follow-up (chasing is off)"}, ${
           callsEnabled ? "call card queued" : "calling is off so no call card was created"
         }.`
-      : `Outreach to ${sub.company_name} stored as draft (${
-          sub.email ? "no email transport available" : "no verified email"
-        }); needs manual send.`;
+      : `Outreach to ${sub.company_name} requires review (${outreachState}). Check the communication outcome before sending another message.`;
 
     return {
       ok: true,
@@ -842,7 +852,7 @@ export const outreach: AgentDefinition = {
       reasoning: `Rendered template_1_outreach with ${
         Object.keys(vars).length
       } vars; tracking_id=${trackingId}; follow_up_at=${followUpAt}.`,
-      data: { sent, outreachState, trackingId, messageId },
+      data: { sent: sent && !replayed, replayed, outreachState, trackingId, messageId },
       humanActionRequired: humanAction,
       enqueued,
     };

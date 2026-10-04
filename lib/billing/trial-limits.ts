@@ -33,6 +33,7 @@
  */
 import { createHash } from "crypto";
 import { query } from "../db";
+import { sentEmailSql, uncertainEmailSql } from "../domain/email-reporting";
 
 import { TRIAL_LIMITS, type TrialMetric } from "./trial-catalog";
 export { TRIAL_LIMITS, type TrialMetric } from "./trial-catalog";
@@ -47,7 +48,7 @@ export const TRIAL_METRIC_LABEL: Record<TrialMetric, string> = {
 /** What the operator gets back when a meter is exhausted. */
 export const TRIAL_METRIC_BLOCKED_COPY: Record<TrialMetric, string> = {
   outreach_emails:
-    "Your trial includes 10 subcontractor emails and they have all been sent. Choose a plan to keep the outreach running; every reply already received is still here.",
+    "Your trial includes 10 subcontractor emails and they have been sent or are awaiting delivery confirmation. Choose a plan to keep the outreach running; every reply already received is still here.",
   ai_briefs:
     "Your trial includes 10 AI bid briefs and they have all been used. Opportunities keep arriving and scoring as normal; choose a plan to analyse more of them.",
   bid_packages:
@@ -56,11 +57,10 @@ export const TRIAL_METRIC_BLOCKED_COPY: Record<TrialMetric, string> = {
 
 /** SQL that counts one metric for an organization. */
 const COUNT_SQL: Record<TrialMetric, string> = {
-  outreach_emails: `select count(*)::int as n from communications
-                     where org_id = $1 and channel = 'email' and direction = 'outbound'
-                       and (provider is not null
-                            or gmail_message_id is not null
-                            or rfc822_message_id is not null)`,
+  // Uncertain handoffs reserve allowance until reconciled; a confirmed refusal
+  // consumes no sent-email allowance. This never resets any provider counter.
+  outreach_emails: `select count(*)::int as n from communications c
+                     where c.org_id=$1 and ((${sentEmailSql()}) or (${uncertainEmailSql()}))`,
   ai_briefs: `select count(*)::int as n from opportunities
                where org_id = $1 and solicitation_analysis is not null`,
   bid_packages: `select count(*)::int as n from bids

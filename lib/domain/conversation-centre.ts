@@ -20,6 +20,7 @@ import {
 } from "./message-state";
 
 export type ConversationState =
+  | "send_review"
   | "needs_reply"
   | "draft"
   | "delivery_failed"
@@ -29,6 +30,7 @@ export type ConversationState =
   | "closed";
 
 export const CONVERSATION_STATE_LABEL: Record<ConversationState, string> = {
+  send_review: "Send outcome needs review",
   needs_reply: "Needs your reply",
   draft: "Draft, not sent",
   delivery_failed: "Did not arrive",
@@ -41,6 +43,7 @@ export const CONVERSATION_STATE_LABEL: Record<ConversationState, string> = {
 /** The filters the centre offers, in the order the header lists them. */
 export const CONVERSATION_FILTERS = [
   "all",
+  "send_review",
   "unread",
   "needs_reply",
   "draft",
@@ -53,6 +56,7 @@ export const CONVERSATION_FILTERS = [
 export type ConversationFilter = (typeof CONVERSATION_FILTERS)[number];
 
 export const CONVERSATION_FILTER_LABEL: Record<ConversationFilter, string> = {
+  send_review: "Send outcome needs review",
   all: "Everything",
   unread: "Unread",
   needs_reply: "Needs your reply",
@@ -77,6 +81,7 @@ export interface CentreMessage extends MessageRow {
   id: string;
   created_at: string;
   body: string | null;
+  sender_email?: string | null;
   recipient_email: string | null;
   /** Gmail API id, used only to retrieve the provider record. */
   gmail_message_id: string | null;
@@ -244,6 +249,11 @@ export function verdict(f: ConversationFacts, now = new Date()): ConversationVer
             : "Resend it.",
     };
   }
+  if (!awaitingUs && ["queued", "attempting", "unknown", "held"].includes(f.lastOutboundState ?? "")) {
+    return { state: "send_review", failedState: null,
+      reason: f.lastOutboundState === "held" ? "The latest message was held before sending." : "The latest send request has no confirmed provider acceptance.",
+      nextAction: "Review the message outcome and Gmail Sent before sending again." };
+  }
   if (awaitingUs) {
     return {
       state: "needs_reply",
@@ -369,6 +379,8 @@ export function conversationCounts(list: ConversationSummary[]): ConversationCou
 /** Whether a conversation belongs in the current filter. */
 export function matchesFilter(c: ConversationSummary, f: ConversationFilter): boolean {
   switch (f) {
+    case "send_review":
+      return c.state === "send_review";
     case "unread":
       return c.unreadCount > 0;
     case "needs_reply":
@@ -389,7 +401,7 @@ export function matchesFilter(c: ConversationSummary, f: ConversationFilter): bo
 }
 
 export interface Deliverability {
-  /** Attempted outbound messages, including failed attempts but excluding drafts. */
+  /** Provider-accepted outbound messages; held, failed and uncertain attempts are excluded. */
   sent: number;
   /** Null when nothing has been sent: a rate over zero messages is not 0%. */
   deliveryRate: number | null;
@@ -411,7 +423,9 @@ export interface Deliverability {
  * notices cannot make outreach look like it is working.
  */
 export function deliverability(messages: CentreMessage[]): Deliverability {
-  const outbound = messages.filter((m) => m.direction === "outbound" && m.state !== "draft");
+  const allOutbound = messages.filter((m) => m.direction === "outbound");
+  const outbound = allOutbound.filter((m) => m.provider !== null && ["sent", "delivered", "bounced", "blocked", "delayed", "opened", "clicked", "replied"].includes(m.state));
+  const failed = allOutbound.filter((m) => m.state === "failed").length;
   const sent = outbound.length;
   if (sent === 0) {
     return {
@@ -420,14 +434,13 @@ export function deliverability(messages: CentreMessage[]): Deliverability {
       responseRate: null,
       bounceRate: null,
       blocked: 0,
-      failed: 0,
+      failed,
     };
   }
 
   const arrived = outbound.filter((m) => ["delivered", "opened", "clicked", "replied"].includes(m.state)).length;
   const bounced = outbound.filter((m) => m.state === "bounced").length;
   const blocked = outbound.filter((m) => m.state === "blocked").length;
-  const failed = outbound.filter((m) => m.state === "failed").length;
   const replied = messages.filter((m) => isGenuineReply(m)).length;
 
   return {

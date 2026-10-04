@@ -1,3 +1,8 @@
+vi.mock("@/lib/ai/provider-facts", async (original) => ({
+  ...(await original<typeof import("@/lib/ai/provider-facts")>()),
+  providerEnqueueHold: (...args: unknown[]) => mocks.providerHold(...args),
+  withProviderFacts: async (_identity: unknown, _provider: unknown, execute: () => Promise<unknown>) => execute(),
+}));
 /**
  * The queue asks the spending ledger before creating paid AI work.
  *
@@ -10,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(async (_org: string, _tier: string, _feature: string) => undefined as unknown),
+  providerHold: vi.fn(),
   agents: new Map<string, { name: string; worksWithoutClaude?: boolean; aiTier?: "routine" | "complex" }>(),
 }));
 
@@ -35,6 +41,7 @@ beforeEach(() => {
   mocks.agents.set("solicitation-analyst", { name: "solicitation-analyst", worksWithoutClaude: false, aiTier: "complex" });
   mocks.agents.set("scoring-engine", { name: "scoring-engine", worksWithoutClaude: true });
   mocks.check.mockResolvedValue(undefined);
+  mocks.providerHold.mockResolvedValue(null);
 });
 
 describe("aiEnqueueHold", () => {
@@ -81,4 +88,12 @@ describe("aiEnqueueHold", () => {
   it("admits work once the allowance allows it", async () => {
     expect(await aiEnqueueHold("solicitation-analyst", ORG)).toBeNull();
   });
+});
+
+it("a new refusal overrides a cached admission immediately and is rechecked after recovery", async () => {
+  expect(await aiEnqueueHold("solicitation-analyst", ORG)).toBeNull();
+  mocks.providerHold.mockResolvedValue("AI_UNAVAILABLE: OpenAI insufficient credit");
+  expect(await aiEnqueueHold("solicitation-analyst", ORG)).toContain("insufficient credit");
+  mocks.providerHold.mockResolvedValue(null);
+  expect(await aiEnqueueHold("solicitation-analyst", ORG)).toBeNull();
 });

@@ -11,3 +11,11 @@ export function describeSendFailure(message: string, from: string): string {
   const address = from.match(/<([^>]+)>/)?.[1] ?? from;
   return `Google refused to send as ${address}. Check that it is still listed as a verified address in Gmail under Settings, Accounts, Send mail as, or choose a different sending address in Settings, Integrations. (Google said: ${message})`;
 }
+
+/** Only an actual refusal response proves that a provider handoff was rejected. */
+export function gmailFailureOutcome(error: unknown, attempted: boolean): "not_attempted" | "refused" | "unknown" {
+  if (!attempted) return "not_attempted";
+  const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+  return typeof status === "number" && [400, 401, 403, 404, 413, 422, 429].includes(status)
+    ? "refused" : "unknown";
+}

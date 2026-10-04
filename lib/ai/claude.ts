@@ -21,6 +21,7 @@
  * and the honest thing is to say so loudly rather than to keep flowing past it.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { withProviderFacts, ProviderRefusalError } from "./provider-facts";
 import { z } from "zod";
 import { config } from "../config";
 import { getProfileSystemText } from "./companyProfile";
@@ -29,7 +30,6 @@ import {
   chooseRoute,
   type AiProvider,
   type AiRoute,
-  type AiEnvKey,
   type RoutingConfig,
 } from "./routing";
 import { openAiResponse, describeOpenAiFailure } from "./openai";
@@ -52,8 +52,7 @@ export { ClaudeNotConfiguredError as AiNotConfiguredError };
 /**
  * Stable marker on the front of every AI-outage message.
  *
- * The message travels through the agent runner into `agent_logs`, and that row
- * is the only durable record of the failure. Matching on a marker we control
+ * The message travels through the agent runner into `agent_logs`, while provider-facts also keeps account/credential evidence for admission and health. Matching on a marker we control
  * beats grepping for Anthropic's own wording, which is theirs to reword.
  */
 export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
@@ -69,6 +68,7 @@ export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
  * which is the failure this class exists to make impossible.
  */
 export class AiUnavailableError extends Error {
+  handoffUncertain: boolean;
   readonly provider: AiProvider;
   /** Plain English, safe to show an operator. Never contains the key. */
   readonly reason: string;
@@ -79,6 +79,7 @@ export class AiUnavailableError extends Error {
   constructor(provider: AiProvider, reason: string, status: number | null, retryable: boolean) {
     super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
     this.name = "AiUnavailableError";
+    this.handoffUncertain = ![400,401,403,404,413,422,429].includes(status ?? 0);
     this.provider = provider;
     this.reason = reason;
     this.status = status;
@@ -200,16 +201,6 @@ export function describeClaudeFailure(
   }
 
   return null;
-}
-
-/** Stamp the Integrations card with the org that actually made the call. */
-function recordProviderUse(envKey: AiEnvKey, outcome: { ok: boolean; error?: string }): void {
-  void Promise.all([import("../tenant"), import("../integration-settings")])
-    .then(async ([{ resolveTenantOrgId }, settings]) => {
-      const orgId = await resolveTenantOrgId();
-      await settings.recordIntegrationUse(envKey, { ...outcome, orgId });
-    })
-    .catch(() => undefined);
 }
 
 function routingConfig(): RoutingConfig {
@@ -404,6 +395,13 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
   const system = await buildSystem(opts);
   const plan = await planRoute(opts);
   if (!plan) throw new ClaudeNotConfiguredError();
+  const { apiUsageContext } = await import("../api-usage/context");
+  if (!apiUsageContext().workKey) return completeUnfenced(prompt,opts,system,plan);
+  const { withAiWorkReceipt } = await import("./work-receipts");
+  return withAiWorkReceipt([prompt,opts,system,plan],()=>completeUnfenced(prompt,opts,system,plan));
+}
+async function completeUnfenced(prompt: string, opts: CompleteOptions, system: SystemBlock[],
+  plan: NonNullable<Awaited<ReturnType<typeof planRoute>>>): Promise<Completion> {
 
   let primaryFailure: AiUnavailableError;
   try {
@@ -414,11 +412,12 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
     // Anything but a provider refusing us is our own bug (or a parse
     // problem downstream). Switching providers would not fix a bad request.
-    if (!(err instanceof AiUnavailableError)) throw err;
-    primaryFailure = err;
+    if (!(err instanceof AiUnavailableError) && !(err instanceof ProviderRefusalError)) throw err;
+    primaryFailure = unavailable(err.provider, err.reason, err.status, err.retryable);
   }
 
   if (!plan.fallback) throw primaryFailure;
+  if (primaryFailure.handoffUncertain && (await import("../api-usage/context")).apiUsageContext().workKey) throw primaryFailure;
 
   console.warn(
     `[ai] ${plan.primary.provider} (${plan.primary.model}) refused: ${primaryFailure.reason.slice(0, 160)} ` +
@@ -429,15 +428,21 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
     return { ...res, usage: { ...res.usage, fallback_from: plan.primary.provider } };
   } catch (err) {
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
+    // Local persistence/claim failures retain their retry policy, even when
+    // the primary had a transient provider refusal. Never replay an uncertain completion.
+    if (!(err instanceof AiUnavailableError) && !(err instanceof ProviderRefusalError)) throw err;
     const second = err instanceof AiUnavailableError ? err.reason : (err as Error).message;
     // Named after the primary so the incident classifies as the primary's
     // problem (credit, key, rate limit), with the fallback's story attached.
-    throw unavailable(
+    const combined = unavailable(
       plan.primary.provider,
       `${primaryFailure.reason} The ${plan.fallback.provider} fallback also failed: ${second}`,
       primaryFailure.status,
-      primaryFailure.retryable
+      primaryFailure.retryable || (err as { retryable?: boolean })?.retryable !== false
     );
+    combined.handoffUncertain = primaryFailure.handoffUncertain ||
+      (err instanceof AiUnavailableError && err.handoffUncertain);
+    throw combined;
   }
 }
 
@@ -458,30 +463,18 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
   const identity = await requestIdentity(route.envKey, apiKey);
   const feature = opts.feature ?? "AI assistance";
 
-  try {
-    const out = route.provider === "Anthropic"
-      ? await runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
-      : await runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature);
-    /*
-     * Every AI call passes through here, so it is the one place that can
-     * record whether the provider is actually working for this account. The
-     * Integrations page claimed to show that and showed the last Test press
-     * instead, which on the day Anthropic refused for want of credit left the
-     * card reading as verified that morning.
-     *
-     * Imported lazily: integration-settings reaches the database, and this
-     * module is imported by code paths that must not pull a connection in
-     * just by being loaded.
-     */
-    void recordProviderUse(route.envKey, { ok: true });
-    return out;
-  } catch (err) {
-    // A local spending hold never reached the provider and must not mark its key as broken.
-    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
-    const cause = route.provider === "Anthropic" ? describeClaudeFailure(err) : describeOpenAiFailure(err);
-    void recordProviderUse(route.envKey, { ok: false, error: cause?.reason ?? (err as Error).message });
-    if (cause) throw unavailable(route.provider, cause.reason, cause.status, cause.retryable);
-    throw err;
+  return withProviderFacts(identity, route.provider, () => route.provider === "Anthropic"
+    ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
+    : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature));
+}
+
+/** Normalize only transport errors, never ledger/database preparation failures. */
+async function providerRequest<T>(provider: AiProvider, execute: () => Promise<T>): Promise<T> {
+  try { return await execute(); }
+  catch (error) {
+    const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
+    if (cause) throw unavailable(provider, cause.reason, cause.status, cause.retryable);
+    throw error;
   }
 }
 
@@ -544,11 +537,11 @@ async function runAnthropic(
   }
 
   const res: Anthropic.Messages.Message = await metered(identity, "Anthropic", model, feature,
-    () => anthropic.messages.create(
+    () => providerRequest("Anthropic", () => anthropic.messages.create(
       body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
       { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
         maxRetries: 0 }
-    ),
+    )),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   const rawText = res.content
@@ -594,7 +587,7 @@ async function runOpenAi(
   // prompt cache matches on.
   const instructions = system.map((b) => b.text).join("\n\n") || null;
   const res = await metered(identity, "OpenAI", model, feature,
-    () => openAiResponse({
+    () => providerRequest("OpenAI", () => openAiResponse({
       apiKey,
       model,
       instructions,
@@ -608,7 +601,7 @@ async function runOpenAi(
       temperature: opts.temperature ?? 0.2,
       timeoutMs: opts.timeoutMs,
       cacheKey: `brostco:${identity.orgId}`,
-    }),
+    })),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   return {

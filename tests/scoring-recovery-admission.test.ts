@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ query: vi.fn(), enqueue: vi.fn(), log: vi.fn(), spending: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), enqueue: vi.fn(), log: vi.fn(), spending: vi.fn(), providerHold: vi.fn() }));
+vi.mock("../lib/ai/provider-facts", () => ({ providerEnqueueHold: mocks.providerHold }));
 // The sweep preflights against the tier the router would serve, not a
 // named model, so it is checkAiSpending it reaches for now.
 vi.mock("../lib/api-usage/check-spending", () => ({ checkClaudeSpending: mocks.spending, checkAiSpending: mocks.spending }));
@@ -11,7 +12,7 @@ import { scoringRecoverySweep } from "../lib/agents/maintenance";
 describe("recovery sweep admission outcomes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.query.mockImplementation(async (sql: string) => sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
+    mocks.query.mockImplementation(async (sql: string) => sql.includes("sub_search_intents") ? [] : sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
   });
   const run = () => scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
   it("leaves duplicate or safety-deferred jobs pending without inventing a queue outage", async () => {
@@ -42,4 +43,13 @@ describe("recovery sweep admission outcomes", () => {
     expect(result.data).toMatchObject({ deferred: 0, scoringQueued: 1, analysisQueued: 0, queueFailures: 1 });
     expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("database unavailable") }));
   });
+});
+
+it("does not recreate analysis work on repeated provider-refused sweeps, while free scoring remains available", async () => {
+  mocks.query.mockImplementation(async (sql: string) => sql.includes("solicitation_analysis is null") ? Array.from({ length: 200 }, (_, i) => ({ id: `analysis-${i}` })) : []);
+  mocks.providerHold.mockResolvedValue("AI_UNAVAILABLE: OpenAI insufficient credit");
+  mocks.enqueue.mockClear(); mocks.spending.mockClear();
+  for (let i = 0; i < 3; i++) await scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.spending).not.toHaveBeenCalled();
 });

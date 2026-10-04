@@ -8,6 +8,7 @@
  */
 import { config } from "../config";
 import { OUTREACH_JOBS } from "../domain/work-mode";
+import { SUB_SEARCH_INTENT_KEY, claimSubSearchIntent, markSubSearchQueued, releaseUnqueuedSubSearch } from "../sub-search-intents";
 
 export type JobPayload = Record<string, unknown>;
 export type JobHandler = (payload: JobPayload) => Promise<void>;
@@ -20,6 +21,8 @@ export const RECOVERY_REQUEUE_KEY = "recoveryRequeueId";
 export const CLOSED_OPPORTUNITY_JOB_KEY = "closedOpportunityJob";
 
 export interface EnqueueOptions {
+  /** Internal durable second-search intent, never trusted from request payload. */
+  subSearchIntentId?: string;
   startAfterSeconds?: number;
   singletonKey?: string; // dedupe: at most one active job with this key
   singletonSeconds?: number; // dedupe window (pg-boss), hold the key this long
@@ -137,6 +140,7 @@ export async function enqueue(
     [PURSUIT_VERSION_KEY]: _untrustedVersion,
     [RECOVERY_REQUEUE_KEY]: _untrustedRecovery,
     [CLOSED_OPPORTUNITY_JOB_KEY]: _untrustedClosedJob,
+    [SUB_SEARCH_INTENT_KEY]: _untrustedSubSearch,
     ...safePayload
   } = payload;
   let queuedPayload: JobPayload = safePayload;
@@ -219,11 +223,23 @@ export async function enqueue(
     queuedPayload = { ...queuedPayload, [RECOVERY_REQUEUE_KEY]: opts.recoveryRequeueId };
   }
   const q = await getQueue();
-  return q.enqueue(
+  if (opts?.subSearchIntentId) {
+    if (name !== "sub-finder" || !enqueuingOrgId || !oppId) return null;
+    const claimed = await claimSubSearchIntent(opts.subSearchIntentId,enqueuingOrgId,oppId,
+      Number(queuedPayload[PURSUIT_VERSION_KEY]));
+    if (!claimed) return null;
+    queuedPayload = {...queuedPayload,[SUB_SEARCH_INTENT_KEY]:claimed.id};
+  }
+  const queuedId = await q.enqueue(
     name,
     await withEnqueuingOrg(queuedPayload, enqueuingOrgId ?? undefined),
     opts
   );
+  if (queuedId && opts?.subSearchIntentId && enqueuingOrgId)
+    await markSubSearchQueued(opts.subSearchIntentId,enqueuingOrgId,queuedId);
+  else if (queuedId === null && opts?.subSearchIntentId && enqueuingOrgId)
+    await releaseUnqueuedSubSearch(opts.subSearchIntentId,enqueuingOrgId);
+  return queuedId;
 }
 
 /**

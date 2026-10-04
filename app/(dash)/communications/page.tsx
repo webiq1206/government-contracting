@@ -74,7 +74,7 @@ function when(iso: string): string {
 function stateChipClass(state: ConversationSummary["state"]): string {
   const base = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium";
   if (state === "delivery_failed") return `${base} bg-risk/15 text-risk`;
-  if (state === "needs_reply" || state === "overdue") return `${base} bg-review/15 text-review`;
+  if (state === "needs_reply" || state === "overdue" || state === "send_review") return `${base} bg-review/15 text-review`;
   if (state === "resolved") return `${base} bg-pursue/15 text-pursue`;
   return `${base} bg-slate-200 text-slate-600`;
 }

@@ -242,7 +242,7 @@ describe("the gates that silence the whole engine", () => {
     );
     const ai = f.find((x) => x.key === "claude_failing");
     expect(ai?.severity).toBe("down");
-    expect(ai?.title).toMatch(/125 AI jobs have failed/);
+    expect(ai?.title).toBe("AI provider recovery has not been confirmed.");
     expect(ai?.detail).toMatch(/credit balance is too low/);
   });
 

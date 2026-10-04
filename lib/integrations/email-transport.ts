@@ -33,6 +33,11 @@ export interface OutreachAttachment {
 }
 
 export interface OutreachSendParams {
+  /** Transactional paperwork only; the active award and named recipient are revalidated. */
+  postAwardCompliance?: { contractId: string };
+  scheduled?: import("../scheduled-email").ScheduledEmail;
+  /** Commit durable attempt evidence before Gmail may send. Failure prevents sending. */
+  beforeProviderSend?: (from: string) => Promise<void>;
   to: string;
   subject: string;
   html: string;
@@ -78,6 +83,9 @@ export interface OutreachSendParams {
 export type OutreachProvider = "gmail";
 
 export interface OutreachSendResult {
+  communicationId?: string;
+  replayed?: boolean;
+  outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
   provider: OutreachProvider | null;
   /** True when no inbox is connected. */
   disabled?: boolean;
@@ -135,15 +143,24 @@ export async function sendOutreachEmail(
    * Fails closed by construction: pursuitStatus returns mayAct false when it
    * cannot read the row at all.
    */
+  if (params.postAwardCompliance) {
+    const { postAwardComplianceAllowed } = await import("../post-award-email");
+    if (!(await postAwardComplianceAllowed({ ...params, ...params.postAwardCompliance }))) {
+      return { provider: null, blocked: true, retryable: false,
+        error: "The active award and its named paperwork recipient could not be verified. Nothing was sent." };
+    }
+  }
   if (params.opportunityId) {
-    const pursuit = await pursuitStatus(params.opportunityId);
-    if (!pursuit.mayAct) {
-      return {
-        provider: null,
-        disabled: true,
-        retryable: pursuit.retryable,
-        error: pursuit.reason ?? "This pursuit is stopped.",
-      };
+    if (!params.postAwardCompliance) {
+      const pursuit = await pursuitStatus(params.opportunityId);
+      if (!pursuit.mayAct) {
+        return {
+          provider: null,
+          disabled: true,
+          retryable: pursuit.retryable,
+          error: pursuit.reason ?? "This pursuit is stopped.",
+        };
+      }
     }
     // The last check before the provider: a switch flipped while this job
     // was assembling attachments must still stop the send.
@@ -200,6 +217,11 @@ export async function sendOutreachEmail(
     };
   }
 
+  if (params.scheduled) {
+    const { sendScheduledEmail } = await import("../scheduled-email");
+    return sendScheduledEmail(params, sendOutreachEmail);
+  }
+
   /**
    * Do-not-contact, at the one place every send passes through.
    *
@@ -247,7 +269,7 @@ export async function sendOutreachEmail(
    * mail, but a message carrying both record ids must prove the relationship
    * is still active. Failure to read the relationship fails closed.
    */
-  if (params.opportunityId && params.subcontractorId) {
+  if (params.opportunityId && params.subcontractorId && !params.postAwardCompliance) {
     if (!suppressionOrg) {
       return {
         provider: null,
@@ -437,6 +459,7 @@ export async function sendOutreachEmail(
   let res: Awaited<ReturnType<typeof gmail.send>>;
   try {
     res = await gmail.send({
+      beforeProviderSend: params.beforeProviderSend,
       to: params.to,
       subject: params.subject,
       html: params.html,
@@ -472,6 +495,7 @@ export async function sendOutreachEmail(
   }
   return {
     provider: "gmail",
+    outcome: res.outcome,
     error: res.error,
     messageId: res.messageId ?? null,
     threadId: res.threadId ?? null,

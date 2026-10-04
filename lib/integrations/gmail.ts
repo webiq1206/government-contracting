@@ -18,6 +18,7 @@ import { queryOne, query } from "../db";
 import { tryResolveTenantOrgId } from "../tenant";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { encryptSecret, decryptSecret } from "../integration-settings";
+import { gmailFailureOutcome } from "./gmail-send-failure";
 import { describeSendFailure } from "./gmail-send-failure";
 import { decodeInboundText, inboundText } from "../domain/inbound-text";
 import { attachmentFilename, encodedHeader, mimeBase64, senderHeader, singleMailbox } from "../domain/email-mime";
@@ -137,35 +138,46 @@ export async function exchangeCode(
    * account that verified it, so carried across, Gmail refuses every send and
    * outreach stops dead.
    */
-  const prior = await queryOne<{ email: string | null; send_as: string | null }>(
-    `select email, send_as from integration_tokens where provider = 'gmail' and org_id = $1`,
+  const prior = await queryOne<{ email: string | null; send_as: string | null; connection_generation: string }>(
+    `select email, send_as, connection_generation from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
   );
   const keepSendAs = Boolean(
-    !prior?.email || email.toLowerCase() === prior.email.toLowerCase()
+    prior?.email && email.toLowerCase() === prior.email.toLowerCase()
   );
   const senderReset = Boolean(prior?.send_as) && !keepSendAs;
+  if (!keepSendAs && !tokens.refresh_token) {
+    throw new Error("Google did not provide an offline grant for the replacement mailbox. The previous connection was preserved. Reconnect with offline consent.");
+  }
 
-  await query(
+  const saved = await query<{ provider: string }>(
     `insert into integration_tokens (provider, org_id, data, email, status, last_error, updated_at)
      values ('gmail', $1, $2::jsonb, $3, 'connected', null, now())
      on conflict (provider, org_id) do update set
        -- Merge so a reconnect without a fresh refresh_token keeps the old one.
-       data       = integration_tokens.data || excluded.data,
+       data       = case when $4 then integration_tokens.data || excluded.data
+                         else excluded.data end,
+       connection_generation = gen_random_uuid(),
        -- Not coalesced: the grant being stored is this mailbox's, so the
        -- stored identity has to be this mailbox and never the previous one.
        email      = excluded.email,
        send_as    = case when $4 then integration_tokens.send_as else null end,
        status     = 'connected',
        last_error = null,
-       updated_at = now()`,
+       updated_at = now()
+     where integration_tokens.connection_generation=$5::uuid
+     returning provider`,
     [
       orgId,
       JSON.stringify(encryptTokenData(tokens as Record<string, unknown>)),
       email,
       keepSendAs,
+      prior?.connection_generation ?? null,
     ]
   );
+  if (!saved.length) {
+    throw new Error("The Gmail connection changed during authorization. The newer connection was preserved; reload Integrations before reconnecting.");
+  }
 
   // A new grant can see a different set of verified addresses.
   sendAsCache.delete(orgId);
@@ -179,17 +191,17 @@ async function resolveOrg(orgId?: string): Promise<string | null> {
   return orgId ?? (await tryResolveTenantOrgId());
 }
 
-async function getRefreshToken(orgId: string): Promise<string | null> {
-  const row = await queryOne<{ data: { refresh_token?: string } }>(
-    `select data from integration_tokens where provider = 'gmail' and org_id = $1`,
+async function getRefreshGrant(orgId: string): Promise<{refresh: string; generation: string | null} | null> {
+  const row = await queryOne<{ data: { refresh_token?: string }; connection_generation?: string }>(
+    `select data, connection_generation from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
   );
   const stored = readRefreshToken(row?.data);
-  if (stored) return stored;
+  if (stored) return {refresh:stored,generation:row?.connection_generation ?? null};
   // Headless escape hatch, founding tenant only. Handing this env token to any
   // other org would let them send from the platform's own mailbox.
   if (orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
-    return config.gmail.refreshToken;
+    return {refresh:config.gmail.refreshToken,generation:null};
   }
   return null;
 }
@@ -200,15 +212,16 @@ async function getRefreshToken(orgId: string): Promise<string | null> {
  * the failure is stored rather than swallowed, and the UI can tell them to
  * reconnect instead of silently sending nothing.
  */
-async function markConnectionError(orgId: string, message: string): Promise<void> {
+async function markConnectionError(orgId: string, message: string, generation: string | null): Promise<void> {
+  if (!generation) return; // An environment grant cannot change a stored connection.
   const revoked = /invalid_grant|unauthorized|invalid_client|Token has been expired or revoked/i.test(
     message
   );
   await query(
     `update integration_tokens
         set status = $2, last_error = $3, updated_at = now()
-      where provider = 'gmail' and org_id = $1`,
-    [orgId, revoked ? "revoked" : "error", message.slice(0, 500)]
+      where provider = 'gmail' and org_id = $1 and connection_generation=$4::uuid`,
+    [orgId, revoked ? "revoked" : "error", message.slice(0, 500), generation]
   ).catch((error) => {
     console.error(
       `[gmail] could not persist the connection failure for org ${orgId}: ${(error as Error).message}`
@@ -264,19 +277,24 @@ export function __resetSendAsCache(orgId?: string): void {
   else sendAsCache.clear();
 }
 
+const clientGenerations = new WeakMap<object,string | null>();
+
 /** Authorized Gmail client for one organization, or null if not connected. */
 async function gmailClient(orgId?: string) {
   if (!config.gmail.configured) return null;
   const org = await resolveOrg(orgId);
   if (!org) return null;
-  const refresh = await getRefreshToken(org);
-  if (!refresh) return null;
+  const grant = await getRefreshGrant(org);
+  if (!grant) return null;
   const client = oauthClient();
-  client.setCredentials({ refresh_token: refresh });
-  return google.gmail({ version: "v1", auth: client });
+  client.setCredentials({ refresh_token: grant.refresh });
+  const api = google.gmail({ version: "v1", auth: client });
+  clientGenerations.set(api,grant.generation);
+  return api;
 }
 
 export interface SendEmailParams {
+  beforeProviderSend?: (from: string) => Promise<void>;
   to: string;
   subject: string;
   html: string;
@@ -629,7 +647,7 @@ export const gmail = {
     const cached = authProbeCache.get(org);
     if (!opts?.fresh && cached && Date.now() - cached.at < AUTH_PROBE_TTL_MS) return cached.ok;
 
-    const refresh = await getRefreshToken(org);
+    const refresh = (await getRefreshGrant(org))?.refresh;
     let ok = false;
     if (refresh) {
       const client = oauthClient();
@@ -815,6 +833,7 @@ export const gmail = {
   async send(
     params: SendEmailParams
   ): Promise<{
+    outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
     disabled?: boolean;
     messageId?: string;
     threadId?: string;
@@ -857,11 +876,14 @@ export const gmail = {
     // the sender to the address chosen for this tenant regardless of which
     // account is OAuth'd. Declared outside the try so a refusal can name it.
     const from = params.from ?? (config.gmail.sender || "me");
+    let providerAttempted = false;
     try {
       const sender = await this.verifiedSender(from, org!, true);
       if (!sender.ok) return { disabled: true, error: sender.error };
       await reserveGmailQuota(org!, 120);
       const raw = buildGmailRawMessage(params, sender.from);
+      await params.beforeProviderSend?.(sender.from);
+      providerAttempted = true;
       const res = await client.users.messages.send({
         userId: "me",
         // threadId keeps the reply in the same conversation in the sender's
@@ -912,14 +934,15 @@ export const gmail = {
         }
       }
       return {
+        outcome: res.data.id ? "accepted" : "unknown",
         messageId: res.data.id ?? undefined,
         threadId: res.data.threadId ?? undefined,
         rfc822MessageId,
       };
     } catch (err) {
       const message = describeSendFailure((err as Error).message, from);
-      if (org) await markConnectionError(org, message);
-      return { error: message };
+      if (org) await markConnectionError(org, message, clientGenerations.get(client) ?? null);
+      return { error: message, outcome: gmailFailureOutcome(err, providerAttempted) };
     }
   },
 
@@ -1137,7 +1160,7 @@ export const gmail = {
           if ((err as { response?: { status?: number }; code?: number }).response?.status === 404 ||
               (err as { code?: number }).code === 404) continue;
           const message = (err as Error).message || "Gmail poll failed";
-          await markConnectionError(org, message);
+          await markConnectionError(org, message, clientGenerations.get(client) ?? null);
           if (!replies.length) return { replies: [], error: message };
           return { replies, truncated: true,
             nextPageToken: encodeGmailRemainder({ ids: ids.slice(index), next }), partialError: message };
@@ -1146,7 +1169,8 @@ export const gmail = {
       // A successful read supersedes an old temporary quota error, but cannot
       // clear revoked authentication or an unrelated sending failure.
       await query(`update integration_tokens set status='connected',last_error=null,updated_at=now()
-        where provider='gmail' and org_id=$1 and status='error' and last_error ~* '(quota|rate.?limit)'`, [org]);
+        where provider='gmail' and org_id=$1 and connection_generation=$2::uuid
+          and status='error' and last_error ~* '(quota|rate.?limit)'`, [org,clientGenerations.get(client) ?? null]);
       if (readCount < ids.length) next = encodeGmailRemainder({ ids: ids.slice(readCount), next });
       return next ? { replies, truncated: true, nextPageToken: next } : { replies };
     } catch (err) {
@@ -1155,7 +1179,7 @@ export const gmail = {
       // so a revoked grant flips integration_tokens.status and the settings
       // page (and the pipeline pulse) tell the operator to reconnect.
       const org = await resolveOrg(orgId);
-      if (org) await markConnectionError(org, message);
+      if (org) await markConnectionError(org, message, clientGenerations.get(client) ?? null);
       return { replies: [], error: message };
     }
   },

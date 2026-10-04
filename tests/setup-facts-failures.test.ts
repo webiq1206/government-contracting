@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  facts: vi.fn(),
   hydrate: vi.fn(),
   integrationStatus: vi.fn(),
   orgIntegrationStatus: vi.fn(),
@@ -12,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   resolveOrg: vi.fn(),
 }));
 
+vi.mock("@/lib/ai/claude", () => ({ planRoute: async () => ({ primary: { provider: "OpenAI" } }) }));
+vi.mock("@/lib/ai/provider-facts", async original => ({ ...(await original<typeof import("@/lib/ai/provider-facts")>()), currentProviderFacts: mocks.facts }));
 vi.mock("@/lib/config", () => ({ integrationStatus: mocks.integrationStatus }));
 vi.mock("@/lib/integration-keys", () => ({
   orgIntegrationStatus: mocks.orgIntegrationStatus,
@@ -36,6 +39,7 @@ const ORG = "11111111-1111-4111-8111-111111111111";
 
 function successfulDefaults() {
   mocks.hydrate.mockResolvedValue(undefined);
+  mocks.facts.mockResolvedValue(null);
   mocks.integrationStatus.mockReturnValue({
     gmail: true,
     sam: true,
@@ -104,4 +108,17 @@ describe("account setup read truth", () => {
     );
     expect(setup.complete).toBe(false);
   });
+});
+
+it("does not mark configured AI complete without current provider evidence", async () => {
+  successfulDefaults();
+  mocks.orgIntegrationStatus.mockResolvedValue({ openai: true });
+  let setup = await accountSetup(null, null);
+  expect(setup.items.find(i => i.key === "claude")?.done).toBe(false);
+  mocks.facts.mockResolvedValue({ last_success_at: new Date(), refusal_reason: "OpenAI insufficient credit" });
+  setup = await accountSetup(null, null);
+  expect(setup.items.find(i => i.key === "claude")?.done).toBe(false);
+  mocks.facts.mockResolvedValue({ last_success_at: new Date(), refusal_reason: null });
+  setup = await accountSetup(null, null);
+  expect(setup.items.find(i => i.key === "claude")?.done).toBe(true);
 });

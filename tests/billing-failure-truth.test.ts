@@ -234,11 +234,16 @@ describe("trial quota enforcement truth", () => {
     expect(decision.message).not.toContain("free trial");
   });
 
-  it("counts provider-accepted email and built artifacts, not drafts or placeholder bids", () => {
+  it("counts accepted sends plus uncertain reservations and built artifacts", async () => {
+    query.mockResolvedValue([{n:3}]);
+    const {quotaState} = await loadTrialLimits();
+    expect((await quotaState("org-1","outreach_emails")).used).toBe(3);
+    const sql=query.mock.calls[0][0];
+    expect(sql).toContain("delivery_state in ('sent', 'delivered', 'bounced', 'deferred')");
+    expect(sql).toContain("delivery_state in ('attempting', 'unknown')");
+    expect(sql).not.toContain("delivery_state = 'failed'");
+    expect(query.mock.calls[0][1]).toEqual(["org-1"]);
     const source = readFileSync("lib/billing/trial-limits.ts", "utf8");
-    expect(source).toContain("provider is not null");
-    expect(source).toContain("gmail_message_id is not null");
-    expect(source).toContain("rfc822_message_id is not null");
     expect(source).toContain("jsonb_array_length(documents_json) > 0");
   });
 });

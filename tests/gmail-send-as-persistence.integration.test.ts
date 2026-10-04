@@ -89,8 +89,13 @@ d("the sending address survives the right reconnects (integration)", () => {
       [orgId.current]
     );
 
+    await query(`update integration_tokens set data=data || '{"reply_poll_after":"0012345","reply_poll_page_token":"page-old"}'::jsonb where provider='gmail' and org_id=$1`, [orgId.current]);
+    const before = await queryOne<{ connection_generation: string }>("select connection_generation from integration_tokens where provider='gmail' and org_id=$1", [orgId.current]);
     await exchangeCode("code-2", orgId.current);
     expect(await storedSendAs()).toBe("hello@brostco.com");
+    const after = await queryOne<{ connection_generation: string; after: string }>("select connection_generation, data->>'reply_poll_after' as after from integration_tokens where provider='gmail' and org_id=$1", [orgId.current]);
+    expect(after?.connection_generation).not.toBe(before?.connection_generation);
+    expect(after?.after).toBe("0012345");
   });
 
   it("drops it when a different mailbox is connected, because the alias was not theirs", async () => {
@@ -101,6 +106,8 @@ d("the sending address survives the right reconnects (integration)", () => {
     // The reconnect screen says so, because otherwise outreach quietly starts
     // going out from the connected account again.
     expect(res.senderReset).toBe(true);
+    const cursor = await queryOne<{ after: string | null; page: string | null }>("select data->>'reply_poll_after' as after, data->>'reply_poll_page_token' as page from integration_tokens where provider='gmail' and org_id=$1", [orgId.current]);
+    expect(cursor).toEqual({after:null,page:null});
   });
 
   it("saves nothing at all when Google will not say which mailbox this is", async () => {

@@ -9,6 +9,7 @@ export function inboundText(value: string): string {
 export function deepInboundText<T>(value: T): T {
   if (typeof value === "string") return inboundText(value) as T;
   if (Array.isArray(value)) return value.map(deepInboundText) as T;
+  if (value instanceof Date) return value;
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, child]) =>
       [inboundText(key), deepInboundText(child)])) as T;

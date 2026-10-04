@@ -23,7 +23,7 @@ export function clearAiAdmissionMemo(): void {
 
 /** Strip the ledger's prefix so the sentence reads as a reason. */
 export function holdReason(message: string): string {
-  return message.replace(/^API_BUDGET:\s*/, "");
+  return message.replace(/^(?:API_BUDGET|AI_UNAVAILABLE):\s*/, "");
 }
 
 /**
@@ -43,6 +43,10 @@ export async function aiEnqueueHold(
     const def = getAgent(agentName);
     if (!def || def.worksWithoutClaude) return null;
     const tier = def.aiTier ?? "routine";
+    // Never memoize provider evidence: another worker can refuse or rotate a key.
+    const { providerEnqueueHold } = await import("../ai/provider-facts");
+    const providerHold = await providerEnqueueHold(orgId, tier);
+    if (providerHold) return providerHold;
     const key = `${orgId}:${tier}`;
     const cached = memo.get(key);
     if (cached && cached.until > Date.now()) return cached.hold;

@@ -1,3 +1,4 @@
+vi.mock("../lib/reply-processing-lock",()=>({assertReplyProcessingOwnership:async()=>{},withReplyProcessingLock:async(_org:string,_id:string,fn:()=>Promise<unknown>)=>fn()}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtractedReply } from "@/lib/ai/reply-extract";
 
@@ -77,6 +78,22 @@ function extracted(intent: ExtractedReply["intent"]): ExtractedReply {
 }
 
 describe("reply capture ownership and weak matching", () => {
+
+  it("normalizes raw reply fields and new extractor output before persistence", async () => {
+    const mod = await load();
+    query.mockImplementation(async (sql: string) => /select distinct trade/.test(sql) ? [{trade:"Electrical"}] : []);
+    queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return {id:"opp-1"};
+      if (/insert into communications/.test(sql)) return {id:"in-nul"};
+      return null;
+    });
+    const result = await mod.captureReply({orgId:"org-1",comm,strongMatch:false,fromEmail:comm.sub_email,
+      replyText:"A quote\0",subject:"Subject\0",attachmentNames:["scope\0.txt"],messageId:"nul-message",
+      extract:async()=>({...extracted("other"),notes:"Price 10\0,000",companyName:"Firm\0"})});
+    const writes = [...query.mock.calls, ...queryOne.mock.calls].filter(([sql])=> /insert|update/.test(sql));
+    for (const [, params] of writes) expect(JSON.stringify(params)).not.toContain('\\u0000');
+    expect(result.extracted.notes).toBe("Price 10\uFFFD,000");
+  });
   it.each([
     { fault: "pricing write", saved: false, expected: "could not be filed together" },
     { fault: "closed pricing", saved: false, expected: "no longer open" },
@@ -119,13 +136,13 @@ describe("reply capture ownership and weak matching", () => {
     );
     queryOne.mockImplementation(async (sql: string) => {
       if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
-      if (/select id, subcontractor_id from communications/.test(sql)) return null;
+      if (/select id, subcontractor_id, meta from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return null;
       return null;
     });
     const closeOut = vi.fn(async () => ({ thankYouSent: true, alreadyThanked: false }));
 
-    const result = await mod.captureReply({
+    await expect(mod.captureReply({
       orgId: "org-1",
       comm,
       strongMatch: true,
@@ -134,9 +151,7 @@ describe("reply capture ownership and weak matching", () => {
       messageId: "gmail-in-1",
       extract: async () => extracted("decline"),
       closeOut,
-    });
-
-    expect(result.duplicate).toBe(true);
+    })).rejects.toThrow("already in progress");
     expect(closeOut).not.toHaveBeenCalled();
     expect(
       query.mock.calls.some(([sql]) => /update opportunity_subs/.test(String(sql)))
@@ -168,7 +183,7 @@ describe("reply capture ownership and weak matching", () => {
     );
     queryOne.mockImplementation(async (sql: string) => {
       if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
-      if (/select id, subcontractor_id from communications/.test(sql)) return null;
+      if (/select id, subcontractor_id, meta from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-1" };
       return null;
     });
@@ -206,7 +221,7 @@ describe("reply capture ownership and weak matching", () => {
     );
     queryOne.mockImplementation(async (sql: string) => {
       if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
-      if (/select id, subcontractor_id from communications/.test(sql)) return null;
+      if (/select id, subcontractor_id, meta from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-removed" };
       return null;
     });
@@ -240,7 +255,7 @@ describe("reply capture ownership and weak matching", () => {
     );
     queryOne.mockImplementation(async (sql: string) => {
       if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
-      if (/select id, subcontractor_id from communications/.test(sql)) return null;
+      if (/select id, subcontractor_id, meta from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-hvac" };
       return null;
     });
@@ -262,5 +277,33 @@ describe("reply capture ownership and weak matching", () => {
       /set outreach_state='responsive'/.test(String(sql))
     );
     expect(statusWrite?.[1]).toEqual(["opp-1", "sub-1", "HVAC"]);
+  });
+});
+
+
+describe("interrupted inbound processing",()=>{
+  it.each(["replied_at", "outreach_state", "subcontractor_reply_events"])("resumes after %s write failure without extracting again",async(fault)=>{
+    const mod=await load();let saved:any=null;let fail=true;
+    queryOne.mockImplementation(async(sql:string,args:unknown[])=>{
+      if(sql.includes("select o.id from opportunities")) return {id:"opp-1"};
+      if(sql.includes("select id, subcontractor_id")) return saved;
+      if(sql.includes("insert into communications")){saved={id:"in-1",subcontractor_id:"sub-1",meta:JSON.parse(args[9] as string)};return {id:"in-1"};}
+      return null;
+    });
+    query.mockImplementation(async(sql:string,args:unknown[])=>{
+      if(sql.includes("select distinct trade")) return [{trade:"Electrical"}];
+      if(sql.includes(fault) && !sql.includes("select") && fail){fail=false;throw Error("interrupted write");}
+      if(sql.includes("'capture_result'")){saved.meta.capture_result=JSON.parse(args[2] as string);saved.meta.reply_processing_complete=args[3];}
+      return [];
+    });
+    const extract=vi.fn(async()=>extracted("other"));
+    const input={orgId:"org-1",comm,strongMatch:true,fromEmail:comm.sub_email,replyText:"We can help",messageId:"resume",extract,deferProcessingComplete:true};
+    await expect(mod.captureReply(input)).rejects.toThrow("interrupted write");
+    expect((await mod.captureReply(input)).duplicate).toBe(false);
+    expect(extract).toHaveBeenCalledTimes(1);
+    // Capture completion alone must not suppress unfinished poller effects.
+    expect((await mod.captureReply(input)).duplicate).toBe(false);
+    saved.meta.reply_processing_complete=true;
+    expect((await mod.captureReply(input)).duplicate).toBe(true);
   });
 });

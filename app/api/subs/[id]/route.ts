@@ -55,6 +55,12 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
           { status: 400 }
         );
       }
+      if (col === "email") {
+        if (v && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v)) {
+          return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+        }
+        sets.push(`email_verified=case when lower(trim(coalesce(email,'')))=lower(trim(coalesce($${i},''))) then email_verified else false end`);
+      }
       sets.push(`${col}=$${i++}`);
       values.push(v === "" ? null : v);
     }
@@ -80,9 +86,9 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
-  values.push(params.id);
+  values.push(params.id, orgId);
   await query(
-    `update subcontractors set ${sets.join(", ")} where id=$${i}`,
+    `update subcontractors set ${sets.join(", ")} where id=$${i} and org_id=$${i + 1}`,
     values
   );
 

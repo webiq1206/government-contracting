@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 export type UsageContext = {
+  workKey?: string;
   feature?: string;
   workflow?: string;
   relatedId?: string;

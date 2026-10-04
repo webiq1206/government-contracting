@@ -1,3 +1,4 @@
+import { sentEmailSql } from "./domain/email-reporting";
 /**
  * Who does the work, read and written for one opportunity.
  *
@@ -80,7 +81,7 @@ export async function outreachStopCounts(orgId: string, opportunityId: string): 
        (select count(*)::int from communications c
          where c.org_id=$1 and c.opportunity_id=$2 and c.follow_up_at is not null and c.replied_at is null) as followups,
        (select count(*)::int from communications c
-         where c.org_id=$1 and c.opportunity_id=$2 and c.direction='outbound' and c.provider is not null) as sent,
+         where c.org_id=$1 and c.opportunity_id=$2 and ${sentEmailSql()}) as sent,
        (select count(*)::int from opportunity_subs os
          where os.opportunity_id=$2 and os.removed_at is null) as subs`,
     [orgId, opportunityId]

@@ -126,7 +126,18 @@ async function chase(
     )
     .join("")}</div>`;
 
+  // The last accepted receipt anchors the next chase. Time passing cannot
+  // turn an uncertain attempt into a different intent and bypass its claim.
+  const prior = await queryOne<{ id: string }>(`select id from communications
+    where org_id=$1 and subcontractor_id=$2 and meta->>'kind'='compliance-chase'
+      and delivery_state in ('sent','delivered','bounced','deferred') and gmail_message_id is not null
+    order by provider_accepted_at desc nulls last,created_at desc limit 1`, [row.orgId,row.subcontractorId]);
   const res = await sendOutreachEmail({
+    postAwardCompliance: { contractId: row.contractId },
+    scheduled: { key: JSON.stringify(["compliance-chase", row.subcontractorId, prior?.id ?? "first"]),
+      meta: { kind: "compliance-chase" } },
+    subcontractorId: row.subcontractorId,
+    opportunityId: row.opportunityId ?? undefined,
     to: row.email as string,
     subject,
     text,
@@ -150,7 +161,7 @@ async function chase(
     // paperwork request look identical to one that went out. The
     // organization is written so the row belongs to the customer whose award
     // this is.
-    await query(
+    if (!res.communicationId) await query(
       `insert into communications
          (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, provider, recipient_email, meta, delivery_state)
@@ -176,7 +187,7 @@ async function chase(
     );
   }
 
-  return { sent, recordError, providerError: res.error ?? null };
+  return { sent: sent && !res.replayed, recordError, providerError: res.error ?? null };
 }
 
 export const subOnboarding: AgentDefinition = {

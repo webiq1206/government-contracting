@@ -23,7 +23,7 @@ export function bouncedEmailSql(alias = "c"): string {
  */
 export function neverSentEmailSql(alias = "c"): string {
   return `${alias}.direction = 'outbound' and ${alias}.channel = 'email'
-    and ${alias}.delivery_state not in ('draft', 'held')
+    and ${alias}.delivery_state not in ('draft', 'held', 'queued', 'attempting', 'unknown')
     and (${alias}.delivery_state = 'failed' or ${alias}.provider is null)`;
 }
 
@@ -60,4 +60,10 @@ export function undeliveredNote(bounced: number, neverSent: number): string | un
   if (bounced > 0) parts.push(`${bounced} bounced`);
   if (neverSent > 0) parts.push(`${neverSent} never left`);
   return parts.length > 0 ? parts.join(", ") : undefined;
+}
+
+/** Ambiguous handoffs must remain reserved, never reported as accepted sends. */
+export function uncertainEmailSql(alias = "c"): string {
+  return `${alias}.direction = 'outbound' and ${alias}.channel = 'email'
+    and ${alias}.delivery_state in ('attempting', 'unknown')`;
 }

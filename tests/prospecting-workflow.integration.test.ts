@@ -232,7 +232,18 @@ d("exhaustion escalation closes a dead opportunity with reasoning (integration)"
     const mid = await queryOne<{ status: string }>(`select status from opportunities where id=$1`, [opp.id]);
     expect(mid?.status).toBe("open");
 
-    // Second pass (retry produced nothing new, sub still declined): close it.
+    // A failed enqueue or a queued-but-unfinished search cannot close the job.
+    const retry = await closeIfSubsExhausted(opp.id);
+    expect(retry.action).toBe("resourced");
+    expect(retry.enqueue?.opts?.subSearchIntentId).toBe(first.enqueue?.opts?.subSearchIntentId);
+    const {claimSubSearchIntent,markSubSearchQueued,completeSubSearchIntent} = await import("../lib/sub-search-intents");
+    const intent = first.enqueue!.opts!.subSearchIntentId as string;
+    expect(await claimSubSearchIntent(intent,org.id,opp.id,1)).toBeTruthy();
+    expect((await closeIfSubsExhausted(opp.id)).action).toBe("none");
+    await markSubSearchQueued(intent,org.id,"synthetic-queue-id");
+    expect((await closeIfSubsExhausted(opp.id)).action).toBe("none");
+    await completeSubSearchIntent(intent,org.id,opp.id,1);
+    // Only completed second-search evidence permits closing exhausted work.
     const second = await closeIfSubsExhausted(opp.id);
     expect(second.action).toBe("closed");
     const closed = await queryOne<{ status: string; stage: string; risk_flags: string[] | null }>(

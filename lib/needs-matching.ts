@@ -11,6 +11,7 @@
  * This is where those messages go instead: readable, placeable, and still
  * there tomorrow.
  */
+import { deepInboundText } from "./domain/inbound-text";
 import { query, queryOne } from "./db";
 import { randomUUID } from "node:crypto";
 import { captureReply, type MatchedComm } from "./reply-capture";
@@ -69,6 +70,7 @@ export interface RecordUnmatchedInput {
  * better than a reply that was dropped because it lacked a header.
  */
 export async function recordUnmatched(input: RecordUnmatchedInput): Promise<string | null> {
+  input = deepInboundText(input);
   const row = await queryOne<{ id: string }>(
     `insert into unmatched_inbound
        (org_id, from_email, from_name, subject, snippet, gmail_thread_id, message_id,
@@ -252,6 +254,7 @@ export async function matchMessage(
   };
 
   const captured = await captureReply({
+    deferProcessingComplete: true,
     orgId,
     comm: matched,
     strongMatch: true,
@@ -362,6 +365,7 @@ export async function matchMessage(
   if (finished.length === 0) {
     throw new Error("This reply match was changed by another request before it could finish.");
   }
+  await query(`update communications set meta=meta || jsonb_build_object('reply_processing_complete',true) where id=$1 and org_id=$2`,[comm.id,orgId]);
   return { communicationId: comm.id };
   } catch (err) {
     await query(

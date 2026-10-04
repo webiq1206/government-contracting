@@ -1,3 +1,8 @@
+vi.mock("@/lib/ai/provider-facts", async (original) => ({
+  ...(await original<typeof import("@/lib/ai/provider-facts")>()),
+  providerEnqueueHold: async () => null,
+  withProviderFacts: async (_identity: unknown, _provider: unknown, execute: () => Promise<unknown>) => execute(),
+}));
 /**
  * What gets marked for caching, and in what order.
  *

@@ -37,6 +37,7 @@ function msg(over: Partial<CentreMessage> & { id: string }): CentreMessage {
   const base: CentreMessage = {
     id: over.id,
     direction: "outbound",
+    provider: "gmail",
     delivery_state: "delivered",
     delivery_detail: null,
     opened_at: null,
@@ -398,6 +399,22 @@ describe("counts and filters", () => {
 });
 
 describe("deliverability", () => {
+  it("requires provider evidence before treating legacy claimed sends as accepted", () => {
+    const messages = [msg({id:"missing",provider:null,delivery_state:"sent"}),msg({id:"unset",delivery_state:null})];
+    expect(messages.map((m)=>m.state)).toEqual(["unknown","unknown"]);
+    expect(deliverability(messages).sent).toBe(0);
+  });
+  it("keeps a newer genuine reply actionable after an older held request", () => {
+    expect(summarize(thread({ messages: [msg({ id: "held", delivery_state: "held", created_at: at(-3) }),
+      msg({ id: "reply", direction: "inbound", created_at: at(-1), subject: "Here is our price" })] }), NOW).state).toBe("needs_reply");
+  });
+  it("does not turn held, queued, failed, or uncertain attempts into sends", () => {
+    const messages = ["held", "queued", "attempting", "unknown", "failed"].map((delivery_state) => msg({ id: delivery_state, delivery_state }));
+    expect(deliverability(messages)).toMatchObject({ sent: 0, failed: 1, deliveryRate: null, responseRate: null });
+    for (const message of messages.filter((m) => m.state !== "failed")) {
+      expect(summarize(thread({ messages: [message] }), NOW).state).toBe("send_review");
+    }
+  });
   it("does not count an unsent draft as a send or a successful delivery", () => {
     const draft = msg({ id: "draft", delivery_state: "draft", follow_up_at: at(-1) });
     const summary = summarize(thread({ messages: [draft] }), NOW);
@@ -440,11 +457,11 @@ describe("deliverability", () => {
       msg({ id: "4", delivery_state: "failed" }),
       msg({ id: "5", direction: "inbound", subject: "Re: quote" }),
     ]);
-    expect(d.sent).toBe(4);
-    expect(d.deliveryRate).toBeCloseTo(0.5);
-    expect(d.bounceRate).toBeCloseTo(0.25);
+    expect(d.sent).toBe(3);
+    expect(d.deliveryRate).toBeCloseTo(2 / 3);
+    expect(d.bounceRate).toBeCloseTo(1 / 3);
     expect(d.failed).toBe(1);
-    expect(formatRate(d.deliveryRate)).toBe("50%");
+    expect(formatRate(d.deliveryRate)).toBe("67%");
   });
 
   it("does not let automatic mail inflate the response rate", () => {
