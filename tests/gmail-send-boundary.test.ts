@@ -23,7 +23,7 @@ beforeEach(() => {
 
 describe('Gmail sender checks at the provider boundary', () => {
   it('sends a verified alias once and preserves provider message IDs', async () => {
-    expect(await gmail.send(params)).toEqual({ messageId: 'gmail-id', threadId: 'thread-id', rfc822MessageId: '<internet-id@example.com>' });
+    expect(await gmail.send(params)).toEqual({ outcome: 'accepted', messageId: 'gmail-id', threadId: 'thread-id', rfc822MessageId: '<internet-id@example.com>' });
     expect(mocks.send).toHaveBeenCalledTimes(1);
     const raw = Buffer.from(mocks.send.mock.calls[0][0].requestBody.raw, 'base64url').toString();
     expect(raw).toContain('From: "BrostCo" <hello@brostco.com>');
@@ -52,4 +52,25 @@ describe('Gmail sender checks at the provider boundary', () => {
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.list).not.toHaveBeenCalled();
   });
+  it('commits the attempt only after sender verification and prevents provider IO when that write fails', async () => {
+    const stamp = vi.fn(async () => { throw new Error('claim write unavailable'); });
+    expect(await gmail.send({ ...params, beforeProviderSend: stamp })).toMatchObject({ outcome: 'not_attempted' });
+    expect(stamp).toHaveBeenCalledTimes(1);
+    expect(mocks.send).not.toHaveBeenCalled();
+    stamp.mockClear();
+    await gmail.send({ ...params, from: 'unverified@example.test', beforeProviderSend: stamp });
+    expect(stamp).not.toHaveBeenCalled();
+  });
+  it.each([403, 429])('distinguishes a confirmed HTTP %s refusal from an ambiguous timeout', async (status) => {
+    mocks.send.mockRejectedValue(Object.assign(new Error('Google refused'), { response: { status } }));
+    expect(await gmail.send(params)).toMatchObject({ outcome: 'refused' });
+    mocks.send.mockRejectedValue(new Error('socket timed out after upload'));
+    expect(await gmail.send(params)).toMatchObject({ outcome: 'unknown' });
+  });
+  it('keeps acceptance when the optional Message-ID readback fails', async () => {
+    mocks.get.mockRejectedValue(new Error('metadata read failed'));
+    expect(await gmail.send(params)).toMatchObject({ outcome: 'accepted', messageId: 'gmail-id' });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+  });
+
 });

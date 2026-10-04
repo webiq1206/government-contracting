@@ -18,6 +18,7 @@ import { queryOne, query } from "../db";
 import { tryResolveTenantOrgId } from "../tenant";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { encryptSecret, decryptSecret } from "../integration-settings";
+import { gmailFailureOutcome } from "./gmail-send-failure";
 import { describeSendFailure } from "./gmail-send-failure";
 import { decodeInboundText, inboundText } from "../domain/inbound-text";
 import { attachmentFilename, encodedHeader, mimeBase64, senderHeader, singleMailbox } from "../domain/email-mime";
@@ -145,13 +146,18 @@ export async function exchangeCode(
     !prior?.email || email.toLowerCase() === prior.email.toLowerCase()
   );
   const senderReset = Boolean(prior?.send_as) && !keepSendAs;
+  if (!keepSendAs && !tokens.refresh_token) {
+    throw new Error("Google did not provide an offline grant for the replacement mailbox. The previous connection was preserved. Reconnect with offline consent.");
+  }
 
   await query(
     `insert into integration_tokens (provider, org_id, data, email, status, last_error, updated_at)
      values ('gmail', $1, $2::jsonb, $3, 'connected', null, now())
      on conflict (provider, org_id) do update set
        -- Merge so a reconnect without a fresh refresh_token keeps the old one.
-       data       = integration_tokens.data || excluded.data,
+       data       = case when $4 then integration_tokens.data || excluded.data
+                         else excluded.data end,
+       connection_generation = gen_random_uuid(),
        -- Not coalesced: the grant being stored is this mailbox's, so the
        -- stored identity has to be this mailbox and never the previous one.
        email      = excluded.email,
@@ -277,6 +283,7 @@ async function gmailClient(orgId?: string) {
 }
 
 export interface SendEmailParams {
+  beforeProviderSend?: (from: string) => Promise<void>;
   to: string;
   subject: string;
   html: string;
@@ -815,6 +822,7 @@ export const gmail = {
   async send(
     params: SendEmailParams
   ): Promise<{
+    outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
     disabled?: boolean;
     messageId?: string;
     threadId?: string;
@@ -857,11 +865,14 @@ export const gmail = {
     // the sender to the address chosen for this tenant regardless of which
     // account is OAuth'd. Declared outside the try so a refusal can name it.
     const from = params.from ?? (config.gmail.sender || "me");
+    let providerAttempted = false;
     try {
       const sender = await this.verifiedSender(from, org!, true);
       if (!sender.ok) return { disabled: true, error: sender.error };
       await reserveGmailQuota(org!, 120);
       const raw = buildGmailRawMessage(params, sender.from);
+      await params.beforeProviderSend?.(sender.from);
+      providerAttempted = true;
       const res = await client.users.messages.send({
         userId: "me",
         // threadId keeps the reply in the same conversation in the sender's
@@ -912,6 +923,7 @@ export const gmail = {
         }
       }
       return {
+        outcome: res.data.id ? "accepted" : "unknown",
         messageId: res.data.id ?? undefined,
         threadId: res.data.threadId ?? undefined,
         rfc822MessageId,
@@ -919,7 +931,7 @@ export const gmail = {
     } catch (err) {
       const message = describeSendFailure((err as Error).message, from);
       if (org) await markConnectionError(org, message);
-      return { error: message };
+      return { error: message, outcome: gmailFailureOutcome(err, providerAttempted) };
     }
   },
 

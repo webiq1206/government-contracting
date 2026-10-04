@@ -33,6 +33,8 @@ export interface OutreachAttachment {
 }
 
 export interface OutreachSendParams {
+  /** Commit durable attempt evidence before Gmail may send. Failure prevents sending. */
+  beforeProviderSend?: (from: string) => Promise<void>;
   to: string;
   subject: string;
   html: string;
@@ -78,6 +80,7 @@ export interface OutreachSendParams {
 export type OutreachProvider = "gmail";
 
 export interface OutreachSendResult {
+  outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
   provider: OutreachProvider | null;
   /** True when no inbox is connected. */
   disabled?: boolean;
@@ -437,6 +440,7 @@ export async function sendOutreachEmail(
   let res: Awaited<ReturnType<typeof gmail.send>>;
   try {
     res = await gmail.send({
+      beforeProviderSend: params.beforeProviderSend,
       to: params.to,
       subject: params.subject,
       html: params.html,
@@ -472,6 +476,7 @@ export async function sendOutreachEmail(
   }
   return {
     provider: "gmail",
+    outcome: res.outcome,
     error: res.error,
     messageId: res.messageId ?? null,
     threadId: res.threadId ?? null,

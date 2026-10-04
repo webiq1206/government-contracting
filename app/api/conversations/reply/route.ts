@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
-import { sendOutreachEmail } from "@/lib/integrations/email-transport";
+import { sendManualEmail } from "@/lib/manual-email";
+import { resolveOutreachSender } from "@/lib/domain/sender-identity";
+import { withMailSignature } from "@/lib/domain/mail-signature";
 import { gmail } from "@/lib/integrations/gmail";
 import { logAgent } from "@/lib/logger";
 import { discardDraftsForThread } from "@/lib/domain/reply-draft";
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
   const orgId = await resolveTenantOrgId();
 
   const body = (await req.json().catch(() => ({}))) as {
+    requestKey?: string;
     subcontractorId?: string;
     opportunityId?: string | null;
     threadId?: string | null;
@@ -52,6 +55,9 @@ export async function POST(req: Request) {
     message?: string;
   };
 
+  if (!body.requestKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestKey)) {
+    return NextResponse.json({ error: "Reload the composer before sending." }, { status: 400 });
+  }
   const message = (body.message ?? "").trim();
   if (!body.subcontractorId || !message) {
     return NextResponse.json({ error: "Write a message first." }, { status: 400 });
@@ -218,11 +224,13 @@ export async function POST(req: Request) {
     ? `Re: ${storedSubject.replace(/^re:\s*/i, "")}`
     : (body.subject ?? "").trim() || (threadId ? "Re: your quote" : "Following up");
 
-  const res = await sendOutreachEmail({
+  const sender = await resolveOutreachSender(orgId);
+  const renderedMessage = withMailSignature(message, orgId, sender.from);
+  const res = await sendManualEmail({ requestKey: body.requestKey, actorId: auth.id, params: {
     to: recipient,
     subject,
-    html: toHtml(message),
-    text: message,
+    html: toHtml(renderedMessage),
+    text: renderedMessage,
     threadId: threadId ?? undefined,
     inReplyTo: inReplyTo ?? undefined,
     references,
@@ -230,40 +238,11 @@ export async function POST(req: Request) {
     opportunityId: opportunityId ?? undefined,
     subcontractorId: sub.id,
     trade,
-  });
+  } });
 
-  if (res.disabled || res.blocked || res.error) {
-    return NextResponse.json(
-      { error: res.error ?? "Could not send that right now." },
-      { status: res.disabled ? 503 : 502 }
-    );
+  if (!res.ok) {
+    return NextResponse.json({ error: res.error, safeToCompose: "safeToCompose" in res && res.safeToCompose }, { status: res.status });
   }
-
-  await query(
-    `insert into communications
-       (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
-        gmail_message_id, gmail_thread_id, rfc822_message_id, provider,
-        recipient_email, meta)
-     values ($1,$2,$3,'email','outbound',$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
-    [
-      orgId,
-      sub.id,
-      opportunityId,
-      subject,
-      message,
-      res.messageId ?? null,
-      res.threadId ?? threadId,
-      res.rfc822MessageId ?? null,
-      res.provider,
-      recipient,
-      JSON.stringify({
-        kind: "manual",
-        ...(trade ? { trade } : {}),
-        ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
-        ...(references.length ? { references } : {}),
-      }),
-    ]
-  );
 
   // The reply has gone out, so any draft for this thread is not a draft any
   // more. Discarded here, in the request that sent it, rather than by the
@@ -298,7 +277,7 @@ export async function POST(req: Request) {
     subcontractorId: sub.id,
     level: "info",
     message: `You emailed ${sub.company_name ?? sub.email} from the conversation view.`,
-  });
+  }).catch(() => {});
 
   return NextResponse.json({
     ok: true,

@@ -46,6 +46,7 @@ interface ThreadRow {
   unread_count: string | number;
   last_genuine_inbound_at: string | null;
   last_outbound_at: string | null;
+  last_outbound_provider: string | null;
   last_outbound_delivery_state: string | null;
   last_outbound_delivery_detail: string | null;
   last_outbound_opened_at: string | null;
@@ -128,7 +129,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
      /* The newest outbound one, whose delivery state is the thread's. */
      newest_out as (
        select distinct on (m.thread_key)
-              m.thread_key, m.delivery_state, m.delivery_detail,
+              m.thread_key, m.provider, m.delivery_state, m.delivery_detail,
               m.opened_at, m.clicked_at, m.replied_at
          from msg m
         where m.direction = 'outbound'
@@ -162,6 +163,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
             a.unread_count,
             a.last_genuine_inbound_at::text as last_genuine_inbound_at,
             a.last_outbound_at::text as last_outbound_at,
+            no2.provider as last_outbound_provider,
             no2.delivery_state as last_outbound_delivery_state,
             no2.delivery_detail as last_outbound_delivery_detail,
             no2.opened_at::text as last_outbound_opened_at,
@@ -193,6 +195,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
     const lastOutboundState: MessageState | null = r.last_outbound_at
       ? messageState({
           direction: "outbound",
+          provider: r.last_outbound_provider,
           delivery_state: r.last_outbound_delivery_state,
           delivery_detail: r.last_outbound_delivery_detail,
           opened_at: r.last_outbound_opened_at,
@@ -243,6 +246,8 @@ interface MessageRowDb {
   subject: string | null;
   body: string | null;
   created_at: string;
+  provider: string | null;
+  sender_email: string | null;
   recipient_email: string | null;
   gmail_message_id: string | null;
   rfc822_message_id: string | null;
@@ -272,7 +277,7 @@ export async function conversationMessages(threadKey: string): Promise<CentreMes
        order by c.created_at desc, c.id desc limit 500
      )
      select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
-            c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
+            c.provider, c.sender_email, c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
             c.delivery_state, c.delivery_detail,
             c.opened_at::text as opened_at, c.clicked_at::text as clicked_at,
             c.replied_at::text as replied_at, c.follow_up_at::text as follow_up_at,
@@ -289,6 +294,8 @@ export async function conversationMessages(threadKey: string): Promise<CentreMes
       subject: r.subject,
       body: r.body,
       created_at: r.created_at,
+      provider: r.provider,
+      sender_email: r.sender_email,
       recipient_email: r.recipient_email,
       gmail_message_id: r.gmail_message_id,
       rfc822_message_id: r.rfc822_message_id,
@@ -309,7 +316,7 @@ export async function deliverabilityMessages(days = 90): Promise<CentreMessage[]
   const orgId = await currentOrg();
   const rows = await query<MessageRowDb>(
     `select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
-            c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
+            c.provider, c.sender_email, c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
             c.delivery_state, c.delivery_detail,
             c.opened_at::text as opened_at, c.clicked_at::text as clicked_at,
             c.replied_at::text as replied_at, c.follow_up_at::text as follow_up_at,
@@ -326,6 +333,8 @@ export async function deliverabilityMessages(days = 90): Promise<CentreMessage[]
       subject: r.subject,
       body: null,
       created_at: r.created_at,
+      provider: r.provider,
+      sender_email: r.sender_email,
       recipient_email: r.recipient_email,
       gmail_message_id: r.gmail_message_id,
       rfc822_message_id: r.rfc822_message_id,

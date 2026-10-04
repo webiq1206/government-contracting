@@ -23,7 +23,7 @@ export function bouncedEmailSql(alias = "c"): string {
  */
 export function neverSentEmailSql(alias = "c"): string {
   return `${alias}.direction = 'outbound' and ${alias}.channel = 'email'
-    and ${alias}.delivery_state not in ('draft', 'held')
+    and ${alias}.delivery_state not in ('draft', 'held', 'queued', 'attempting', 'unknown')
     and (${alias}.delivery_state = 'failed' or ${alias}.provider is null)`;
 }
 

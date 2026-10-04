@@ -13,6 +13,9 @@
  */
 
 export type MessageState =
+  | "queued"
+  | "attempting"
+  | "unknown"
   | "received"
   | "replied"
   | "clicked"
@@ -39,6 +42,9 @@ export type MessageState =
   | "held";
 
 export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
+  queued: "Queued, not attempted",
+  attempting: "Attempt recorded, outcome unconfirmed",
+  unknown: "Delivery uncertain",
   received: "From them",
   replied: "They replied",
   clicked: "Clicked a link",
@@ -55,6 +61,9 @@ export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
 
 /** What each state means for the person reading it, and what it asks of them. */
 export const MESSAGE_STATE_MEANING: Record<MessageState, string> = {
+  queued: "The request is recorded. No provider attempt is recorded yet.",
+  attempting: "A provider attempt was recorded. Do not resend without checking Gmail Sent.",
+  unknown: "The provider outcome could not be confirmed. Check Gmail Sent; this request will not be replayed.",
   received: "They wrote to you.",
   replied: "They answered this message.",
   clicked: "They opened it and followed a link in it.",
@@ -80,6 +89,8 @@ export function isUnsent(state: MessageState): boolean {
 }
 
 export interface MessageRow {
+  /** Undefined only for callers that have not loaded provider evidence. */
+  provider?: string | null;
   direction: string;
   delivery_state: string | null;
   delivery_detail: string | null;
@@ -126,10 +137,12 @@ function looksBlocked(detail: string | null): boolean {
 export function messageState(m: MessageRow): MessageState {
   if (m.direction === "inbound") return "received";
 
-  const ds = m.delivery_state ?? "sent";
+  const ds = m.delivery_state ?? "unknown";
+  if (ds === "queued" || ds === "attempting" || ds === "unknown") return ds;
   if (ds === "failed") return "failed";
   if (ds === "draft") return "draft";
   if (ds === "held") return "held";
+  if (m.provider === null) return "unknown";
   if (ds === "bounced") return looksBlocked(m.delivery_detail) ? "blocked" : "bounced";
   if (ds === "deferred") return "delayed";
 

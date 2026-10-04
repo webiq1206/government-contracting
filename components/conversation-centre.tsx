@@ -14,7 +14,7 @@
  * those is here rather than three screens away.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
@@ -71,6 +71,9 @@ export function ConversationThreadPane({
   initialText?: string;
 }) {
   const router = useRouter();
+  const requestKey = useRef<string | null>(null);
+  const [safeToCompose, setSafeToCompose] = useState(false);
+  const storageKey = `manual-email:${conversation.threadKey}:${conversation.subcontractorId}`;
   const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState<null | "send" | "resolve" | "address">(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,9 +91,10 @@ export function ConversationThreadPane({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; safeToCompose?: boolean };
       if (!res.ok) {
-        setError(data.error ?? "That did not work. Nothing was sent.");
+        if (kind === "send") setSafeToCompose(data.safeToCompose === true);
+        setError(data.error ?? (kind === "send" ? "The send outcome is uncertain. Check the conversation and Gmail Sent before composing another message." : "The change could not be confirmed."));
         return false;
       }
       return true;
@@ -107,9 +111,17 @@ export function ConversationThreadPane({
       setError("Write a message first.");
       return;
     }
+    try {
+      requestKey.current ??= sessionStorage.getItem(storageKey) || crypto.randomUUID();
+      sessionStorage.setItem(storageKey, requestKey.current);
+    } catch {
+      setError("The browser could not preserve this send request. Enable session storage before sending.");
+      return;
+    }
     const ok = await post(
       "/api/conversations/reply",
       {
+        requestKey: requestKey.current,
         subcontractorId: conversation.subcontractorId,
         opportunityId: conversation.opportunityId,
         threadId: conversation.threadKey.startsWith("pair:") ? null : conversation.threadKey,
@@ -120,6 +132,8 @@ export function ConversationThreadPane({
       "send"
     );
     if (ok) {
+      sessionStorage.removeItem(storageKey);
+      requestKey.current = null;
       setText("");
       setNotice("Reply sent. It will appear in this conversation.");
       router.refresh();
@@ -285,7 +299,7 @@ export function ConversationThreadPane({
           return (
             <EmailMessage
               key={m.id}
-              body={m.body} direction={mine ? "outbound" : "inbound"}
+              body={m.body} sender={m.sender_email} subject={m.subject} direction={mine ? "outbound" : "inbound"}
               contact={conversation.subcontractorName} recipient={m.recipient_email}
               date={m.created_at} latest={index === messages.length - 1}
               label={!mine ? "Received email" : m.state === "draft" ? "Unsent draft" : "Outgoing email"}
@@ -358,6 +372,11 @@ export function ConversationThreadPane({
             {error}
           </p>
         )}
+        {safeToCompose && <button type="button" className="btn-secondary mt-2 text-sm" onClick={() => {
+          try { sessionStorage.removeItem(storageKey); } catch { return; }
+          requestKey.current = null; setSafeToCompose(false); setError(null);
+          setNotice("The previous message was not accepted. Review your draft and send a new request when ready.");
+        }}>Prepare a new request after this confirmed hold or refusal</button>}
         {notice && <p role="status" className="mt-2 text-sm text-pursue">{notice}</p>}
       </div>
     </div>

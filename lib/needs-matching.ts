@@ -11,6 +11,7 @@
  * This is where those messages go instead: readable, placeable, and still
  * there tomorrow.
  */
+import { deepInboundText } from "./domain/inbound-text";
 import { query, queryOne } from "./db";
 import { randomUUID } from "node:crypto";
 import { captureReply, type MatchedComm } from "./reply-capture";
@@ -69,6 +70,7 @@ export interface RecordUnmatchedInput {
  * better than a reply that was dropped because it lacked a header.
  */
 export async function recordUnmatched(input: RecordUnmatchedInput): Promise<string | null> {
+  input = deepInboundText(input);
   const row = await queryOne<{ id: string }>(
     `insert into unmatched_inbound
        (org_id, from_email, from_name, subject, snippet, gmail_thread_id, message_id,

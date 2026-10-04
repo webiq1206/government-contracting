@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { splitEmailBody } from "@/lib/domain/email-body";
 
-export function EmailMessage({ body, direction, contact, recipient, date, label, latest = false, children }: {
+export function EmailMessage({ body, direction, contact, recipient, sender, subject, date, label, latest = false, children }: {
   body: string | null; direction: "inbound" | "outbound"; contact: string;
-  recipient?: string | null; date: string; label?: string; latest?: boolean; children?: ReactNode;
+  sender?: string | null; subject?: string | null; recipient?: string | null; date: string; label?: string; latest?: boolean; children?: ReactNode;
 }) {
   const { current, quoted } = splitEmailBody(body);
   const inbound = direction === "inbound";
@@ -13,6 +13,8 @@ export function EmailMessage({ body, direction, contact, recipient, date, label,
         <div className="min-w-0">
           <p className="text-xs font-semibold text-accent"><span>{label ?? (inbound ? "Received email" : "Outgoing email")}</span>{latest && <span className="ml-2 font-normal text-muted-foreground">Latest message</span>}</p>
           <p className="mt-1 break-words text-sm font-semibold text-foreground">{inbound ? contact : "Your team"}</p>
+          {subject && <p className="mt-1 break-words text-sm">Subject: {subject}</p>}
+          {!inbound && <p className="mt-1 break-all text-xs text-muted-foreground">From: {sender || "Not recorded for this historical message"}</p>}
           {!inbound && <p className="mt-0.5 break-all text-xs text-muted-foreground">To: {recipient || contact}</p>}
         </div>
         <time dateTime={date} className="text-xs text-muted-foreground">{new Date(date).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</time>

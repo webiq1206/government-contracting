@@ -42,8 +42,12 @@ async function load(opts: RouteOpts = {}) {
     }
     return [] as unknown[];
   });
-  const queryOne = vi.fn(async (sql: string) => {
+  const queryOne = vi.fn(async (sql: string, params?: unknown[]) => {
     if (/from subcontractors/.test(sql)) return SUB;
+    if (/insert into communications|update communications/.test(sql)) {
+      await query(sql, params);
+      return { id: "claim-1" };
+    }
     return null;
   });
   const sendOutreachEmail = vi.fn(
@@ -91,6 +95,7 @@ function post(body: Record<string, unknown>): Request {
 }
 
 const BODY = {
+  requestKey: "11111111-1111-4111-8111-111111111111",
   subcontractorId: "s1",
   opportunityId: "o1",
   threadId: "t-1",
@@ -164,7 +169,7 @@ describe("sending a reply", () => {
         trade: "HVAC",
       })
     );
-    const insert = query.mock.calls.find(([sql]) => /insert into communications/.test(sql));
+    const insert = query.mock.calls.find(([sql]) => /update communications/.test(sql));
     expect(insert?.[1]).toContain("<ours-2@mail.example>");
   });
 

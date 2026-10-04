@@ -10,7 +10,7 @@ beforeAll(async()=>{
  db=new PGlite();
  await db.exec(`create table opportunities(id text,org_id text,title text);
  create table communications(id text,org_id text,subcontractor_id text,channel text,direction text,subject text,body text,created_at timestamptz,recipient_email text,gmail_thread_id text,gmail_message_id text,rfc822_message_id text,opportunity_id text,meta jsonb,delivery_state text);
- alter table communications add column delivery_detail text, add column opened_at timestamptz, add column clicked_at timestamptz, add column replied_at timestamptz, add column follow_up_at timestamptz;
+ alter table communications add column provider text, add column sender_email text, add column delivery_detail text, add column opened_at timestamptz, add column clicked_at timestamptz, add column replied_at timestamptz, add column follow_up_at timestamptz;
  insert into communications(id,org_id,subcontractor_id,channel,direction,subject,body,created_at,gmail_thread_id)
  select n::text,'ours','sub','email','inbound','A conversation','Message '||n,'2026-01-01'::timestamptz+n*interval '1 minute','thread' from generate_series(1,510) n;
  insert into communications(id,org_id,subcontractor_id,channel,direction,body,created_at,gmail_thread_id)

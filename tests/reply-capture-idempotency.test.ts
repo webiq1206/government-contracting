@@ -77,6 +77,22 @@ function extracted(intent: ExtractedReply["intent"]): ExtractedReply {
 }
 
 describe("reply capture ownership and weak matching", () => {
+
+  it("normalizes raw reply fields and new extractor output before persistence", async () => {
+    const mod = await load();
+    query.mockImplementation(async (sql: string) => /select distinct trade/.test(sql) ? [{trade:"Electrical"}] : []);
+    queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return {id:"opp-1"};
+      if (/insert into communications/.test(sql)) return {id:"in-nul"};
+      return null;
+    });
+    const result = await mod.captureReply({orgId:"org-1",comm,strongMatch:false,fromEmail:comm.sub_email,
+      replyText:"A quote\0",subject:"Subject\0",attachmentNames:["scope\0.txt"],messageId:"nul-message",
+      extract:async()=>({...extracted("other"),notes:"Price 10\0,000",companyName:"Firm\0"})});
+    const writes = [...query.mock.calls, ...queryOne.mock.calls].filter(([sql])=> /insert|update/.test(sql));
+    for (const [, params] of writes) expect(JSON.stringify(params)).not.toContain('\\u0000');
+    expect(result.extracted.notes).toBe("Price 10\uFFFD,000");
+  });
   it.each([
     { fault: "pricing write", saved: false, expected: "could not be filed together" },
     { fault: "closed pricing", saved: false, expected: "no longer open" },

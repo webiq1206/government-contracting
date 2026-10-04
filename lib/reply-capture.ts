@@ -19,6 +19,7 @@
  * organization gets hit by choosing when to reply, which is why the filter
  * cannot be left to the caller to remember.
  */
+import { deepInboundText } from "./domain/inbound-text";
 import { query, queryOne } from "./db";
 import { actingOrgId, runWithOrg } from "./tenant-context";
 import {
@@ -336,6 +337,7 @@ export async function matchInboundReply(opts: {
 }
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
+  input = deepInboundText(input);
   if (!input.comm) throw new Error("Choose the conversation this reply belongs to before capturing it.");
   const actorOrg = await actingOrgId();
   if (actorOrg && actorOrg !== input.orgId) {
@@ -471,10 +473,10 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       : null;
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
-  const extracted = await extract(replyText, {
+  const extracted = deepInboundText(await extract(replyText, {
     opportunityTitle: comm.opportunity_title,
     trade: osRow?.trade ?? null,
-  });
+  }));
 
   /**
    * Decide whether this reading may change anything, BEFORE anything is

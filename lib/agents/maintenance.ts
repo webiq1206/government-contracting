@@ -2541,11 +2541,15 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     const callsEnabled = await areCallsEnabled();
     const pollStartedSec = Math.floor(Date.now() / 1000);
     const cursor = await queryOne<{
+      connection_generation: string;
+      raw_after: string | null;
+      raw_page_token: string | null;
       after_sec: number | string | null;
       page_token: string | null;
       scan_started_sec: number | string | null;
     }>(
-      `select
+      `select connection_generation, data->>'reply_poll_after' as raw_after,
+         data->>'reply_poll_page_token' as raw_page_token,
          case when coalesce(data->>'reply_poll_after', '') ~ '^[0-9]+$'
               then (data->>'reply_poll_after')::bigint else null end as after_sec,
          nullif(data->>'reply_poll_page_token', '') as page_token,
@@ -2592,6 +2596,13 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     } = await gmail.fetchReplies(sinceSec, orgId, {
       ...(cursor.page_token ? { pageToken: cursor.page_token } : {}),
     });
+    const sameConnection = await queryOne<{ id: string }>(
+      `select org_id as id from integration_tokens where provider='gmail' and org_id=$1
+       and status <> 'revoked' and connection_generation=$2::uuid`,
+      [orgId, cursor.connection_generation]);
+    if (!sameConnection) {
+      return { ok: false, summary: "The Gmail connection changed during polling. No messages or cursor were committed; retry with the current connection." };
+    }
     if (disabled) {
       await logAgent({
         agent: "reply-poll",
@@ -2619,8 +2630,11 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
                          - 'reply_poll_page_token'
                          - 'reply_poll_scan_started',
                   updated_at = now()
-            where provider = 'gmail' and org_id = $1`,
-          [orgId]
+            where provider = 'gmail' and org_id = $1 and status <> 'revoked'
+              and connection_generation=$2::uuid
+              and (data->>'reply_poll_page_token') is not distinct from $3::text
+              and (data->>'reply_poll_after') is not distinct from $4::text`,
+          [orgId, cursor.connection_generation, cursor.raw_page_token ?? null, cursor.raw_after ?? null]
         );
       }
       // The poll FAILED. Zero replies from a failed poll must never read as
@@ -2732,6 +2746,10 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           orgId,
         });
         const unmatchedText = combineReplyText(r.body || r.snippet, unmatchedDocs.text);
+        if (known && fromEmail && readsAsOptOut(unmatchedText)) {
+          await suppressEmail({ orgId, email: fromEmail,
+            reason: "Asked to be removed in an unmatched email reply.", source: "reply" });
+        }
         const filed = await recordUnmatched({
           orgId,
           fromEmail,
@@ -3129,7 +3147,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           humanActionRequired: true,
         };
       }
-      await query(
+      const advanced = await query(
         `update integration_tokens
             set data = coalesce(data, '{}'::jsonb)
                        || jsonb_build_object(
@@ -3138,9 +3156,13 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
                             'reply_poll_scan_started', $4::bigint
                           ),
                 updated_at = now()
-          where provider = 'gmail' and org_id = $1 and status <> 'revoked'`,
-        [orgId, sinceSec, nextPageToken, scanStartedSec]
+          where provider = 'gmail' and org_id = $1 and status <> 'revoked'
+            and connection_generation=$5::uuid
+            and (data->>'reply_poll_page_token') is not distinct from $6::text
+            and (data->>'reply_poll_after') is not distinct from $7::text returning org_id`,
+        [orgId, sinceSec, nextPageToken, scanStartedSec, cursor.connection_generation, cursor.raw_page_token ?? null, cursor.raw_after ?? null]
       );
+      if (!advanced.length) return { ok: false, summary: "The mailbox connection or cursor changed. Captured messages were kept; stale progress was not written." };
       await logAgent({
         agent: "reply-poll",
         action: "poll-backlog",
@@ -3149,16 +3171,20 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         message: `Processed the current Gmail reply batch and saved a continuation point. ${matched} matched in this batch; more mailbox history will be processed on the next run.`,
       });
     } else {
-      await query(
+      const advanced = await query(
         `update integration_tokens
             set data = (coalesce(data, '{}'::jsonb)
                         - 'reply_poll_page_token'
                         - 'reply_poll_scan_started')
                        || jsonb_build_object('reply_poll_after', $2::bigint),
                 updated_at = now()
-          where provider = 'gmail' and org_id = $1 and status <> 'revoked'`,
-        [orgId, Math.max(1, scanStartedSec - 300)]
+          where provider = 'gmail' and org_id = $1 and status <> 'revoked'
+            and connection_generation=$3::uuid
+            and (data->>'reply_poll_page_token') is not distinct from $4::text
+            and (data->>'reply_poll_after') is not distinct from $5::text returning org_id`,
+        [orgId, Math.max(1, scanStartedSec - 300), cursor.connection_generation, cursor.raw_page_token ?? null, cursor.raw_after ?? null]
       );
+      if (!advanced.length) return { ok: false, summary: "The mailbox connection or cursor changed. Captured messages were kept; stale progress was not written." };
     }
 
     // One notification email per poll (not per reply). Today still holds the

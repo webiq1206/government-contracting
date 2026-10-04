@@ -77,6 +77,7 @@ export interface CentreMessage extends MessageRow {
   id: string;
   created_at: string;
   body: string | null;
+  sender_email?: string | null;
   recipient_email: string | null;
   /** Gmail API id, used only to retrieve the provider record. */
   gmail_message_id: string | null;
@@ -243,6 +244,11 @@ export function verdict(f: ConversationFacts, now = new Date()): ConversationVer
             ? "Call them instead, and check the sending domain."
             : "Resend it.",
     };
+  }
+  if (!awaitingUs && ["queued", "attempting", "unknown", "held"].includes(f.lastOutboundState ?? "")) {
+    return { state: "closed", failedState: null,
+      reason: f.lastOutboundState === "held" ? "The latest message was held before sending." : "The latest send request has no confirmed provider acceptance.",
+      nextAction: "Review the message outcome and Gmail Sent before sending again." };
   }
   if (awaitingUs) {
     return {
@@ -411,7 +417,9 @@ export interface Deliverability {
  * notices cannot make outreach look like it is working.
  */
 export function deliverability(messages: CentreMessage[]): Deliverability {
-  const outbound = messages.filter((m) => m.direction === "outbound" && m.state !== "draft");
+  const allOutbound = messages.filter((m) => m.direction === "outbound");
+  const outbound = allOutbound.filter((m) => ["sent", "delivered", "bounced", "blocked", "delayed", "opened", "clicked", "replied"].includes(m.state));
+  const failed = allOutbound.filter((m) => m.state === "failed").length;
   const sent = outbound.length;
   if (sent === 0) {
     return {
@@ -420,14 +428,13 @@ export function deliverability(messages: CentreMessage[]): Deliverability {
       responseRate: null,
       bounceRate: null,
       blocked: 0,
-      failed: 0,
+      failed,
     };
   }
 
   const arrived = outbound.filter((m) => ["delivered", "opened", "clicked", "replied"].includes(m.state)).length;
   const bounced = outbound.filter((m) => m.state === "bounced").length;
   const blocked = outbound.filter((m) => m.state === "blocked").length;
-  const failed = outbound.filter((m) => m.state === "failed").length;
   const replied = messages.filter((m) => isGenuineReply(m)).length;
 
   return {

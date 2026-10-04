@@ -21,8 +21,8 @@ const squash = (sql: string) => sql.replace(/\s+/g, " ");
 
 describe("email reporting predicates", () => {
   it("excludes deliberate holds and drafts from every failure count", () => {
-    expect(squash(neverSentEmailSql())).toContain("delivery_state not in ('draft', 'held')");
-    expect(squash(failedEmailSql())).toContain("not in ('draft', 'held')");
+    expect(squash(neverSentEmailSql())).toContain("delivery_state not in ('draft', 'held', 'queued', 'attempting', 'unknown')");
+    expect(squash(failedEmailSql())).toContain("not in ('draft', 'held', 'queued', 'attempting', 'unknown')");
   });
 
   it("counts a bounce only after a real provider handoff", () => {

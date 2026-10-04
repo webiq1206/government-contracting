@@ -12,6 +12,7 @@
  * and one tenant's bids in another's win rate would be both a privacy failure
  * and a wrong number.
  */
+import { sentEmailSql } from "./domain/email-reporting";
 import { query, queryOne } from "./db";
 import { computeCustomKpi, currentOrg } from "./data";
 import {
@@ -646,10 +647,10 @@ export async function workRemovedMetrics(from: Date | null, to: Date | null): Pr
          where org_id = $1 and coalesce(source, '') not in ('', 'manual') and ${win("created_at")})::int
          as subs_found,
        (select count(*) from communications
-         where org_id = $1 and direction = 'outbound' and ${win("created_at")})::int
+         where org_id = $1 and ${sentEmailSql('communications')} and ${win("created_at")})::int
          as outreach_sent,
        (select count(*) from communications
-         where org_id = $1 and direction = 'outbound'
+         where org_id = $1 and ${sentEmailSql('communications')}
            and meta->>'kind' = 'followup' and ${win("created_at")})::int
          as followups,
        /* Replies the platform read and turned into a typed outcome. */
