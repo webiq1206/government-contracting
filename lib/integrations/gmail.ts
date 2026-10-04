@@ -138,19 +138,19 @@ export async function exchangeCode(
    * account that verified it, so carried across, Gmail refuses every send and
    * outreach stops dead.
    */
-  const prior = await queryOne<{ email: string | null; send_as: string | null }>(
-    `select email, send_as from integration_tokens where provider = 'gmail' and org_id = $1`,
+  const prior = await queryOne<{ email: string | null; send_as: string | null; connection_generation: string }>(
+    `select email, send_as, connection_generation from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
   );
   const keepSendAs = Boolean(
-    !prior?.email || email.toLowerCase() === prior.email.toLowerCase()
+    prior?.email && email.toLowerCase() === prior.email.toLowerCase()
   );
   const senderReset = Boolean(prior?.send_as) && !keepSendAs;
   if (!keepSendAs && !tokens.refresh_token) {
     throw new Error("Google did not provide an offline grant for the replacement mailbox. The previous connection was preserved. Reconnect with offline consent.");
   }
 
-  await query(
+  const saved = await query<{ provider: string }>(
     `insert into integration_tokens (provider, org_id, data, email, status, last_error, updated_at)
      values ('gmail', $1, $2::jsonb, $3, 'connected', null, now())
      on conflict (provider, org_id) do update set
@@ -164,14 +164,20 @@ export async function exchangeCode(
        send_as    = case when $4 then integration_tokens.send_as else null end,
        status     = 'connected',
        last_error = null,
-       updated_at = now()`,
+       updated_at = now()
+     where integration_tokens.connection_generation=$5::uuid
+     returning provider`,
     [
       orgId,
       JSON.stringify(encryptTokenData(tokens as Record<string, unknown>)),
       email,
       keepSendAs,
+      prior?.connection_generation ?? null,
     ]
   );
+  if (!saved.length) {
+    throw new Error("The Gmail connection changed during authorization. The newer connection was preserved; reload Integrations before reconnecting.");
+  }
 
   // A new grant can see a different set of verified addresses.
   sendAsCache.delete(orgId);

@@ -85,4 +85,15 @@ describe("reply polling keeps durable progress", () => {
     expect(m.query.mock.calls.some(([sql])=>sql.includes("update integration_tokens"))).toBe(false);
   });
 
+  it("fences against raw historical cursor values while reading a normalized scan range", async () => {
+    m.queryOne.mockImplementation(async(sql:string)=>sql.includes("reply_poll_after")?{
+      connection_generation:"generation-a",raw_after:"0012345",raw_page_token:"",after_sec:12345,page_token:null,scan_started_sec:null
+    }:sql.includes("connection_generation")?{id:"tenant-a"}:null);
+    m.fetch.mockResolvedValue({replies:[]});
+    expect((await replyPoll.handler({})).ok).toBe(true);
+    const update = m.query.mock.calls.find(([sql])=>sql.includes("update integration_tokens"));
+    expect(update?.[1]).toEqual(["tenant-a",expect.any(Number),"generation-a","","0012345"]);
+    expect(m.fetch.mock.calls[0][0]).toBe(12345);
+  });
+
 });
