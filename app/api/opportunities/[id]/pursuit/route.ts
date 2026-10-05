@@ -87,14 +87,18 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const current = await queryOne<{
     pursuit_state: string;
     pursuit_version: number;
+    is_sources_sought: boolean;
     stage: string;
     status: string;
   }>(
-    `select pursuit_state, pursuit_version, stage, status
+    `select pursuit_state, pursuit_version, stage, status, is_sources_sought
        from opportunities where id = $1 and org_id = $2`,
     [params.id, ctx.orgId]
   );
   if (!current) return notFoundResponse();
+  if (current.is_sources_sought && ["resume", "restart"].includes(String(body.action))) {
+    return NextResponse.json({ error: "Sources Sought is market research, so bid work cannot be resumed or restarted. Its history is preserved." }, { status: 409 });
+  }
   const currentPursuitState = current.pursuit_state;
   const currentPursuitVersion = current.pursuit_version;
   const currentStage = current.stage;

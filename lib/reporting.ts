@@ -1,3 +1,4 @@
+import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "./domain/opportunity-kind";
 /**
  * The reported figures, read from the records that back them.
  *
@@ -60,7 +61,7 @@ export async function deadlineMetrics(from: Date | null, to: Date | null): Promi
               (select min(b.submitted_at) from bids b
                 where b.opportunity_id = o.id and b.org_id = $1) as submitted_at
          from opportunities o
-        where o.org_id = $1
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
           and o.deadline is not null
           and o.deadline < now()
           and (o.stage in ('sub_research','outreach','call_queue','quote_entry',
@@ -153,7 +154,7 @@ export async function reviewMetrics(from: Date | null, to: Date | null): Promise
            and review_expires_at is not null and review_expires_at < now()
        )::int as expired
        from opportunities
-      where org_id = $1
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1
         and ($2::timestamptz is null or created_at >= $2::timestamptz)
         and ($3::timestamptz is null or created_at <  $3::timestamptz)`,
     [orgId, ...range(from, to)]
@@ -221,7 +222,7 @@ export async function subcontractorMetrics(from: Date | null, to: Date | null): 
        select os.opportunity_id, os.subcontractor_id
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id and o.org_id = $1
-        where os.removed_at is null
+        where ${BID_OPPORTUNITY_O_SQL} and os.removed_at is null
           and os.outreach_state <> 'pending'
           and ($2::timestamptz is null or os.created_at >= $2::timestamptz)
           and ($3::timestamptz is null or os.created_at <  $3::timestamptz)
@@ -320,7 +321,7 @@ export async function tradeCoverageMetrics(from: Date | null, to: Date | null): 
        select distinct os.opportunity_id, btrim(os.trade) as trade
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id and o.org_id = $1
-        where os.removed_at is null
+        where ${BID_OPPORTUNITY_O_SQL} and os.removed_at is null
           and coalesce(btrim(os.trade), '') <> ''
           and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
           and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
@@ -376,7 +377,7 @@ export async function pipelineValueReport(
   const rows = await query<{ cents: string | number | null; source: string | null }>(
     `select value_estimated as cents, value_estimated_source as source
        from opportunities
-      where org_id = $1
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1
         and status = 'open' and stage not in ('dismissed','lost')
         and ($2::timestamptz is null or created_at >= $2::timestamptz)
         and ($3::timestamptz is null or created_at <  $3::timestamptz)`,
@@ -445,7 +446,7 @@ export async function dataConfidenceMetrics(from: Date | null, to: Date | null):
               where score_breakdown -> 'data_confidence' ->> 'level' = 'high'
             )::int as high
        from opportunities
-      where org_id = $1 and score is not null
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and score is not null
         and ($2::timestamptz is null or created_at >= $2::timestamptz)
         and ($3::timestamptz is null or created_at <  $3::timestamptz)`,
     [orgId, ...range(from, to)]
@@ -543,7 +544,7 @@ export async function automationMetrics(from: Date | null, to: Date | null): Pro
   const m = await queryOne<Record<string, unknown>>(
     `select count(*)::int as flagged
        from opportunities
-      where org_id = $1 and human_action_required = true
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and human_action_required = true
         and ($2::timestamptz is null or created_at >= $2::timestamptz)
         and ($3::timestamptz is null or created_at <  $3::timestamptz)`,
     [orgId, ...range(from, to)]
@@ -630,10 +631,10 @@ export async function workRemovedMetrics(from: Date | null, to: Date | null): Pr
     `select
        /* Records the discovery agent wrote. Everything not entered by hand. */
        (select count(*) from opportunities
-         where org_id = $1 and coalesce(source, '') <> 'manual' and ${win("created_at")})::int
+         where ${BID_OPPORTUNITY_SQL} and org_id = $1 and coalesce(source, '') <> 'manual' and ${win("created_at")})::int
          as found_auto,
        (select count(*) from opportunities
-         where org_id = $1 and score is not null and ${win("created_at")})::int
+         where ${BID_OPPORTUNITY_SQL} and org_id = $1 and score is not null and ${win("created_at")})::int
          as scored,
        /* One row per requirement the analysis pulled out of a solicitation. */
        (select count(*) from requirement_states

@@ -99,11 +99,17 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-sm font-medium text-foreground">{incident.stateLabel}</p>
         <p className="text-xs text-muted-foreground">
-          Going on for {elapsed(incident.startedAt)}
+          First recorded {elapsed(incident.startedAt)} ago
           {incident.repairAttempts > 0 &&
             ` · ${incident.repairAttempts} recovery attempt${incident.repairAttempts === 1 ? "" : "s"}`}
         </p>
       </div>
+
+      <p className="mt-2 text-xs text-muted-foreground">
+        These counts belong to this saved incident, not the current queue or the last 24 hours.
+        An open incident alone does not prove the service is still failing.
+        Use Check current status before deciding whether recovery is needed.
+      </p>
 
       <p className="mt-1 text-sm text-slate-700">{incident.nextAction}</p>
       {incident.recommendedAction && (
@@ -112,7 +118,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
 
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
         <div>
-          <dt>Failed</dt>
+          <dt>Failures recorded</dt>
           <dd className="num text-foreground">{incident.failedCount}</dd>
         </div>
         <div>
@@ -120,7 +126,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
           <dd className="num text-foreground">{incident.requeuedCount}</dd>
         </div>
         <div>
-          <dt>Still waiting</dt>
+          <dt>Remaining at last check</dt>
           <dd className="num text-foreground">{incident.remainingCount}</dd>
         </div>
         <div>

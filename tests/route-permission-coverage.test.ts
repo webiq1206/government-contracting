@@ -85,7 +85,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 describe("every mutating API route names a capability", () => {
   const routes = walk(API).map((f) => ({
-    rel: relative(API, f),
+    rel: relative(API, f).replace(/\\/g, "/"),
     src: readFileSync(f, "utf8"),
   }));
 

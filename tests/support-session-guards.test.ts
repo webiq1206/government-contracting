@@ -7,9 +7,14 @@
  * one pins a specific way the feature could quietly become dangerous.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
+function matchingSourceFiles(roots: string[], pattern: RegExp, routeOnly = false): string[] {
+  return roots.flatMap(root => readdirSync(resolve(__dirname, "..", root), { recursive: true, encoding: "utf8" })
+    .map(name => `${root}/${name.replace(/\\/g, "/")}`)
+    .filter(name => routeOnly ? name.endsWith("/route.ts") : name.endsWith(".ts"))
+    .filter(name => pattern.test(readFileSync(resolve(__dirname, "..", name), "utf8"))));
+}
 
 // ─── The account being impersonated, and the admin doing it ────────────────
 
@@ -187,12 +192,7 @@ describe("every sink is covered, not just the obvious one", () => {
   const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
 
   it("routes every outbound mail sink through an impersonation check", () => {
-    const senders = execSync(
-      "grep -rl 'gmail\\.send(' --include=*.ts lib app 2>/dev/null || true",
-      { cwd: resolve(__dirname, ".."), encoding: "utf8" }
-    )
-      .split("\n")
-      .filter(Boolean)
+    const senders = matchingSourceFiles(["lib", "app"], /gmail\.send\(/)
       // The Gmail client itself is the primitive being guarded, and
       // system-mail addresses the account holder rather than the outside
       // world.
@@ -205,12 +205,7 @@ describe("every sink is covered, not just the obvious one", () => {
   });
 
   it("refuses a support session at every route that moves money", () => {
-    const routes = execSync(
-      "grep -rl 'stripe\\.\\(subscriptions\\|checkout\\|billingPortal\\)' --include=route.ts app 2>/dev/null || true",
-      { cwd: resolve(__dirname, ".."), encoding: "utf8" }
-    )
-      .split("\n")
-      .filter(Boolean)
+    const routes = matchingSourceFiles(["app"], /stripe\.(subscriptions|checkout|billingPortal)/, true)
       // The webhook is Stripe calling us, with no user session involved.
       .filter((f) => !f.includes("webhook"));
 

@@ -274,7 +274,7 @@ export function recordedQuotes(
 /** Whether this account has anything at all in the queue, for the empty state. */
 export async function hasAnyOpenWork(orgId: string): Promise<boolean> {
   const row = await queryOne<{ n: number }>(
-    `select count(*)::int as n from opportunities where org_id = $1 and status = 'open'`,
+    `select count(*)::int as n from opportunities where is_sources_sought is not true and org_id = $1 and status = 'open'`,
     [orgId]
   );
   return (row?.n ?? 0) > 0;

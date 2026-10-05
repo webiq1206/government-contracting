@@ -28,7 +28,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const FILES = ROOTS.flatMap((r) => walk(join(process.cwd(), r))).filter((f) => !SKIP.test(f));
+const FILES = ROOTS.flatMap((r) => walk(join(process.cwd(), r))).filter((f) => !SKIP.test(f.replace(/\\/g, "/")));
 
 function scan(re: RegExp): string[] {
   const hits: string[] = [];
@@ -39,7 +39,7 @@ function scan(re: RegExp): string[] {
         const trimmed = line.trimStart();
         if (trimmed.startsWith("//") || trimmed.startsWith("*")) return;
         for (const m of line.matchAll(re)) {
-          hits.push(`${relative(process.cwd(), file)}:${i + 1} ${m[0]}`);
+          hits.push(`${relative(process.cwd(), file).replace(/\\/g, "/")}:${i + 1} ${m[0]}`);
         }
       });
   }

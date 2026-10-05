@@ -10,7 +10,7 @@ describe("automation reporting at account scale", () => {
   beforeAll(async () => {
     db = new PGlite();
     await db.exec(`create table job_runs(id text, org_id text, agent text, status text, opportunity_id text, started_at timestamptz);
-      create table opportunities(org_id text, human_action_required boolean, created_at timestamptz);`);
+      create table opportunities(org_id text, human_action_required boolean, created_at timestamptz, is_sources_sought boolean default false);`);
     m.queryOne.mockImplementation(async (sql, params) => (await db.query(sql, params)).rows[0]);
   }, 30000);
   afterAll(async () => { await db?.close(); });

@@ -1,3 +1,4 @@
+import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "../domain/opportunity-kind";
 import { actionCenter, opportunityDetail, subDetail, recentChanges, queueCounts } from "@/lib/data";
 import { opportunityWorkMode } from "../work-mode";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
@@ -87,9 +88,9 @@ export async function loadGuideBundle(
           // every brand-new account look experienced and skipped its onboarding.
           `select
              (select count(*)::int from opportunities
-               where org_id = $1 and (status <> 'open' or stage in ('submitted','won','lost'))) as submitted,
+               where ${BID_OPPORTUNITY_SQL} and org_id = $1 and (status <> 'open' or stage in ('submitted','won','lost'))) as submitted,
              (select count(*)::int from opportunities
-               where org_id = $1 and status = 'open') as open`,
+               where ${BID_OPPORTUNITY_SQL} and org_id = $1 and status = 'open') as open`,
           [orgId]
         )
       : Promise.resolve(null),
@@ -97,17 +98,17 @@ export async function loadGuideBundle(
       ? queryOne<Record<string, unknown>>(
           `select
              (select count(*) from opportunities
-               where org_id = $1 and status='open' and human_action_required=true)::int as needs_you,
+               where ${BID_OPPORTUNITY_SQL} and org_id = $1 and status='open' and human_action_required=true)::int as needs_you,
              (select count(*) from opportunities
-               where org_id = $1 and status='open')::int as open_count,
+               where ${BID_OPPORTUNITY_SQL} and org_id = $1 and status='open')::int as open_count,
              (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
-                from opportunities where org_id = $1) as opp_stamp,
+                from opportunities where ${BID_OPPORTUNITY_SQL} and org_id = $1) as opp_stamp,
              -- Counted as the Call Queue counts it, so the guide cannot offer
              -- a call the queue will not list.
              (select count(*) from call_cards cc
                 join opportunities o on o.id = cc.opportunity_id
                 join subcontractors s on s.id = cc.subcontractor_id
-               where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
+               where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
              (select count(*) from compliance_items
                where org_id = $1
                  and coalesce(status_override, status) in ('conflicting','expired','blocked','needs_review','expiring_soon'))::int as compliance,

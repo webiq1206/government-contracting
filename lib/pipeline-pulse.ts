@@ -1,3 +1,4 @@
+import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "./domain/opportunity-kind";
 /**
  * Gathers the facts for the pipeline pulse (lib/domain/pipeline-pulse.ts
  * decides what they mean). Org-scoped: every query answers for the signed-in
@@ -26,7 +27,7 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
                 where agent = 'opportunity-monitor' and status = 'ok') as monitor_last_ok`
     ),
     queryOne<{ n: number }>(
-      `select count(*)::int as n from opportunities where status = 'open' and org_id = $1`,
+      `select count(*)::int as n from opportunities where ${BID_OPPORTUNITY_SQL} and status = 'open' and org_id = $1`,
       [orgId]
     ),
     orgHasKey("SAM_API_KEY", orgId),
@@ -56,7 +57,7 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
               count(*) filter (where os.outreach_state = 'draft')::int as drafts
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
-        where o.org_id = $1 and o.status = 'open'`,
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and o.status = 'open'`,
       [orgId]
     ),
     isAutomationPaused(),

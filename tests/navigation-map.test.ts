@@ -13,7 +13,9 @@ describe("shared navigation destinations", () => {
     expect(nav).toContain('pathname.startsWith("/settings")');
     expect(nav).toContain('href="/settings/profile"');
     const settings = readFileSync("components/settings-nav.tsx", "utf8");
-    expect(settings).toContain('aria-label="Settings sections" className="mt-2 flex flex-wrap gap-1"');
+    expect(settings).toContain('aria-label="Settings sections"');
+    expect(settings).toContain('hidden sm:block');
+    expect(settings).toContain('sm:hidden');
     expect(SETTINGS_DESTINATIONS.find(item => item.href === "/settings/profile")?.label).toContain("NAICS");
     expect(SETTINGS_DESTINATIONS.find(item => item.href === "/settings/rules")?.label).toContain("limits");
     for (const { href } of SETTINGS_DESTINATIONS) {

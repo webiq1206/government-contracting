@@ -193,6 +193,8 @@ export async function lastCallForOrg(
        join opportunities o on o.id = os.opportunity_id
        join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
       where o.org_id = $1
+        and os.org_id = o.org_id
+        and o.is_sources_sought is not true
         and o.status = 'open'
         and coalesce(o.pursuit_state, 'active') = 'active'
         and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
@@ -520,6 +522,8 @@ async function followUpForOrg(
          limit 1
        ) os on true
       where c.org_id = $1
+        and o.org_id = c.org_id and s.org_id = c.org_id
+        and o.is_sources_sought is not true
         and c.channel='email' and c.direction='outbound'
         and c.follow_up_at is not null and c.follow_up_at <= now()
         and c.replied_at is null
@@ -1287,6 +1291,8 @@ export const outreachRecoverySweep: AgentDefinition = {
              from opportunity_subs os
              join opportunities o on o.id = os.opportunity_id
             where o.org_id = $1 and o.status = 'open'
+              and os.org_id = o.org_id
+              and o.is_sources_sought is not true
               and coalesce(o.pursuit_state, 'active') = 'active'
               and coalesce(o.work_mode, '${orgRules.work_execution}') <> 'self'
               and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
@@ -1759,7 +1765,14 @@ export const scoringRecoverySweep: AgentDefinition = {
         `select id, title from opportunities
           where org_id = $1
             and status='open' and stage in ('monitoring','scoring')
+            and is_sources_sought is not true
             and score is null
+            and not exists (select 1 from job_runs recent where recent.org_id=$1
+              and recent.opportunity_id=opportunities.id and recent.agent='scoring-engine'
+              and (recent.status='ok' or recent.started_at > now()-interval '1 hour'))
+            and (select count(*) from job_runs attempts where attempts.org_id=$1
+              and attempts.opportunity_id=opportunities.id and attempts.agent='scoring-engine'
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3
             and created_at < now() - interval '20 minutes'
           order by created_at asc
           limit 200`,
@@ -1852,8 +1865,15 @@ export const scoringRecoverySweep: AgentDefinition = {
           where org_id = $1
             and status='open'
             and stage in ('scoring','analysis')
+            and is_sources_sought is not true
             and score is not null
             and solicitation_analysis is null
+            and not exists (select 1 from job_runs recent where recent.org_id=$1
+              and recent.opportunity_id=opportunities.id and recent.agent='solicitation-analyst'
+              and (recent.status='ok' or recent.started_at > now()-interval '1 hour'))
+            and (select count(*) from job_runs attempts where attempts.org_id=$1
+              and attempts.opportunity_id=opportunities.id and attempts.agent='solicitation-analyst'
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3
             and not exists (
               select 1 from unnest(coalesce(risk_flags,'{}')) as flag
               where flag like 'pre_analysis_%'
@@ -1927,7 +1947,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     }
     return {
       ok: queueFailures === 0,
-      summary: parts.length > 0 ? `${parts.join("; ")}.` : "Nothing to recover.",
+      summary: parts.length > 0 ? `${parts.join("; ")}.` : "No eligible recovery jobs found. Records may still need review: recent attempts, retry limits and previous successes are excluded. Review the failed run before requesting another attempt.",
       data: { scoringQueued, analysisQueued, queueFailures, deferred },
       humanActionRequired: queueFailures > 0,
     };
@@ -3405,7 +3425,7 @@ export const contactRecheckSweep: AgentDefinition = {
   name: "contact-recheck-sweep",
   label: "Contact Recheck Sweep",
   description:
-    "Re-runs Sub Verify for subcontractors with no email on file, so contacts are discovered once Hunter/Google Maps keys or websites become available.",
+    "Checks public business websites and linked profiles for missing email addresses, at most 20 firms per account and no sooner than seven days after the last check. Does not verify addresses or queue outreach.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // Clear historical call cards that can never be dialed so Today / Call
@@ -3443,9 +3463,10 @@ export const contactRecheckSweep: AgentDefinition = {
     // No gate on keys or an existing website: website discovery is now
     // key-free (web-search finder + own-site scrape), so every sub without an
     // email has a viable discovery path.
-    // Subs missing email OR phone that are attached to an open opportunity.
+    // Missing email only; this sweep uses public research, never paid verify
+    // or outreach. Phone enrichment stays with the normal verification flow.
     // Bounded retry: never checked first, then rechecks no sooner than every
-    // 7 days. Small batch per run: full verify hits external APIs.
+    // 7 days. Small batch per run: at most 20 per organization.
     //
     // The batch is 20 per organization, not 20 for the platform. Unscoped, the
     // order-by handed the whole batch to whichever tenant had the oldest
@@ -3461,14 +3482,13 @@ export const contactRecheckSweep: AgentDefinition = {
       }>(
         `select distinct on (s.id) os.subcontractor_id, os.opportunity_id, os.trade
            from subcontractors s
-           join opportunity_subs os on os.subcontractor_id = s.id
-           join opportunities o on o.id = os.opportunity_id and o.status = 'open'
+           join opportunity_subs os on os.subcontractor_id = s.id and os.org_id=s.org_id and os.removed_at is null
+           join opportunities o on o.id = os.opportunity_id and o.org_id=s.org_id and o.status = 'open'
           where s.org_id = $1
             and s.blacklisted = false
-            and (
-              nullif(btrim(coalesce(s.email, '')), '') is null
-              or nullif(btrim(coalesce(s.phone, '')), '') is null
-            )
+            and o.is_sources_sought is not true
+            and coalesce(o.pursuit_state,'active')='active'
+            and nullif(btrim(coalesce(s.email, '')), '') is null
             and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
           order by s.id, s.contact_checked_at asc nulls first
           limit 20`,
@@ -3490,6 +3510,7 @@ export const contactRecheckSweep: AgentDefinition = {
         opportunityId: r.opportunity_id,
         subcontractorId: r.subcontractor_id,
         trade: r.trade,
+        publicContactOnly: true,
       },
       opts: {
         singletonKey: `verify:${r.opportunity_id}:${r.subcontractor_id}:${r.trade}`,
@@ -3498,7 +3519,7 @@ export const contactRecheckSweep: AgentDefinition = {
     }));
     return {
       ok: true,
-      summary: `Contact recheck: enqueued Sub Verify for ${rows.length} sub(s) missing email/phone.${
+      summary: `Contact recheck: queued public email research for ${rows.length} sub(s). No messages queued.${
         cleared.length ? ` Cleared ${cleared.length} uncallable call card(s).` : ""
       }`,
       enqueued,

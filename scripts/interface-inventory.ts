@@ -62,7 +62,7 @@ function walk(dir: string, out: string[] = []): string[] {
  * links.
  */
 function routeOf(file: string): string {
-  const rel = relative(join(ROOT, "app"), file);
+  const rel = relative(join(ROOT, "app"), file).replaceAll("\\", "/");
   const parts = rel.split("/");
   parts.pop();
   const segs = parts.filter((p) => !(p.startsWith("(") && p.endsWith(")")));
@@ -111,7 +111,7 @@ const TABLE_MARKERS: [string, RegExp][] = [
 ];
 
 function inspect(file: string): PageRecord | null {
-  const rel = relative(ROOT, file);
+  const rel = relative(ROOT, file).replaceAll("\\", "/");
   if (!/\.(tsx|ts)$/.test(rel)) return null;
   const base = rel.split("/").pop()!;
   const kind: PageRecord["kind"] =

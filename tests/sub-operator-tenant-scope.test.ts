@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const helper = readFileSync("lib/sub-access.ts", "utf8");
+const helper = readFileSync("lib/sub-access.ts", "utf8").replace(/\r\n/g, "\n");
 
 describe("operator subcontractor access", () => {
   it("requires an explicit organization and has no unscoped fallback", () => {

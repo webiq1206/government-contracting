@@ -78,6 +78,9 @@ export const scoringEngine: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    // Old jobs can still reference market-research notices. Keep their records,
+    // but never score them as bids or start the paid pursuit pipeline.
+    if (opp.is_sources_sought) return { ok: true, summary: "Sources Sought notice kept outside the bid pipeline." };
     // SAM's results carry a link to the notice text, not the text. Read the
     // text once before anything reasons about "the description".
     if (opp.org_id) {
@@ -227,6 +230,7 @@ async function scoreOpportunity(
     ? await queryOne<{ n: number }>(
         `select count(*)::int as n from opportunities
         where org_id = $3
+          and is_sources_sought is not true
           and id <> $2
           and status = 'open'
           and solicitation_number is not null

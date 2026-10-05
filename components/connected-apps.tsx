@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { StatusPill } from "./status-pill";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "./confirm-dialog";
+import type { callbackDiagnostic } from "@/lib/domain/connection-diagnostics";
 import { NOTIFY_EVENTS, STATUS_LABEL, syncLine, type ServiceDefinition, type ServiceProvider, type ServiceStatus } from "@/lib/domain/connected-services";
 
-type Provider = ServiceDefinition & { available: boolean };
+type Provider = ServiceDefinition & { available: boolean; diagnostic?: ReturnType<typeof callbackDiagnostic> };
 type Connection = {
   id: string;
   provider: ServiceProvider;
@@ -183,6 +184,18 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
         )}
       </div>
       <p className="text-sm">{p.lets}</p>
+      {p.diagnostic?.issue && <p role="alert" className="text-sm text-risk">{p.diagnostic.issue}</p>}
+      {p.diagnostic && (
+        <details>
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm text-accent">Sign-in setup details</summary>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p>{p.diagnostic.credentialsPresent ? "Credentials are configured. Provider registration has not been checked." : "Provider credentials are missing from this deployment."}</p>
+            <p>Callback address used by this deployment:</p>
+            <code className="block break-all text-foreground">{p.diagnostic.callbackUrl}</code>
+            <p>{p.diagnostic.guidance}</p>
+          </div>
+        </details>
+      )}
       <details>
         <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm text-accent">What it reads and writes</summary>
         <dl className="mt-1 space-y-1 text-xs text-muted-foreground">

@@ -563,8 +563,9 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     opp.source
   );
 
-  const whyHeadline =
-    analysis?.pursue_recommendation?.trim() ||
+  const whyHeadline = opp.is_sources_sought
+    ? "Sources Sought: market research, not a bid opportunity."
+    : analysis?.pursue_recommendation?.trim() ||
     breakdown?.summary?.trim() ||
     "Fit details appear once scoring and analysis finish.";
   /**
@@ -728,7 +729,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </div>
               </div>
             </div>
-            <ScoreBadge score={opp.score} variant="box" />
+            {!opp.is_sources_sought && <ScoreBadge score={opp.score} variant="box" />}
           </div>
           {/*
             Pause, abort and restart, in the header rather than in a settings
@@ -779,7 +780,11 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">
               <div id="next" data-guide-target="next-step">
-                <NextStepBanner opportunityId={opp.id} {...stepInput} />
+                {opp.is_sources_sought ? (
+                  <p role="status" className="rounded-lg border border-border bg-surface p-4 text-sm">
+                    This Sources Sought notice is market research. It is excluded from bid opportunity lists, counts and recommendations. Saved documents, messages and activity remain available here as history.
+                  </p>
+                ) : <NextStepBanner opportunityId={opp.id} {...stepInput} />}
               </div>
               <details className="rounded-xl border border-border bg-surface">
                 <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-4 text-sm font-medium">
@@ -803,7 +808,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               <div className="grid gap-10 lg:grid-cols-2 lg:gap-0">
                 <div className="lg:border-r lg:border-border lg:pr-10">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
-                    Why this fits
+                    {opp.is_sources_sought ? "Notice purpose" : "Why this fits"}
                   </h2>
                   {/* Display type only when the verdict is actually verdict-
                       sized. Older analyses carry a paragraph here, and a
@@ -817,12 +822,12 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   >
                     {whyHeadline}
                   </p>
-                  {whySupport && (
+                  {!opp.is_sources_sought && whySupport && (
                     <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                       {whySupport}
                     </p>
                   )}
-                  {matchBadges.length > 0 && (
+                  {!opp.is_sources_sought && matchBadges.length > 0 && (
                     <div className="mt-6 flex flex-wrap gap-2">
                       {matchBadges.map((b) => (
                         <span
@@ -1461,7 +1466,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           reserved height lands at the end of this record's content and not
           under the side panel, which has its own scroller.
         */}
-        <RecordActionBar step={step} opportunityId={opp.id} />
+        {!opp.is_sources_sought && <RecordActionBar step={step} opportunityId={opp.id} />}
         </div>
 
         <aside className="hidden w-80 shrink-0 flex-col border-l border-border 2xl:flex">

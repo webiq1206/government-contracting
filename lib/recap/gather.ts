@@ -1,3 +1,4 @@
+import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "../domain/opportunity-kind";
 /**
  * Everything that happened to one account during one local day.
  *
@@ -111,7 +112,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     queryOne<Record<string, unknown>>(
       `select count(*)::int as discovered
          from opportunities
-        where org_id = $1 and created_at >= $2 and created_at < $3`,
+        where ${BID_OPPORTUNITY_SQL} and org_id = $1 and created_at >= $2 and created_at < $3`,
       win
     ),
 
@@ -200,7 +201,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     query<Record<string, unknown>>(
       `select id, title, agency, score, tier, deadline, stage, value_estimated
          from opportunities
-        where org_id = $1 and created_at >= $2 and created_at < $3
+        where ${BID_OPPORTUNITY_SQL} and org_id = $1 and created_at >= $2 and created_at < $3
         order by coalesce(score, 0) desc, created_at asc
         limit 25`,
       win
@@ -220,7 +221,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
               ) as submitted,
               (select count(*)::int from quotes q where q.opportunity_id = o.id) as quotes_in
          from opportunities o
-        where o.org_id = $1
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
           and o.status = 'open'
           and o.pursuit_state = 'active'
           and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
@@ -310,7 +311,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     query<Record<string, unknown>>(
       `select o.id, o.title, o.score, o.tier, o.review_expires_at
          from opportunities o
-        where o.org_id = $1 and ${TRIAGE_WHERE_SQL}
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and ${TRIAGE_WHERE_SQL}
         order by o.review_expires_at asc nulls last
         limit 25`,
       [orgId]

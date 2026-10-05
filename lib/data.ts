@@ -11,6 +11,7 @@
  * seeing "1 subcontractor" on an empty account.
  */
 import { query, queryOne } from "./db";
+import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "./domain/opportunity-kind";
 import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
 import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
@@ -74,6 +75,7 @@ export const ACTIVE_PURSUIT_SQL = `coalesce(o.pursuit_state, 'active') <> 'abort
 
 export const WORKABLE_CALL_CARD_SQL = `
   cc.status = 'pending'
+  and ${BID_OPPORTUNITY_O_SQL}
   and o.status = 'open'
   and ${ACTIVE_PURSUIT_SQL}
   and (cc.snoozed_until is null or cc.snoozed_until <= now())
@@ -100,7 +102,7 @@ export const WORKABLE_CALL_CARD_SQL = `
  *
  * Expects the opportunities table aliased as `o`.
  */
-export const TRIAGE_WHERE_SQL = `o.status='open' and ${ACTIVE_PURSUIT_SQL} and o.tier='review' and o.human_action_required=true
+export const TRIAGE_WHERE_SQL = `o.status='open' and ${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL} and o.tier='review' and o.human_action_required=true
   and (o.snoozed_until is null or o.snoozed_until <= now())`;
 
 export async function queueCounts(): Promise<{
@@ -125,7 +127,7 @@ export async function queueCounts(): Promise<{
          left join opportunities o on o.id = e.opportunity_id
         where e.needs_review and e.reviewed_at is null
           and (e.org_id = $1 or (e.org_id is null and o.org_id = $1))
-          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
+          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
        union
        select o.id::text
          from opportunities o
@@ -139,7 +141,7 @@ export async function queueCounts(): Promise<{
        union
        select o.id::text
          from opportunities o
-        where o.org_id = $1 and o.status = 'open' and ${ACTIVE_PURSUIT_SQL}
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and o.status = 'open' and ${ACTIVE_PURSUIT_SQL}
           and o.human_action_required = true
           and not (o.tier = 'review' and o.stage = 'scoring')
           and (o.snoozed_until is null or o.snoozed_until <= now())
@@ -184,7 +186,7 @@ export async function pipelineOpportunities(): Promise<OpportunitySummary[]> {
   const orgId = await currentOrg();
   return query<OpportunitySummary>(
     `select ${OPPORTUNITY_SUMMARY_COLUMNS} from opportunities
-      where org_id = $1 and stage <> 'dismissed' and status <> 'archived'
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and stage <> 'dismissed' and status <> 'archived'
         and coalesce(pursuit_state, 'active') <> 'aborted'
       order by (deadline is null), deadline asc
       limit 500`,
@@ -310,7 +312,7 @@ export async function tradeCoverageFor(ids: string[]): Promise<Map<string, Trade
 }
 
 function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
-  const where: string[] = [];
+  const where: string[] = [BID_OPPORTUNITY_SQL];
   // The board's own scope. A dismissed record is history, not pipeline, and
   // mixing it in makes every count on the page disagree with the board.
   if (!f.includeClosed) {
@@ -475,7 +477,7 @@ export async function reviewQueue(): Promise<Opportunity[]> {
   const orgId = await currentOrg();
   return query<Opportunity>(
     `select * from opportunities
-      where org_id = $1 and tier='review' and human_action_required=true and status='open'
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and tier='review' and human_action_required=true and status='open'
       order by (review_expires_at is null), review_expires_at asc`,
     [orgId]
   );
@@ -1156,7 +1158,7 @@ export async function completedToday(
     `select
        (select count(*) from call_cards cc
           join opportunities o on o.id = cc.opportunity_id
-         where o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3)::text as calls,
+         where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3)::text as calls,
        (select count(*) from quotes q
          where q.org_id = $1 and q.created_at >= $2 and q.created_at < $3)::text as quotes,
        (select count(*) from bids b
@@ -1170,7 +1172,7 @@ export async function completedToday(
          where ci.org_id = $1 and ci.status_override = 'resolved'
            and ci.updated_at >= $2 and ci.updated_at < $3)::text as compliance,
        (select count(*) from opportunities o
-         where o.org_id = $1 and o.created_at >= $2 and o.created_at < $3)::text as found,
+         where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and o.created_at >= $2 and o.created_at < $3)::text as found,
        (select count(*) from communications c
          where c.org_id = $1
            and c.channel = 'email'
@@ -1317,7 +1319,7 @@ export async function completedTodayItems(
        from call_cards cc
        join opportunities o on o.id = cc.opportunity_id
        left join subcontractors s on s.id = cc.subcontractor_id
-       where o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3
+       where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3
 
        union all
        select
@@ -1384,7 +1386,7 @@ export async function completedTodayItems(
          '/opportunity/' || o.id::text,
          o.created_at
        from opportunities o
-       where o.org_id = $1 and o.created_at >= $2 and o.created_at < $3
+       where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1 and o.created_at >= $2 and o.created_at < $3
 
        union all
        select
@@ -1826,7 +1828,7 @@ export async function scoreHistogram(): Promise<number[]> {
   const rows = await query<{ score: number; n: number }>(
     `select score, count(*)::int as n
        from opportunities
-      where org_id = $1 and status = 'open' and score is not null
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and status = 'open' and score is not null
         and stage in ('monitoring','scoring','analysis','dismissed')
       group by score`,
     [await currentOrg()]
@@ -1875,18 +1877,14 @@ export async function templateSendStats(): Promise<Record<string, TemplateCounts
          else 'template_1_outreach'
        end as slug,
        count(*)::int as sent,
-       count(*) filter (
-         where c.delivery_state = 'delivered'
-            or c.opened_at is not null
-            or c.clicked_at is not null
-            or c.replied_at is not null
-       )::int as delivered,
+       count(*) filter (where c.delivery_state = 'delivered')::int as delivered,
        count(*) filter (where c.opened_at is not null)::int as opened,
        count(*) filter (where c.replied_at is not null)::int as replied,
-       count(*) filter (where c.delivery_state in ('bounced','failed'))::int as bounced,
+       count(*) filter (where c.delivery_state = 'bounced')::int as bounced,
        max(c.created_at) as last_sent_at
      from communications c
     where c.org_id = $1 and c.channel = 'email' and c.direction = 'outbound'
+      and c.provider is not null and c.delivery_state in ('sent','delivered','deferred','bounced')
     group by 1`,
     [await currentOrg()]
   );
@@ -1921,15 +1919,15 @@ export async function computeKpisFallback() {
        (select count(*) from bids where outcome='lost' and org_id=$1) as lost,
        (select avg(margin_pct) from bids where outcome='won' and org_id=$1) as avg_margin,
        (select sum(value_estimated) from opportunities
-         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_value,
+         where ${BID_OPPORTUNITY_SQL} and stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_value,
        -- How many of those opportunities actually carry an estimate, and how
        -- many there are in total. Federal notices frequently publish no
        -- figure, so the sum alone describes an unknown fraction of the
        -- pipeline and reads as though it described all of it.
        (select count(value_estimated) from opportunities
-         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_valued,
+         where ${BID_OPPORTUNITY_SQL} and stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_valued,
        (select count(*) from opportunities
-         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_total,
+         where ${BID_OPPORTUNITY_SQL} and stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_total,
        (select sum(c.award_amount) from contracts c
           left join opportunities o on o.id = c.opportunity_id
          where c.status='active' and c.org_id=$1
@@ -1965,9 +1963,9 @@ export async function analyticsExtras(): Promise<{
     queryOne<{ open_opps: number; new_30d: number; bids_30d: number; active_contracts: number }>(
       `select
          (select count(*)::int from opportunities
-           where status='open' and stage not in ('dismissed','lost') and org_id=$1) as open_opps,
+           where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost') and org_id=$1) as open_opps,
          (select count(*)::int from opportunities
-           where created_at >= now() - interval '30 days' and org_id=$1) as new_30d,
+           where ${BID_OPPORTUNITY_SQL} and created_at >= now() - interval '30 days' and org_id=$1) as new_30d,
          (select count(*)::int from bids
            where submitted_at is not null and submitted_at >= now() - interval '30 days'
              and org_id=$1) as bids_30d,
@@ -1983,7 +1981,7 @@ export async function analyticsExtras(): Promise<{
               coalesce(sum(value_estimated),0)::float8 as value,
               count(value_estimated)::int as valued
          from opportunities
-        where status='open' and stage not in ('dismissed','lost') and org_id=$1
+        where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost') and org_id=$1
         group by stage`,
       [orgId]
     ),
@@ -2017,7 +2015,7 @@ export async function funnelCounts(
     `with cohort as (
        select o.id, o.status, o.stage, o.score, o.tier, o.created_at
          from opportunities o
-        where o.org_id = $1
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
           and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
           and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
      ),
@@ -2299,7 +2297,7 @@ export async function funnelBreakdown(
                 bool_or(outcome = 'lost') as lost
            from bids where opportunity_id = o.id and org_id = $1
        ) b on true
-      where o.org_id = $1
+      where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
         and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
         and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
       group by 1
@@ -2342,7 +2340,7 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
       case "open_opportunities": {
         const r = await queryOne<{ n: number }>(
           `select count(*)::int as n from opportunities
-            where status='open' and stage not in ('dismissed','lost')
+            where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost')
               and coalesce(score,0) >= $1 and org_id = $2`,
           [minScore, orgId]
         );
@@ -2351,7 +2349,7 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
       case "pipeline_value": {
         const r = await queryOne<{ n: number }>(
           `select coalesce(sum(value_estimated),0)::float8 as n from opportunities
-            where status='open' and stage not in ('dismissed','lost')
+            where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost')
               and coalesce(score,0) >= $1 and org_id = $2`,
           [minScore, orgId]
         );
@@ -2360,7 +2358,7 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
       case "opportunities_added": {
         const r = await queryOne<{ n: number }>(
           `select count(*)::int as n from opportunities
-            where created_at >= $1 and org_id = $2`,
+            where ${BID_OPPORTUNITY_SQL} and created_at >= $1 and org_id = $2`,
           [since, orgId]
         );
         return Number(r?.n ?? 0);
@@ -2754,6 +2752,15 @@ export interface OppSubCommRow {
   body: string | null;
   created_at: string;
   replied_at: string | null;
+  provider: string | null;
+  sender_email: string | null;
+  recipient_email: string | null;
+  delivery_state: string | null;
+  delivery_detail: string | null;
+  opened_at: string | null;
+  clicked_at: string | null;
+  follow_up_at: string | null;
+  gmail_message_id: string | null;
 }
 
 export async function opportunityDetail(id: string) {
@@ -2841,10 +2848,13 @@ export async function opportunityDetail(id: string) {
     ),
     opportunityCompetitors(id),
     query<OppSubCommRow>(
-      `select id, subcontractor_id, channel, direction, subject, body, created_at, replied_at
+      `select id, subcontractor_id, channel, direction, subject, body,
+              created_at::text, replied_at::text, provider, sender_email, recipient_email,
+              delivery_state, delivery_detail, opened_at::text, clicked_at::text,
+              follow_up_at::text, gmail_message_id
          from communications
         where opportunity_id = $1 and org_id = $2
-        order by created_at desc
+        order by created_at desc, id desc
         limit 400`,
       [id, orgId]
     ),
@@ -3088,13 +3098,13 @@ function actionOppSelect(orgId: string): string {
                   where b.opportunity_id = o.id and b.org_id = o.org_id
                     and b.submitted_at is not null) as bid_submitted
     from opportunities o
-   where o.org_id = '${orgId}'`;
+   where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}'`;
 }
 
 /** The same rows, counted rather than listed. See ACTION_OPP_WHERE below. */
 function actionOppCount(orgId: string): string {
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw new Error("Invalid organization id.");
-  return `select count(*)::int as n from opportunities o where o.org_id = '${orgId}'`;
+  return `select count(*)::int as n from opportunities o where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}'`;
 }
 
 /**
@@ -3224,7 +3234,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
-        where o.org_id = '${orgId}'
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}'
           and o.status = 'open'
           and ${ACTIVE_PURSUIT_SQL}
           and o.stage in ('outreach','call_queue','quote_entry','sub_research')
@@ -3254,7 +3264,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          from quotes q
          join opportunities o on o.id = q.opportunity_id
          left join subcontractors s on s.id = q.subcontractor_id
-        where o.org_id = $1
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
           and o.status = 'open'
           and ${ACTIVE_PURSUIT_SQL}
           and q.is_out_of_range = true
@@ -3305,14 +3315,14 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     queryOne<{ n: number }>(
       `select (select count(*) from opportunities
-                where status='open' and org_id='${orgId}' and snoozed_until > now())::int
+                where ${BID_OPPORTUNITY_SQL} and status='open' and org_id='${orgId}' and snoozed_until > now())::int
            + (select count(*) from call_cards cc
                 join opportunities o on o.id = cc.opportunity_id
-                where cc.status='pending' and o.org_id='${orgId}' and cc.snoozed_until > now())::int as n`
+                where ${BID_OPPORTUNITY_O_SQL} and cc.status='pending' and o.org_id='${orgId}' and cc.snoozed_until > now())::int as n`
     ),
     query<{ stage: string; count: number }>(
       `select stage, count(*)::int as count from opportunities
-          where status='open' and org_id='${orgId}'
+          where ${BID_OPPORTUNITY_SQL} and status='open' and org_id='${orgId}'
             and coalesce(pursuit_state, 'active') <> 'aborted'
           group by stage`
     ),
@@ -3330,7 +3340,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
            and s.org_id = coalesce(e.org_id, o.org_id)
         where e.needs_review and e.reviewed_at is null
           and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
-          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
+          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
         order by e.created_at desc
         limit 20`
     ),
@@ -3359,17 +3369,17 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.flagged}) as flagged,
          (select count(*)::int from opportunity_subs os
             join opportunities o on o.id = os.opportunity_id
-           where o.org_id = '${orgId}' and o.status='open'
+           where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}' and o.status='open'
              and ${ACTIVE_PURSUIT_SQL}
              and os.outreach_state in ('followed_up','unresponsive')) as sub_follow_ups,
          (select count(*)::int from quotes q
             join opportunities o on o.id = q.opportunity_id
-           where o.org_id = '${orgId}' and o.status='open' and ${ACTIVE_PURSUIT_SQL} and q.is_out_of_range) as quote_reviews,
+           where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}' and o.status='open' and ${ACTIVE_PURSUIT_SQL} and q.is_out_of_range) as quote_reviews,
          (select count(*)::int from subcontractor_reply_events e
             left join opportunities o on o.id = e.opportunity_id
            where e.needs_review and e.reviewed_at is null
              and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
-             and (o.id is null or ${ACTIVE_PURSUIT_SQL})) as reply_reviews,
+             and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))) as reply_reviews,
          (select count(*)::int from compliance_items ci
            where ci.org_id = '${orgId}'
              and coalesce(ci.status_override, ci.status)
@@ -3462,7 +3472,7 @@ export async function engineStatus(): Promise<EngineStatus> {
     queryOne<{ last_run: string | null; open_count: number }>(
       `select (select max(started_at) from job_runs) as last_run,
             (select count(*)::int from opportunities
-              where status='open' and org_id=$1) as open_count`,
+              where ${BID_OPPORTUNITY_SQL} and status='open' and org_id=$1) as open_count`,
       [await currentOrg()]
     ),
     // The worker's own check-in. A job log can only say when work last ran,
@@ -3532,7 +3542,7 @@ export async function dailyDigest(): Promise<DailyDigest> {
   const row = await queryOne<Record<keyof DailyDigest, number>>(
     `select
        (select count(*) from opportunities
-         where created_at > now() - interval '24 hours' and org_id=$1)::int as found,
+         where ${BID_OPPORTUNITY_SQL} and created_at > now() - interval '24 hours' and org_id=$1)::int as found,
        (select count(*) from agent_logs
          where agent='scoring-engine' and action='auto-pursue'
            and created_at > now() - interval '24 hours' and org_id=$1)::int as "autoPursued",
@@ -3778,13 +3788,13 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
         where e.org_id=$1 and e.needs_review and e.reviewed_at is null
-          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
+          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
         order by e.created_at desc`,
       [orgId]
     ),
     query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null; assigned_to: string | null }>(
       `select id, title, deadline, review_expires_at, assigned_to from opportunities o
-        where o.org_id=$1 and ${TRIAGE_WHERE_SQL}`,
+        where o.org_id = $1 and ${TRIAGE_WHERE_SQL}`,
       [orgId]
     ),
     query<{ id: string; company_name: string; subcontractor_id: string | null; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
@@ -3799,7 +3809,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where o.org_id=$1 and ${WORKABLE_CALL_CARD_SQL}`,
+        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}`,
       [orgId]
     ),
     query<{
@@ -3811,7 +3821,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       assigned_to: string | null;
     }>(
       `select id, title, stage, deadline, risk_flags, assigned_to from opportunities o
-        where o.org_id=$1 and o.human_action_required=true and o.status='open'
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id =$1 and o.human_action_required=true and o.status='open'
           and ${ACTIVE_PURSUIT_SQL}
           and not (o.tier='review' and o.stage='scoring')
           and (o.snoozed_until is null or o.snoozed_until <= now())`,
@@ -3859,7 +3869,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
-        where o.org_id=$1 and o.status='open'
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id =$1 and o.status='open'
           and ${ACTIVE_PURSUIT_SQL}
           and os.outreach_state = 'sent'
         order by os.created_at asc

@@ -110,7 +110,7 @@ describe("outbound fetch", () => {
     for (const file of files) {
       const body = code(readFileSync(file, "utf8"));
       if (!/(?<![.\w])fetch\s*\(/.test(body)) continue;
-      if (!ALLOWED.has(file)) offenders.push(file);
+      if (!ALLOWED.has(file.replace(/\\/g, "/"))) offenders.push(file);
     }
     expect(offenders, `these call fetch directly: ${offenders.join(", ")}`).toEqual([]);
   });

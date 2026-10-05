@@ -1352,6 +1352,7 @@ export const solicitationAnalyst: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    if (opp.is_sources_sought) return { ok: true, summary: "Sources Sought is market research. Bid analysis was skipped; the historical record is preserved." };
     // SAM's results carry a link to the notice text, not the text. Read the
     // text once before anything reasons about "the description".
     if (opp.org_id) {

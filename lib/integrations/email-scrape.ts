@@ -18,6 +18,10 @@ export interface ScrapedEmail {
   email: string;
   /** True when the address is on the same domain as the website itself. */
   ownDomain: boolean;
+  /** Exact public page where the address was observed, never a guessed mailbox. */
+  sourceUrl?: string;
+  sourceType?: "website" | "linked_social";
+  checkedAt?: string;
 }
 
 function normalizeDomain(website: string): string | null {
@@ -47,6 +51,10 @@ const MAX_REDIRECTS = 3;
  * implementations of one rule is how that survived, so there is now one.
  */
 export async function safeFetchPage(rawUrl: string): Promise<string | null> {
+  return (await fetchPublicPage(rawUrl))?.html ?? null;
+}
+
+async function fetchPublicPage(rawUrl: string): Promise<{ html: string; url: string } | null> {
   try {
     const res = await guardedFetch(rawUrl, {
       maxBytes: MAX_BODY_BYTES,
@@ -60,31 +68,54 @@ export async function safeFetchPage(rawUrl: string): Promise<string | null> {
       headers: { "user-agent": "Mozilla/5.0 (compatible; BROSTCO-SubVerify/1.0)" },
     });
     if (!res.contentType.includes("html") && !res.contentType.includes("text")) return null;
-    return res.body.toString("utf8");
+    return { html: res.body.toString("utf8"), url: res.finalUrl };
   } catch {
     // Every refusal is the same answer to the caller: no page to read.
     return null;
   }
 }
 
-function extractEmails(html: string, siteDomain: string | null): ScrapedEmail[] {
+export function extractPublishedEmails(html: string, siteDomain: string | null): ScrapedEmail[] {
   const found = new Map<string, ScrapedEmail>();
   // mailto: links first — they're deliberate contact addresses.
   for (const m of html.matchAll(/mailto:([^"'?\s>]+)/gi)) {
-    const email = decodeURIComponent(m[1]).trim().toLowerCase();
-    if (EMAIL_RE.test(email) && !JUNK_RE.test(email)) {
+    let email: string;
+    try { email = decodeURIComponent(m[1]).trim().toLowerCase(); }
+    catch { continue; }
+    if (/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email) && !JUNK_RE.test(email)) {
       found.set(email, { email, ownDomain: siteDomain != null && email.endsWith(`@${siteDomain}`) });
     }
     EMAIL_RE.lastIndex = 0;
   }
   for (const m of html.matchAll(EMAIL_RE)) {
-    const email = m[0].toLowerCase().replace(/^\d+/, ""); // strip leading digits glued by minified html
+    const email = m[0].toLowerCase();
     if (JUNK_RE.test(email)) continue;
     if (!found.has(email)) {
       found.set(email, { email, ownDomain: siteDomain != null && email.endsWith(`@${siteDomain}`) });
     }
   }
   return [...found.values()];
+}
+
+const SOCIAL_HOSTS = new Set(["facebook.com", "instagram.com", "linkedin.com"]);
+/** Only profiles explicitly linked by the business's own site. Never search
+ * social accounts by a similar name or follow login/challenge pages. */
+export function linkedBusinessProfiles(html: string): string[] {
+  const links = new Set<string>();
+  for (const match of html.matchAll(/<a\b[^>]*href\s*=\s*["'](https:\/\/[^"']+)["']/gi)) {
+    try {
+      const url = new URL(match[1].replace(/&amp;/g, "&"));
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (!SOCIAL_HOSTS.has(host) || url.username || url.password || url.port) continue;
+      if (url.pathname === "/" || /\/(?:login|signin|accounts|share|sharer|dialog|intent|plugins|checkpoint)(?:[/.]|$)/i.test(url.pathname)) continue;
+      if (host === "linkedin.com" && !url.pathname.startsWith("/company/")) continue;
+      url.search = "";
+      url.hash = "";
+      links.add(url.href);
+      if (links.size === 2) break;
+    } catch { /* Invalid public links are not evidence. */ }
+  }
+  return [...links];
 }
 
 /**
@@ -96,12 +127,33 @@ export async function scrapeWebsiteEmail(website: string): Promise<ScrapedEmail 
   if (!domain) return null;
   const base = `https://${domain}`;
   const all: ScrapedEmail[] = [];
+  const social = new Set<string>();
   for (const path of CONTACT_PATHS) {
-    const html = await safeFetchPage(base + path);
-    if (!html) continue;
-    all.push(...extractEmails(html, domain));
+    const page = await fetchPublicPage(base + path);
+    if (!page) continue;
+    const { html } = page;
+    // A redirected directory or social page cannot establish site ownership.
+    if (normalizeDomain(page.url) !== domain) continue;
+    all.push(...extractPublishedEmails(html, domain).map((candidate) => ({
+      ...candidate, sourceUrl: page.url, sourceType: "website" as const, checkedAt: new Date().toISOString(),
+    })));
+    for (const url of linkedBusinessProfiles(html)) if (social.size < 2) social.add(url);
     // Stop early once we have an own-domain hit; more pages won't beat it.
     if (all.some((e) => e.ownDomain)) break;
+  }
+  // Five business pages and at most two linked public profiles per lookup.
+  // A social candidate never inherits own-domain verification from this link.
+  if (!all.length) for (const url of social) {
+    const page = await fetchPublicPage(url);
+    if (!page || !linkedBusinessProfiles(`<a href="${page.url}">profile</a>`).length) continue;
+    if (/<input\b[^>]*type\s*=\s*["']?password\b/i.test(page.html)) continue;
+    for (const candidate of extractPublishedEmails(page.html, null)) {
+      if (/(?:^|\.)(?:facebook|instagram|linkedin|meta|fb)\.com$/i.test(candidate.email.split("@")[1])) continue;
+      all.push({
+      ...candidate, ownDomain: false, sourceUrl: page.url, sourceType: "linked_social", checkedAt: new Date().toISOString(),
+    });
+    }
+    if (all.length) break;
   }
   if (!all.length) return null;
   all.sort((a, b) => Number(b.ownDomain) - Number(a.ownDomain));

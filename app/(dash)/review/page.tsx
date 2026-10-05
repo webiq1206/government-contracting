@@ -133,7 +133,7 @@ export default async function ReviewPage(
           status={
             opps.length === 0
               ? "Nothing waiting"
-              : `${opps.length} decision${opps.length === 1 ? "" : "s"}${urgent > 0 ? ` · ${urgent} urgent` : ""}`
+              : `${opps.length} decision${opps.length === 1 ? "" : "s"}${urgent > 0 ? ` · ${urgent} review decisions due soon or overdue` : ""}`
           }
           explanation="Review one opportunity at a time. Pursue or pass."
         />
@@ -335,7 +335,7 @@ function Evidence({ o }: { o: Opportunity }) {
           <Row label="NAICS" value={o.naics_code ? String(o.naics_code) : null} />
           <Row label="Where" value={o.location_state ?? null} />
           <Row
-            label="Deadline"
+            label="Agency bid deadline"
             value={o.deadline ? `${shortDate(String(o.deadline))} · ${countdown(o.deadline)}` : null}
           />
         </dl>

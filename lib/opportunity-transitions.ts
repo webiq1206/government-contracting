@@ -55,6 +55,7 @@ export async function pursueOpportunity(
             review_warned_at=null
       where id=$1 and org_id=$2
         and stage='scoring' and status='open' and tier='review'
+        and is_sources_sought is not true
         and coalesce(pursuit_state, 'active')='active'
       returning id`,
     [id, orgId]
@@ -148,6 +149,7 @@ export async function moveOpportunity(
             review_expires_at=null, review_warned_at=null
       where id=$1 and org_id=$2 and stage=$5
         and status='open'
+        and is_sources_sought is not true
         and coalesce(pursuit_state, 'active')='active'
         and $3 = any($6::text[])
       returning id`,

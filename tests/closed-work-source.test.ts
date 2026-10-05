@@ -194,7 +194,7 @@ describe("operator pages keep the names and chrome they already have", () => {
   });
 
   it("keeps leftover declined calls off Today and the opportunity pending count", () => {
-    expect(DATA).toContain("where o.org_id=$1 and ${WORKABLE_CALL_CARD_SQL}");
+    expect(DATA).toMatch(/where o\.org_id\s*=\s*\$1 and \$\{WORKABLE_CALL_CARD_SQL\}/);
     expect(DATA).toContain(
       "where cc.opportunity_id = $1 and cc.org_id = $2 and o.org_id = $2"
     );
