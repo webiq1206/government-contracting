@@ -12,7 +12,7 @@ export function SettingsNav() {
 
   return (
     <div className="shrink-0 border-b border-border/60 bg-surface px-4 py-2 sm:px-6">
-      <label className="flex max-w-md items-center gap-3 text-sm">
+      <label className="flex max-w-md items-center gap-3 text-sm sm:hidden">
         <span className="font-medium">Settings</span>
         <select
           aria-label="Settings section"
@@ -31,7 +31,7 @@ export function SettingsNav() {
           ))}
         </select>
       </label>
-      {/* The chips are a second copy of the select for wide screens; a phone keeps the one picker. */}
+      {/* One visible navigation: a picker on phones, direct links on wider screens. */}
       <div className="hidden sm:block">
         <nav aria-label="Settings sections" className="mt-2 flex flex-wrap gap-1">
         {SETTINGS_DESTINATIONS.map((item) => (

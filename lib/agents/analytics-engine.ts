@@ -1,3 +1,4 @@
+import { BID_OPPORTUNITY_SQL } from "../domain/opportunity-kind";
 /**
  * ANALYTICS ENGINE, daily cron (07:00). Computes the platform KPIs (win rates,
  * margins, pipeline value, contract revenue, pipeline velocity, sub rankings,
@@ -156,7 +157,7 @@ async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
     const pipelineRow = await queryOne<{ total: string | number | null }>(
       `select coalesce(sum(value_estimated),0) as total
          from opportunities
-        where status='open' and stage not in ('dismissed','lost') and org_id = $1`,
+        where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost') and org_id = $1`,
       [orgId]
     );
     const pipelineValue = n(pipelineRow?.total);
@@ -172,7 +173,7 @@ async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
     // --- Pipeline velocity: count per stage (labeled as counts). ---
     const stageRows = await query<{ stage: string; count: string | number }>(
       `select stage, count(*) as count from opportunities
-        where org_id = $1 group by stage`,
+        where ${BID_OPPORTUNITY_SQL} and org_id = $1 group by stage`,
       [orgId]
     );
     const pipelineByStage = stageRows.map((r) => ({ stage: r.stage, count: n(r.count) }));

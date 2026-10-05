@@ -135,6 +135,8 @@ export interface JobFailure {
  * question about the world now rather than about the failure then.
  */
 export interface ReplayContext {
+  /** Market research is not a bid pursuit and must not resume bid automation. */
+  sourcesSought?: boolean;
   /** The named record no longer exists. */
   recordMissing?: boolean;
   /** The operator stopped this pursuit. */
@@ -150,6 +152,7 @@ export interface ReplayContext {
 }
 
 export type IneligibleReason =
+  | "market_research"
   | "record_gone"
   | "pursuit_stopped"
   | "deadline_passed"
@@ -160,6 +163,7 @@ export type IneligibleReason =
   | "different_cause";
 
 export const INELIGIBLE_LABEL: Record<IneligibleReason, string> = {
+  market_research: "this is Sources Sought market research, not a bid opportunity",
   record_gone: "the record it was about no longer exists",
   pursuit_stopped: "this pursuit has been stopped",
   deadline_passed: "the deadline has already passed",
@@ -211,6 +215,7 @@ export function replayDecision(
 
   if (context.alreadyRequeued) return no("already_requeued");
   if (context.recordMissing) return no("record_gone");
+  if (context.sourcesSought) return no("market_research");
   if (context.pursuitStopped) return no("pursuit_stopped");
   if (context.deadlinePassed) return no("deadline_passed");
   if (context.supersededBySuccess) return no("superseded");

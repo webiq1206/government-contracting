@@ -69,7 +69,7 @@ describe("the compliance vocabulary, everywhere it is written", () => {
      */
     const offenders: string[] = [];
     for (const f of files) {
-      if (f.includes("domain/terminology.ts")) continue; // the ban list itself
+      if (f.replace(/\\/g, "/").includes("domain/terminology.ts")) continue; // the ban list itself
       const src = readFileSync(f, "utf8");
       for (const m of src.matchAll(/["'`]([^"'`\n]*On track[^"'`\n]*)["'`]/g)) {
         offenders.push(`${f.replace(process.cwd() + "/", "")}: ${m[1]}`);

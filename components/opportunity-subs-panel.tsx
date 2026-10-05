@@ -16,6 +16,7 @@ import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { StopOutreach } from "@/components/stop-outreach";
 import { SubActions } from "@/components/sub-actions";
 import { isEmailable } from "@/lib/domain/sub-contactability";
+import { OpportunityMessageHistory } from "./opportunity-message-history";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -23,15 +24,20 @@ function nextActionForSub(s: OppSubRow): string | null {
     case "pending":
     case null:
     case undefined:
-      return "Waiting for outreach to send";
+      return "Review contact details and outreach readiness. No send is confirmed by this status.";
     case "no_email":
     case "email_unverified":
       return s.phone ? "Call (email is not usable yet)" : "Find a working email or phone";
     case "draft":
+      return "Review the saved draft and any reason it was held before deciding whether to send.";
     case "send_failed":
-      return "Fix email transport or retry outreach";
+      return "Review the failed attempt and mailbox connection before retrying.";
+    case "held":
+      return "Review why outreach was held. Resolve that reason before considering a send.";
+    case "queued":
+      return "Check the queued request before retrying so the message is not sent twice.";
     case "sent":
-      return "Awaiting reply; auto follow-up is scheduled";
+      return "Check the message history for replies and any saved follow-up time.";
     case "followed_up":
     case "unresponsive":
       return s.phone ? "Call them about pricing" : "Try another contact method";
@@ -74,6 +80,9 @@ export function OpportunitySubsPanel({
   description?: string | null;
 }) {
   const bySub = new Map<string, OppSubCommRow[]>();
+  const foundCount = new Set(subs.map(sub => sub.subcontractor_id)).size;
+  const contactedCount = new Set(subs.filter(sub => sub.emails_sent > 0 || sub.calls_logged > 0).map(sub => sub.subcontractor_id)).size;
+  const repliedCount = new Set(subs.filter(sub => sub.last_inbound_at).map(sub => sub.subcontractor_id)).size;
   for (const c of communications) {
     const list = bySub.get(c.subcontractor_id) ?? [];
     list.push(c);
@@ -91,6 +100,12 @@ export function OpportunitySubsPanel({
 
   return (
     <div id="subs" className="scroll-mt-editorial">
+      <p className="mb-3 text-sm text-slate-700">
+        {foundCount} subcontractors found; {contactedCount} with a sent email or logged call;
+        {" "}{repliedCount} with an incoming message recorded.
+      </p>
+      {subs.length >= 300 && <p className="mb-3 text-sm text-attention">Showing the first 300 subcontractor pairings. The totals above describe this loaded list.</p>}
+      {communications.length >= 400 && <p role="status" className="mb-3 text-sm text-attention">Showing the latest 400 communication records for this opportunity. Open a subcontractor&apos;s conversation to review older records.</p>}
       <Collapsible
         title="Subcontractors on this bid"
         meta={<span className="num">{subs.length}</span>}
@@ -98,9 +113,8 @@ export function OpportunitySubsPanel({
       >
         {subs.length === 0 ? (
           <p className="text-sm leading-relaxed text-slate-500">
-            No subs paired yet. After you pursue, Sub Finder finds local trades,
-            verifies contact info, and Outreach emails them. Their status and
-            history will show up here automatically.
+            No subcontractors have been linked to this opportunity. Review the
+            required trades and research settings before starting a search.
           </p>
         ) : (
           <div className="space-y-5">
@@ -141,7 +155,7 @@ export function OpportunitySubsPanel({
                             >
                               {s.company_name}
                             </Link>
-                            <p className="mt-0.5 truncate text-xs text-slate-500">
+                            <p className="mt-0.5 break-words text-xs text-slate-500">
                               {[s.email ?? "No email", s.phone ?? "No phone"]
                                 .filter(Boolean)
                                 .join(" · ")}
@@ -171,24 +185,22 @@ export function OpportunitySubsPanel({
 
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                           <span>
-                            <span className="text-slate-500">Emails </span>
+                            <span className="text-slate-500">Sent emails </span>
                             <span className="num text-slate-700">{s.emails_sent}</span>
                           </span>
                           <span>
-                            <span className="text-slate-500">Calls </span>
+                            <span className="text-slate-500">Logged calls </span>
                             <span className="num text-slate-700">{s.calls_logged}</span>
                           </span>
                           <span>
-                            <span className="text-slate-500">Touches </span>
+                            <span className="text-slate-500">Saved records </span>
                             <span className="num text-slate-700">{s.touches}</span>
                           </span>
                           <span>
-                            <span className="text-slate-500">Last touch </span>
+                            <span className="text-slate-500">Last record on this opportunity </span>
                             {s.last_touch_at
                               ? timeAgo(s.last_touch_at)
-                              : s.last_contacted
-                                ? timeAgo(s.last_contacted)
-                                : "Not set"}
+                              : "Not recorded"}
                           </span>
                           {s.responded_at && (
                             <span className="text-pursue">
@@ -252,46 +264,8 @@ export function OpportunitySubsPanel({
                           </div>
                         )}
 
-                        {history.length > 0 && (
-                          <details className="mt-2">
-                            <summary className="cursor-pointer text-xs font-medium text-accent hover:underline">
-                              History on this bid ({history.length})
-                            </summary>
-                            <ul className="mt-2 space-y-2 border-l border-border pl-3">
-                              {history.slice(0, 8).map((h) => (
-                                <li key={h.id} className="text-xs">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="badge bg-slate-200 text-slate-700">
-                                      {h.channel}
-                                    </span>
-                                    {h.direction && (
-                                      <span className="text-slate-500">{h.direction}</span>
-                                    )}
-                                    <span className="ml-auto text-slate-500">
-                                      {timeAgo(h.created_at)}
-                                    </span>
-                                  </div>
-                                  {h.subject && (
-                                    <p className="mt-0.5 font-medium text-slate-800">
-                                      {h.subject}
-                                    </p>
-                                  )}
-                                  {h.body && (
-                                    <p className="mt-0.5 line-clamp-2 text-slate-500">
-                                      {h.body}
-                                    </p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                            <Link
-                              href={`/subs/${s.subcontractor_id}`}
-                              className="mt-2 inline-block text-xs text-accent hover:underline"
-                            >
-                              Full sub record →
-                            </Link>
-                          </details>
-                        )}
+                        <OpportunityMessageHistory messages={history} />
+
                       </li>
                     );
                   })}

@@ -172,12 +172,14 @@ async function failuresWithContext(
     started_at: Date;
     error: string | null;
     record_missing: boolean;
+    sources_sought: boolean;
     pursuit_stopped: boolean;
     deadline_passed: boolean;
     superseded: boolean;
     already_requeued: boolean;
   }>(
     `select jr.id, jr.agent, jr.opportunity_id, jr.started_at, jr.error,
+            coalesce(o.is_sources_sought, false)                      as sources_sought,
             (jr.opportunity_id is not null and o.id is null)          as record_missing,
             coalesce(o.pursuit_state, 'active') <> 'active'           as pursuit_stopped,
             (o.deadline is not null and o.deadline < now())           as deadline_passed,
@@ -215,6 +217,7 @@ async function failuresWithContext(
     },
     context: {
       recordMissing: r.record_missing,
+      sourcesSought: r.sources_sought,
       pursuitStopped: r.pursuit_stopped,
       deadlinePassed: r.deadline_passed,
       supersededBySuccess: r.superseded,

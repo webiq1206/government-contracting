@@ -4,6 +4,8 @@ import { can } from "@/lib/domain/roles";
 import { listServices, serviceAvailable } from "@/lib/connected-services";
 import { listWebhooks } from "@/lib/webhooks";
 import { SERVICE_DEFS } from "@/lib/domain/connected-services";
+import { config } from "@/lib/config";
+import { callbackDiagnostic } from "@/lib/domain/connection-diagnostics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +16,12 @@ export async function GET() {
   if (ctx instanceof NextResponse) return ctx;
   const [rows, hooks] = await Promise.all([listServices(ctx.orgId, ctx.user.id), listWebhooks(ctx.orgId)]);
   return NextResponse.json({
-    providers: SERVICE_DEFS.map((d) => ({ ...d, available: serviceAvailable(d) })),
+    providers: SERVICE_DEFS.map((d) => ({
+      ...d, available: serviceAvailable(d),
+      ...(can(ctx.user.orgRole, "manage_integrations") && d.family !== "teams"
+        ? { diagnostic: callbackDiagnostic(config.services[d.family].redirectUri, serviceAvailable(d)) }
+        : {}),
+    })),
     connections: rows.map((r) => ({
       id: r.id,
       provider: r.provider,

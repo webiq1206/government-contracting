@@ -110,7 +110,7 @@ function routesTouchingTenantTables(): Route[] {
   return routeFiles(API_DIR)
     .map((path) => {
       const src = readFileSync(path, "utf8");
-      const rel = path.slice(process.cwd().length + 1);
+      const rel = path.slice(process.cwd().length + 1).replace(/\\/g, "/");
       const tables = TENANT_TABLES.filter((t) =>
         new RegExp(String.raw`\b(from|join|into|update)\s+${t}\b`).test(src)
       );
@@ -194,7 +194,7 @@ describe("pages that query tenant tables directly", () => {
   it("every page importing lib/db names org_id", () => {
     const offenders = pageFiles(APP_DIR)
       .map((path) => ({
-        rel: path.slice(process.cwd().length + 1),
+        rel: path.slice(process.cwd().length + 1).replace(/\\/g, "/"),
         src: readFileSync(path, "utf8"),
       }))
       .filter((p) => /from ["']@\/lib\/db["']/.test(p.src))

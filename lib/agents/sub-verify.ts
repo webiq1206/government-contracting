@@ -21,6 +21,7 @@ import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
 import { areCallsEnabled, getWorkExecution } from "../app-settings";
 import { outreachAllowed } from "../domain/work-mode";
 import { currentOrgId } from "../tenant-context";
+import { backfillPublicContact } from "../public-contact-backfill";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
 
@@ -155,6 +156,10 @@ export const subVerify: AgentDefinition = {
         ok: true,
         summary: `${sub.company_name} ruled out: located in ${subState}, work is in ${workState}.`,
       };
+    }
+
+    if (ctx.payload.publicContactOnly === true) {
+      return backfillPublicContact(orgId, opportunityId, sub, trade);
     }
 
     // --- Website + phone enrichment via Google Place Details ---
@@ -292,13 +297,20 @@ export const subVerify: AgentDefinition = {
       }
       if (scraped) {
         email = scraped.email;
-        emailSource = "website_scrape";
+        emailSource = scraped.sourceType === "linked_social" ? "linked_public_profile" : "website_scrape";
+        verification.email_discovery = {
+          source_url: scraped.sourceUrl ?? null,
+          source_type: scraped.sourceType ?? "website",
+          checked_at: scraped.checkedAt ?? new Date().toISOString(),
+        };
         // Prefer Hunter's SMTP-level verify when configured. Without Hunter,
         // policy (operator-approved): an address published on the sub's OWN
         // website whose domain accepts mail (MX) is treated as sendable —
         // the sub itself asks to be contacted there. Free-mail / off-domain
         // or MX-missing finds stay unverified drafts for operator approval.
-        const v = await hunter.verifyEmail(scraped.email);
+        const v = scraped.sourceType === "linked_social"
+          ? { disabled: true, error: undefined, status: undefined }
+          : await hunter.verifyEmail(scraped.email);
         if (!v.disabled && !v.error) {
           emailVerified = v.status === "valid";
           verification.email_status = v.status ?? null;

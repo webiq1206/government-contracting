@@ -482,22 +482,29 @@ try {
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:'Settings',exact:true}).click();
   await page.waitForURL('**/settings/profile');
   const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
-  if (page.viewportSize().width >= 640) {
+  const settingsPicker=page.getByRole('combobox',{name:'Settings section',exact:true});
+  const wideSettings=page.viewportSize().width >= 640;
+  await (wideSettings ? settingsLinks : settingsPicker).waitFor({state:'visible'});
+  assert.equal(await settingsLinks.isVisible(),wideSettings,'Settings links are visible only on wider screens');
+  assert.equal(await settingsPicker.isVisible(),!wideSettings,'Settings picker is visible only on phones');
+  const selectSettings=async(href,name)=>{
+    if(wideSettings) await settingsLinks.getByRole('link',{name,exact:true}).click();
+    else await settingsPicker.selectOption(href);
+  };
+  if (wideSettings) {
     for(const name of ['Company & NAICS codes','Rules & limits','Integrations & AI providers','AI usage & budget']) {
       await settingsLinks.getByRole('link',{name,exact:true}).waitFor({state:'visible'});
     }
-    await settingsLinks.getByRole('link',{name:'AI usage & budget',exact:true}).click();
-  } else {
-    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/api-usage');
   }
+  await selectSettings('/settings/api-usage','AI usage & budget');
   await page.waitForURL('**/settings/api-usage');
-  await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/profile');
+  await selectSettings('/settings/profile','Company & NAICS codes');
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/settings');
   await page.getByLabel('Legal name',{exact:true}).fill('Audit Company '+device);
   {
-    await page.getByRole('combobox',{name:'Settings section',exact:true}).selectOption('/settings/rules');
+    await selectSettings('/settings/rules','Rules & limits');
     const settingsWarning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});
     await settingsWarning.waitFor();
     await settingsWarning.getByRole('button',{name:'Stay here',exact:true}).click();

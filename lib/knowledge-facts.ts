@@ -65,35 +65,35 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
        (select max(updated_at) from company_profile where org_id = $1) as profile_at,
 
        (select count(*) from opportunities
-         where org_id = $1 and created_at > now() - interval '7 days') as found_recent,
-       (select max(created_at) from opportunities where org_id = $1) as found_at,
-       (select title from opportunities where org_id = $1
+         where org_id = $1 and is_sources_sought is not true and created_at > now() - interval '7 days') as found_recent,
+       (select max(created_at) from opportunities where org_id = $1 and is_sources_sought is not true) as found_at,
+       (select title from opportunities where org_id = $1 and is_sources_sought is not true
          order by created_at desc limit 1) as found_example,
 
        -- Scoring leaves no timestamp of its own, so the opportunity's arrival
        -- stands in for it. The two are minutes apart in practice, and the
        -- alternative is a column written only to be read here.
        (select count(*) from opportunities
-         where org_id = $1 and score is not null
+         where org_id = $1 and is_sources_sought is not true and score is not null
            and created_at > now() - interval '7 days') as scored_recent,
        (select max(created_at) from opportunities
-         where org_id = $1 and score is not null) as scored_at,
-       (select title from opportunities where org_id = $1 and score is not null
+         where org_id = $1 and is_sources_sought is not true and score is not null) as scored_at,
+       (select title from opportunities where org_id = $1 and is_sources_sought is not true and score is not null
          order by created_at desc limit 1) as scored_example,
 
        (select count(*) from opportunities
-         where org_id = $1 and created_at > now() - interval '7 days'
+         where org_id = $1 and is_sources_sought is not true and created_at > now() - interval '7 days'
            and (tier = 'pursue' or stage in ${PURSUED_STAGES})) as decided_recent,
        (select max(created_at) from opportunities
-         where org_id = $1 and (tier = 'pursue' or stage in ${PURSUED_STAGES})) as decided_at,
+         where org_id = $1 and is_sources_sought is not true and (tier = 'pursue' or stage in ${PURSUED_STAGES})) as decided_at,
 
        (select count(*) from opportunities
-         where org_id = $1 and solicitation_analysis is not null
+         where org_id = $1 and is_sources_sought is not true and solicitation_analysis is not null
            and created_at > now() - interval '7 days') as analyzed_recent,
        (select max(created_at) from opportunities
-         where org_id = $1 and solicitation_analysis is not null) as analyzed_at,
+         where org_id = $1 and is_sources_sought is not true and solicitation_analysis is not null) as analyzed_at,
        (select title from opportunities
-         where org_id = $1 and solicitation_analysis is not null
+         where org_id = $1 and is_sources_sought is not true and solicitation_analysis is not null
          order by created_at desc limit 1) as analyzed_example,
 
        (select count(*) from pricing_comps

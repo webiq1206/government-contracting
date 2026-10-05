@@ -221,14 +221,21 @@ export default async function PlatformHealthPage() {
                   </span>
                 </div>
                 <p className="text-xs leading-relaxed text-slate-600">{s.detail}</p>
-                {s.state !== "healthy" && (
-                  <p className="text-xs leading-relaxed text-muted-foreground">{s.impact}</p>
+                {(s.state === "down" || s.state === "degraded") && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">Possible effect if these failures continue: {s.impact}</p>
                 )}
+                {s.state === "unknown" && <p className="text-xs text-muted-foreground">This window does not establish whether the service is working or failing.</p>}
                 {s.lastRunAt && (
                   <p className="mt-auto pt-1 text-xs text-muted-foreground">
                     Last run {timeAgo(s.lastRunAt)}
                   </p>
                 )}
+                <Link
+                  href={s.key === "billing_webhooks" ? "/admin/billing" : s.key === "provider_capacity" ? "/admin/api-usage" : "/agents"}
+                  className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+                >
+                  View {s.key === "billing_webhooks" ? "billing diagnostics" : s.key === "provider_capacity" ? "AI usage" : "automation diagnostics"}
+                </Link>
               </article>
             ))}
           </div>

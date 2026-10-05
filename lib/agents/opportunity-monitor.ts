@@ -311,6 +311,7 @@ async function monitorForOrg(orgId: string): Promise<{
               agent: "sources-sought-responder",
               payload: { opportunityId: res.id },
             });
+            continue;
           }
           // Enqueue scoring IMMEDIATELY rather than accumulating it for the
           // runner to flush at the end: a later failure can no longer strand
