@@ -1769,7 +1769,7 @@ export const scoringRecoverySweep: AgentDefinition = {
             and score is null
             and not exists (select 1 from job_runs recent where recent.org_id=$1
               and recent.opportunity_id=opportunities.id and recent.agent='scoring-engine'
-              and (recent.status='ok' or recent.started_at > now()-interval '1 hour'))
+              and recent.started_at > now()-interval '1 hour')
             and (select count(*) from job_runs attempts where attempts.org_id=$1
               and attempts.opportunity_id=opportunities.id and attempts.agent='scoring-engine'
               and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3
@@ -1870,7 +1870,7 @@ export const scoringRecoverySweep: AgentDefinition = {
             and solicitation_analysis is null
             and not exists (select 1 from job_runs recent where recent.org_id=$1
               and recent.opportunity_id=opportunities.id and recent.agent='solicitation-analyst'
-              and (recent.status='ok' or recent.started_at > now()-interval '1 hour'))
+              and recent.started_at > now()-interval '1 hour')
             and (select count(*) from job_runs attempts where attempts.org_id=$1
               and attempts.opportunity_id=opportunities.id and attempts.agent='solicitation-analyst'
               and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3

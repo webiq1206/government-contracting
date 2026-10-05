@@ -18,7 +18,11 @@ it("applies recovery limits to actual selection SQL without borrowing another te
         ('b','other-tenant','scoring-engine','ok',now());
       insert into job_runs select 'a','capped','scoring-engine','error',now()-interval '2 hours' from generate_series(1,3);`);
     const result = await db.query<{ id: string }>(sql!, ["a"]);
-    expect(result.rows.map(row => row.id).sort()).toEqual(["eligible", "other-tenant"]);
+    // An old ok run can mean held work, not a produced score. Missing output
+    // remains recoverable after backoff; current output is the success proof.
+    expect(result.rows.map(row => row.id).sort()).toEqual(["eligible", "other-tenant", "success"]);
+    await db.exec("update opportunities set score=70 where id='success'");
+    expect((await db.query<{ id: string }>(sql!, ["a"])).rows.map(row=>row.id).sort()).toEqual(["eligible", "other-tenant"]);
     const analysisSql = source.match(/`(select id from opportunities[\s\S]*?solicitation_analysis is null[\s\S]*?limit 200)`/)?.[1];
     expect(analysisSql).toBeTruthy();
     await db.exec(`alter table opportunities add column solicitation_analysis jsonb;
@@ -26,6 +30,8 @@ it("applies recovery limits to actual selection SQL without borrowing another te
       update opportunities set score=70;
       update job_runs set agent='solicitation-analyst';`);
     const analysis = await db.query<{ id: string }>(analysisSql!, ["a"]);
-    expect(analysis.rows.map(row => row.id).sort()).toEqual(["eligible", "other-tenant"]);
+    expect(analysis.rows.map(row => row.id).sort()).toEqual(["eligible", "other-tenant", "success"]);
+    await db.exec("update opportunities set solicitation_analysis='{}'::jsonb where id='success'");
+    expect((await db.query<{ id: string }>(analysisSql!, ["a"])).rows.map(row=>row.id).sort()).toEqual(["eligible", "other-tenant"]);
   } finally { await db.close(); }
 }, 30_000);

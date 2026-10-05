@@ -103,7 +103,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
        */
       `select count(*)::int as n
          from opportunities
-        where org_id = $1 and status = 'open'
+        where org_id = $1 and status = 'open' and is_sources_sought is not true
           and coalesce(pursuit_state, 'active') <> 'aborted'
           and (
             stage = 'analysis'

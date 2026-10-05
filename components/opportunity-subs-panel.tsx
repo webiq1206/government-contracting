@@ -105,7 +105,7 @@ export function OpportunitySubsPanel({
         {" "}{repliedCount} with an incoming message recorded.
       </p>
       {subs.length >= 300 && <p className="mb-3 text-sm text-attention">Showing the first 300 subcontractor pairings. The totals above describe this loaded list.</p>}
-      {communications.length >= 400 && <p role="status" className="mb-3 text-sm text-attention">Showing the latest 400 communication records for this opportunity. Open a subcontractor's conversation to review older records.</p>}
+      {communications.length >= 400 && <p role="status" className="mb-3 text-sm text-attention">Showing the latest 400 communication records for this opportunity. Open a subcontractor&apos;s conversation to review older records.</p>}
       <Collapsible
         title="Subcontractors on this bid"
         meta={<span className="num">{subs.length}</span>}

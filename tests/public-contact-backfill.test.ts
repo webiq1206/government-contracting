@@ -15,14 +15,15 @@ beforeAll(async () => {
   state.db = new PGlite();
   await state.db.exec(`create table subcontractors(id text,org_id text,blacklisted boolean,email text,email_verified boolean,email_source text,website text,contact_checked_at timestamptz,updated_at timestamptz);
     create table opportunities(id text,org_id text,status text,pursuit_state text,is_sources_sought boolean);
-    create table opportunity_subs(id text,org_id text,opportunity_id text,subcontractor_id text,trade text,removed_at timestamptz,verification_json jsonb);`);
+    create table opportunity_subs(id text,org_id text,opportunity_id text,subcontractor_id text,trade text,removed_at timestamptz,verification_json jsonb);
+    create table outreach_suppressions(org_id text,subcontractor_id text,opportunity_id text,trade text,channel text,lifted_at timestamptz);`);
 }, 30_000);
 afterAll(async () => { await state.db?.close(); });
 beforeEach(async () => {
   vi.resetAllMocks();
   state.blocked.mockResolvedValue(null);
   state.scrape.mockResolvedValue({ email: "estimates@firm.test", sourceUrl: "https://firm.test/contact", sourceType: "website", checkedAt: "2026-10-05T10:00:00.000Z", ownDomain: true });
-  await state.db.exec(`truncate subcontractors,opportunities,opportunity_subs;
+  await state.db.exec(`truncate subcontractors,opportunities,opportunity_subs,outreach_suppressions;
     insert into subcontractors(id,org_id,blacklisted,website) values('sub','a',false,'https://firm.test');
     insert into opportunities values('opp','a','open','active',false);
     insert into opportunity_subs(org_id,opportunity_id,subcontractor_id,trade) values('a','opp','sub','cleaning');`);
@@ -77,5 +78,19 @@ describe("bounded public-only missing-email backfill", () => {
     } finally {
       await state.db.exec("alter table opportunity_subs drop constraint fixture_evidence_failure");
     }
+  });
+  it.each([
+    "update opportunity_subs set removed_at=now()",
+    "update opportunities set pursuit_state='aborted'",
+    "update opportunities set is_sources_sought=true",
+    "insert into outreach_suppressions values('a','sub','opp',' CLEANING ','email',null)",
+  ])("respects a stop made while public research was running: %s", async sql => {
+    state.scrape.mockImplementation(async () => {
+      await state.db.exec(sql);
+      return { email: "found@firm.test", sourceUrl: "https://firm.test/contact" };
+    });
+    await backfillPublicContact("a", "opp", sub, "cleaning");
+    expect((await state.db.query("select email from subcontractors")).rows[0].email).toBeNull();
+    expect((await state.db.query("select verification_json from opportunity_subs")).rows[0].verification_json).toBeNull();
   });
 });

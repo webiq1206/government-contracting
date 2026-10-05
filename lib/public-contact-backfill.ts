@@ -32,8 +32,14 @@ export async function backfillPublicContact(orgId: string, opportunityId: string
     `with saved as (update subcontractors set email=$3, email_verified=false, email_source=$4,
         website=coalesce(nullif(website,''),$5), updated_at=now()
       where id=$1 and org_id=$2 and blacklisted=false and nullif(btrim(email),'') is null
-        and exists (select 1 from opportunity_subs where org_id=$2 and opportunity_id=$6
-          and subcontractor_id=$1 and ($7::text is null or trade=$7)) returning id),
+        and exists (select 1 from opportunity_subs os join opportunities o on o.id=os.opportunity_id and o.org_id=os.org_id
+          where os.org_id=$2 and os.opportunity_id=$6 and os.subcontractor_id=$1
+            and os.removed_at is null and ($7::text is null or os.trade=$7)
+            and o.status='open' and coalesce(o.pursuit_state,'active')='active' and o.is_sources_sought is not true)
+        and not exists (select 1 from outreach_suppressions stop
+          where stop.org_id=$2 and stop.subcontractor_id=$1 and stop.lifted_at is null
+            and stop.channel in ('all','email') and (stop.opportunity_id is null or stop.opportunity_id=$6)
+            and (stop.trade is null or ($7::text is not null and lower(btrim(stop.trade))=lower(btrim($7))))) returning id),
       evidence as (update opportunity_subs set verification_json=coalesce(verification_json,'{}'::jsonb)
         || jsonb_build_object('email_discovery',$8::jsonb)
         where org_id=$2 and opportunity_id=$6 and subcontractor_id in (select id from saved)
