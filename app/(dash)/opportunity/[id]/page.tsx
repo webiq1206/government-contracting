@@ -854,8 +854,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                         Score breakdown
                       </h2>
                       <p className="mt-3 text-sm text-muted-foreground">
-                        Scoring has not finished yet. The fit score box updates when dimensions
-                        land.
+                        A score breakdown is not available. Review the source information
+                        before relying on the fit score.
                       </p>
                       <div className="mt-4">
                         <ScoreBadge score={opp.score} />
