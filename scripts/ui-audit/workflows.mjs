@@ -152,6 +152,15 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
     await drawer.waitFor();
     await drawer.getByRole('button', { name: /^More actions/ }).click();
+    console.log(JSON.stringify({ device, task: 'nested-confirmation-menu-state', state: await drawer.evaluate(el => ({
+      readyState: document.readyState,
+      expanded: el.querySelector('[aria-haspopup="menu"]')?.getAttribute('aria-expanded'),
+      active: document.activeElement?.outerHTML.slice(0, 500),
+      menus: Array.from(el.querySelectorAll('[role="menu"]')).map(menu => ({
+        text: menu.textContent, rect: menu.getBoundingClientRect().toJSON(), display: getComputedStyle(menu).display,
+      })),
+      drawer: el.getBoundingClientRect().toJSON(),
+    })) }));
     await drawer.getByRole('menuitem', { name: /^Pass on it/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Pass on this opportunity', exact: true });
     await dialog.waitFor();
