@@ -48,6 +48,7 @@ export function RowActions({
   className = "",
   /** Smaller type and tighter padding, for dense tables. */
   compact = false,
+  desktopSide = "below",
 }: {
   actions: RowAction[];
   /** Everybody who could be given the record. Without it, reassign is dropped. */
@@ -57,6 +58,8 @@ export function RowActions({
   recordLabel?: string;
   className?: string;
   compact?: boolean;
+  /** Footer actions open into the drawer instead of below its clipped edge. */
+  desktopSide?: "above" | "below";
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [widget, setWidget] = useState<RowWidget | null>(null);
@@ -193,7 +196,7 @@ export function RowActions({
               <div
                 role="menu"
                 aria-label={recordLabel ? `Actions for ${recordLabel}` : "Actions"}
-                className="absolute right-0 top-full z-40 mt-1 hidden w-64 rounded-md border border-border bg-surface p-1 shadow-lg lg:block"
+                className={`absolute right-0 z-40 hidden max-h-[60vh] w-64 overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-lg lg:block ${desktopSide === "above" ? "bottom-full mb-1" : "top-full mt-1"}`}
               >
                 {secondary.map((a) => (
                   <MenuItem key={a.key} action={a} {...itemProps} />
