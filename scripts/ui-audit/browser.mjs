@@ -484,6 +484,7 @@ try {
   const settingsLinks=page.getByRole('navigation',{name:'Settings sections',exact:true});
   const settingsPicker=page.getByRole('combobox',{name:'Settings section',exact:true});
   const wideSettings=page.viewportSize().width >= 640;
+  await (wideSettings ? settingsLinks : settingsPicker).waitFor({state:'visible'});
   assert.equal(await settingsLinks.isVisible(),wideSettings,'Settings links are visible only on wider screens');
   assert.equal(await settingsPicker.isVisible(),!wideSettings,'Settings picker is visible only on phones');
   const selectSettings=async(href,name)=>{
