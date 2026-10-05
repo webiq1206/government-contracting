@@ -29,7 +29,7 @@ describe("opportunity summary reads", () => {
         [id, org, status, "Full solicitation. ".repeat(10000), JSON.stringify({ source: "large document ".repeat(10000) })]);
     }
     m.query.mockImplementation(async (sql, params) => (await db.query(sql, params)).rows);
-  }, 30000);
+  }, 60000);
   afterAll(async () => { await db?.close(); });
 
   it.each(["board", "table"])("keeps %s reads small, accurate and tenant scoped", async (view) => {

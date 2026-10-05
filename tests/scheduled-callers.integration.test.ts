@@ -23,10 +23,10 @@ import {lastCallForOrg} from "../lib/agents/maintenance";
 import {scheduledRequestKey} from "../lib/scheduled-email";
 let params:OutreachSendParams;
 beforeAll(async()=>{state.db=new PGlite();await state.db.exec(`
-create table opportunities(id uuid primary key,org_id uuid,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer,title text,deadline timestamptz,human_action_required boolean);
+create table opportunities(id uuid primary key,org_id uuid,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer,title text,deadline timestamptz,human_action_required boolean,is_sources_sought boolean default false);
 create table subcontractors(id uuid primary key,org_id uuid,email text,email_verified boolean,owner_name text,company_name text);
 create table contracts(id uuid primary key,opportunity_id uuid,status text,primary_sub_id uuid,backup_sub_id uuid);
-create table opportunity_subs(id uuid default gen_random_uuid(),opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz,outreach_state text,responded_at timestamptz);
+create table opportunity_subs(id uuid default gen_random_uuid(),org_id uuid,opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz,outreach_state text,responded_at timestamptz);
 create table call_cards(opportunity_id uuid,subcontractor_id uuid,org_id uuid,status text,response_json jsonb);
 create table quotes(opportunity_id uuid,trade text,quote_amount numeric);
 create table communications(id uuid primary key default gen_random_uuid(),org_id uuid,subcontractor_id uuid,opportunity_id uuid,
@@ -38,10 +38,10 @@ create unique index communications_request_key_unique on communications(org_id,r
 afterAll(async()=>{await state.db?.close();});
 beforeEach(async()=>{state.paused=state.suppressed=state.stopped=state.support=false;vi.mocked(gmail.send).mockClear();
  const org=randomUUID(),opp=randomUUID(),sub=randomUUID(),contract=randomUUID();
- await state.db!.query("insert into opportunities values($1,$2,'outreach','open','active',null,1,'Job',now()+interval '2 days',false)",[opp,org]);
+ await state.db!.query("insert into opportunities values($1,$2,'outreach','open','active',null,1,'Job',now()+interval '2 days',false,false)",[opp,org]);
  await state.db!.query("insert into subcontractors values($1,$2,'sub@example.test',true,'Builder','Sub Co')",[sub,org]);
  await state.db!.query("insert into contracts values($1,$2,'active',$3,null)",[contract,opp,sub]);
- await state.db!.query("insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,'HVAC','followed_up')",[opp,sub]);
+ await state.db!.query("insert into opportunity_subs(org_id,opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,$3,'HVAC','followed_up')",[org,opp,sub]);
  params={orgId:org,opportunityId:opp,subcontractorId:sub,postAwardCompliance:{contractId:contract},to:"sub@example.test",
  subject:"Your paperwork",text:"Please provide your insurance documents.",html:"<p>Please provide your insurance documents.</p>",
  scheduled:{key:randomUUID(),meta:{kind:"compliance-chase"}}};
