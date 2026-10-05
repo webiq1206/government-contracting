@@ -614,7 +614,7 @@ export default async function SubDetailPage(
                                 .join(" · ")}
                             </p>
                           </div>
-                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                             <Link className="text-xs text-accent" href={`/communications/history?sub=${sub.id}&project=${p.opportunity_id}`}>Invitation history</Link>
                             {can(viewer?.orgRole, "outreach") && !sub.archived_at && !p.removed_at && (p.pursuit_state ?? "active") === "active" && p.status === "open" && !["won", "lost", "archived"].includes(p.stage) && <Link className="btn-ghost text-xs" href={`/communications/compose?sub=${sub.id}&project=${p.opportunity_id}&trade=${encodeURIComponent(p.trade ?? "")}`}>Compose message</Link>}
                             <span

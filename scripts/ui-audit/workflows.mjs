@@ -152,6 +152,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
     await drawer.waitFor();
     await drawer.getByRole('button', { name: /^More actions/ }).click();
+    const menu = drawer.getByRole('menu');
+    await menu.waitFor();
+    if (device === 'desktop') {
+      const menuBounds = await menu.boundingBox();
+      const drawerBounds = await drawer.boundingBox();
+      assert(menuBounds && drawerBounds);
+      assert(menuBounds.y >= drawerBounds.y && menuBounds.y + menuBounds.height <= drawerBounds.y + drawerBounds.height,
+        'The whole action menu must fit inside the desktop drawer, not be clipped below its footer');
+      await menu.screenshot({ path: join(out, `${device}-drawer-actions.png`) });
+    }
     await drawer.getByRole('menuitem', { name: /^Pass on it/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Pass on this opportunity', exact: true });
     await dialog.waitFor();

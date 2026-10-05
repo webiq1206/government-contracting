@@ -67,6 +67,7 @@ export function QuickViewDrawer({
             viewerId={viewerId}
             recordLabel={view.title}
             className="w-full flex-wrap"
+            desktopSide="above"
           />
         ) : undefined
       }

@@ -375,7 +375,7 @@ function buildSection(
       return section(
         key,
         "problem",
-        "Every automation ran and every integration answered.",
+        "No system or integration problems were recorded in this recap.",
         pre.problems
       );
 

@@ -35,7 +35,7 @@ export default async function CommunicationsHistory({ searchParams }: {
       </header>
       <form className="flex flex-wrap items-end gap-3" action="/communications/history">
         {["sub", "project", "thread"].map(key => opts[key as keyof LedgerOptions] && <input key={key} type="hidden" name={key} value={opts[key as keyof LedgerOptions]} />)}
-        <label className="min-w-0 flex-1 text-sm">Search messages
+        <label className="min-w-0 w-full flex-none text-sm sm:w-auto sm:flex-1">Search messages
           <input className="input mt-1 w-full" name="q" type="search" defaultValue={opts.q} placeholder="Name, address, subject, message or project" maxLength={300} />
         </label>
         <label className="text-sm">Outcome
