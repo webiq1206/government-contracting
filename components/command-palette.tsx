@@ -77,6 +77,7 @@ function readRecentRecords(storageScope: string): RecentRecord[] {
       (x): x is RecentRecord =>
         !!x &&
         typeof x === "object" &&
+        (x as RecentRecord).kind !== "page" &&
         typeof (x as RecentRecord).href === "string" &&
         typeof (x as RecentRecord).title === "string"
     );
@@ -86,6 +87,9 @@ function readRecentRecords(storageScope: string): RecentRecord[] {
 }
 
 function rememberRecord(r: Result, storageScope: string) {
+  // Page permissions are recomputed for each search; do not cache admin
+  // destinations in an organization's recent-record list.
+  if (r.kind === "page") return;
   try {
     const next = [
       { kind: r.kind, title: r.title, href: r.href },
@@ -326,13 +330,13 @@ export function CommandPalette({ storageScope }: { storageScope: string }) {
                 }
               }
             }}
-            aria-label="Search opportunities, subcontractors, contracts, messages, and documents"
+            aria-label="Search pages, opportunities, subcontractors, contracts, messages, and documents"
             role="combobox"
             aria-autocomplete="list"
             aria-expanded="true"
             aria-controls={resultsId}
             aria-activedescendant={flat[active] ? `${resultsId}-option-${active}` : undefined}
-            placeholder="Search opportunities, subs, contracts, messages, documents…"
+            placeholder="Search pages, opportunities, subs, messages, documents…"
             className="min-h-11 min-w-0 flex-1 bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500 coarse:text-base"
           />
           <button

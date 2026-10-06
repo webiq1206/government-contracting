@@ -13,6 +13,7 @@ import { GuideStepActions } from "@/components/guide-adapters";
 import { trackClientEvent } from "@/lib/client-analytics";
 import type { GuideAdapters, GuideStep, PageGuide } from "@/lib/domain/page-guide";
 import { urgentSteps } from "@/lib/domain/page-guide";
+import { guideAnswerSources, type GuideAnswerSource } from "@/lib/domain/guide-answer-sources";
 
 type Mode = "guide" | "ask" | "changed" | "explain" | "score" | "terms";
 
@@ -43,9 +44,10 @@ export function GuideWizard() {
   const [askInput, setAskInput] = useState("");
   const [askBusy, setAskBusy] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const [askThread, setAskThread] = useState<{ role: "user" | "assistant"; content: string }[]>(
+  const [askThread, setAskThread] = useState<{ role: "user" | "assistant"; content: string; sources?: GuideAnswerSource[] }[]>(
     []
   );
+  const askRequest = useRef<AbortController | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
   const fingerprintRef = useRef<string | null>(null);
@@ -175,14 +177,19 @@ export function GuideWizard() {
   }, [open, load, pathname]);
 
   useEffect(() => {
+    askRequest.current?.abort();
+    askRequest.current = null;
+    setAskThread([]);
+    setAskInput("");
+    setAskBusy(false);
+    setAskError(null);
     if (!open) {
       setGuide(null);
       setAdapters({});
-      setAskThread([]);
-      setAskInput("");
       setLiveNote(null);
       fingerprintRef.current = null;
     }
+    return () => { askRequest.current?.abort(); askRequest.current = null; };
   }, [pathname, open]);
 
   useEffect(() => {
@@ -306,7 +313,10 @@ export function GuideWizard() {
 
   async function askQuestion(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!guide || !askInput.trim() || askBusy) return;
+    if (!guide || guide.pathname !== pathname || !askInput.trim() || askRequest.current) return;
+    const controller = new AbortController();
+    askRequest.current = controller;
+    const timer = setTimeout(() => controller.abort(), 30_000);
     const question = askInput.trim();
     setAskInput("");
     setAskBusy(true);
@@ -323,20 +333,30 @@ export function GuideWizard() {
           // snapshot this panel loaded an hour ago.
           path: guide.pathname,
           question,
-          history: askThread,
+          history: askThread.map(({ role, content }) => ({ role, content })),
         }),
+        signal: controller.signal,
       });
-      const data = (await res.json().catch(() => ({}))) as { answer?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { answer?: string; error?: string; sources?: unknown };
+      if (askRequest.current !== controller) return;
       if (!res.ok) {
         setAskError(data.error ?? "Could not answer.");
         return;
       }
-      setAskThread([...nextThread, { role: "assistant", content: data.answer ?? "" }]);
+      if (typeof data.answer !== "string" || !data.answer.trim()) {
+        setAskError("No answer was returned. Check the recorded facts or try again later.");
+        return;
+      }
+      setAskThread([...nextThread, { role: "assistant", content: data.answer,
+        sources: guideAnswerSources(data.sources, guide.pathname) }]);
       trackClientEvent("guide_ask", { pageKey: guide.pageKey });
     } catch {
-      setAskError("Could not answer.");
+      if (askRequest.current === controller) setAskError(controller.signal.aborted
+        ? "The answer took too long. Check the recorded facts before asking again."
+        : "Could not answer. Check your connection and the recorded facts.");
     } finally {
-      setAskBusy(false);
+      clearTimeout(timer);
+      if (askRequest.current === controller) { askRequest.current = null; setAskBusy(false); }
     }
   }
 
@@ -547,24 +567,35 @@ export function GuideWizard() {
                     {askThread.map((m, i) => (
                       <div
                         key={`${m.role}-${i}`}
-                        className={`rounded-md px-3 py-2 text-sm ${
+                        className={`min-w-0 break-words rounded-md px-3 py-2 text-sm [overflow-wrap:anywhere] ${
                           m.role === "user"
                             ? "ml-6 bg-foreground text-background"
-                            : "mr-4 border border-border bg-surface text-slate-800"
+                            : "mr-4 border border-border bg-surface text-foreground"
                         }`}
                       >
                         {m.content}
+                        {m.role === "assistant" && <div className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">
+                          <p>Recorded facts. Check the original source documents for exact requirements; this answer may be incomplete.</p>
+                          {m.sources?.length ? <ul className="mt-1 space-y-1" aria-label="Sources for this answer">
+                            {m.sources.map(source => <li key={source.href}><Link href={source.href}
+                              onClick={() => setOpen(false)}
+                              className="inline-flex min-h-11 max-w-full items-center break-words text-accent underline underline-offset-2 [overflow-wrap:anywhere]">
+                              {source.label}
+                            </Link></li>)}
+                          </ul> : <p className="mt-1">No source links were returned for this answer.</p>}
+                        </div>}
                       </div>
                     ))}
                   </div>
                   {askError && <p className="text-xs text-risk">{askError}</p>}
                   <form onSubmit={(e) => void askQuestion(e)} className="flex gap-2">
                     <input
-                      className="input flex-1"
+                      className="input min-w-0 flex-1"
                       value={askInput}
                       onChange={(e) => setAskInput(e.target.value)}
                       aria-label="Ask about this page"
                       placeholder="Ask a question…"
+                      maxLength={500}
                       disabled={askBusy}
                     />
                     <button type="submit" className="btn-primary text-xs" disabled={askBusy}>

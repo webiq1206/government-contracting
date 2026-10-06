@@ -1,13 +1,13 @@
 import { readAmendmentNumber } from "@/lib/domain/document-inventory";
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne } from "@/lib/db";
+import { query } from "@/lib/db";
 import { resolveOutreachVars } from "@/lib/domain/outreach-vars";
 import { selectDocumentsForTrade } from "@/lib/domain/attachment-selection";
 import { professionalStem, uniqueFilename } from "@/lib/domain/attachment-naming";
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 import { getProfileJson } from "@/lib/ai/companyProfile";
-import type { Opportunity } from "@/lib/types";
+import { loadOutreachPreviewPair, OutreachPreviewUnavailable } from "@/lib/outreach-preview";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,60 +57,16 @@ export async function GET(req: Request) {
          join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
         where o.org_id = $1
           and o.status = 'open'
+          and coalesce(o.is_sources_sought, false) = false
           and os.removed_at is null
-          and s.email is not null
+          and nullif(btrim(s.email), '') is not null
         order by o.created_at desc, s.company_name asc
         limit 25`,
       [orgId]
     );
-    if (real.length) return NextResponse.json({ pairings: real, synthesized: false });
-
-    /*
-     * Nobody has been paired to anything yet.
-     *
-     * This is exactly when checking a template matters most: before the first
-     * send, not after. So pair each open opportunity with a subcontractor,
-     * preferring one whose trades overlap what the analysis says the job
-     * needs, and falling back to any contactable firm when the opportunity has
-     * no analysis yet.
-     *
-     * That last case is not a degraded preview, it is the interesting one: an
-     * opportunity with no analysis cannot produce a sendable email, and seeing
-     * exactly which required values are missing is more use than an empty
-     * picker that says nothing.
-     */
-    const synthesized = await query<Pairing>(
-      `select o.id as opportunity_id, s.id as subcontractor_id,
-              t.trade, o.title as opportunity_title, s.company_name
-         from opportunities o
-         left join lateral (
-           select trade
-             from jsonb_array_elements_text(
-                    case
-                      when jsonb_typeof(o.solicitation_analysis->'required_trades') = 'array'
-                        then o.solicitation_analysis->'required_trades'
-                      else '[]'::jsonb
-                    end
-                  ) as trade
-            limit 1
-         ) t on true
-         join lateral (
-           select s2.id, s2.company_name
-             from subcontractors s2
-            where s2.org_id = o.org_id
-              and s2.email is not null
-            -- A trade match first; any contactable firm rather than none.
-            order by (t.trade is not null and s2.trade_categories && array[t.trade]) desc,
-                     s2.company_name asc
-            limit 1
-         ) s on true
-        where o.org_id = $1 and o.status = 'open'
-        order by o.created_at desc
-        limit 25`,
-      [orgId]
-    );
-
-    return NextResponse.json({ pairings: synthesized, synthesized: true });
+    // An empty list is safer than presenting unrelated firms as trade matches.
+    // Operators can still preview and test with sample values.
+    return NextResponse.json({ pairings: real, synthesized: false });
   }
 
   const opportunityId = url.searchParams.get("opportunityId");
@@ -122,35 +78,18 @@ export async function GET(req: Request) {
     );
   }
 
-  // Both reads are org-scoped. A preview must never be a way to read another
-  // tenant's opportunity by guessing an id.
-  const opp = await queryOne<Opportunity>(
-    `select * from opportunities where id = $1 and org_id = $2`,
-    [opportunityId, orgId]
-  );
-  const sub = await queryOne<{ owner_name: string | null; company_name: string }>(
-    `select owner_name, company_name from subcontractors where id = $1 and org_id = $2`,
-    [subcontractorId, orgId]
-  );
-  if (!opp || !sub) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  let context: Awaited<ReturnType<typeof loadOutreachPreviewPair>>;
+  try {
+    context = await loadOutreachPreviewPair(orgId, {
+      opportunityId, subcontractorId, trade: url.searchParams.get("trade"),
+    });
+  } catch (error) {
+    if (error instanceof OutreachPreviewUnavailable) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
-
-  /*
-   * The trade decides the scope, so losing it turns a trade-specific preview
-   * into a whole-project one. Read it from the pairing when one exists; a
-   * hypothetical pairing has no row, so the caller passes the trade it offered.
-   */
-  const requestedTrade = url.searchParams.get("trade");
-  const pairing = await queryOne<{ trade: string | null }>(
-    `select trade from opportunity_subs
-      where opportunity_id = $1 and subcontractor_id = $2
-        and removed_at is null
-        and ($3::text is null or coalesce(trade,'') = $3)
-      order by created_at desc limit 1`,
-    [opportunityId, subcontractorId, requestedTrade]
-  );
-  const trade = pairing?.trade ?? requestedTrade ?? null;
+  const { opp, sub, trade } = context;
   const profile = await getProfileJson();
 
   const resolved = resolveOutreachVars({

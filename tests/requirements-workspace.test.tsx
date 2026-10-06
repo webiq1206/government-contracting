@@ -63,6 +63,18 @@ function render(props: Partial<Parameters<typeof RequirementsWorkspace>[0]> = {}
 }
 
 describe("the checklist beside its source", () => {
+  it("initially opens the effective requirement's second PDF at its recorded page", () => {
+    const html = render({ requirements: [req({ id: "r1", sourceDocumentId: "d2", sourcePage: 44 })],
+      documents: [DOC, { ...DOC, id: "d2", name: "Second source.pdf" }] });
+    expect(html).toContain('src="/api/documents/d2/open?page=44"');
+    expect(html).not.toContain('src="/api/documents/d1/open"');
+  });
+  it("uses the filtered first open requirement rather than the completed first row's document", () => {
+    const html = render({ requirements: [req({ id: "done", sourceDocumentId: "d1", sourcePage: 2 }),
+      req({ id: "open", sourceDocumentId: "d2", sourcePage: 44 })], states: { done: view({ state: "done" }) },
+      documents: [DOC, { ...DOC, id: "d2", name: "Second source.pdf" }] });
+    expect(html).toContain('src="/api/documents/d2/open?page=44"');
+  });
   it("keeps populated research requirements readable without bid-work framing", () => {
     const html = render({ researchOnly: true, canEdit: false, documents: [] });
     expect(html).toContain("Recorded requirements");

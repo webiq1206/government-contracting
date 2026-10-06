@@ -15,6 +15,7 @@ import { query } from "./db";
 import { dedupeOpportunityHits } from "./domain/search-dedupe";
 import { snippet, type SearchResult } from "./domain/search-results";
 import { messageState, MESSAGE_STATE_LABEL, type MessageRow } from "./domain/message-state";
+import { searchDestinations, type NavigationSearchAccess } from "./domain/search-destinations";
 
 export async function searchEverything(
   rawQuery: string,
@@ -26,7 +27,7 @@ export async function searchEverything(
    * jumping to a record wants; this is for the operator who followed the
    * "see all copies" link and is about to close two of them.
    */
-  opts: { collapseDuplicates?: boolean } = {}
+  opts: { collapseDuplicates?: boolean; navigation?: NavigationSearchAccess } = {}
 ): Promise<SearchResult[]> {
   const q = rawQuery.trim();
   if (q.length < 2) return [];
@@ -104,6 +105,7 @@ export async function searchEverything(
     : opps.map((o) => ({ ...o, duplicates: 0 }));
 
   const results: SearchResult[] = [
+    ...searchDestinations(q, opts.navigation).slice(0, perKind),
     ...oppRows.map((o) => ({
       kind: "opportunity" as const,
       title: o.title ?? "Untitled opportunity",

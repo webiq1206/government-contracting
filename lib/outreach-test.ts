@@ -1,4 +1,3 @@
-import { queryOne } from "./db";
 import { getProfileJson } from "./ai/companyProfile";
 import { gatherTradeAttachments } from "./opportunity-attachments";
 import { assessAttachmentPackage, describePackageProblems } from "./domain/attachment-package";
@@ -8,8 +7,9 @@ import { renderOutreachBrief, scrubInternalFailureCopy } from "./domain/outreach
 import { validateOutboundEmail, describeProblems } from "./domain/outreach-validation";
 import { renderTemplate, plainToHtml } from "./domain/template-render";
 import { scrubGovtContacts, rewriteSamUrls } from "./integrations/scrub-contacts";
-import type { Opportunity, Subcontractor } from "./types";
 import type { OutreachAttachment } from "./integrations/email-transport";
+import { loadOutreachPreviewPair } from "./outreach-preview";
+import { sampleOutreachCopy } from "./domain/sample-outreach-copy";
 
 export type TestPair = { opportunityId: string; subcontractorId: string; trade: string };
 
@@ -20,19 +20,15 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
   let sections = buildOutreachSections({ vars, scopeBoundary: "Sample HVAC scope for an email delivery test only." });
   let problems: string[] = [];
   if (pair) {
-    const opp = await queryOne<Opportunity>(
-      "select * from opportunities where id=$1 and org_id=$2", [pair.opportunityId, orgId]);
-    const sub = await queryOne<Subcontractor>(
-      "select * from subcontractors where id=$1 and org_id=$2", [pair.subcontractorId, orgId]);
-    if (!opp || !sub) throw new Error("The selected records could not be found on this account. Nothing was sent.");
+    const { opp, sub, trade } = await loadOutreachPreviewPair(orgId, pair);
     const profile = await getProfileJson();
     if (!profile) throw new Error("The company profile is unavailable. Nothing was sent.");
-    const gathered = await gatherTradeAttachments(orgId, opp, pair.trade);
+    const gathered = await gatherTradeAttachments(orgId, opp, trade);
     const pkg = assessAttachmentPackage(gathered);
     if (!pkg.ok) throw new Error(`The actual bid package is not sendable: ${describePackageProblems(pkg.problems)} Nothing was sent.`);
     const resolved = resolveOutreachVars({ sub, opportunity: opp,
       analysis: opp.solicitation_analysis ?? undefined, profile,
-      trade: pair.trade, description: opp.description });
+      trade, description: opp.description });
     const scrub = (s: string) => scrubInternalFailureCopy(scrubGovtContacts(rewriteSamUrls(s)).sanitised);
     vars = Object.fromEntries(Object.entries(resolved.vars).map(([k, v]) => [k, scrub(v)]));
     attachments = gathered.files;
@@ -45,7 +41,7 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
       vars, missingRequired: resolved.missingRequired,
       attachedNames: attachments.map(f => f.filename), linkNames: gathered.links.map(l => l.name),
       documentsExpected: gathered.expected, quoteDueAt: resolved.quote.at, deadlineAt: opp.deadline,
-      sampleValues: OUTREACH_VAR_SAMPLES, trade: pair.trade || null,
+      sampleValues: OUTREACH_VAR_SAMPLES, trade,
       tradeSpecific: resolved.requirements.tradeSpecific,
     }).map(p => describeProblems([p]));
     if (problems.length) throw new Error(`The actual quote request is not sendable: ${problems.join(" ")} Nothing was sent.`);
@@ -53,7 +49,8 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
   const note = pair
     ? "Controlled delivery test: this is a copy of a real bid pricing request. It was sent only to the test recipient. No quote or commitment is requested."
     : "Controlled delivery test: the project information below is sample data, with no bid documents attached. No quote or commitment is requested.";
-  const plain = `${note}\n\n${scrubInternalFailureCopy(renderTemplate(template.body, vars))}`;
+  const testBody = pair ? template.body : sampleOutreachCopy(template.body);
+  const plain = `${note}\n\n${scrubInternalFailureCopy(renderTemplate(testBody, vars))}`;
   const details = renderOutreachBrief(sections);
   return { subject: `[TEST] ${renderTemplate(template.subject, vars)}`,
     html: plainToHtml(plain) + details.html, text: plain + details.plain, attachments,

@@ -14,8 +14,9 @@ function r(kind: SearchResult["kind"], title: string): SearchResult {
 }
 
 describe("groupResults", () => {
-  it("names the five groups the audit asks for", () => {
+  it("keeps record groups and adds a separate navigation-only group", () => {
     expect(KIND_ORDER).toEqual([
+      "page",
       "opportunity",
       "subcontractor",
       "contract",

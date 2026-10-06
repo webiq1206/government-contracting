@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingNav } from "@/components/marketing/marketing-nav";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
+import { AnalyticsPreferencesButton } from "@/components/marketing/clarity-analytics";
 
 export const metadata: Metadata = publicMetadata(
   "Privacy Policy",
@@ -29,6 +30,7 @@ export default function PrivacyPage() {
           <Link href="/security">Read the security and data overview</Link> for
           a practical explanation of product controls and AI data flow.
         </p>
+        <div id="analytics-preferences" className="mt-4"><AnalyticsPreferencesButton /></div>
         <div className="prose-marketing mt-8 space-y-5 text-sm leading-relaxed text-slate-700">
           <p>
             Brost Co (&quot;we&quot;, &quot;us&quot;) provides government

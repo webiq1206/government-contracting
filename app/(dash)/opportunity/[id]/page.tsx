@@ -631,7 +631,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
         */}
         <div className="hidden min-w-0 2xl:flex 2xl:flex-1 2xl:shrink">
           {!opp.is_sources_sought && <OpportunityStatusBar
-            stageLabel={stageLabel(opp.stage)}
+            stageLabel={plan.closed?.label ?? stageLabel(opp.stage)}
             deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}
             score={opp.score ?? null}
             scoreBreakdown={opp.score_breakdown}

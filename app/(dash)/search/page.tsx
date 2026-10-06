@@ -26,6 +26,7 @@ import {
 } from "@/lib/domain/row-actions";
 import { currentUser } from "@/lib/auth";
 import { ShellDataWarning } from "@/components/shell-data-warning";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,10 @@ export default async function SearchPage(
    */
   const showAll = searchParams?.all === "1";
   const loadWarnings: string[] = [];
+  const viewer = await currentUser().catch(() => {
+    loadWarnings.push("Your role could not be confirmed, so protected result actions are disabled.");
+    return null;
+  });
 
   // Same resolver every other page uses, so this page can never search a
   // different organization from the one the operator is looking at.
@@ -71,6 +76,7 @@ export default async function SearchPage(
     q.length >= 2
       ? await searchEverything(q, await currentOrg(), 25, {
           collapseDuplicates: !showAll,
+          navigation: viewer ? { platformAdmin: !viewer.impersonatedBy && isPlatformAdmin(viewer.email) } : undefined,
         })
       : [];
   const shown = kind ? all.filter((r) => r.kind === kind) : all;
@@ -97,13 +103,7 @@ export default async function SearchPage(
    * and id, so a preview is a link and the back button steps out of it.
    */
   const peek = parsePeekParam(searchParams?.peek);
-  const [viewer, peekedOpp, peekedSub] = await Promise.all([
-    currentUser().catch(() => {
-      loadWarnings.push(
-        "Your role could not be confirmed, so protected result actions are disabled."
-      );
-      return null;
-    }),
+  const [peekedOpp, peekedSub] = await Promise.all([
     peek?.kind === "opportunity" ? opportunityQuickViewData(peek.id) : Promise.resolve(null),
     peek?.kind === "subcontractor" ? subcontractorQuickViewData(peek.id) : Promise.resolve(null),
   ]);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { searchEverything } from "@/lib/search";
 import type { SearchResult } from "@/lib/domain/search-results";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,8 @@ export async function GET(req: Request) {
   if (ctx instanceof NextResponse) return ctx;
 
   const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
-  const results = await searchEverything(q, ctx.orgId);
+  const results = await searchEverything(q, ctx.orgId, 8, {
+    navigation: { platformAdmin: !ctx.user.impersonatedBy && isPlatformAdmin(ctx.user.email) },
+  });
   return NextResponse.json({ results });
 }

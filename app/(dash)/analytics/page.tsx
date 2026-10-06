@@ -466,31 +466,25 @@ export default async function AnalyticsPage(
         </div>
 
         {/*
-          * One section at a time on a phone, everything at once above the
-          * breakpoint. Numbers is listed first and selected by default,
-          * because the figures are what somebody opens this page for and the
-          * funnel is a nine-row table they would otherwise scroll past.
+          * Focused views on every screen size. Each figure keeps its original
+          * counting rule, date window, warning, and drill-down.
           */}
         <AnalyticsMobileNav
           sections={[
-            { id: "numbers", label: "Numbers" },
-            { id: "funnel", label: "Funnel" },
-            { id: "reports", label: "Reports" },
-            { id: "breakdown", label: "Breakdowns" },
-            { id: "engine", label: "Deeper" },
+            { id: "overview", label: "Overview" },
+            { id: "pipeline", label: "Pipeline" },
+            { id: "win-performance", label: "Win performance" },
+            { id: "revenue", label: "Revenue" },
           ]}
         >
         {/*
-          Both panels describe the stored breakdowns, which live under Deeper,
-          so on a phone they sit with what they explain instead of taking a
-          third of the first screen before any figure appears. Desktop is
-          unchanged: they stay exactly where they were.
+          Shared freshness and counting caveats stay available in every view.
         */}
-        <AnalyticsSection id="engine">
+        <div>
         <div className="space-y-6">
         {!snapData && (
           <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-slate-700">
-            Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
+            Stored breakdowns (win rate by NAICS, agency, geography, cash flow, sub
             rankings, velocity) appear after Analytics Engine runs.{" "}
             <Link
               href="/agents"
@@ -535,9 +529,9 @@ export default async function AnalyticsPage(
         </details>
 
         </div>
-        </AnalyticsSection>
+        </div>
 
-        <AnalyticsSection id="funnel">
+        <AnalyticsSection id="pipeline">
         {/* The funnel the audit names, over the selected period. */}
         <section aria-labelledby="funnel-heading">
           <div className="mb-3 border-b-2 border-accent/80 pb-2">
@@ -608,10 +602,11 @@ export default async function AnalyticsPage(
 
         </AnalyticsSection>
 
-        <AnalyticsSection id="numbers">
+        <div>
         <div className="space-y-6">
         {/* KPI cards */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <AnalyticsSection id={["overview", "win-performance"]} display="contents">
           <KpiCard
             label="Win rate"
             value={winRate != null ? `${winRate}%` : null}
@@ -643,6 +638,8 @@ export default async function AnalyticsPage(
             }
             accent
           />
+        </AnalyticsSection>
+        <AnalyticsSection id={["overview", "pipeline"]} display="contents">
           <KpiCard
             label="Recorded pipeline value"
             value={pipelineValued === 0 ? null : currency(pipelineValue)}
@@ -653,15 +650,19 @@ export default async function AnalyticsPage(
             }
             sub={pipelineCoverage ?? undefined}
           />
-          <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
+        </AnalyticsSection>
+        <AnalyticsSection id={["overview", "revenue"]} display="contents">
+          <KpiCard label="Active contract revenue" value={currency(activeRevenue)} /></AnalyticsSection>
         </div>
+        <AnalyticsSection id={["overview", "pipeline", "win-performance"]}>
         <p className="text-xs text-slate-500">
           Win rate is wins divided by decided bids. Recorded pipeline value includes
           both sourced values and AI estimates across current open opportunities.
           It is not revenue or a forecast. The period-filtered breakdown below
           separates published, estimated and unvalued work.
-        </p>
+        </p></AnalyticsSection>
 
+        <AnalyticsSection id="overview">
         {/* Live activity, computed straight from the data (no engine run needed). */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KpiCard label="Open opportunities" value={extras.counts.open_opps} />
@@ -669,11 +670,11 @@ export default async function AnalyticsPage(
           <KpiCard label="Bids submitted (30 days)" value={extras.counts.bids_30d} />
           <KpiCard label="Active contracts" value={extras.counts.active_contracts} />
         </div>
-
-        </div>
         </AnalyticsSection>
+        </div>
+        </div>
 
-        <AnalyticsSection id="reports">
+        <AnalyticsSection id={["overview", "pipeline"]}>
         {/* The reported metrics, each able to say where it came from. */}
         <section aria-labelledby="reports-heading" className="space-y-5">
           <div className="border-b-2 border-accent/80 pb-2">
@@ -705,6 +706,7 @@ export default async function AnalyticsPage(
             </p>
           </div>
 
+        <AnalyticsSection id="pipeline">
           <MetricGroup
             title="What the open work is worth"
             description="Published, estimated, and unvalued are counted apart. A notice with no figure is not worth nought, and adding an estimate to a published total hides which is which."
@@ -752,6 +754,8 @@ export default async function AnalyticsPage(
             <p className="mt-3 text-xs text-slate-500">{coverageSentence(valueReport.split)}</p>
           </div>
 
+        </AnalyticsSection>
+        <AnalyticsSection id="overview">
           <MetricGroup
             title="Deadlines and decisions"
             description="Whether work went in on time, and how long a pursue or pass call takes."
@@ -777,6 +781,7 @@ export default async function AnalyticsPage(
             description="Counts of records the automation demonstrably wrote, with the counting rule under each. Deliberately never converted into hours saved: the counts are the claim, and a number multiplied by an assumed minutes-per-task is not one anybody can defend."
             metrics={workRemoved}
           />
+        </AnalyticsSection>
         </section>
 
         </AnalyticsSection>
@@ -786,7 +791,7 @@ export default async function AnalyticsPage(
           somebody chose to keep, so burying them behind a different tab from
           the headline ones would defeat the pinning.
         */}
-        <AnalyticsSection id="numbers">
+        <AnalyticsSection id="overview">
         {/* Custom, operator-defined KPIs. */}
         <section>
           <div className="mb-3 flex items-center justify-between gap-3 border-b-2 border-accent/80 pb-2">
@@ -832,8 +837,9 @@ export default async function AnalyticsPage(
 
         </AnalyticsSection>
 
-        <AnalyticsSection id="breakdown">
+        <AnalyticsSection id={["pipeline", "win-performance"]}>
         <div className="space-y-6">
+        <AnalyticsSection id="pipeline">
         {/* Where the pipeline value is sitting, by stage. */}
         {stageValue.length > 0 && (
           <div className="card">
@@ -908,6 +914,8 @@ export default async function AnalyticsPage(
           </div>
         )}
 
+        </AnalyticsSection>
+        <AnalyticsSection id="win-performance">
         {/*
           * The drill-down. One row per value of the chosen dimension, over the
           * same cohort as the funnel, so the two always agree. Every rate here
@@ -1074,12 +1082,13 @@ description="The same opportunities from the selected period, grouped by the cat
           </div>
           </>
         )}
-
+        </AnalyticsSection>
         </div>
         </AnalyticsSection>
 
-        <AnalyticsSection id="engine">
+        <AnalyticsSection id={["overview", "pipeline", "revenue"]}>
         <div className="space-y-6">
+        <AnalyticsSection id="revenue">
         {/* Cash flow projection 30/60/90 */}
         {cashFlow && (
           <div className="card">
@@ -1116,6 +1125,8 @@ description="The same opportunities from the selected period, grouped by the cat
           </div>
         )}
 
+        </AnalyticsSection>
+        <AnalyticsSection id="overview">
         {/* Sub rankings */}
         {subRankings.length > 0 && (
           <div className="card">
@@ -1158,6 +1169,8 @@ description="The same opportunities from the selected period, grouped by the cat
           </div>
         )}
 
+        </AnalyticsSection>
+        <AnalyticsSection id="pipeline">
         {/* Pipeline velocity */}
         {velocity && Object.keys(velocity).length > 0 && (
           <div className="card">
@@ -1178,6 +1191,7 @@ description="The same opportunities from the selected period, grouped by the cat
             </div>
           </div>
         )}
+        </AnalyticsSection>
         </div>
         </AnalyticsSection>
         </AnalyticsMobileNav>

@@ -17,6 +17,7 @@
  */
 
 export type ResultKind =
+  | "page"
   | "opportunity"
   | "subcontractor"
   | "contract"
@@ -124,6 +125,7 @@ export function parsePeekParam(
 }
 
 export const KIND_LABEL: Record<ResultKind, string> = {
+  page: "Page",
   opportunity: "Opportunity",
   subcontractor: "Subcontractor",
   contract: "Contract",
@@ -132,6 +134,7 @@ export const KIND_LABEL: Record<ResultKind, string> = {
 };
 
 export const KIND_PLURAL: Record<ResultKind, string> = {
+  page: "Pages & tools",
   opportunity: "Opportunities",
   subcontractor: "Subcontractors",
   contract: "Contracts",
@@ -141,6 +144,7 @@ export const KIND_PLURAL: Record<ResultKind, string> = {
 
 /** The order the audit lists, which is also roughly how often each is wanted. */
 export const KIND_ORDER: ResultKind[] = [
+  "page",
   "opportunity",
   "subcontractor",
   "contract",

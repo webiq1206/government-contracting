@@ -24,6 +24,7 @@ import { UnsavedGuard } from "@/components/unsaved-guard";
 import { EmailMessage, EmailTimeline } from "@/components/email-message";
 import { messageState, MESSAGE_STATE_LABEL } from "@/lib/domain/message-state";
 import { manualSendStorageKey, preserveSendRequest } from "@/lib/client/manual-send-request";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 import type {
   Conversation,
   ConversationMessage,
@@ -40,18 +41,6 @@ export interface StoredReplyDraft {
   generatedAt: string;
   /** Revision of the stored text; edits count up from here. */
   rev: number;
-}
-
-function when(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
 }
 
 /** Label for messages the platform sent on the operator's behalf. */
@@ -310,6 +299,7 @@ export function ConversationThreads({
       />
       {conversations.map((c) => {
         const expanded = openKey === c.key;
+        const recorded = communicationTimestamp(c.lastAt);
         const res = result[c.key];
         const inboundId = replyTargetId(c);
         const flags = warnings[c.key] ?? [];
@@ -329,7 +319,7 @@ export function ConversationThreads({
                 <span className="block truncate text-xs text-slate-500">
                   {c.opportunityTitle ?? "No solicitation linked"}
                   {c.trade ? ` · ${c.trade}` : ""} · {c.messages.length} message
-                  {c.messages.length === 1 ? "" : "s"} · {when(c.lastAt)}
+                  {c.messages.length === 1 ? "" : "s"} · <time dateTime={recorded.dateTime} title="Latest stored record">{recorded.label}</time>
                 </span>
               </span>
               {c.awaitingUs && (
