@@ -119,7 +119,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await dialog.getByRole('button',{name:'Close',exact:true}).click();
   });
   await check(`/pipeline?peek=opportunity:${ids.archived}`, 'closed-record-quick-look', async () => {
-    const dialog=page.getByRole('dialog'); await dialog.waitFor();
+    const dialog=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true}); await dialog.waitFor();
     await dialog.getByText('Expired',{exact:true}).waitFor();
     await dialog.getByText('Saved workflow stage',{exact:true}).waitFor();
     await dialog.getByText('Recorded bid deadline',{exact:true}).waitFor();
