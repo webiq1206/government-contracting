@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OpportunityMessageHistory } from "@/components/opportunity-message-history";
-import type { OppSubCommRow } from "@/lib/data";
+import type { OppSubCommRow, OppSubRow } from "@/lib/data";
+import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 
 const row: OppSubCommRow = {
   id: "message-1", subcontractor_id: "sub-1", channel: "email", direction: "outbound",
@@ -13,6 +14,17 @@ const row: OppSubCommRow = {
 };
 
 describe("opportunity communication evidence", () => {
+  it("retains research scope and message evidence without bid-work recommendations", () => {
+    const sub = { id: "pair-1", subcontractor_id: "sub-1", company_name: "Saved firm", trade: "Electrical", outreach_state: "responsive", emails_sent: 0, calls_logged: 0, touches: 1 } as OppSubRow;
+    const html = renderToStaticMarkup(<OpportunitySubsPanel researchOnly subs={[sub]} communications={[row]} description="Saved full scope description" />);
+    expect(html).toContain("Saved description: ");
+    expect(html).toContain("Saved full scope description");
+    expect(html).toContain("saved-recipient@example.test");
+    expect(html).toContain("Draft, not sent");
+    expect(html).not.toContain("Re-run the analysis");
+    expect(html).not.toContain("Collect or confirm their quote");
+    expect(html).not.toContain("Enter quote");
+  });
   it.each([
     ["draft", "Draft, not sent"], ["held", "Held, not sent"],
     ["failed", "Never sent"], ["queued", "Queued, not attempted"],

@@ -42,6 +42,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     assert(await page.getByText('Sample Electrical Services', { exact: true }).isVisible());
     assert.equal(await page.getByText('Enter quote', { exact: true }).count(), 0);
     assert.equal(await page.getByText(/Collect or confirm their quote/).count(), 0);
+    assert.equal(await page.getByText(/Re-run the analysis to break it out/).count(), 0);
+    assert(await page.getByText('Saved description: Electrical', { exact: true }).isVisible());
     assert.equal(await page.locator('a[href="#quotes"]').count(), 0);
   });
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {

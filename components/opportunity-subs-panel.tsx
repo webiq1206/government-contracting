@@ -140,7 +140,11 @@ export function OpportunitySubsPanel({
                 </div>
                 {tradeWork.work && (
                   <div className="mb-2">
-                    <SubWorkNeeded work={tradeWork} variant="compact" />
+                    {researchOnly ? <div className="rounded-md border border-border p-3 text-xs">
+                      <p className="font-medium">Saved description: {trade}</p>
+                      {!tradeWork.tradeSpecific && <p className="mt-1 text-muted-foreground">This is the overall saved description. No separate scope for this trade was recorded.</p>}
+                      <p className="mt-2 whitespace-pre-wrap break-words">{tradeWork.work}</p>
+                    </div> : <SubWorkNeeded work={tradeWork} variant="compact" />}
                   </div>
                 )}
                 <ul className="divide-y divide-border panel-inset">
