@@ -79,7 +79,7 @@ export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDec
         <SnoozeButton key={opportunityId} kind="opportunity" id={opportunityId} disabled={busy != null || unconfirmed} onPending={setSnoozing} onUnconfirmed={() => setError(ACTION_UNCONFIRMED)} onSnoozed={advance} className="btn-ghost min-h-11 text-sm" />
       </div>}
       {brief.autoDismissAt && <p className="mt-3 text-sm text-review">Review closes {shortDate(brief.autoDismissAt)} ({countdown(brief.autoDismissAt)}). Snooze does not extend this review deadline.</p>}
-      {error && <div role="alert" className="mt-3 rounded-lg border border-risk/40 bg-background p-3 text-sm text-risk"><p>{error}</p>{unconfirmed && <Link ref={statusLink} href={recordHref ?? `/opportunity/${opportunityId}`} className="mt-2 inline-flex min-h-11 items-center font-medium underline">Check this opportunity's current status</Link>}</div>}
+      {error && <div role="alert" className="mt-3 rounded-lg border border-risk/40 bg-background p-3 text-sm text-risk"><p>{error}</p>{unconfirmed && <Link ref={statusLink} href={recordHref ?? `/opportunity/${opportunityId}`} className="mt-2 inline-flex min-h-11 items-center font-medium underline">Check this opportunity&apos;s current status</Link>}</div>}
     </section>
     <div className="space-y-5 px-5 py-5 sm:px-6">
       <section aria-label="Key facts" className="rounded-xl border border-border/60 bg-surface p-4"><h3 className="mb-3 text-sm font-semibold">Key facts</h3><dl className="grid gap-4 sm:grid-cols-2">
