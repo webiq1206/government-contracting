@@ -48,14 +48,16 @@ export function TradeCoverageStrip({
         </div>
         <InfoTip label="About required pricing">
           Coverage is complete for a trade when at least one positive quote is on
-          file. Draft or failed emails do not count as contacted.
+          file. Contact and response totals here use saved outreach statuses and response
+          dates. The communication history below shows individual messages and delivery evidence.
+          Draft or failed emails do not count as contacted.
         </InfoTip>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
         <Metric label="Found" value={totals.found} href="#subs" />
         <Metric label="Contacted" value={totals.contacted} href="#subs" />
-        <Metric label="Responded" value={totals.responded} href="#subs" />
+        <Metric label="Marked responsive" value={totals.responded} href="#subs" />
         <Metric label="Quotes" value={totals.quotes} href="#quotes" />
         <Metric
           label="Follow-ups due"
@@ -113,7 +115,7 @@ export function TradeCoverageStrip({
                       <>
                         {" "}
                         · {t.found} found · {t.contacted} contacted · {t.responded}{" "}
-                        responded · {t.quotes} quote{t.quotes === 1 ? "" : "s"}
+                        marked responsive · {t.quotes} quote{t.quotes === 1 ? "" : "s"}
                       </>
                     )}
                   </p>

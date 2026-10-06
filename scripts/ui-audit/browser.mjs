@@ -73,6 +73,10 @@ try {
     const record={route:entry.route,device,role:publicPage?'visitor':'owner',status:'not verified',errors};
     try {
       const response=await p.goto(base+route,{waitUntil:'networkidle',timeout:60000});
+      if (entry.route === '/settings/profile') {
+        await p.getByRole('heading', { name: 'Company', exact: true }).waitFor();
+        await p.getByRole('button', { name: 'Save profile', exact: true }).waitFor();
+      }
       record.http=response?.status();record.finalPath=new URL(p.url()).pathname;
       record.navigation=await p.evaluate(()=>{
         const nav=performance.getEntriesByType('navigation')[0];

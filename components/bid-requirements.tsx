@@ -56,9 +56,9 @@ export function BidRequirements({
       <div className="rounded-md border border-border bg-surface px-4 py-3">
         <p className="label">What it takes to bid</p>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          No submission requirements were extracted yet. Until the analysis finishes, treat
-          the original solicitation as the source of truth. Retry analysis from the Files
-          tab if the solicitation is already attached.
+          No submission requirements are recorded. Check the original solicitation and
+          the analysis status. If needed, retry analysis from the Documents tab after
+          confirming the solicitation is attached.
         </p>
       </div>
     );

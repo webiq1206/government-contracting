@@ -173,8 +173,8 @@ export function CallQueueList({
                       </span>
                       <span>
                         {c.lastContacted
-                          ? `Last wrote ${shortDate(c.lastContacted)}`
-                          : "Never written to"}
+                          ? `Last contact recorded ${shortDate(c.lastContacted)}`
+                          : "Last contact time not recorded"}
                       </span>
                       {/*
                         The date their price is actually needed, which is not

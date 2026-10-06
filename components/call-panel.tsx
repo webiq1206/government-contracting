@@ -82,6 +82,11 @@ export function CallPanel({
             {error}
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {(error.includes("Caller identity is not configured") || error.includes("Caller identity is incomplete")) && (
+              <a href="/settings/profile" className="btn-primary inline-flex text-sm">
+                Complete Company Profile
+              </a>
+            )}
             <button
               type="button"
               className="btn-primary text-sm"

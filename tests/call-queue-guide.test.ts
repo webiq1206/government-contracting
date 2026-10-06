@@ -25,7 +25,7 @@ describe("call queue guide", () => {
       queueLength: 1,
     });
     expect(plan.active?.plain).toBe(
-      "Apex Roofing replied to your email, so they are expecting to hear from you."
+      "Apex Roofing has a recorded reply. Review it before calling."
     );
     expect(plan.active?.detail).toBeUndefined();
     expect(plan.headline).toBe("Step 1 of 3: Open the top call");

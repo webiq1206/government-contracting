@@ -426,10 +426,8 @@ export function buildPlatformRecap(
 
   const review: RecapItem[] = facts.quietAccounts.map((q) => ({
     key: `platform-quiet:${q.orgId}`,
-    title: `${q.orgName} has done nothing for ${
-      q.lastActivity ? `${q.days} days` : "as long as we have recorded"
-    }`,
-    detail: "Worth a look before it becomes a cancellation nobody saw coming.",
+    title: `${q.orgName}: ${q.lastActivity ? `no account activity recorded for ${q.days} days` : "no account activity recorded"}`,
+    detail: "Review the account history and follow up if help is needed.",
     href: `/admin/accounts/${q.orgId}`,
     severity: "normal",
   }));

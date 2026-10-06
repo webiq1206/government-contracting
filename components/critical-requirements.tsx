@@ -32,8 +32,8 @@ export function CriticalRequirements({
       <div className="rounded-md border border-border bg-surface px-4 py-3">
         <p className="label">Critical requirements</p>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          No submission requirements were extracted yet. Until the analysis finishes, treat
-          the original solicitation as the source of truth for what has to be submitted.
+          No submission requirements are recorded. Check the original solicitation for
+          what must be submitted, and review the analysis status before requesting another analysis.
         </p>
       </div>
     );

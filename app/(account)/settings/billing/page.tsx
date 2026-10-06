@@ -371,8 +371,8 @@ export default async function BillingSettingsPage(
         )}
         {comped && (
           <div className="rounded-md border border-pursue/40 bg-pursue/5 px-4 py-3 text-sm text-pursue">
-            This account is comped. You have full access to everything and there
-            is nothing to pay.
+            Current product access is complimentary. Spending limits still apply.
+            Review the records below for any historical invoices or usage charges.
             {org?.billing_exempt_reason ? ` (${org.billing_exempt_reason})` : ""}
           </div>
         )}

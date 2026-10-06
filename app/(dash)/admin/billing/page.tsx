@@ -185,7 +185,7 @@ New subscriptions may be blocked by missing billing configuration. Missing:{" "}
           {[
             { label: "Accounts", value: String(s.total) },
             { label: "On trial", value: String(s.trialing) },
-            { label: "Paying", value: String(s.active) },
+            { label: "Active subscription records", value: String(s.active) },
             { label: "Payment problems", value: String(s.pastDue) },
             { label: "MRR", value: money(s.mrrCents) },
           ].map((c) => (

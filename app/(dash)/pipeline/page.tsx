@@ -204,10 +204,10 @@ const TABLE_SPECS: FilterSpec[] = [
 
 const NEXT_ACTION: Record<string, string> = {
   monitoring: "Awaiting scoring",
-  scoring: "Scoring in progress",
-  analysis: "Analyst + Pricing running",
-  sub_research: "Finding subs",
-  outreach: "Outreach in flight",
+  scoring: "Scoring stage",
+  analysis: "Analysis and pricing stage",
+  sub_research: "Subcontractor research stage",
+  outreach: "Outreach stage",
   call_queue: "Call the sub",
   quote_entry: "Enter quote",
   bid_building: "Review & submit bid",

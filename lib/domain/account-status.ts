@@ -114,7 +114,7 @@ export function accountStatus(facts: AccountFacts): AccountStatus {
   const productAccess: StatusLine = suspended
     ? { value: "Suspended", detail: "An administrator has stopped this account. Nothing runs and nothing can be edited.", tone: "bad" }
     : access === "full"
-      ? { value: "Full access", detail: "Every feature is available with no limits.", tone: "good" }
+      ? { value: "Full access", detail: "Your account permits product access. Permissions, connection requirements and spending limits still apply.", tone: "good" }
       : access === "trial"
         ? {
             value: "Trial access",
@@ -143,7 +143,7 @@ export function accountStatus(facts: AccountFacts): AccountStatus {
         // that stops the question: not "no subscription", which reads as a
         // problem, but "none required", which reads as an arrangement.
         value: "No billing required",
-        detail: "This account has been given full access. There is nothing to pay and no card on file.",
+        detail: "Current product access is complimentary. This does not confirm past invoices, usage charges or saved payment methods.",
         tone: "good",
       }
     : status === "past_due"

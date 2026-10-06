@@ -211,7 +211,7 @@ describe("webhookHealth", () => {
     const h = webhookHealth(null, 4, NOW);
     expect(h.state).toBe("never");
     expect(h.suspect).toBe(true);
-    expect(h.detail).toContain("never registered");
+    expect(h.detail).toContain("Billing synchronization has not been confirmed");
   });
 
   it("reports a recent event as healthy", () => {
