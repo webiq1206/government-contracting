@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { listInvitations, invitationState, INVITATION_DAYS } from "@/lib/admin/invitations";
