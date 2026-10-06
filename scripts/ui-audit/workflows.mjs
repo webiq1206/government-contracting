@@ -29,11 +29,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       const control=views.getByRole('button',{name:label,exact:true});
       await control.click();
       assert.equal(await control.getAttribute('aria-pressed'),'true');
+      if(label==='Overview') assert(await page.getByText('Top Subcontractors',{exact:true}).isVisible());
       if(label==='Pipeline') {
+        assert(await page.getByText('Opportunities by stage',{exact:true}).isVisible());
         assert(await page.getByText('Recorded pipeline value',{exact:true}).isVisible());
         assert.equal(await page.getByText('Active contract revenue',{exact:true}).isVisible(),false);
       }
-      if(label==='Win performance') assert(await page.getByText('Avg margin on wins',{exact:true}).isVisible());
+      if(label==='Win performance') {
+        assert(await page.getByText('Avg margin on wins',{exact:true}).isVisible());
+        assert(await page.getByRole('heading',{name:'Win rate by NAICS',exact:true}).isVisible());
+      }
       if(label==='Revenue') {
         assert(await page.getByText('Active contract revenue',{exact:true}).isVisible());
         assert(await page.getByText('Cash Flow Projection',{exact:true}).isVisible());

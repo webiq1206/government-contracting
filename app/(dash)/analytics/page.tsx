@@ -29,6 +29,7 @@ import {
 import { coverageSentence } from "@/lib/domain/report-metrics";
 import { getMetric, describeKpiParams } from "@/lib/domain/kpi";
 import { currency, pct } from "@/lib/format";
+import { normalizeAnalyticsSnapshot } from "@/lib/domain/analytics-snapshot";
 import { PIPELINE_STAGES, funnelCounts, funnelBreakdown } from "@/lib/data";
 import {
   buildFunnel,
@@ -69,10 +70,7 @@ function str(v: unknown): string {
   return "-";
 }
 
-/** A row in a defensively-rendered breakdown table. */
-function rows(v: unknown): Record<string, unknown>[] {
-  return Array.isArray(v) ? (v.filter((r) => r && typeof r === "object") as Record<string, unknown>[]) : [];
-}
+
 
 function KpiCard({
   label,
@@ -397,19 +395,8 @@ export default async function AnalyticsPage(
   ]);
 
   const snapData = snap?.data ?? null;
-  const byNaics = snapData ? rows(snapData.by_naics) : [];
-  const byAgency = snapData ? rows(snapData.by_agency) : [];
-  const byGeography = snapData ? rows(snapData.by_geography) : [];
-
-  const cashFlow =
-    snapData && snapData.cash_flow && typeof snapData.cash_flow === "object"
-      ? (snapData.cash_flow as Record<string, unknown>)
-      : null;
-  const subRankings = snapData ? rows(snapData.sub_rankings) : [];
-  const velocity =
-    snapData && snapData.velocity && typeof snapData.velocity === "object"
-      ? (snapData.velocity as Record<string, unknown>)
-      : null;
+  const { byNaics, byAgency, byGeography, cashFlow, subRankings, velocity } =
+    normalizeAnalyticsSnapshot(snapData);
 
   return (
     <div className="flex page-shell">
