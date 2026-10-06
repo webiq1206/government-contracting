@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const base='http://127.0.0.1:3100';
 const otherOrigin='http://127.0.0.1:3101';
 const out='artifacts/ui-audit';
+mkdirSync(out,{recursive:true});
 const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 // A headed Chromium under Xvfb exercises its real PDF viewer. The default
 // headless shell does not support PDF navigation/paint.
