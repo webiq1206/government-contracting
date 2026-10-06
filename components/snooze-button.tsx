@@ -96,7 +96,7 @@ export function SnoozeButton({
           if (!wrapRef.current?.contains(e.relatedTarget as Node)) setOpen(false);
         }}
       >
-        {busy ? "…" : label}
+        {busy ? "Saving" : label}
       </button>
       {open && (
         <span

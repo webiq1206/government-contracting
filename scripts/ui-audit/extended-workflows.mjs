@@ -8,11 +8,11 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     try {
       await page.reload({waitUntil:'networkidle'});
       await page.getByRole('tab',{name:'Your apps',exact:true}).click();
-      await page.getByRole('alert').filter({hasText:'Your connected apps could not be loaded.'}).waitFor();
+      await page.getByRole('alert').filter({hasText:'Saved connection status could not be loaded.'}).waitFor();
     } finally { await page.unroute('**/api/services'); }
     await page.getByRole('button',{name:'Try again',exact:true}).click();
     await page.getByRole('heading',{name:'Calendars',exact:true}).waitFor();
-    assert.equal(await page.getByRole('alert').filter({hasText:'Your connected apps could not be loaded.'}).count(),0);
+    assert.equal(await page.getByRole('alert').filter({hasText:'Saved connection status could not be loaded.'}).count(),0);
   });
   await check('/opportunity/new', 'import-preserves-edits-and-save-failure-recovers', async () => {
     const preview = '**/api/opportunities/import/preview';

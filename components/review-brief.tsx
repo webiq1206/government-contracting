@@ -26,6 +26,12 @@ export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDec
   const [reason, setReason] = useState("");
   const inFlight = useRef<AbortController | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const passButton = useRef<HTMLButtonElement>(null);
+  const statusLink = useRef<HTMLAnchorElement>(null);
+  const cancelPass = () => { setPassing(false); requestAnimationFrame(() => {
+    if (passButton.current && !passButton.current.disabled) passButton.current.focus();
+    else (statusLink.current ?? heading.current)?.focus();
+  }); };
   const previousId = useRef(opportunityId);
   useEffect(() => {
     setPassing(false); setReason(""); setError(null); setBusy(null); setSnoozing(false);
@@ -54,7 +60,7 @@ export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDec
   useWorkspaceShortcut("mod+Enter", pursue, canDecide && !disabled && !passing);
   return <article className="flex min-w-0 flex-1 flex-col" aria-busy={busy != null}>
     <header className="border-b border-border/60 bg-surface px-5 py-5 sm:px-6">
-      <Link href={closeHref} className="mb-3 inline-flex min-h-8 items-center text-sm text-accent lg:hidden">Back to review queue</Link>
+      <Link href={closeHref} className="mb-3 inline-flex min-h-11 items-center text-sm text-accent lg:hidden">Back to review queue</Link>
       <div className="mb-3 flex flex-wrap items-center gap-2"><span className={`rounded-full px-3 py-1 text-sm font-semibold ${TONE[brief.recommendation]}`}>{RECOMMENDATION_LABEL[brief.recommendation]}</span><span className="text-sm text-muted-foreground">{brief.score == null ? "Not scored" : `Fit score ${brief.score} / 100`}</span></div>
       <h2 ref={heading} tabIndex={-1} className="break-words text-xl font-semibold leading-snug text-foreground outline-none sm:text-2xl">{title}</h2>
       <p className="mt-2 break-words text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
@@ -62,18 +68,18 @@ export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDec
     </header>
     <section aria-label="Your decision" className="border-b border-border/60 bg-accent-soft/40 px-5 py-4 sm:px-6">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-semibold">Your decision</h3><span className="text-xs text-muted-foreground">{nextHref ? "Saved decisions open the next opportunity" : "Last opportunity in this queue"}</span></div>
-      {!canDecide ? <p className="text-sm text-muted-foreground">You can read the evidence. A team member with decision access can pursue or pass.</p> : passing ? <div className="space-y-3">
+      {!canDecide ? <p className="text-sm text-muted-foreground">You can read the evidence. A team member with decision access can pursue or pass.</p> : passing ? <div className="space-y-3" onKeyDown={event => { if (event.key === "Escape" && busy == null) { event.preventDefault(); event.stopPropagation(); cancelPass(); } }}>
         <label htmlFor="pass-reason" className="block text-sm font-medium">Why are you passing?</label>
         <textarea id="pass-reason" autoFocus value={reason} onChange={event => setReason(event.target.value)} rows={2} disabled={busy != null} placeholder="For example, outside our service area." className="input w-full resize-y text-sm" />
         <p className="text-xs text-muted-foreground">This reason is saved with the decision. The opportunity stays in history.</p>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void act("dismiss", { reason })} disabled={disabled || reason.trim().length < 3} className="btn-danger min-h-11 text-sm">{busy === "dismiss" ? "Saving decision…" : "Confirm pass"}</button><button type="button" disabled={busy != null} onClick={() => setPassing(false)} className="btn-ghost min-h-11 text-sm">Cancel</button></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void act("dismiss", { reason })} disabled={disabled || reason.trim().length < 3} className="btn-danger min-h-11 text-sm">{busy === "dismiss" ? "Saving decision…" : "Confirm pass"}</button><button type="button" disabled={busy != null} onClick={cancelPass} className="btn-ghost min-h-11 text-sm">Cancel</button></div>
       </div> : <div className="flex flex-wrap gap-2">
         <button type="button" onClick={pursue} disabled={disabled} className="btn-primary min-h-11 text-sm">{busy === "pursue" ? "Saving decision…" : nextHref ? "Pursue & next" : "Pursue"}</button>
-        <button type="button" onClick={() => setPassing(true)} disabled={disabled} className="btn-ghost min-h-11 border border-border text-sm">Pass</button>
+        <button ref={passButton} type="button" onClick={() => setPassing(true)} disabled={disabled} className="btn-ghost min-h-11 border border-border text-sm">Pass</button>
         <SnoozeButton key={opportunityId} kind="opportunity" id={opportunityId} disabled={busy != null || unconfirmed} onPending={setSnoozing} onUnconfirmed={() => setError(ACTION_UNCONFIRMED)} onSnoozed={advance} className="btn-ghost min-h-11 text-sm" />
       </div>}
       {brief.autoDismissAt && <p className="mt-3 text-sm text-review">Review closes {shortDate(brief.autoDismissAt)} ({countdown(brief.autoDismissAt)}). Snooze does not extend this review deadline.</p>}
-      {error && <div role="alert" className="mt-3 rounded-lg border border-risk/40 bg-background p-3 text-sm text-risk"><p>{error}</p>{unconfirmed && <Link href={recordHref ?? `/opportunity/${opportunityId}`} className="mt-2 inline-flex min-h-11 items-center font-medium underline">Check this opportunity’s current status</Link>}</div>}
+      {error && <div role="alert" className="mt-3 rounded-lg border border-risk/40 bg-background p-3 text-sm text-risk"><p>{error}</p>{unconfirmed && <Link ref={statusLink} href={recordHref ?? `/opportunity/${opportunityId}`} className="mt-2 inline-flex min-h-11 items-center font-medium underline">Check this opportunity's current status</Link>}</div>}
     </section>
     <div className="space-y-5 px-5 py-5 sm:px-6">
       <section aria-label="Key facts" className="rounded-xl border border-border/60 bg-surface p-4"><h3 className="mb-3 text-sm font-semibold">Key facts</h3><dl className="grid gap-4 sm:grid-cols-2">

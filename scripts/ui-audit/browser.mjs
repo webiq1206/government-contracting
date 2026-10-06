@@ -80,14 +80,14 @@ try {
       });
       record.headings=await p.locator('h1').allTextContents();
       if(entry.route==='/communications/compose') {
-        await p.getByRole('heading',{name:'Compose project message',exact:true}).waitFor();
+        await p.getByRole('heading',{name:'New message about this opportunity',exact:true}).waitFor();
         assert(await p.getByRole('button',{name:'Send message',exact:true}).isDisabled(),'No live sender is configured in the synthetic audit');
         await p.getByLabel('Subject',{exact:true}).fill('Synthetic project question');
         await p.getByLabel('Message',{exact:true}).fill('Unsent synthetic draft for layout inspection.');
         await p.getByLabel('Message',{exact:true}).fill('');
       }
       if(entry.route==='/communications/history') {
-        await p.getByRole('heading',{name:'Communications ledger',exact:true}).waitFor();
+        await p.getByRole('heading',{name:'Communication history',exact:true}).waitFor();
         await p.getByLabel('Search messages',{exact:true}).fill('Ledger Audit');
         await p.getByRole('button',{name:'Search',exact:true}).click();
         await p.getByText('Synthetic wording for the ledger regression.',{exact:true}).waitFor();
@@ -584,7 +584,7 @@ try {
   if(await templates.count()>1) await templates.nth(1).click();
   await v.getByRole('article',{name:'Read-only email template',exact:true}).waitFor();
   await v.screenshot({path:join(out,device+'-viewer-content.png')});
-  await v.getByRole('tab',{name:/^Proposal snippets/}).click();
+  await v.getByRole('tab',{name:/^Saved proposal text/}).click();
   assert.equal(await v.getByRole('button',{name:/Add snippet|^Edit$|^Delete$/}).count(),0,'Viewer can read snippets without unusable mutation controls');
   await v.goto(base+'/agents',{waitUntil:'networkidle'});
   await v.getByText('Automation schedules and manual controls',{exact:true}).click();

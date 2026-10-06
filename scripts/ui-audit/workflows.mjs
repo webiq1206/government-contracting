@@ -147,8 +147,49 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).waitFor();
   });
+  await check(`/review?o=${ids.opportunity}`, 'review-inline-decision-keyboard-and-recovery', async () => {
+    const decision = page.getByRole('region', { name: 'Your decision', exact: true });
+    const pass = decision.getByRole('button', { name: 'Pass', exact: true });
+    await pass.press('Enter');
+    const reason = decision.getByRole('textbox', { name: 'Why are you passing?', exact: true });
+    assert(await reason.evaluate(el => el === document.activeElement), 'Pass must focus the reason field');
+    const confirm = decision.getByRole('button', { name: 'Confirm pass', exact: true });
+    assert(await confirm.isDisabled(), 'An empty reason must not submit');
+    await reason.fill('We are already at capacity.');
+    const endpoint = `**/api/opportunities/${ids.opportunity}/action`;
+    let attempts = 0;
+    let responseStatus = 403;
+    await page.route(endpoint, route => { attempts++; return route.fulfill({ status: responseStatus, contentType: 'application/json', body: '{"error":"Fixture refusal or lost outcome"}' }); });
+    try {
+      await confirm.press('Enter');
+      await decision.getByRole('alert').filter({ hasText: 'Your account cannot perform this action.' }).waitFor();
+      assert.equal(await reason.inputValue(), 'We are already at capacity.', 'A refused decision must keep the reason');
+      assert.equal(attempts, 1);
+      await reason.press('Escape');
+      await pass.waitFor();
+      await page.waitForFunction(() => document.activeElement?.textContent === 'Pass');
+      assert(await pass.evaluate(el => el === document.activeElement), 'Cancel must return focus to Pass');
+      for (const button of await decision.getByRole('button').all()) {
+        const box = await button.boundingBox();
+        assert(box && box.height >= 44, 'Decision actions must have a44px touch target');
+      }
+      responseStatus = 503;
+      await pass.press('Enter');
+      assert.equal(await reason.inputValue(), 'We are already at capacity.');
+      await confirm.press('Enter');
+      await decision.getByRole('alert').filter({ hasText: 'The action could not be confirmed.' }).waitFor();
+      assert(await confirm.isDisabled(), 'An unknown outcome must block a duplicate decision');
+      await reason.press('Escape');
+      const status = decision.getByRole('link', { name: "Check this opportunity's current status", exact: true });
+      await page.waitForFunction(() => document.activeElement?.textContent === "Check this opportunity's current status");
+      assert(await status.evaluate(el => el === document.activeElement), 'Unknown outcomes return focus to the status check');
+      assert(await pass.isDisabled(), 'Cancellation must preserve the unknown-outcome retry lock');
+      assert.equal(attempts, 2);
+    } finally { await page.unroute(endpoint); }
+  });
   await check('/review', 'nested-confirmation-and-keyboard', async () => {
-    await page.getByRole('link', { name: 'Quick look', exact: true }).first().click();
+    // Review uses its inline decision panel; saved drawer links remain supported.
+    await page.goto(`${base}/review?peek=opportunity:${ids.opportunity}`, { waitUntil: 'networkidle' });
     const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
     await drawer.waitFor();
     await drawer.getByRole('button', { name: /^More actions/ }).click();
