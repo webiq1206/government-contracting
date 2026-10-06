@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 
 const base='http://127.0.0.1:3100';
 const otherOrigin='http://127.0.0.1:3101';
@@ -15,6 +16,7 @@ const browser=await chromium.launch({headless:false});
 const evidence={sameOrigin:false,externalBlocked:false,authDenied:false,crossOrgDenied:false,headers:[],blockedRequests:[],failedRequests:[],console:[],frames:[]};
 let diagnosticPage;
 let externalPage;
+let externalServer;
 function checkpoint() { writeFileSync(`${out}/pdf-embedding-results.json`,JSON.stringify(evidence,null,2)); }
 async function isolate(context) {
   context.on('requestfailed',request=>evidence.failedRequests.push({url:request.url(),error:request.failure()?.errorText}));
@@ -24,7 +26,7 @@ async function isolate(context) {
     // them disables the real PDF viewer while leaving a misleading blank frame.
     const nativePdfResource=(url.protocol==='chrome-extension:' && url.hostname==='mhjfbmdgcfjbbpaeojofohoefgiehjai') ||
       (url.protocol==='chrome:' && url.hostname==='resources');
-    if(url.origin===base || nativePdfResource) return route.continue();
+    if(url.origin===base || url.origin===otherOrigin || nativePdfResource) return route.continue();
     evidence.blockedRequests.push(route.request().url()); return route.abort();
   });
 }
@@ -115,8 +117,18 @@ try {
   evidence.crossOrgDenied=true;await tenant.close();
   checkpoint();
 
-  // A different port is a different origin but the same cookie site. The
-  // synthetic parent is fulfilled locally; no external website is contacted.
+  // A real second loopback server preserves normal browser network semantics.
+  // Its different port is a different origin but the same cookie site; no
+  // external website or provider is contacted, and browser defaults stay on.
+  externalServer=createServer((request,res)=>{
+    if(request.url!=='/frame-audit') { res.writeHead(404);res.end();return; }
+    res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
+    res.end(`<!doctype html><html><head><title>External frame probe</title></head><body><iframe title="External frame probe" src="${base}/api/documents/${ids.sourceDocs[1]}/open?page=44" width="900" height="700"></iframe></body></html>`);
+  });
+  await new Promise((resolve,reject)=>{
+    externalServer.once('error',reject);
+    externalServer.listen(3101,'127.0.0.1',resolve);
+  });
   const outside=await context.newPage(); externalPage=outside;
   const errors=[]; evidence.externalConsole=errors;
   outside.on('console',message=>{if(message.type()==='error') errors.push(message.text());});
@@ -133,12 +145,10 @@ try {
   network.on('Network.responseReceivedExtraInfo',event=>{
     const headers=Object.fromEntries(Object.entries(event.headers).map(([key,value])=>[key.toLowerCase(),value]));
     receipts.push({requestId:event.requestId,status:event.statusCode,type:headers['content-type'],
-      csp:headers['content-security-policy'],xfo:headers['x-frame-options']});
+      csp:headers['content-security-policy'],xfo:headers['x-frame-options'],addressSpace:event.resourceIPAddressSpace});
   });
   evidence.externalFailures=[];
   network.on('Network.loadingFailed',event=>evidence.externalFailures.push({url:requests.get(event.requestId),error:event.errorText,blockedReason:event.blockedReason}));
-  await outside.route(otherOrigin+'/frame-audit',route=>route.fulfill({contentType:'text/html',body:
-    `<html><body><iframe title="External frame probe" src="${base}/api/documents/${ids.sourceDocs[1]}/open?page=44" width="900" height="700"></iframe></body></html>`}));
   await outside.goto(otherOrigin+'/frame-audit',{waitUntil:'domcontentloaded',timeout:10000});
   const pdfReceipt=()=>receipts.find(receipt=>receipt.status===200&&receipt.type==='application/pdf'&&requests.get(receipt.requestId)?.startsWith(base+'/api/files/'));
   for(let attempt=0;attempt<100&&(!pdfReceipt()||!errors.some(error=>/frame-ancestors/.test(error)));attempt++) await new Promise(resolve=>setTimeout(resolve,100));
@@ -158,7 +168,8 @@ try {
         media:Array.from(document.querySelectorAll('iframe,embed,object')).map(node=>({tag:node.tagName,src:node.getAttribute('src'),type:node.getAttribute('type'),width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height}))})).catch(error=>({error:String(error)}))})));
     await diagnosticPage.screenshot({path:`${out}/desktop-pdf-diagnostic-page.png`}).catch(()=>{});
   }
-  if(externalPage&&!externalPage.isClosed()) await externalPage.screenshot({path:`${out}/desktop-pdf-external-diagnostic.png`}).catch(()=>{});
+  if(externalPage&&!externalPage.isClosed()) await externalPage.screenshot({path:`${out}/desktop-pdf-external-diagnostic.png`,timeout:5000}).catch(()=>{});
   checkpoint();
   await browser.close();
+  if(externalServer?.listening) await new Promise(resolve=>externalServer.close(resolve));
 }
