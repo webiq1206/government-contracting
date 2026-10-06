@@ -14,6 +14,8 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 const browser=await chromium.launch({headless:false});
 const evidence={sameOrigin:false,externalBlocked:false,authDenied:false,crossOrgDenied:false,headers:[],blockedRequests:[],failedRequests:[],console:[],frames:[]};
 let diagnosticPage;
+let externalPage;
+function checkpoint() { writeFileSync(`${out}/pdf-embedding-results.json`,JSON.stringify(evidence,null,2)); }
 async function isolate(context) {
   context.on('requestfailed',request=>evidence.failedRequests.push({url:request.url(),error:request.failure()?.errorText}));
   await context.route('**/*',route=>{
@@ -93,6 +95,7 @@ try {
   await frame.scrollIntoViewIfNeeded();
   await painted(frame,'blue',`${out}/desktop-pdf-page-12.png`);
   evidence.sameOrigin=true;
+  checkpoint();
   const html=await browserGet(page,base+'/today');
   assert.equal(html.status,200);
   assert.equal(html.headers['x-frame-options'],'DENY');
@@ -110,17 +113,39 @@ try {
   assert.equal(foreign.status,404);
   assert.equal((await browserGet(tenantPage,response.url())).status,404);
   evidence.crossOrgDenied=true;await tenant.close();
+  checkpoint();
 
   // A different port is a different origin but the same cookie site. The
   // synthetic parent is fulfilled locally; no external website is contacted.
-  const outside=await context.newPage();
-  const errors=[]; outside.on('console',message=>{if(message.type()==='error') errors.push(message.text());});
+  const outside=await context.newPage(); externalPage=outside;
+  const errors=[]; evidence.externalConsole=errors;
+  outside.on('console',message=>{if(message.type()==='error') errors.push(message.text());});
+  // CSP-refused navigations may omit Playwright's ordinary response event.
+  // Observe Chromium's actual network receipt without replacing the response.
+  const network=await context.newCDPSession(outside);
+  await network.send('Network.enable');
+  const requests=new Map(); const receipts=[]; evidence.externalReceipts=receipts;
+  evidence.externalRequests=[];
+  network.on('Network.requestWillBeSent',event=>{
+    requests.set(event.requestId,event.request.url);
+    evidence.externalRequests.push({requestId:event.requestId,url:event.request.url});
+  });
+  network.on('Network.responseReceivedExtraInfo',event=>{
+    const headers=Object.fromEntries(Object.entries(event.headers).map(([key,value])=>[key.toLowerCase(),value]));
+    receipts.push({requestId:event.requestId,status:event.statusCode,type:headers['content-type'],
+      csp:headers['content-security-policy'],xfo:headers['x-frame-options']});
+  });
+  evidence.externalFailures=[];
+  network.on('Network.loadingFailed',event=>evidence.externalFailures.push({url:requests.get(event.requestId),error:event.errorText,blockedReason:event.blockedReason}));
   await outside.route(otherOrigin+'/frame-audit',route=>route.fulfill({contentType:'text/html',body:
     `<html><body><iframe title="External frame probe" src="${base}/api/documents/${ids.sourceDocs[1]}/open?page=44" width="900" height="700"></iframe></body></html>`}));
-  const externalResponse=outside.waitForResponse(r=>r.url().includes('/api/files/') && r.headers()['content-type']==='application/pdf');
-  await outside.goto(otherOrigin+'/frame-audit',{waitUntil:'networkidle'});
-  assert.equal((await externalResponse).status(),200,'Owner session was valid; framing policy caused refusal');
-  for(let attempt=0;attempt<40&&!errors.some(error=>/frame-ancestors/.test(error));attempt++) await new Promise(resolve=>setTimeout(resolve,100));
+  await outside.goto(otherOrigin+'/frame-audit',{waitUntil:'domcontentloaded',timeout:10000});
+  const pdfReceipt=()=>receipts.find(receipt=>receipt.status===200&&receipt.type==='application/pdf'&&requests.get(receipt.requestId)?.startsWith(base+'/api/files/'));
+  for(let attempt=0;attempt<100&&(!pdfReceipt()||!errors.some(error=>/frame-ancestors/.test(error)));attempt++) await new Promise(resolve=>setTimeout(resolve,100));
+  for(const receipt of receipts) receipt.url=requests.get(receipt.requestId);
+  checkpoint();
+  assert(pdfReceipt(),'Actual network receipt must prove the owner session received a final 200 PDF');
+  assert.equal(pdfReceipt().csp,"frame-ancestors 'self'");
   assert(errors.some(error=>/frame-ancestors/.test(error)),'Other origins must be refused by CSP');
   evidence.externalBlocked=true;
   await outside.screenshot({path:`${out}/desktop-pdf-external-frame-blocked.png`});
@@ -133,6 +158,7 @@ try {
         media:Array.from(document.querySelectorAll('iframe,embed,object')).map(node=>({tag:node.tagName,src:node.getAttribute('src'),type:node.getAttribute('type'),width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height}))})).catch(error=>({error:String(error)}))})));
     await diagnosticPage.screenshot({path:`${out}/desktop-pdf-diagnostic-page.png`}).catch(()=>{});
   }
-  writeFileSync(`${out}/pdf-embedding-results.json`,JSON.stringify(evidence,null,2));
+  if(externalPage&&!externalPage.isClosed()) await externalPage.screenshot({path:`${out}/desktop-pdf-external-diagnostic.png`}).catch(()=>{});
+  checkpoint();
   await browser.close();
 }
