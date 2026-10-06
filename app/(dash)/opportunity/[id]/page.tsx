@@ -42,6 +42,7 @@ import { Collapsible } from "@/components/collapsible";
 import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
+import { RecordedFitSummary } from "@/components/recorded-fit-summary";
 import { buildMatchBadges } from "@/lib/domain/opportunity-fit-summary";
 import { PricingCompsCard } from "@/components/pricing-comps-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
@@ -567,20 +568,6 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     opp.source
   );
 
-  const whyHeadline = opp.is_sources_sought
-    ? "Sources Sought: market research, not a bid opportunity."
-    : analysis?.pursue_recommendation?.trim() ||
-    breakdown?.summary?.trim() ||
-    "Fit details appear once scoring and analysis finish.";
-  /**
-   * The verdict lives here; the description of the job lives in the Bid Brief
-   * directly below. Previously this panel also printed project_overview, which
-   * the brief then printed again a few hundred pixels later.
-   */
-  const whySupport = analysis
-    ? null
-    : "Open Requirements for identity details, Coverage for trades, and Pricing when quotes are ready.";
-
   const matchBadges = buildMatchBadges({
     value: opp.value_estimated == null ? null : Number(opp.value_estimated),
     breakdown,
@@ -804,43 +791,10 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             >
               <div className="grid gap-10 lg:grid-cols-2 lg:gap-0">
                 <div className="lg:border-r lg:border-border lg:pr-10">
-                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
-                    {opp.is_sources_sought ? "Notice purpose" : "Why this fits"}
-                  </h2>
-                  {/* Display type only when the verdict is actually verdict-
-                      sized. Older analyses carry a paragraph here, and a
-                      paragraph set at 3xl serif is a wall, not a headline. */}
-                  <p
-                    className={`mt-2 font-semibold text-foreground ${
-                      whyHeadline.length <= 90
-                        ? "font-display text-2xl leading-snug sm:text-3xl"
-                        : "text-base leading-relaxed"
-                    }`}
-                  >
-                    {whyHeadline}
-                  </p>
-                  {!opp.is_sources_sought && whySupport && (
-                    <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                      {whySupport}
-                    </p>
-                  )}
-                  {!opp.is_sources_sought && matchBadges.length > 0 && (
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      {matchBadges.map((b) => (
-                        <span
-                          key={b.label}
-                          className={
-                            b.tone === "risk"
-                              ? "badge bg-review/15 text-review"
-                              : "badge bg-muted text-muted-foreground"
-                          }
-                        >
-                          {b.tone === "risk" ? "!! " : ""}
-                          {b.label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <RecordedFitSummary score={opp.score} tier={opp.tier}
+                    closed={Boolean(step.closedLabel)} researchOnly={opp.is_sources_sought}
+                    recommendation={analysis?.pursue_recommendation} summary={breakdown?.summary}
+                    badges={matchBadges} />
                 </div>
                 <div className="lg:pl-10">
                   {opp.is_sources_sought ? (

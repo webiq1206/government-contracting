@@ -105,6 +105,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
   });
   await check(`/opportunity/${ids.opportunity}`, 'guide-stored-score-context', async () => {
+    const fit=page.getByRole('region',{name:'Recorded fit assessment',exact:true});
+    await fit.getByText('Current recorded score: 62/100 · Recorded tier: review',{exact:true}).waitFor();
+    await fit.getByText(/Saved fit analysis is historical/).waitFor();
+    const savedFit=fit.locator('details');
+    assert.equal(await savedFit.evaluate(node=>node.open),false);
+    assert.equal(await fit.getByText(/Synthetic historical prose/).isVisible(),false);
+    await savedFit.locator('summary').click();
+    await savedFit.getByText(/Synthetic historical prose: 75 points/).waitFor();
+    await fit.screenshot({path:join(out,`${device}-recorded-fit-history.png`)});
+    await savedFit.locator('summary').click();
     await page.evaluate(()=>window.dispatchEvent(new Event('open-guide-wizard')));
     const dialog=page.getByRole('dialog'); await dialog.waitFor();
     await dialog.getByText('Current recorded score: 62/100 · Recorded tier: review',{exact:true}).waitFor();
@@ -378,6 +388,12 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button', { name: 'Pause this pursuit', exact: true }).waitFor();
   });
   await check(`/review?o=${ids.opportunity}`, 'review-inline-decision-keyboard-and-recovery', async () => {
+    await page.getByRole('region',{name:'Evidence and warnings',exact:true}).getByText(/Saved scoring analysis is historical/).waitFor();
+    const savedFactors=page.locator('details').filter({has:page.locator('summary',{hasText:'Saved fit factors'})});
+    await savedFactors.locator('summary').click();
+    await savedFactors.getByText(/Saved scoring analysis is historical/).waitFor();
+    await savedFactors.screenshot({path:join(out,`${device}-review-saved-factors.png`)});
+    await savedFactors.locator('summary').click();
     const decision = page.getByRole('region', { name: 'Your decision', exact: true });
     const pass = decision.getByRole('button', { name: 'Pass', exact: true });
     await pass.press('Enter');

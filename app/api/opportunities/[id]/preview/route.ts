@@ -6,6 +6,7 @@ import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { deriveStep, stageLabel } from "@/lib/domain/journey";
 import { areCallsEnabled } from "@/lib/app-settings";
 import type { Bid, Opportunity, SolicitationAnalysis } from "@/lib/types";
+import { currentScoreLine } from "@/lib/domain/guide-score-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,15 +92,14 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     solicitationNumber: opp.solicitation_number,
     stageLabel: step.closedLabel ?? stageLabel(opp.stage),
     score: opp.score,
+    isSourcesSought: Boolean(opp.is_sources_sought),
     tier: opp.tier,
     deadline: opp.deadline,
     valueEstimated: opp.value_estimated,
-    // The verdict the analyst wrote, which is the thing worth reading before
-    // deciding whether to open the record at all.
-    why:
-      analysis?.pursue_recommendation?.trim() ||
-      (opp.score_breakdown as { summary?: string } | null)?.summary?.trim() ||
-      null,
+    // Saved analyst/scoring prose is historical, even if numeric totals agree.
+    // Keep the concise preview grounded in the current structured record.
+    why: opp.is_sources_sought ? "Sources Sought: market research, not a bid opportunity."
+      : currentScoreLine(opp.score, opp.tier, Boolean(step.closedLabel)),
     trades: required.map((t) => ({
       trade: t.trade,
       status: t.status,

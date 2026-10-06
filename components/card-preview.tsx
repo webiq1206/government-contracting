@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { currentScoreLine } from "@/lib/domain/guide-score-context";
 
 /**
  * Hover preview for board cards.
@@ -26,6 +27,7 @@ export interface CardPreviewData {
   solicitationNumber: string | null;
   stageLabel: string;
   score: number | null;
+  isSourcesSought?: boolean;
   tier: string | null;
   deadline: string | null;
   valueEstimated: number | null;
@@ -85,13 +87,10 @@ export function CardPreviewBody({ data }: { data: CardPreviewData }) {
           data.stageLabel}
       </p>
 
-      {data.why && (
-        <p className="mt-2 line-clamp-4 text-xs leading-relaxed text-slate-700">
-          {data.why}
-        </p>
-      )}
+      <p className="mt-2 text-xs leading-relaxed text-slate-700">{data.isSourcesSought ? "Sources Sought: market research, not a bid opportunity." : currentScoreLine(data.score, null)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">Open the record to review saved analysis and its limitations.</p>
 
-      {data.tradeCount > 0 && (
+      {!data.isSourcesSought && data.tradeCount > 0 && (
         <div className="mt-2.5">
           <p className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {data.tradeCount === 1 ? "1 trade needed" : `${data.tradeCount} trades needed`}
@@ -112,7 +111,7 @@ export function CardPreviewBody({ data }: { data: CardPreviewData }) {
         </div>
       )}
 
-      {data.nextStep && (
+      {!data.isSourcesSought && data.nextStep && (
         <div className="mt-2.5 border-t border-border/60 pt-2">
           <p className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Next step
