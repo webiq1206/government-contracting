@@ -46,6 +46,18 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     assert(await page.getByText('Saved description: Electrical', { exact: true }).isVisible());
     assert.equal(await page.locator('a[href="#quotes"]').count(), 0);
   });
+  await check(`/opportunity/${ids.research}/requirements`, 'sources-sought-requirements-read-only', async () => {
+    await page.getByRole('heading', { name: 'Saved notice requirements', exact: true }).waitFor();
+    await page.getByText('Provide a capability statement for agency market research.', { exact: true }).first().click();
+    await page.getByRole('heading', { name: 'Provide a capability statement for agency market research.', exact: true }).waitFor();
+    assert.equal(await page.getByText('The solicitation states this as a condition of a valid bid.', { exact: true }).count(), 0);
+    assert(await page.getByText('This requirement comes from the saved notice information. Verify it against the original market research notice.', { exact: true }).isVisible());
+    await page.locator('summary').filter({ hasText: 'History for Provide a capability statement for agency market research.' }).click();
+    assert(await page.getByText('Saved historical requirement note', { exact: true }).isVisible());
+    assert.equal(await page.getByRole('button', { name: 'Update', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('heading', { name: 'What it takes to bid', exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+  });
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();
     assert(await page.getByText('Friday works.', { exact: true }).isVisible());

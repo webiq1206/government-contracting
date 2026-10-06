@@ -47,7 +47,7 @@ function render(props: Partial<Parameters<typeof RequirementsWorkspace>[0]> = {}
     <RequirementsWorkspace
       opportunityId="opp-1"
       requirements={[
-        req({ id: "r1", label: "Signed SF-1449", disqualifying: true }),
+        req({ id: "r1", label: "Signed SF-1449", disqualifying: true, disqualifyingReason: "The solicitation states this as a condition of a valid bid." }),
         req({ id: "r2", label: "Pricing schedule" }),
         req({ id: "r3", label: "Past performance references" }),
       ]}
@@ -63,6 +63,25 @@ function render(props: Partial<Parameters<typeof RequirementsWorkspace>[0]> = {}
 }
 
 describe("the checklist beside its source", () => {
+  it("keeps populated research requirements readable without bid-work framing", () => {
+    const html = render({ researchOnly: true, canEdit: false, documents: [] });
+    expect(html).toContain("Recorded requirements");
+    expect(html).toContain("Signed SF-1449");
+    expect(html).not.toContain("What it takes to bid");
+    expect(html).not.toContain("Can sink the bid");
+    expect(html).not.toContain("stored against this bid");
+    expect(html).not.toContain("condition of a valid bid");
+  });
+  it("preserves audit history when research requirements cannot be edited", () => {
+    const html = render({ researchOnly: true, canEdit: false, history: { r1: [{
+      id: "saved-audit", fromState: "not_started", toState: "in_progress",
+      actorKind: "person", actorLabel: "Synthetic owner", at: "2026-10-01T12:00:00Z",
+      note: "Saved historical requirement note",
+    }] } });
+    expect(html).toContain("History for ");
+    expect(html).toContain("Saved historical requirement note");
+    expect(html).not.toContain(">Update</button>");
+  });
   it("opens on the first requirement rather than an empty half", () => {
     const html = render();
     expect(html).toContain("Signed SF-1449");

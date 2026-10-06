@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { queryOne, query, closePool } from "../../lib/db";
 import { hashPassword } from "../../lib/auth";
 import { encodePortalToken } from "../../lib/domain/sub-portal-link";
+import { buildNoticeBrief } from "../../lib/domain/notice-brief";
 
 async function main() {
 if (process.env.CI !== "true" || process.env.PGHOST !== "127.0.0.1" || process.env.PGDATABASE !== "brostco_audit" || process.env.USE_REPLIT_DEV_DB !== "true") {
@@ -10,6 +11,10 @@ if (process.env.CI !== "true" || process.env.PGHOST !== "127.0.0.1" || process.e
 try {
   const org = await queryOne<{id:string}>("insert into organizations(name,subscription_status,plan_key,billing_exempt) values('Interface Audit Workspace','active','standard',true) returning id");
   const research = await queryOne<{id:string}>(`insert into opportunities(org_id,source,source_id,title,agency,stage,status,score,tier,is_sources_sought,human_action_required,risk_flags) values($1,'manual','ui-research','Historical Sources Sought audit','Audit Agency','sourcing','open',80,'pursue',true,true,array['outside_service_area']) returning id`, [org!.id]);
+  await query("update opportunities set solicitation_analysis=$2 where id=$1", [research!.id, JSON.stringify({ ...buildNoticeBrief({ title: "Historical Sources Sought audit", agency: "Audit Agency", description: "Historical electrical scope retained for reference." }), submission_requirements: ["Provide a capability statement for agency market research."] })]);
+  const researchRequirementId = "sub:provide-a-capability-statement-for-agency-market-research";
+  await query("insert into requirement_states(org_id,opportunity_id,requirement_id,state) values($1,$2,$3,'in_progress')", [org!.id,research!.id,researchRequirementId]);
+  await query("insert into requirement_state_events(org_id,opportunity_id,requirement_id,from_state,to_state,actor_kind,actor_label,note) values($1,$2,$3,'not_started','in_progress','person','Synthetic owner','Saved historical requirement note')", [org!.id,research!.id,researchRequirementId]);
   for (const role of ["owner","tenant-owner","admin","operator","member","viewer"]) {
     const user = await queryOne<{id:string}>("insert into users(email,password_hash,role,name) values($1,$2,$3,$4) returning id", [`ui-${role}@example.test`,hashPassword("DisposableUiAudit123!"),role === "owner" ? "admin" : role === "viewer" ? "viewer" : "operator",`Audit ${role}`]);
     await query("insert into organization_members(org_id,user_id,role) values($1,$2,$3)",[org!.id,user!.id,role === "tenant-owner" ? "owner" : role]);

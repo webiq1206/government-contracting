@@ -10,6 +10,7 @@ import { SUB_SEARCH_INTENT_KEY, completeSubSearchIntent } from "../sub-search-in
 import { randomUUID } from "node:crypto";
 import { claudeEnabled } from "../ai/claude";
 import { providerNeedsIntervention } from "../domain/provider-retry";
+import { researchNoticeJobProblem } from "../domain/research-notice";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { pursuitStatus } from "../pursuit-guard";
@@ -447,6 +448,15 @@ export async function runAgent(
   // They have no pursuit version, which is not evidence of an abort/restart.
   if (pursuitId && missing.length === 0) {
     const pursuit = await pursuitStatus(pursuitId);
+    const researchProblem = researchNoticeJobProblem(pursuit.sourcesSought, def.name);
+    if (researchProblem) {
+      const summary = `${def.name} skipped: ${researchProblem}`;
+      await inOrg(() => logAgent({
+        agent: def.name, action: "market-research-only", level: "info", status: "skipped",
+        opportunityId: pursuitId, message: summary,
+      }));
+      return finish({ ok: true, permanent: true, summary });
+    }
     const mayRunAfterClose =
       def.name === "sub-onboarding" && payload[CLOSED_OPPORTUNITY_JOB_KEY] === true;
     if (!pursuit.mayAct && pursuit.known && !mayRunAfterClose) {

@@ -1,5 +1,6 @@
 import { query, queryOne } from "@/lib/db";
 import { currentOrg } from "@/lib/data";
+import { RESEARCH_NOTICE_READ_ONLY } from "@/lib/domain/research-notice";
 import { ownerName, type Owner } from "@/lib/domain/ownership";
 import {
   checkStateChange,
@@ -201,11 +202,12 @@ export async function updateRequirement(
    * would stop it, and the caller would get a 400 about the insert rather
    * than the 404 they are owed.
    */
-  const owned = await queryOne<{ id: string }>(
-    `select id from opportunities where id = $2 and org_id = $1`,
+  const owned = await queryOne<{ id: string; is_sources_sought: boolean | null }>(
+    `select id, is_sources_sought from opportunities where id = $2 and org_id = $1`,
     [orgId, opportunityId]
   );
   if (!owned) return { ok: false, status: 404, error: "No such opportunity." };
+  if (owned.is_sources_sought) return { ok: false, status: 409, error: RESEARCH_NOTICE_READ_ONLY };
 
   const current = before ? toRecord(before) : untouched(requirementId, "upload");
   const nextState = patch.state ?? current.state;
@@ -263,6 +265,7 @@ export async function updateRequirement(
        select o.org_id, o.id, $3, $4, $5, $6, $7::uuid, $8::timestamptz, $9, $10, now(), $11::uuid
          from opportunities o
         where o.id = $2 and o.org_id = $1
+          and o.is_sources_sought is not true
        on conflict (opportunity_id, requirement_id) do update
           set state = excluded.state,
               verification = excluded.verification,
@@ -296,7 +299,7 @@ export async function updateRequirement(
       actor.kind === "person" ? (actor.id ?? null) : null,
     ]
   );
-  if (!written) return { ok: false, status: 404, error: "No such opportunity." };
+  if (!written) return { ok: false, status: 409, error: "The notice changed before this checklist update could be saved. Its saved history was left unchanged." };
 
   await query(
     `insert into requirement_state_events

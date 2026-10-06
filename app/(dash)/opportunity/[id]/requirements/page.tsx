@@ -117,13 +117,15 @@ export default async function RequirementsPage(
           { label: title, href: `/opportunity/${params.id}` },
           { label: "Requirements" },
         ]}
-        title="What it takes to bid"
-explanation="Recorded submission requirements, alongside the source documents. Check the original notice for completeness."
+        title={opp.is_sources_sought ? "Saved notice requirements" : "What it takes to bid"}
+        explanation={opp.is_sources_sought
+          ? "Historical Sources Sought requirements are read-only. Check the original market research notice for context."
+          : "Recorded submission requirements, alongside the source documents. Check the original notice for completeness."}
         status={
           requirements.length === 0
             ? "Nothing extracted yet"
             : `${requirements.length} requirement${requirements.length === 1 ? "" : "s"}${
-                brief && brief.disqualifiers.length > 0
+                !opp.is_sources_sought && brief && brief.disqualifiers.length > 0
                   ? ` · ${brief.disqualifiers.length} can sink the bid`
                   : ""
               }`
@@ -138,17 +140,20 @@ explanation="Recorded submission requirements, alongside the source documents. C
       {requirements.length === 0 ? (
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
-            title="No submission requirements were extracted"
-description="No submission requirements are recorded. Check the original solicitation and analysis status before requesting another analysis."
+            title={opp.is_sources_sought ? "No saved notice requirements" : "No submission requirements were extracted"}
+            description={opp.is_sources_sought
+              ? "No requirements are saved for this market research notice. Check its original documents for context."
+              : "No submission requirements are recorded. Check the original solicitation and analysis status before requesting another analysis."}
             action={
               <Link href={recordHref} className="btn-primary text-sm">
-                Open the record to retry analysis
+                {opp.is_sources_sought ? "Open the saved notice" : "Open the record to retry analysis"}
               </Link>
             }
           />
         </div>
       ) : (
         <RequirementsWorkspace
+          researchOnly={opp.is_sources_sought === true}
           opportunityId={params.id}
           requirements={requirements}
           states={tracking?.states ?? {}}
@@ -157,7 +162,7 @@ description="No submission requirements are recorded. Check the original solicit
           members={members}
           viewerId={ctx.user.id}
           canEdit={
-            !trackingRead.failed && !membersRead.failed && can(ctx.user.orgRole, "decide")
+            !opp.is_sources_sought && !trackingRead.failed && !membersRead.failed && can(ctx.user.orgRole, "decide")
           }
           recordHref={recordHref}
         />

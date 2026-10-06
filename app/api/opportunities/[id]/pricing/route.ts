@@ -11,6 +11,7 @@ import {
 } from "@/lib/pricing-rows";
 import { tradeScopeKey } from "@/lib/domain/pricing-row";
 import { opportunityMutationProblem } from "@/lib/domain/opportunity-lifecycle";
+import { RESEARCH_NOTICE_READ_ONLY } from "@/lib/domain/research-notice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,8 +22,9 @@ async function pricingEditProblem(opportunityId: string, orgId: string): Promise
     status: string;
     pursuit_state: string | null;
     submission_state: string | null;
+    is_sources_sought: boolean | null;
   }>(
-    `select o.stage, o.status, o.pursuit_state,
+    `select o.stage, o.status, o.pursuit_state, o.is_sources_sought,
             (select b.submission_state from bids b
               where b.opportunity_id=o.id and b.org_id=o.org_id
               order by b.created_at desc limit 1) as submission_state
@@ -30,6 +32,7 @@ async function pricingEditProblem(opportunityId: string, orgId: string): Promise
     [opportunityId, orgId]
   );
   if (!facts) return "That opportunity is not on this account.";
+  if (facts.is_sources_sought) return RESEARCH_NOTICE_READ_ONLY;
   return opportunityMutationProblem(
     {
       stage: facts.stage,
@@ -44,14 +47,16 @@ async function pricingEditProblem(opportunityId: string, orgId: string): Promise
 async function queuePricingRebuild(opportunityId: string, orgId: string): Promise<boolean> {
   await query(
     `update bids set package_ready=false, audit_status='pending', updated_at=now()
-      where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'`,
+      where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'
+        and exists (select 1 from opportunities o
+          where o.id=bids.opportunity_id and o.org_id=bids.org_id and o.is_sources_sought is not true)`,
     [opportunityId, orgId]
   );
   const jobId = await enqueue("bid-builder", { opportunityId }).catch(() => null);
   if (!jobId) {
     await query(
       `update opportunities set human_action_required=true
-        where id=$1 and org_id=$2 and status='open'`,
+        where id=$1 and org_id=$2 and status='open' and is_sources_sought is not true`,
       [opportunityId, orgId]
     );
   }

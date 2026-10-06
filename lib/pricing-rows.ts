@@ -473,6 +473,7 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
       where exists (
         select 1 from opportunities
          where id = $2 and org_id = $1 and status='open'
+           and is_sources_sought is not true
            and stage=any($24::text[])
            and coalesce(pursuit_state, 'active')='active'
       )
@@ -559,6 +560,7 @@ export async function deletePricingRow(
         and exists (
           select 1 from opportunities o
            where o.id=p.opportunity_id and o.org_id=p.org_id and o.status='open'
+             and o.is_sources_sought is not true
              and o.stage=any($4::text[])
              and coalesce(o.pursuit_state, 'active')='active'
         )

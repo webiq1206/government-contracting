@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { logAgent } from "@/lib/logger";
+import { bidWorkflowAccessProblem } from "@/lib/research-notice-guard";
 import { setRequirementConfirmed } from "@/lib/bid-package-state";
 import { requirementHistory, updateRequirement } from "@/lib/requirement-states";
 import {
@@ -30,6 +31,8 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
+  const accessProblem = await bidWorkflowAccessProblem(params.id, ctx.orgId);
+  if (accessProblem) return NextResponse.json({ error: accessProblem.error }, { status: accessProblem.status });
 
   const body = (await req.json().catch(() => ({}))) as {
     requirement_id?: string;

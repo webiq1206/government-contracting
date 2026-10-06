@@ -84,6 +84,7 @@ export function RequirementsWorkspace({
   viewerId,
   canEdit,
   recordHref,
+  researchOnly = false,
 }: {
   opportunityId: string;
   requirements: BriefRequirement[];
@@ -95,6 +96,7 @@ export function RequirementsWorkspace({
   viewerId?: string;
   canEdit: boolean;
   recordHref: string;
+  researchOnly?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("open");
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -181,7 +183,7 @@ export function RequirementsWorkspace({
       id: r.id,
       title: r.label,
       context: r.disqualifying
-        ? "Can sink the bid"
+        ? researchOnly ? "Recorded mandatory requirement" : "Can sink the bid"
         : r.sourceDocumentName ?? r.source ?? null,
       meta: r.sourcePage != null ? `p.${r.sourcePage}` : null,
       state: { label: REQUIREMENT_STATE_LABEL[s], tone: TONE[s] },
@@ -218,15 +220,15 @@ export function RequirementsWorkspace({
     >
       <WorkspaceShell
         selected={opened}
-        queueLabel="Submission requirements"
+        queueLabel={researchOnly ? "Saved notice requirements" : "Submission requirements"}
         queueWidth="lg:w-[340px]"
-        contextLabel="The solicitation"
+        contextLabel={researchOnly ? "The market research notice" : "The solicitation"}
         queue={
           <QueueRail
             entries={entries}
             selectedId={selected?.id ?? null}
             onSelect={select}
-            heading="What it takes to bid"
+            heading={researchOnly ? "Recorded requirements" : "What it takes to bid"}
             summary={
               progress.percent == null
                 ? "Nothing was extracted from the solicitation yet."
@@ -249,7 +251,7 @@ export function RequirementsWorkspace({
                             : "border-border text-foreground hover:border-foreground/30"
                       }`}
                     >
-                      {FILTER_LABEL[f]}
+                      {researchOnly && f === "blocking" ? "Recorded mandatory" : FILTER_LABEL[f]}
                       <span className="num text-muted-foreground">{counts[f]}</span>
                     </button>
                   ))}
@@ -291,7 +293,7 @@ export function RequirementsWorkspace({
                   <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="eyebrow mb-1">
-                      {selected.disqualifying ? "Can sink the bid" : "Requirement"}
+                      {selected.disqualifying ? researchOnly ? "Recorded mandatory requirement" : "Can sink the bid" : "Requirement"}
                     </p>
                     <h3 className="text-base font-medium text-foreground">
                       {selected.label}
@@ -336,8 +338,10 @@ export function RequirementsWorkspace({
             >
               <div className="space-y-5">
                 {selected.disqualifying && selected.disqualifyingReason && (
-                  <p className="rounded-md border border-risk/40 bg-risk/5 p-3 text-sm text-risk">
-                    {selected.disqualifyingReason}
+                  <p className={researchOnly ? "rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground" : "rounded-md border border-risk/40 bg-risk/5 p-3 text-sm text-risk"}>
+                    {researchOnly
+                      ? "This requirement comes from the saved notice information. Verify it against the original market research notice."
+                      : selected.disqualifyingReason}
                   </p>
                 )}
 
@@ -355,7 +359,7 @@ export function RequirementsWorkspace({
                 )}
 
                 <section>
-                  <h4 className="label mb-2">Where it stands</h4>
+                  <h4 className="label mb-2">{researchOnly ? "Saved progress" : "Where it stands"}</h4>
                   <RequirementStateControl
                     opportunityId={opportunityId}
                     requirementId={selected.id}
@@ -364,17 +368,17 @@ export function RequirementsWorkspace({
                     members={members}
                     viewerId={viewerId}
                     history={history[selected.id] ?? []}
-                    canEdit={canEdit}
+                    canEdit={!researchOnly && canEdit}
                   />
                 </section>
 
                 <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                   <div>
                     <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Who produces it
+                      {researchOnly ? "Recorded responsibility" : "Who produces it"}
                     </dt>
                     <dd className="text-foreground">
-                      {selected.owner === "platform"
+                      {researchOnly ? (selected.owner === "platform" ? "Platform" : "Your team") : selected.owner === "platform"
                         ? "Brost Co produces this one"
                         : "You produce this one"}
                     </dd>
@@ -427,7 +431,7 @@ export function RequirementsWorkspace({
             </WorkspacePane>
           ) : (
             <WorkspacePlaceholder>
-              Pick a requirement to record where it stands. The document it was read
+              {researchOnly ? "Pick a requirement to read its saved history." : "Pick a requirement to record where it stands."} The document it was read
               from opens beside it.
             </WorkspacePlaceholder>
           )
@@ -435,9 +439,9 @@ export function RequirementsWorkspace({
         context={
           <div className="flex min-h-0 flex-col gap-3">
             {documents.length === 0 ? (
-              <ContextSection title="The solicitation">
+              <ContextSection title={researchOnly ? "The market research notice" : "The solicitation"}>
                 <p className="text-sm text-muted-foreground">
-                  Nothing readable is stored against this bid, so there is no source
+                  Nothing readable is stored against this {researchOnly ? "notice" : "bid"}, so there is no source
                   to check the checklist against. The Files tab on the record says
                   what arrived and what could not be fetched.
                 </p>

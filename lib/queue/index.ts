@@ -8,6 +8,7 @@
  */
 import { config } from "../config";
 import { OUTREACH_JOBS } from "../domain/work-mode";
+import { researchNoticeJobProblem } from "../domain/research-notice";
 import { SUB_SEARCH_INTENT_KEY, claimSubSearchIntent, markSubSearchQueued, releaseUnqueuedSubSearch } from "../sub-search-intents";
 
 export type JobPayload = Record<string, unknown>;
@@ -191,6 +192,10 @@ export async function enqueue(
   if (oppId) {
     const { pursuitStatus } = await import("../pursuit-guard");
     const pursuit = await pursuitStatus(oppId);
+    if (researchNoticeJobProblem(pursuit.sourcesSought, name)) {
+      console.warn(`[queue] enqueue skipped (Sources Sought market research): ${name} for ${oppId}`);
+      return null;
+    }
     const mayRunAfterClose =
       name === "sub-onboarding" && opts?.allowClosedOpportunity === true;
     if (!pursuit.mayAct && pursuit.known && !mayRunAfterClose) {
