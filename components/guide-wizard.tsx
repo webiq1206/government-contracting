@@ -1,5 +1,7 @@
 "use client";
 
+import { GuideScoreDetails } from "@/components/guide-score-details";
+
 /**
  * Persistent Guide Me panel: structured guidance, in-panel adapters, live
  * pulse sync, optional Claude narration/Q&A, and deep-link arrival context.
@@ -436,7 +438,7 @@ export function GuideWizard() {
                   */
                   ["changed", "What changed"],
                   ["explain", "Explain page"],
-                  ...(guide?.scoreExplain ? ([["score", "Why this score"]] as const) : []),
+                  ...(guide?.scoreExplain ? ([["score", "Score details"]] as const) : []),
                   ["terms", "Terms"],
                 ] as const
               ).map(([key, label]) => (
@@ -677,30 +679,7 @@ export function GuideWizard() {
               )}
 
               {guide && mode === "score" && guide.scoreExplain && (
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold text-foreground">
-                    Why is this scored {Math.round(guide.scoreExplain.total)}?
-                  </p>
-                  <p className="text-sm text-slate-600">{guide.scoreExplain.summary}</p>
-                  <ul className="space-y-2">
-                    {guide.scoreExplain.factors.map((f) => (
-                      <li
-                        key={f.label}
-                        className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                      >
-                        <div className="flex justify-between gap-2 font-medium text-foreground">
-                          <span>{f.label}</span>
-                          <span className="num text-slate-500">
-                            {f.points}/{f.max}
-                          </span>
-                        </div>
-                        {f.reasoning && (
-                          <p className="mt-1 text-xs text-slate-600">{f.reasoning}</p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <GuideScoreDetails scoreLine={guide.scoreLine} explanation={guide.scoreExplain} />
               )}
 
               {guide && mode === "terms" && (

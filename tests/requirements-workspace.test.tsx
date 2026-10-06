@@ -128,6 +128,12 @@ describe("the checklist beside its source", () => {
     expect(html).not.toContain("<iframe");
   });
 
+  it.each([0, -1, 85, 1.5])("omits the fallback page parameter for invalid stored page %s", sourcePage => {
+    const html = render({requirements: [req({id: "r1", sourceDocumentId: DOC.id, sourcePage})]});
+    expect(html).toContain('href="/api/documents/d1/open"');
+    expect(html).not.toContain("?page=");
+  });
+
   it("offers a way back to the record", () => {
     expect(render()).toContain("/opportunity/opp-1#requirements");
   });

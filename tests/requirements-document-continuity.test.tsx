@@ -35,16 +35,34 @@ async function browse(value: string) {
   await act(async () => props.onChange({ target: { value } }));
 }
 const src = () => document.querySelector("iframe")?.getAttribute("src");
+const fallback = () => [...document.querySelectorAll("a")].find(node => node.textContent?.includes("Open displayed document in new tab"));
 it.each(["Missing source requirement", "Unavailable source requirement"])("retains the last visible file without presenting it as proof for %s", async label => {
   await mount(); expect(src()).toBe("/api/documents/second/open?page=44");
   await select(label);
   expect(src()).toBe("/api/documents/second/open");
+  expect(fallback()?.getAttribute("href")).toBe("/api/documents/second/open");
   expect(document.body.textContent).toContain("browsing context, not evidence for this requirement");
 });
 it("keeps a deliberate manual file choice across unavailable sources and follows a later valid citation", async () => {
   await mount(); await browse("manual");
   expect(src()).toBe("/api/documents/manual/open");
+  expect(fallback()?.getAttribute("href")).toBe("/api/documents/manual/open");
   await select("Unavailable source requirement"); expect(src()).toBe("/api/documents/manual/open");
   await select("Another page requirement"); expect(src()).toBe("/api/documents/second/open?page=12");
   await select("Anchored requirement"); expect(src()).toBe("/api/documents/second/open?page=44");
+});
+
+it("offers a protected new-tab fallback that follows only the displayed PDF and recorded page", async () => {
+  await mount();
+  expect(fallback()?.getAttribute("href")).toBe("/api/documents/second/open?page=44");
+  expect(fallback()?.getAttribute("target")).toBe("_blank");
+  expect(fallback()?.getAttribute("rel")?.split(/\s+/)).toEqual(expect.arrayContaining(["noopener", "noreferrer"]));
+  expect(document.body.textContent).toContain("Page links use the stored citation; verify the text in the document.");
+  await select("Another page requirement");
+  expect(fallback()?.getAttribute("href")).toBe("/api/documents/second/open?page=12");
+});
+it("does not invent a file link when no stored document is available", async () => {
+  await act(async () => root.render(<RequirementsWorkspace opportunityId="opp" requirements={requirements}
+    states={{}} history={{}} documents={[]} members={[]} canEdit={false} recordHref="/opportunity/opp" />));
+  expect(fallback()).toBeUndefined();
 });

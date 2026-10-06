@@ -1,3 +1,4 @@
+import { currentScoreLine, recordedDeadlineLine, scoreHistoryNotice } from "./guide-score-context";
 /**
  * Context-aware page guidance. Pure: turns pathname + live account/workflow
  * facts into the same story the operator sees in the Guide Me panel.
@@ -148,6 +149,7 @@ export interface GuideTerm {
 }
 
 export interface GuideScoreExplain {
+  freshnessNote?: string;
   total: number;
   summary: string;
   factors: { label: string; points: number; max: number; reasoning: string }[];
@@ -838,11 +840,16 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
 > {
   const opp = input.opportunity!;
   const ns = deriveStep(opp.stepInput);
+  const scoreLine = currentScoreLine(opp.score, opp.stepInput.tier, Boolean(ns.closedLabel));
+  const deadlineLine = recordedDeadlineLine(opp.deadline);
+  const scoreExplain = opp.scoreExplain ? { ...opp.scoreExplain,
+    freshnessNote: scoreHistoryNotice(opp.score, opp.scoreExplain.total) } : null;
   if (ns.closedLabel) {
     return {
       headline: ns.title,
-      situation: ns.why,
+      situation: `${ns.why} ${deadlineLine}`,
       stageLabel: ns.closedLabel,
+      scoreLine,
       completed: [],
       needsAttention: [],
       brostHandling: [],
@@ -855,7 +862,7 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
       }],
       // The idle view promises automatic work; a closed record offers navigation only.
       idle: false,
-      scoreExplain: opp.scoreExplain ?? null,
+      scoreExplain,
       badgeCount: 0,
       opportunityId: opp.id,
     };
@@ -958,7 +965,7 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
   const idle = prioritized.length === 0;
   const title = opp.title?.trim() || "this opportunity";
 
-  let situation = `You are reviewing ${title}.`;
+  let situation = `You are reviewing ${title}. ${deadlineLine}`;
   if (current) situation += ` Current stage: ${stageLabel(opp.stage)}.`;
   if (readiness?.summary) situation += ` ${readiness.summary}`;
 
@@ -983,17 +990,14 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
         : `${prioritized.length} actions remain on this opportunity`,
     situation,
     stageLabel: stageLabel(opp.stage),
-    scoreLine:
-      opp.score != null
-        ? `Score ${Math.round(opp.score)}${opp.scoreExplain?.summary ? `: ${opp.scoreExplain.summary}` : ""}`
-        : undefined,
+    scoreLine,
     completed: completed.slice(0, 8),
     needsAttention: Array.from(new Set(needsAttention)).slice(0, 8),
     brostHandling: Array.from(new Set(brostHandling)).slice(0, 6),
     whatHappensNext,
     steps: prioritized.slice(0, 6),
     idle,
-    scoreExplain: opp.scoreExplain ?? null,
+    scoreExplain,
     badgeCount: prioritized.length,
     opportunityId: opp.id,
   };

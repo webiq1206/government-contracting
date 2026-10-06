@@ -330,3 +330,36 @@ describe("the opportunities board", () => {
     expect(src).toContain("peekBase={peekBase}");
   });
 });
+
+describe("closed opportunity drawer history", () => {
+  it.each([
+    [{status:"archived",riskFlags:["expired","deadline_soon"]},"Expired"],
+    [{status:"archived",riskFlags:["deadline_soon"]},"Archived"],
+    [{status:"closed"},"Closed"],
+    [{stage:"won",status:"closed"},"Won"],
+    [{stage:"lost",status:"closed"},"Lost"],
+    [{stage:"dismissed",status:"archived"},"Passed"],
+    [{pursuitState:"aborted"},"Stopped"],
+  ] as const)("does not present saved work as active for %j", (over,label) => {
+    const record=opp({stage:"call_queue",deadline:"2026-03-09T17:00:00Z",tradesRequired:2,tradesCovered:0,...over,riskFlags:[...((over as Partial<OpportunityQuickFacts>).riskFlags ?? ["deadline_soon"])]});
+    const view=opportunityQuickView(record,NOW); const facts=view.sections.flatMap(s=>s.facts);
+    expect(facts.find(f=>f.label==='Status')?.value).toBe(label);
+    if(record.stage==='call_queue') expect(facts.find(f=>f.label==='Saved workflow stage')?.value).toBe('Calls to make');
+    const due=facts.find(f=>f.label==='Recorded bid deadline');
+    expect(due?.value).toBeTruthy();expect(due?.value).not.toMatch(/past|left|remaining/);expect(due?.tone).toBeUndefined();
+    expect(view.blockers).toEqual([]);expect(facts.find(f=>f.label==='Saved flags')?.value).toContain('deadline soon');
+    expect(facts.find(f=>f.label==='Unquoted in saved record')?.value).toBe('2 trades with no quote');
+    expect(facts.some(f=>f.label==='Unquoted at closure')).toBe(false);
+    expect(view.nextAction).not.toContain('Clear the flag first');
+    expect(record.deadline).toBe('2026-03-09T17:00:00Z');
+  });
+  it("retains live deadline urgency on an open opportunity", () => {
+    const view=opportunityQuickView(opp({status:'open',deadline:'2026-03-09T17:00:00Z',riskFlags:['deadline_soon']}),NOW);
+    expect(view.sections.flatMap(s=>s.facts).find(f=>f.label==='Bid due')?.tone).toBe('risk');
+    expect(view.blockers).toContain('deadline soon');
+  });
+  it("does not call a generic archive passed or expired without saved evidence", () => {
+    const view=opportunityQuickView(opp({stage:'call_queue',status:'archived',deadline:'2026-03-01T17:00:00Z'}),NOW);
+    expect(view.nextAction).toContain('Archived');expect(view.nextAction).not.toMatch(/Passed on|Expired/);
+  });
+});

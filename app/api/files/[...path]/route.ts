@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { storage, verifyFileToken } from "@/lib/integrations/storage";
+import { looksLikePdfBytes } from "@/lib/integrations/pdf";
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 import { orgIdForStorageKey } from "@/lib/domain/file-ownership";
 
@@ -48,6 +49,7 @@ export async function GET(req: Request, props: { params: Promise<{ path: string[
   // even if a physical provider needs a second cleanup attempt.
   if (!ownerOrgId) return fileNotFound();
 
+  let authenticatedOwner = false;
   if (!tokenOk) {
     const ctx = await requireOrgContext();
     if (ctx instanceof NextResponse) return ctx;
@@ -57,6 +59,7 @@ export async function GET(req: Request, props: { params: Promise<{ path: string[
     if (ownerOrgId !== ctx.orgId) {
       return fileNotFound();
     }
+    authenticatedOwner = true;
   }
 
   try {
@@ -79,6 +82,13 @@ export async function GET(req: Request, props: { params: Promise<{ path: string[
         "Content-Disposition": `inline; filename="${meta.filename.replace(/"/g, "")}"`,
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store, max-age=0",
+        // The application embeds authenticated PDF sources. This policy
+        // overrides inherited X-Frame-Options DENY only for verified PDF
+        // bytes, and still rejects other origins. Bearer-only file links and
+        // every other content type retain the global framing restriction.
+        ...(authenticatedOwner && meta.kind === "pdf" && looksLikePdfBytes(buf)
+          ? { "Content-Security-Policy": "frame-ancestors 'self'" }
+          : {}),
       },
     });
   } catch {

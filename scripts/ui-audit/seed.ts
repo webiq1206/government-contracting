@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
 import { defaultCompanyProfile } from "../../lib/domain/default-profile";
 import { queryOne, query, closePool } from "../../lib/db";
 import { hashPassword } from "../../lib/auth";
@@ -23,8 +23,13 @@ try {
     await query("insert into organization_members(org_id,user_id,role) values($1,$2,$3)",[org!.id,user!.id,role === "tenant-owner" ? "owner" : role]);
   }
   const opp=await queryOne<{id:string}>(`insert into opportunities(org_id,source,source_id,title,agency,stage,status,score,tier,deadline,human_action_required) values($1,'manual','ui-audit','Facility maintenance and electrical upgrades','Audit Agency','scoring','open',62,'review',now()+interval '10 days',true) returning id`,[org!.id]);
+  await query("update opportunities set score_breakdown=$2 where id=$1",[opp!.id,JSON.stringify({total:62,tier:'pursue',hard_exclusions_triggered:[],
+    summary:'Synthetic historical prose: 75 points, AUTO-PURSUE, strong deadline runway.',
+    dimensions:[{key:'timing',label:'Timing',points:10,max_points:10,reasoning:'Synthetic older assessment: weeks remaining.'}]
+  })]);
   const archived=await queryOne<{id:string}>(`insert into opportunities(org_id,source,source_id,title,agency,stage,status,deadline)
     values($1,'manual','ui-archived-docs','Archived document coverage audit','Audit Agency','call_queue','archived',now()-interval '2 days') returning id`,[org!.id]);
+  await query("update opportunities set risk_flags=array['expired','deadline_soon'] where id=$1",[archived!.id]);
   // Saved states only, with no real files, generation, or background worker.
   await query(`insert into documents(org_id,opportunity_id,kind,name,document_class,disposition,extraction_state,page_count,storage_backend)
     select $1,$2,'solicitation','Audit_Read_'||n||'.pdf','solicitation','delivered','extracted',1,'local'
@@ -36,7 +41,12 @@ try {
     values($1,'manual','ui-source-alignment','Synthetic requirement source audit','Audit Agency','scoring','open',true) returning id`,[org!.id]);
   const sourceDocs: {id:string}[] = [];
   const pdf = await PDFDocument.create();
-  for (let page=1;page<=50;page++) pdf.addPage().drawText(`Synthetic audit source, page ${page}`);
+  for (let page=1;page<=50;page++) {
+    const sheet=pdf.addPage();
+    sheet.drawText(`Synthetic audit source, page ${page}`,{x:60,y:720,size:22});
+    if(page===44 || page===12) sheet.drawRectangle({x:60,y:500,width:300,height:150,
+      color:page===44 ? rgb(1,0,0) : rgb(0,0,1)});
+  }
   const pdfBytes=await pdf.save();
   mkdirSync(join(process.cwd(),'.data','storage',org!.id),{recursive:true});
   for (const label of ['First','Second']) {

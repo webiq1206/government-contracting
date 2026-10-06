@@ -1375,6 +1375,10 @@ export function EmailTemplateEditor({
             </div>
             {/* Preview body */}
             <div className="scroll-thin overflow-y-auto px-6 py-5">
+              {!realCtx && <p role="note" className="mb-4 rounded-md border border-border bg-muted p-3 text-sm text-foreground">
+                Sample preview only. No files are attached or verified. Template wording below is unchanged;
+                any attachment references are examples, not confirmation of a sendable bid package.
+              </p>}
               <div
                 className="email-preview prose-sm text-sm leading-relaxed text-foreground"
                 dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
@@ -1412,9 +1416,9 @@ export function EmailTemplateEditor({
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Sample values, which are complete by construction, so this preview
-                  always looks right. Pick a real opportunity above to see whether an
-                  email could actually be sent for it.
+                  Sample values cannot confirm attachment completeness or whether an email
+                  can be sent. Choose an eligible saved bid association above to inspect its
+                  actual context and document checks.
                 </p>
               )}
             </div>

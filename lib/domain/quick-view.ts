@@ -24,6 +24,7 @@
 
 import { countdown, currency, shortDate, timeAgo } from "@/lib/format";
 import { stageLabel } from "./journey";
+import { recordIsClosed } from "./closed-work";
 
 export type QuickViewKind =
   | "opportunity"
@@ -295,6 +296,17 @@ function valueBasis(source: string | null | undefined): string | null {
   return null;
 }
 
+/** Closure describes the record now; its last workflow stage stays historical. */
+function opportunityClosedLabel(o: OpportunityQuickFacts): string | null {
+  if (o.stage === "won") return "Won";
+  if (o.stage === "lost") return "Lost";
+  if (o.stage === "dismissed") return "Passed";
+  if (o.status === "archived" && o.riskFlags.includes("expired")) return "Expired";
+  if (recordIsClosed({status:o.status,stage:o.stage})) return o.status === "archived" ? "Archived" : "Closed";
+  if (o.pursuitState === "aborted") return "Stopped";
+  return null;
+}
+
 export function opportunityQuickView(
   o: OpportunityQuickFacts,
   now: Date = new Date()
@@ -304,14 +316,19 @@ export function opportunityQuickView(
       ? null
       : `${o.tradesCovered} of ${plural(o.tradesRequired, "trade")} quoted`;
   const missing = Math.max(0, o.tradesRequired - o.tradesCovered);
-  const snoozed = o.snoozedUntil && new Date(o.snoozedUntil).getTime() > now.getTime();
+  const closedLabel = opportunityClosedLabel(o);
+  const snoozed = !closedLabel && o.snoozedUntil && new Date(o.snoozedUntil).getTime() > now.getTime();
 
   const sections = compactSections([
+
     {
       key: "status",
       title: "Where it stands",
       facts: [
-        { label: "Stage", value: stageLabel(o.stage), badges: [stageLabel(o.stage)] },
+        { label: closedLabel ? "Status" : "Stage", value: closedLabel ?? stageLabel(o.stage), badges: [closedLabel ?? stageLabel(o.stage)] },
+        closedLabel && stageLabel(o.stage) !== closedLabel
+          ? { label: "Saved workflow stage", value: stageLabel(o.stage), hint: "The last saved workflow position; this record is no longer active." }
+          : null,
         snoozed
           ? {
               label: "Snoozed",
@@ -325,7 +342,7 @@ export function opportunityQuickView(
               label: "Pursuit",
               value: "Stopped",
               hint: "Outreach and automation for this bid were cancelled.",
-              tone: "risk",
+              tone: closedLabel ? undefined : "risk",
             }
           : null,
         {
@@ -339,13 +356,18 @@ export function opportunityQuickView(
           hint: "How many scoring facts are known. Check Documents separately for unread files.",
         },
         { label: "Owner", value: o.owner ?? null },
+        closedLabel && o.riskFlags.length
+          ? {label:"Saved flags",value:o.riskFlags.map(humanFlag).join(", "),hint:"Saved flags; this record is no longer active."}
+          : null,
       ],
     },
     {
       key: "dates",
       title: "Dates",
       facts: [
-        deadlineFact("Bid due", o.deadline, now, "No deadline on the solicitation"),
+        closedLabel
+          ? { label: "Recorded bid deadline", value: o.deadline ? shortDate(o.deadline) : null, unknown: "No deadline on the solicitation", hint: "Saved for reference; no active deadline warning." }
+          : deadlineFact("Bid due", o.deadline, now, "No deadline on the solicitation"),
         { label: "Posted", value: o.postedAt ? shortDate(o.postedAt) : null },
       ],
     },
@@ -376,9 +398,9 @@ export function opportunityQuickView(
       facts: [
         { label: "Coverage", value: covered },
         {
-          label: "Still missing",
+          label: closedLabel ? "Unquoted in saved record" : "Still missing",
           value: missing > 0 ? `${plural(missing, "trade")} with no quote` : null,
-          tone: missing > 0 ? "review" : undefined,
+          tone: !closedLabel && missing > 0 ? "review" : undefined,
         },
         { label: "Quotes in", value: o.quoteCount > 0 ? String(o.quoteCount) : null },
         {
@@ -415,7 +437,7 @@ export function opportunityQuickView(
     sections,
     messages: o.messages,
     attachments: o.attachments,
-    blockers: o.riskFlags.map(humanFlag),
+    blockers: closedLabel ? [] : o.riskFlags.map(humanFlag),
     nextAction: opportunityNextAction(o, now),
   };
 }
@@ -433,14 +455,13 @@ export function opportunityNextAction(o: OpportunityQuickFacts, now: Date = new 
   const missing = Math.max(0, o.tradesRequired - o.tradesCovered);
   const due = o.deadline ? ` Due ${shortDate(o.deadline)}.` : "";
 
+  if (o.stage === "won") return "Won. Nothing further here.";
+  if (o.stage === "lost") return "Lost. The debrief lives on the record.";
   if (o.pursuitState === "aborted") {
     return "This pursuit was stopped. Reopen it from the record if that was wrong.";
   }
-  if (o.status === "archived" || o.stage === "dismissed") {
-    return "Passed on. Put it back in play from the record if something changed.";
-  }
-  if (o.stage === "won") return "Won. Nothing further here.";
-  if (o.stage === "lost") return "Lost. The debrief lives on the record.";
+  const closedLabel = opportunityClosedLabel(o);
+  if (closedLabel) return `${closedLabel}. This record is no longer active; its documents and history remain available.`;
   if (o.snoozedUntil && new Date(o.snoozedUntil).getTime() > now.getTime()) {
     return `Snoozed until ${shortDate(o.snoozedUntil)}. It returns to the queue on its own.`;
   }

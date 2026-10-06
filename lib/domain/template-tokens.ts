@@ -60,12 +60,6 @@ export const TEMPLATE_TOKENS: TemplateToken[] = OUTREACH_VARS.map((v: VarSpec) =
 /** Sample map for preview / test sends in the editor. */
 export const TEMPLATE_TOKEN_SAMPLES: Record<string, string> = OUTREACH_VAR_SAMPLES;
 
-/** Filenames shown in the editor preview details footer (not sent as bytes). */
-export const TEMPLATE_PREVIEW_ATTACHMENTS = [
-  "Statement of Work.pdf",
-  "Wage Determination.pdf",
-];
-
 /**
  * The sections the Outreach agent appends beneath the template body.
  *
@@ -78,7 +72,7 @@ export function previewBriefSections() {
   return buildOutreachSections({
     vars: TEMPLATE_TOKEN_SAMPLES,
     scopeBoundary: "Please price the HVAC scope only.",
-    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
+    attachedNames: [],
     links: [],
   });
 }
