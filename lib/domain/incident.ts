@@ -160,6 +160,7 @@ export type IneligibleReason =
   | "manually_resolved"
   | "already_requeued"
   | "unsafe_to_replay"
+  | "completion_unresolved"
   | "different_cause";
 
 export const INELIGIBLE_LABEL: Record<IneligibleReason, string> = {
@@ -170,7 +171,8 @@ export const INELIGIBLE_LABEL: Record<IneligibleReason, string> = {
   superseded: "a later run already did this work",
   manually_resolved: "somebody has already handled it",
   already_requeued: "it was requeued by an earlier recovery",
-  unsafe_to_replay: "replaying it could duplicate paid work or send something twice",
+  unsafe_to_replay: "replaying it could send something twice",
+  completion_unresolved: "saved AI output must be reconciled; paid replay is not allowed",
   different_cause: "it failed for a different reason, so this recovery would not fix it",
 };
 
@@ -220,7 +222,7 @@ export function replayDecision(
   if (context.deadlinePassed) return no("deadline_passed");
   if (context.supersededBySuccess) return no("superseded");
   if (context.manuallyResolved) return no("manually_resolved");
-  if (classifyFailure(failure.error) === "completion_reconciliation") return no("unsafe_to_replay");
+  if (classifyFailure(failure.error) === "completion_reconciliation") return no("completion_unresolved");
   if (OUTWARD_FACING.has(failure.agent)) return no("unsafe_to_replay");
   /*
    * A recovery fixes one cause. A job that failed on a bad API key during a
