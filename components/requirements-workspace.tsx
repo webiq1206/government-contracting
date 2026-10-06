@@ -338,8 +338,10 @@ export function RequirementsWorkspace({
             >
               <div className="space-y-5">
                 {selected.disqualifying && selected.disqualifyingReason && (
-                  <p className="rounded-md border border-risk/40 bg-risk/5 p-3 text-sm text-risk">
-                    {researchOnly && "Recorded assessment: "}{selected.disqualifyingReason}
+                  <p className={researchOnly ? "rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground" : "rounded-md border border-risk/40 bg-risk/5 p-3 text-sm text-risk"}>
+                    {researchOnly
+                      ? "This requirement comes from the saved notice information. Verify it against the original market research notice."
+                      : selected.disqualifyingReason}
                   </p>
                 )}
 

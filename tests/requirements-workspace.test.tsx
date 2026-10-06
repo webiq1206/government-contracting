@@ -47,7 +47,7 @@ function render(props: Partial<Parameters<typeof RequirementsWorkspace>[0]> = {}
     <RequirementsWorkspace
       opportunityId="opp-1"
       requirements={[
-        req({ id: "r1", label: "Signed SF-1449", disqualifying: true }),
+        req({ id: "r1", label: "Signed SF-1449", disqualifying: true, disqualifyingReason: "The solicitation states this as a condition of a valid bid." }),
         req({ id: "r2", label: "Pricing schedule" }),
         req({ id: "r3", label: "Past performance references" }),
       ]}
@@ -70,6 +70,7 @@ describe("the checklist beside its source", () => {
     expect(html).not.toContain("What it takes to bid");
     expect(html).not.toContain("Can sink the bid");
     expect(html).not.toContain("stored against this bid");
+    expect(html).not.toContain("condition of a valid bid");
   });
   it("preserves audit history when research requirements cannot be edited", () => {
     const html = render({ researchOnly: true, canEdit: false, history: { r1: [{
