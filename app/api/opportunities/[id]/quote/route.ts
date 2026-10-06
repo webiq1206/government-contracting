@@ -8,6 +8,7 @@ import { benchmarkFor } from "@/lib/domain/comp-reliability";
 import { logAgent } from "@/lib/logger";
 import { opportunityMutationProblem, QUOTE_EDIT_STAGES } from "@/lib/domain/opportunity-lifecycle";
 import type { Opportunity } from "@/lib/types";
+import { RESEARCH_NOTICE_READ_ONLY } from "@/lib/domain/research-notice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
 
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (opp.is_sources_sought) return NextResponse.json({ error: RESEARCH_NOTICE_READ_ONLY }, { status: 409 });
   const currentBid = await queryOne<{ submission_state: string }>(
     `select submission_state from bids where opportunity_id=$1 and org_id=$2
       order by created_at desc limit 1`,
@@ -160,6 +162,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
             and exists (
               select 1 from opportunities o
                where o.id=q.opportunity_id and o.org_id=q.org_id and o.status='open'
+                 and o.is_sources_sought is not true
                  and o.stage=any($8::text[])
                  and coalesce(o.pursuit_state, 'active')='active'
             )
@@ -189,6 +192,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
           where exists (
             select 1 from opportunities o
              where o.id=$2 and o.org_id=$1 and o.status='open'
+               and o.is_sources_sought is not true
                and o.stage=any($10::text[])
                and coalesce(o.pursuit_state, 'active')='active'
           )
@@ -239,12 +243,15 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   // package looking ready in the meantime.
   await query(
     `update bids set package_ready=false, audit_status='pending', updated_at=now()
-      where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'`,
+      where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'
+        and exists (select 1 from opportunities o
+          where o.id=bids.opportunity_id and o.org_id=bids.org_id and o.is_sources_sought is not true)`,
     [params.id, orgId]
   );
   const moved = await query<{ id: string }>(
     `update opportunities set stage='quote_entry', human_action_required=false
       where id=$1 and org_id=$2 and stage=any($3::text[]) and status='open'
+        and is_sources_sought is not true
         and coalesce(pursuit_state, 'active')='active'
       returning id`,
     [params.id, orgId, QUOTE_EDIT_STAGES]
@@ -261,7 +268,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   }
   const buildJobId = await enqueue("bid-builder", { opportunityId: params.id }).catch(() => null);
   if (!buildJobId) {
-    await query(`update opportunities set human_action_required=true where id=$1 and org_id=$2`, [
+    await query(`update opportunities set human_action_required=true where id=$1 and org_id=$2 and is_sources_sought is not true`, [
       params.id,
       orgId,
     ]);

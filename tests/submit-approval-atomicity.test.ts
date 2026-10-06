@@ -138,6 +138,7 @@ describe("submission approval fact and audit boundary", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryOne.mockReset();
     mocks.requireOrgContext.mockResolvedValue({
       orgId: ORG,
       user: { id: "operator", email: "operator@example.test" },
@@ -154,6 +155,33 @@ describe("submission approval fact and audit boundary", () => {
     expect(response.status).toBe(409);
     expect((await response.json()).needsForce).toBe(false);
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("does not approve a saved Sources Sought bid package", async () => {
+    const outerBid = bid(fingerprint);
+    const opp = { ...opportunity(), is_sources_sought: true };
+    mocks.queryOne.mockResolvedValueOnce(opp).mockResolvedValueOnce(outerBid);
+    mocks.pricingRows.mockResolvedValue(pricing());
+    mocks.transactionPricingRows.mockResolvedValue(pricing());
+    installTransaction({ ...outerBid, ...opp, opportunity_updated_at_token: opp.updated_at_token });
+    const { POST } = await import("@/app/api/opportunities/[id]/submit/route");
+    const response = await POST(request(), { params: Promise.resolve({ id: OPP }) });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toMatch(/Sources Sought|market research/i);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rechecks Sources Sought classification inside the approval transaction", async () => {
+    const outerBid = bid(fingerprint);
+    const opp = opportunity();
+    mocks.queryOne.mockResolvedValueOnce(opp).mockResolvedValueOnce(outerBid);
+    mocks.pricingRows.mockResolvedValue(pricing());
+    mocks.transactionPricingRows.mockResolvedValue(pricing());
+    installTransaction({ ...outerBid, ...opp, is_sources_sought: true, opportunity_updated_at_token: opp.updated_at_token });
+    const { POST } = await import("@/app/api/opportunities/[id]/submit/route");
+    const response = await POST(request(), { params: Promise.resolve({ id: OPP }) });
+    expect(response.status).toBe(409);
+    expect(mocks.clientQuery.mock.calls.some(([sql]) => String(sql).startsWith("update bids b"))).toBe(false);
   });
 
   it("holds approval while the compliance audit is pending", async () => {

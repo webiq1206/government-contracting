@@ -29,6 +29,8 @@ import { expectedPursuitVersion } from "./pursuit-job-context";
 
 export interface PursuitStatus extends PursuitVerdict {
   state: PursuitState;
+  /** Current saved notice kind; only the research responder may automate it. */
+  sourcesSought?: boolean;
   /** Monotonic generation used to fence work queued before an abort/restart. */
   version: number | null;
   /** False when the opportunity could not be read at all. */
@@ -61,6 +63,7 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
     status: string | null;
     stage: string | null;
     pursuit_version: number | null;
+    is_sources_sought: boolean | null;
   } | null;
   try {
     row = await queryOne<{
@@ -69,8 +72,9 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
       status: string | null;
       stage: string | null;
       pursuit_version: number | null;
+      is_sources_sought: boolean | null;
     }>(
-      `select pursuit_state, pursuit_reason, status, stage, pursuit_version
+      `select pursuit_state, pursuit_reason, status, stage, pursuit_version, is_sources_sought
          from opportunities where id = $1`,
       [opportunityId]
     );
@@ -99,10 +103,12 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
     };
   }
   const state = parsePursuitState(row.pursuit_state);
+  const sourcesSought = row.is_sources_sought === true;
   const version = Number(row.pursuit_version);
   if (!Number.isInteger(version) || version < 1) {
     return {
       state,
+      sourcesSought,
       version: null,
       known: true,
       mayAct: false,
@@ -114,6 +120,7 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
   if (expected != null && expected !== version) {
     return {
       state,
+      sourcesSought,
       version,
       known: true,
       mayAct: false,
@@ -131,6 +138,7 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
   ) {
     return {
       state,
+      sourcesSought,
       version,
       known: true,
       mayAct: false,
@@ -141,6 +149,7 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
   const verdict = pursuitVerdict({ state, reason: row.pursuit_reason });
   return {
     state,
+    sourcesSought,
     version,
     known: true,
     retryable: verdict.mayAct || state === "paused",

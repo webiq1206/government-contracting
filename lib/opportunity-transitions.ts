@@ -103,6 +103,7 @@ export async function passOpportunity(
               end
         where id=$1 and org_id=$2
           and status='open'
+          and is_sources_sought is not true
           and stage = any($5::text[])
           and coalesce(pursuit_state, 'active')='active'
         returning id`,

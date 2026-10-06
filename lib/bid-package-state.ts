@@ -12,6 +12,7 @@
  * a requirement id from one tenant can never reach another tenant's package.
  */
 import { createHash } from "node:crypto";
+import { RESEARCH_NOTICE_READ_ONLY } from "./domain/research-notice";
 import { query, queryOne, transaction } from "./db";
 import { getProfileJson } from "./ai/companyProfile";
 import { storage, type StorageBackend } from "./integrations/storage";
@@ -207,10 +208,11 @@ export async function applyPackageChange(
 
   const opp = await queryOne<Opportunity>(
     `select id, title, agency, naics_code, set_aside_type, location_text, location_state,
-            solicitation_number, solicitation_analysis
+            solicitation_number, solicitation_analysis, is_sources_sought
        from opportunities where id=$1 and org_id=$2`,
     [opportunityId, orgId]
   );
+  if (opp?.is_sources_sought) return { ok: false, conflict: true, error: RESEARCH_NOTICE_READ_ONLY };
   const profile = await getProfileJson();
   const docKinds = await query<{ kind: string }>(
     `select distinct kind from documents where opportunity_id=$1 and org_id=$2`,
@@ -297,6 +299,8 @@ export async function applyPackageChange(
         set compliance_matrix=$2, audit_findings=$3, package_ready=$4,
             validation_json=$5, package_manifest=$6, documents_json=$7, updated_at=now()
       where id=$1 and org_id=$8 and submission_state='package_ready'
+        and exists (select 1 from opportunities o
+          where o.id=bids.opportunity_id and o.org_id=bids.org_id and o.is_sources_sought is not true)
       returning id`,
     [
       bid.id,
@@ -314,7 +318,7 @@ export async function applyPackageChange(
       ok: false,
       conflict: true,
       error:
-        "The package was approved or sent while this change was being saved. The approved package was left unchanged.",
+        "The notice or package changed while this update was being saved. Its saved history was left unchanged.",
     };
   }
 

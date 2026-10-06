@@ -6,6 +6,8 @@ import { getAgent } from "@/lib/agents/registry";
 import { lookupPayloadRecords } from "@/lib/agents/payload-records";
 import { manualRunMissing, manualRunRequirement } from "@/lib/domain/agent-manual-run";
 import { isPlatformAdmin } from "@/lib/platform-admin";
+import { pursuitStatus } from "@/lib/pursuit-guard";
+import { researchNoticeJobProblem } from "@/lib/domain/research-notice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +66,12 @@ export async function POST(req: Request, props: { params: Promise<{ name: string
       { error: `No such ${notTheirs.label} in your organization.` },
       { status: 404 }
     );
+  }
+
+  if (typeof payload.opportunityId === "string") {
+    const pursuit = await pursuitStatus(payload.opportunityId);
+    const researchProblem = researchNoticeJobProblem(pursuit.sourcesSought, def.name);
+    if (researchProblem) return NextResponse.json({ error: researchProblem }, { status: 409 });
   }
 
   // force: a person pressing "run" on an agent means run it, including the

@@ -7,6 +7,7 @@ import {
 } from "@/lib/app-settings";
 import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "@/lib/domain/call-step";
 import { opportunityMutationProblem } from "@/lib/domain/opportunity-lifecycle";
+import { RESEARCH_NOTICE_READ_ONLY } from "@/lib/domain/research-notice";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -61,8 +62,9 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     tier: string | null;
     pursuit_state: string | null;
     submission_state: string | null;
+    is_sources_sought: boolean | null;
   }>(
-    `select o.id, o.stage, o.status, o.tier, o.pursuit_state,
+    `select o.id, o.stage, o.status, o.tier, o.pursuit_state, o.is_sources_sought,
             (select b.submission_state from bids b
               where b.opportunity_id=o.id and b.org_id=o.org_id
               order by b.created_at desc limit 1) as submission_state
@@ -70,6 +72,9 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (opp.is_sources_sought) {
+    return NextResponse.json({ error: RESEARCH_NOTICE_READ_ONLY }, { status: 409 });
+  }
 
   if (action === "pursue" || action === "rerun" || action === "send_back" || action === "move") {
     if (await isAutomationStopped()) {
@@ -188,6 +193,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
                                   + interval '24 hours',
               human_action_required = true
         where id=$1 and org_id=$2 and stage='scoring' and tier='review'
+          and is_sources_sought is not true
           and status='open' and coalesce(pursuit_state, 'active')='active'
         returning review_expires_at::text as review_expires_at`,
       [params.id, orgId]
@@ -229,6 +235,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
               pursuit_changed_by=$2,
               pursuit_version=pursuit_version + 1
         where id=$1 and org_id=$3 and stage='dismissed' and status='archived'
+          and is_sources_sought is not true
           and coalesce(pursuit_state, 'aborted')='aborted'
         returning id`,
       [params.id, auth.email, orgId]
@@ -273,6 +280,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     const claimed = await query<{ id: string }>(
       `update opportunities set human_action_required=false
         where id=$1 and org_id=$2 and stage=$3 and status='open'
+          and is_sources_sought is not true
           and coalesce(pursuit_state, 'active')='active'
         returning id`,
       [params.id, orgId, opp.stage]
@@ -330,6 +338,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       `update opportunities
           set stage=$2, status='open', human_action_required=$3
         where id=$1 and org_id=$4 and stage=$5 and status='open'
+          and is_sources_sought is not true
           and coalesce(pursuit_state, 'active')='active'
         returning id`,
       [params.id, prev, agents.length === 0, orgId, opp.stage]

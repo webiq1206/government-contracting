@@ -164,7 +164,7 @@ export default async function AdminInvitationsPage() {
                         // it. Rare, and invisible to the customer until an
                         // invoice, so it is said here in full.
                         <div className="pt-1 text-xs text-risk">
-                          The invited terms are not recorded as applied. Review the account's current billing before changing anything. <Link href="/admin/accounts" className="underline">Find the account</Link>.
+                          The invited terms are not recorded as applied. Review the account&apos;s current billing before changing anything. <Link href="/admin/accounts" className="underline">Find the account</Link>.
                         </div>
                       )}
                     </td>

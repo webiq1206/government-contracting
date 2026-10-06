@@ -274,9 +274,9 @@ export function RequirementStateControl({
             </p>
           )}
 
-          <History label={label} history={history} />
         </div>
       )}
+      {(history.length > 0 || (open && canEdit)) && <History label={label} history={history} />}
     </div>
   );
 }

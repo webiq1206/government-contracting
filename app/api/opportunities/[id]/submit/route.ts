@@ -19,6 +19,7 @@ import {
 import { pricingSheet, type PricingSheet } from "@/lib/domain/pricing-row";
 import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import type { Opportunity } from "@/lib/types";
+import { RESEARCH_NOTICE_READ_ONLY } from "@/lib/domain/research-notice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ interface BidApprovalFacts {
 }
 
 interface LockedApprovalFacts extends BidApprovalFacts {
+  is_sources_sought: boolean | null;
   opportunity_updated_at_token: string;
   stage: string;
   status: string;
@@ -187,6 +189,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (opp.is_sources_sought) return NextResponse.json({ error: RESEARCH_NOTICE_READ_ONLY }, { status: 409 });
 
   const bid = await queryOne<BidApprovalFacts>(
     `select id, human_flags, qa_checklist, package_ready, audit_status, validation_json, audit_findings,
@@ -451,7 +454,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
                 b.updated_at::text as updated_at_token,
                 b.compliance_matrix, b.package_manifest, b.documents_json,
                 o.updated_at::text as opportunity_updated_at_token,
-                o.stage, o.status, o.pursuit_state, o.deadline,
+                o.stage, o.status, o.pursuit_state, o.deadline, o.is_sources_sought,
                 o.past_perf_classification, o.solicitation_analysis
            from bids b
            join opportunities o on o.id=b.opportunity_id and o.org_id=b.org_id
@@ -471,6 +474,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         return { ok: false, reason: "requirements" };
       }
       if (
+        locked.is_sources_sought === true ||
         locked.audit_status === "pending" ||
         locked.submission_state !== "package_ready" ||
         (!locked.package_ready && !force) ||
