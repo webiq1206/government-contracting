@@ -16,9 +16,24 @@ let diagnosticPage;
 async function isolate(context) {
   context.on('requestfailed',request=>evidence.failedRequests.push({url:request.url(),error:request.failure()?.errorText}));
   await context.route('**/*',route=>{
-    if(new URL(route.request().url()).origin===base) return route.continue();
+    const url=new URL(route.request().url());
+    // These are bundled Chromium resources, not network destinations. Blocking
+    // them disables the real PDF viewer while leaving a misleading blank frame.
+    const nativePdfResource=(url.protocol==='chrome-extension:' && url.hostname==='mhjfbmdgcfjbbpaeojofohoefgiehjai') ||
+      (url.protocol==='chrome:' && url.hostname==='resources');
+    if(url.origin===base || nativePdfResource) return route.continue();
     evidence.blockedRequests.push(route.request().url()); return route.abort();
   });
+}
+// Exercise the browser's real session-cookie handling on loopback. The separate
+// APIRequestContext does not send this production-mode Secure cookie over HTTP.
+async function browserGet(page,url,includeBody=false) {
+  assert.equal(new URL(url).origin,base);
+  return page.evaluate(async ({url,includeBody})=>{
+    const response=await fetch(url,{credentials:'same-origin',redirect:'manual',cache:'no-store'});
+    return {status:response.status,headers:Object.fromEntries(response.headers),
+      bytes:includeBody ? Array.from(new Uint8Array(await response.arrayBuffer())) : undefined};
+  },{url,includeBody});
 }
 async function login(context,email) {
   const page=await context.newPage();
@@ -56,9 +71,9 @@ try {
   const headers=response.headers();
   assert.equal(new URL(response.url()).origin,base);
   evidence.finalUrl=response.url();
-  const direct=await context.request.get(response.url());
-  assert.equal(direct.status(),200);
-  const bytes=await direct.body();
+  const direct=await browserGet(page,response.url(),true);
+  assert.equal(direct.status,200);
+  const bytes=Buffer.from(direct.bytes);
   evidence.document={bytes:bytes.length,pages:(await PDFDocument.load(bytes)).getPageCount()};
   writeFileSync(`${out}/pdf-fixture-source.pdf`,bytes);
   assert.equal(evidence.document.pages,50);
@@ -77,20 +92,22 @@ try {
   await frame.scrollIntoViewIfNeeded();
   await painted(frame,'blue',`${out}/desktop-pdf-page-12.png`);
   evidence.sameOrigin=true;
-  const html=await context.request.get(base+'/today');
-  assert.equal(html.headers()['x-frame-options'],'DENY');
-  assert.equal(html.headers()['content-security-policy'],undefined);
+  const html=await browserGet(page,base+'/today');
+  assert.equal(html.status,200);
+  assert.equal(html.headers['x-frame-options'],'DENY');
+  assert.equal(html.headers['content-security-policy'],undefined);
 
   const anonymous=await browser.newContext(); await isolate(anonymous);
-  const denied=await anonymous.request.get(`${base}/api/documents/${ids.sourceDocs[1]}/open`,{maxRedirects:0});
-  assert.equal(denied.status(),401);
-  assert.equal((await anonymous.request.get(response.url(),{maxRedirects:0})).status(),401);
+  const visitor=await anonymous.newPage();await visitor.goto(base+'/login');
+  const denied=await browserGet(visitor,`${base}/api/documents/${ids.sourceDocs[1]}/open`);
+  assert.equal(denied.status,401);
+  assert.equal((await browserGet(visitor,response.url())).status,401);
   evidence.authDenied=true; await anonymous.close();
   const tenant=await browser.newContext();await isolate(tenant);
-  await login(tenant,'ui-setup@example.test');
-  const foreign=await tenant.request.get(`${base}/api/documents/${ids.sourceDocs[1]}/open`,{maxRedirects:0});
-  assert.equal(foreign.status(),404);
-  assert.equal((await tenant.request.get(response.url(),{maxRedirects:0})).status(),404);
+  const tenantPage=await login(tenant,'ui-setup@example.test');
+  const foreign=await browserGet(tenantPage,`${base}/api/documents/${ids.sourceDocs[1]}/open`);
+  assert.equal(foreign.status,404);
+  assert.equal((await browserGet(tenantPage,response.url())).status,404);
   evidence.crossOrgDenied=true;await tenant.close();
 
   // A different port is a different origin but the same cookie site. The
