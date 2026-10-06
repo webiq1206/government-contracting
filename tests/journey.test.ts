@@ -212,3 +212,19 @@ describe("deriveStep", () => {
     expect(deriveStep(input({ stage: "won" })).after).toBeTruthy();
   });
 });
+
+describe("closed record presentation", () => {
+  it.each(["archived", "closed"])("never revives the saved call stage for %s status", (status) => {
+    const step = deriveStep(input({ status, stage: "call_queue", hasBid: true, humanActionRequired: true }));
+    expect(step.closedLabel).toBe(status === "archived" ? "Archived" : "Closed");
+    expect(step.decision).toBeUndefined();
+    expect(step.anchor).toBeUndefined();
+    expect(step.href).toBe("/pipeline");
+    expect(step.why).not.toMatch(/expired|deadline passed|automatically/i);
+  });
+  it("keeps a verified expiry reason", () => {
+    const step = deriveStep(input({ status: "archived", stage: "call_queue", expired: true }));
+    expect(step.closedLabel).toBe("Expired");
+    expect(step.title).toBe("Nothing, this one expired");
+  });
+});

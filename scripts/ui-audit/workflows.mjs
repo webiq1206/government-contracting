@@ -150,9 +150,11 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       assert.equal(await empty.locator('main a[href^="/admin/"]').count(),0,'A tenant owner never receives platform destinations');
     } finally { await isolated.close(); }
   });
-  await check(`/opportunity/${ids.archived}`, 'expired-document-coverage', async () => {
+  await check(`/opportunity/${ids.archived}`, 'archived-document-coverage', async () => {
     await page.getByRole('heading', { name: 'Archived document coverage audit', exact: true }).waitFor();
-    assert.equal(await page.getByText('Calls to make', { exact: true }).count(), 0, 'An expired record must not advertise active calls');
+    assert.equal(await page.getByText('Calls to make', { exact: true }).count(), 0, 'An archived record must not advertise active calls');
+    await page.getByText('Closed record', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('link', {name: /Start calling/}).count(), 0);
     await page.getByRole('tab', { name: 'Documents', exact: true }).click();
     await page.getByText('11 of 13 document(s) read in full; 1 only partly read, 1 marked as having no text.', { exact: true }).waitFor();
     const visibleReadLabels = await page.getByText('Read in full', { exact: true }).evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).length);

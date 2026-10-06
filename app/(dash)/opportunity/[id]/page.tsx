@@ -487,6 +487,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
    */
   const stepInput = {
     stage: opp.stage,
+    status: opp.status,
     tier: opp.tier,
     humanActionRequired: opp.human_action_required,
     quoteCount: readiness.tradesWithQuotes,
@@ -510,6 +511,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
   const plan = buildGuidedPlan({
     opportunityId: opp.id,
     stage: opp.stage,
+    status: opp.status,
     tier: opp.tier,
     humanActionRequired: opp.human_action_required,
     pastPerfBlocked,
@@ -877,13 +879,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 */}
               {!opp.is_sources_sought && <div id="workflow" data-guide-target="workflow" className="space-y-2">
                 <SectionHeading
-                  eyebrow="Current workflow"
-                  title="Where this bid stands"
+                  eyebrow={plan.closed ? "Saved workflow" : "Current workflow"}
+                  title={plan.closed ? "Saved bid history" : "Where this bid stands"}
                   tip={termTip("workflow")}
                 >
-                  Same tracker as the top banner. Use Next step for the action to take now.
+                  {plan.closed ? plan.closed.note : "Same tracker as the top banner. Use Next step for the action to take now."}
                 </SectionHeading>
-                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
+                {!plan.closed && <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />}
                 {/* Below xl there is no side panel, so the same live task list
                     lives here rather than only on wide screens. */}
                 <div className="pt-2 2xl:hidden">

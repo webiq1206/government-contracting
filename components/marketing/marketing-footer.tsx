@@ -72,7 +72,7 @@ export function MarketingFooter({
           <p>© {new Date().getFullYear()} BROSTCO HOLDINGS LLC.</p>
           <Link href={loginHref}>Log in</Link>
           <Link href="/signup">Start free trial</Link>
-          <AnalyticsPreferencesButton />
+          <AnalyticsPreferencesButton inheritColor />
         </div>
       </div>
     </footer>

@@ -12,13 +12,13 @@ type Clarity = ((...args: unknown[]) => void) & { q?: unknown[][] };
 declare global { interface Window { clarity?: Clarity } }
 
 /** In-flow entry point, shared by Settings and public privacy/footer links. */
-export function AnalyticsPreferencesButton() {
+export function AnalyticsPreferencesButton({ inheritColor = false }: { inheritColor?: boolean }) {
   const [allowed, setAllowed] = useState(false);
   useEffect(() => setAllowed(analyticsAllowed()), []);
   return <button type="button" disabled={!allowed}
     title={allowed ? undefined : "Browser privacy settings disable optional analytics."}
     onClick={() => window.dispatchEvent(new Event(OPEN_PREFERENCES))}
-    className="inline-flex min-h-11 items-center rounded px-2 py-2 text-left text-xs text-muted-foreground underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default">
+    className={`inline-flex min-h-11 items-center rounded px-2 py-2 text-left text-xs underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default ${inheritColor ? "text-inherit focus-visible:outline-current" : "text-muted-foreground focus-visible:outline-accent"}`}>
     Analytics preferences
   </button>;
 }

@@ -11,6 +11,7 @@
  * DB, no I/O, fully unit-tested.
  */
 
+import { recordIsClosed } from "./closed-work";
 import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "./call-step";
 
 /** Who is expected to move the opportunity forward right now. */
@@ -190,6 +191,8 @@ export function isStalled(stage: string, hoursSinceUpdate: number | null): boole
 
 export interface StepInput {
   stage: string;
+  /** Persisted lifecycle status; the last workflow stage may remain after closure. */
+  status?: string | null;
   tier: string | null;
   humanActionRequired: boolean;
   /** @deprecated Prefer tradesWithQuotes. Kept for older call sites. */
@@ -239,6 +242,8 @@ function callQueueHref(s: { opportunityId?: string }): string {
 
 export interface NextStep {
   title: string;
+  /** A closed record is saved history, not work waiting on automation. */
+  closedLabel?: string;
   why: string;
   /** What the platform does the moment this step is completed. */
   after?: string;
@@ -264,6 +269,7 @@ export function deriveStep(s: StepInput): NextStep {
   if (s.stage === "won")
     return {
       title: "Nothing, this one is won",
+      closedLabel: "Won",
       why: "The contract record was created. Track milestones and compliance from the Contracts page.",
       after: "Contracts holds milestones, compliance items, and payment tracking for this win.",
       cta: "View contracts",
@@ -274,6 +280,7 @@ export function deriveStep(s: StepInput): NextStep {
   if (s.stage === "lost")
     return {
       title: "This bid was marked lost",
+      closedLabel: "Lost",
       why: "The outcome is recorded. History, documents, and communications stay here for reference.",
       after: "Use Today or Opportunities to pick up the next open opportunity.",
       cta: "Back to Today",
@@ -284,6 +291,7 @@ export function deriveStep(s: StepInput): NextStep {
   if (s.stage === "dismissed")
     return {
       title: "This opportunity was dismissed",
+      closedLabel: "Passed",
       why: "It is archived, not deleted. You can restore it from the activity history if you change your mind.",
       after: "Use Today or Opportunities to pick up the next open opportunity.",
       cta: "Back to Today",
@@ -295,6 +303,7 @@ export function deriveStep(s: StepInput): NextStep {
   if (s.expired)
     return {
       title: "Nothing, this one expired",
+      closedLabel: "Expired",
       why: "The submission deadline passed before a bid went out, so the record was archived automatically. All documents, communications, and history are preserved here for reference.",
       after: "Nothing further happens; archived records are kept per your retention settings.",
       cta: "Browse opportunities",
@@ -302,6 +311,20 @@ export function deriveStep(s: StepInput): NextStep {
       tone: "info",
       waitingOn: "system",
     };
+
+  if (recordIsClosed({ status: s.status })) {
+    const archived = s.status?.toLowerCase() === "archived";
+    return {
+      title: archived ? "Nothing, this record is archived" : "This record is closed",
+      closedLabel: archived ? "Archived" : "Closed",
+      why: "This record is no longer active. Its saved workflow stage, documents, and communications remain available for reference.",
+      after: "No further bid work is expected on this closed record.",
+      cta: "Browse opportunities",
+      href: "/pipeline",
+      tone: "info",
+      waitingOn: "system",
+    };
+  }
 
   if (s.pastPerfBlocked)
     return {

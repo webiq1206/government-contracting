@@ -17,6 +17,7 @@
  * stage-driven.
  */
 
+import { recordIsClosed } from "./closed-work";
 import type { TradeCoverageSummary } from "./trade-coverage";
 import type {
   PlanBlocker,
@@ -37,6 +38,7 @@ export interface GuidedPlanInput {
   /** Scopes the call-queue link to this bid's calls when known. */
   opportunityId?: string;
   stage: string;
+  status?: string | null;
   tier: string | null;
   humanActionRequired: boolean;
   pastPerfBlocked: boolean;
@@ -193,6 +195,7 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
   const tradesWithSubs = requiredTrades.filter((t) => t.found > 0).length;
   const tradesContacted = requiredTrades.filter((t) => t.contacted > 0).length;
   const tradesQuoted = requiredTrades.filter((t) => t.quotes > 0).length;
+  const closedStatus = recordIsClosed({ status: input.status });
   const terminal =
     input.stage === "won" || input.stage === "lost" || input.stage === "dismissed";
   const decided = input.outcome === "won" || input.outcome === "lost" || input.outcome === "no_award";
@@ -306,7 +309,7 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
   // -------------------------------------------------------------------------
   // Position: which step is live.
   // -------------------------------------------------------------------------
-  const activeKey = terminal || input.expired || allDone ? null : anchorKey(input);
+  const activeKey = terminal || closedStatus || input.expired || allDone ? null : anchorKey(input);
   const activeIdx = activeKey ? STEP_DEFS.findIndex((d) => d.key === activeKey) : -1;
 
   // -------------------------------------------------------------------------
@@ -353,7 +356,7 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
   };
 
   const actionFor = (key: string, status: PlanStatus): PlanStep["action"] => {
-    if (status === "done" || status === "upcoming") return undefined;
+    if (closedStatus || terminal || input.expired || status === "done" || status === "upcoming") return undefined;
     switch (key) {
       case "pursue":
         return { label: "Pursue or pass", href: "#next-step" };
@@ -441,6 +444,11 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
     closed = {
       label: "Expired",
       note: "The deadline passed before a bid went out, so the record was archived automatically.",
+    };
+  } else if (closedStatus && !allDone) {
+    closed = {
+      label: input.status?.toLowerCase() === "archived" ? "Archived" : "Closed",
+      note: "This record is no longer active. Its saved workflow and documents remain available for reference.",
     };
   }
 

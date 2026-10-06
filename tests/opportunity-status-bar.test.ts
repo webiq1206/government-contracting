@@ -19,6 +19,7 @@ import { deriveStep, stageLabel } from "../lib/domain/journey";
  */
 
 const BAR = readFileSync("components/opportunity-status-bar.tsx", "utf8");
+const PREVIEW = readFileSync("app/api/opportunities/[id]/preview/route.ts", "utf8");
 const PAGE = readFileSync("app/(dash)/opportunity/[id]/page.tsx", "utf8");
 
 describe("what it carries", () => {
@@ -52,6 +53,8 @@ describe("what it refuses to claim", () => {
   it("uses the resolved closed label instead of an archived record's last active stage", () => {
     // Source wiring matters: the standalone bar renders the label it receives.
     expect(PAGE).toContain("stageLabel={plan.closed?.label ?? stageLabel(opp.stage)}");
+    expect(PREVIEW).toContain("status: opp.status");
+    expect(PREVIEW).toContain("stageLabel: step.closedLabel ?? stageLabel(opp.stage)");
     const record = { stage: "call_queue", status: "archived", riskFlags: ["expired"] };
     const expired = record.status === "archived" && record.riskFlags.includes("expired");
     const shared = {

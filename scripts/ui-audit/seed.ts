@@ -61,8 +61,8 @@ try {
   await query("insert into company_profile(org_id,version,is_active,profile_json,profile_text,updated_by) values($1,1,true,$2,'Synthetic incomplete profile','ui-audit')",[setupOrg!.id,JSON.stringify(defaultCompanyProfile({legalName:'Empty Setup Audit',email:'ui-setup@example.test'}))]);
   await query(`insert into agent_logs(org_id,agent,action,level,message,output_json,created_at)
     values($1,'analytics-engine','kpi-snapshot','info','Synthetic stored report evidence',$2,now()-interval '8 days')`,[org!.id,JSON.stringify({
-      by_naics:[{naics:'561210',wins:2,total:4,win_rate:50}],by_agency:[{agency:'Audit Agency',wins:2,total:4,win_rate:50}],
-      by_geography:[{state:'ID',wins:2,total:4,win_rate:50}],cash_flow:{'30':1000,'60':null,'90':3000},
+      by_naics:[{naics:'561210',wins:2,losses:2,total:4,win_rate:50}],by_agency:[{agency:'Audit Agency',wins:2,losses:2,total:4,win_rate:50}],
+      by_geography:[{state:'ID',wins:2,losses:2,total:4,win_rate:50}],cash_flow:{'30':1000,'60':null,'90':3000},
       sub_rankings:[{company_name:'Sample Electrical Services',score:95}],velocity:{scoring:2,dismissed:1}
     })]);
   const sub=await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,trade_categories,state,city) values($1,'Sample Electrical Services',array['Electrical'],'ID','Boise') returning id`,[org!.id]);
