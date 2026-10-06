@@ -2,6 +2,7 @@ import { describeScoreConfidence, readScoreConfidence } from "@/lib/domain/score
 import type { ScoreBreakdown } from "@/lib/types";
 import type { DataConfidence } from "@/lib/domain/score-confidence";
 import { InfoTip } from "@/components/info-tip";
+import { currentScoreLine, scoreHistoryNotice } from "@/lib/domain/guide-score-context";
 
 const CONFIDENCE_TONE: Record<DataConfidence["level"], string> = {
   high: "bg-pursue/15 text-pursue",
@@ -40,7 +41,7 @@ export function ScoreBreakdownCard({ breakdown, currentScore }: { breakdown: Sco
       data-guide-target="score"
     >
       <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
-        Score breakdown
+        Saved score breakdown
       </h2>
 
       {/*
@@ -53,9 +54,10 @@ export function ScoreBreakdownCard({ breakdown, currentScore }: { breakdown: Sco
         on a headline is a reason to go and read the notice. Same number,
         opposite instruction.
       */}
+      <p className="mt-3 text-sm font-medium">{currentScoreLine(currentScore ?? null, null)}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{scoreHistoryNotice(currentScore ?? null, breakdown.total)}</p>
+      <p className="mt-2 text-sm">{Number.isFinite(breakdown.total) ? `Saved analysis total: ${breakdown.total}/100.` : "Saved analysis total unavailable."}</p>
       <ConfidenceLine confidence={breakdown.data_confidence} />
-      <p className="mt-3 text-sm font-medium">Recorded score: {currentScore ?? breakdown.total}/100. Source evidence and current eligibility still require review.</p>
-      {currentScore != null && currentScore !== breakdown.total && <p role="status" className="mt-2 rounded border border-review/30 bg-review/10 p-3 text-sm">This breakdown belongs to an earlier score ({breakdown.total}). Review the source and refresh scoring before relying on the factors below.</p>}
 
       <div className="mt-5 space-y-4">
         {positives.map((d) => {
@@ -87,7 +89,7 @@ export function ScoreBreakdownCard({ breakdown, currentScore }: { breakdown: Sco
       {risks.length > 0 && (
         <div className="mt-5 border-t border-border pt-4">
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-risk">
-            Risk flags
+            Recorded weak factors
           </p>
           <ul className="mt-2 space-y-2">
             {risks.map((d) => (
@@ -116,7 +118,7 @@ export function ScoreBreakdownCard({ breakdown, currentScore }: { breakdown: Sco
       )}
       {breakdown.hard_exclusions_triggered?.length > 0 && (
         <div className="mt-3 rounded-md border border-risk/30 bg-risk/5 px-3 py-2">
-          <p className="label text-risk">Hard exclusions</p>
+          <p className="label text-risk">Recorded hard exclusions</p>
           <ul className="mt-1 space-y-0.5 text-xs text-risk">
             {breakdown.hard_exclusions_triggered.map((x) => (
               <li key={x}>{x.replace(/_/g, " ")}</li>

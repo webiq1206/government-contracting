@@ -10,6 +10,7 @@ import { useToast } from "@/components/toaster";
 import { EstimatedValue } from "@/components/estimated-value";
 import { useWorkspaceShortcut } from "@/components/workspace/workspace-keys";
 import { requestAction, ACTION_UNCONFIRMED } from "@/lib/client/action-request";
+import { SAVED_SCORE_NOTICE } from "@/lib/domain/guide-score-context";
 
 const TONE = { pursue: "bg-pursue/15 text-pursue", pass: "bg-risk/15 text-risk", look: "bg-review/15 text-review" };
 export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDecide, closeHref, nextHref = null, recordHref, facts = [], evidence, canAnalyze = false }: {
@@ -87,14 +88,14 @@ export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDec
         <div><dt className="text-xs text-muted-foreground">Contract value</dt><dd className="mt-1"><EstimatedValue value={brief.value.amount} source={brief.value.source} /></dd></div>
         {facts.map(fact => <div key={fact.label}><dt className="text-xs text-muted-foreground">{fact.label}</dt><dd className="mt-1 break-words text-sm">{fact.value}</dd></div>)}
       </dl></section>
-      <section className="rounded-xl border border-review/35 bg-review/5 p-4" aria-label="Evidence and warnings"><h3 className="font-semibold">Check before deciding</h3><p className="mt-2 text-sm">{brief.confidence ? `Information confidence: ${Math.round(brief.confidence.percent)} / 100 (${brief.confidence.level}).` : "Information confidence has not been measured."}</p>
+      <section className="rounded-xl border border-review/35 bg-review/5 p-4" aria-label="Evidence and warnings"><h3 className="font-semibold">Check before deciding</h3><p className="mt-2 text-sm text-muted-foreground">{SAVED_SCORE_NOTICE} Current recorded score and deadline appear above; verify saved factors and warnings against the source.</p><p className="mt-2 text-sm">{brief.confidence ? `Saved information confidence: ${Math.round(brief.confidence.percent)} / 100 (${brief.confidence.level}).` : "Information confidence has not been measured."}</p>
         {brief.conflicts.map(conflict => <div key={conflict.field} className="mt-3 border-l-2 border-risk pl-3 text-sm"><p className="font-semibold text-risk">Conflicting information: {conflict.field}</p><p>The notice says {conflict.fromNotice}. The document says {conflict.fromDocument}.</p><p className="mt-1 text-muted-foreground">{conflict.matters}</p></div>)}
         <BriefList items={brief.risks} empty="No risks were recorded in this assessment." />
         {brief.missing.length > 0 && <div className="mt-3"><h4 className="text-sm font-semibold">Still unknown</h4><ul className="mt-1 list-disc space-y-1 pl-5 text-sm">{brief.missing.map(item => <li key={item}>{item}</li>)}</ul></div>}
       </section>
-      <Disclosure title="Why this may fit" count={brief.positives.length}><BriefList items={brief.positives} empty="No strong fit factors were recorded." /></Disclosure>
+      <Disclosure title="Saved fit factors" count={brief.positives.length}><p className="text-sm text-muted-foreground">{SAVED_SCORE_NOTICE}</p><BriefList items={brief.positives} empty="No strong fit factors were recorded." /></Disclosure>
       <Disclosure title="Work needed if we pursue"><ul className="list-disc space-y-2 pl-5 text-sm">{brief.effort.map(item => <li key={item}>{item}</li>)}</ul></Disclosure>
-      {evidence && <Disclosure title="Score breakdown and source evidence">{evidence}</Disclosure>}
+      {evidence && <Disclosure title="Saved score breakdown and source evidence"><p className="mb-3 text-sm text-muted-foreground">{SAVED_SCORE_NOTICE}</p>{evidence}</Disclosure>}
       <Disclosure title="Original notice and full record"><div className="flex flex-col items-start gap-2">{brief.sourceLinks.length === 0 && <p className="text-sm text-muted-foreground">No source link was saved. Check the full record for available documents.</p>}{brief.sourceLinks.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" className="inline-flex min-h-11 items-center text-sm text-accent underline">{link.label}</a>)}<Link href={recordHref ?? `/opportunity/${opportunityId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open the full record</Link></div></Disclosure>
       {canDecide && <Disclosure title="More review options"><p className="mb-3 text-sm text-muted-foreground">Extend the review deadline if you need more time. Requesting analysis may use your account’s AI allowance; it does not make a decision.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={disabled} onClick={() => void act("extend_review")} className="btn-ghost min-h-11 border border-border text-sm">{busy === "extend_review" ? "Extending…" : "Extend review by one day"}</button>{canAnalyze && <button type="button" disabled={disabled} onClick={() => void act("rerun")} className="btn-ghost min-h-11 border border-border text-sm">{busy === "rerun" ? "Requesting…" : "Request more analysis"}</button>}</div></Disclosure>}
     </div>
