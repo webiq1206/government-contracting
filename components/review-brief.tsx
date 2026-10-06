@@ -1,449 +1,102 @@
 "use client";
 
-/**
- * The decision, and the argument for it.
- *
- * Review is a page whose entire job is a yes or no, and it was a list of
- * cards. A card is a summary; a decision needs the argument, in the order
- * somebody actually makes the call in: what we think, why, what is wrong with
- * it, what we do not know, and how long there is.
- *
- * The controls stay at the foot of the panel rather than travelling with the
- * text, because on a long brief a decision button that scrolls away is a
- * decision somebody defers.
- */
-
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  RECOMMENDATION_LABEL,
-  type ReviewBrief as Brief,
-} from "@/lib/domain/review-brief";
+import { RECOMMENDATION_LABEL, type ReviewBrief as Brief } from "@/lib/domain/review-brief";
 import { shortDate, countdown } from "@/lib/format";
 import { SnoozeButton } from "@/components/snooze-button";
 import { useToast } from "@/components/toaster";
 import { EstimatedValue } from "@/components/estimated-value";
 import { useWorkspaceShortcut } from "@/components/workspace/workspace-keys";
+import { requestAction, ACTION_UNCONFIRMED } from "@/lib/client/action-request";
 
-const TONE: Record<string, string> = {
-  pursue: "bg-pursue/15 text-pursue",
-  pass: "bg-risk/15 text-risk",
-  look: "bg-review/15 text-review",
-};
-
-export function ReviewBriefPanel({
-  opportunityId,
-  title,
-  subtitle,
-  brief,
-  canDecide,
-  closeHref,
-  nextHref = null,
-  recordHref,
-}: {
-  opportunityId: string;
-  title: string;
-  subtitle: string;
-  brief: Brief;
-  canDecide: boolean;
-  closeHref: string;
-  /**
-   * The next item in the queue, when the host has one.
-   *
-   * Deciding removes this record from the list it came from, so staying put
-   * leaves a decided record on screen and the operator to go and find the next
-   * row. With this, a decision lands on the next decision. Null on the last
-   * item, which falls back to `closeHref`: the queue, which re-opens on
-   * whatever is now first.
-   */
-  nextHref?: string | null;
-  /** The record's own page. Defaults to the opportunity. */
-  recordHref?: string;
+const TONE = { pursue: "bg-pursue/15 text-pursue", pass: "bg-risk/15 text-risk", look: "bg-review/15 text-review" };
+export function ReviewBriefPanel({ opportunityId, title, subtitle, brief, canDecide, closeHref, nextHref = null, recordHref, facts = [], evidence, canAnalyze = false }: {
+  opportunityId: string; title: string; subtitle: string; brief: Brief; canDecide: boolean;
+  closeHref: string; nextHref?: string | null; recordHref?: string;
+  facts?: { label: string; value: string }[]; evidence?: ReactNode; canAnalyze?: boolean;
 }) {
   const router = useRouter();
   const { push } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [snoozing, setSnoozing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passing, setPassing] = useState(false);
   const [reason, setReason] = useState("");
-
-  /*
-   * Memoized because the keyboard binding below depends on it, and a function
-   * rebuilt on every render would tear down and re-register the window
-   * listener on every keystroke in the pass-reason box.
-   */
-  const act = useCallback(
-    async function act(action: string, extra: Record<string, unknown> = {}) {
-    setBusy(action);
-    setError(null);
+  const inFlight = useRef<AbortController | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousId = useRef(opportunityId);
+  useEffect(() => {
+    setPassing(false); setReason(""); setError(null); setBusy(null); setSnoozing(false);
+    if (previousId.current !== opportunityId) heading.current?.focus({ preventScroll: true });
+    previousId.current = opportunityId;
+    return () => { inFlight.current?.abort(); inFlight.current = null; };
+  }, [opportunityId]);
+  const advance = useCallback(() => { router.push(nextHref ?? closeHref, { scroll: false }); router.refresh(); }, [router, nextHref, closeHref]);
+  const act = useCallback(async (action: string, extra: Record<string, unknown> = {}) => {
+    if (inFlight.current) return;
+    const controller = new AbortController(); inFlight.current = controller;
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    setBusy(action); setError(null);
     try {
-      const res = await fetch(`/api/opportunities/${opportunityId}/action`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, ...extra }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "That did not work. Nothing was changed.");
-        return;
-      }
-      setPassing(false);
-      setReason("");
-      /*
-       * Undo, on the one action that takes a record off the board.
-       *
-       * A pass is reversible in the data (it archives rather than deletes) and
-       * was irreversible in the interface: the row vanished and the only way
-       * back was to know that the closed filter existed. This is the decision
-       * screen, so the mistake it invites is passing on the wrong one of two
-       * similar notices, and the recovery has to be where the mistake happens.
-       */
-      if (action === "dismiss") {
-        push({
-          message: `Passed on "${title}". It is archived, not deleted.`,
-          undo: {
-            endpoint: `/api/opportunities/${opportunityId}/action`,
-            body: { action: "restore" },
-          },
-        });
-      }
-      /*
-       * A decision takes the record out of the queue, so the screen must not
-       * keep showing it. Extending the timer and asking for more analysis do
-       * not: those leave the item where it is, and jumping to the next one
-       * would look like the button had decided something.
-       */
-      if (action === "pursue" || action === "dismiss") {
-        router.push(nextHref ?? closeHref);
-      }
-      router.refresh();
-    } catch {
-      setError("Could not reach the server. Nothing was changed.");
-    } finally {
-      setBusy(null);
-    }
-    },
-    [opportunityId, nextHref, closeHref, router, push, title]
-  );
-
-  /*
-   * The primary decision, on the keyboard.
-   *
-   * Only pursue. Passing is the destructive half and it asks for a reason
-   * first, so binding it to a key would either skip the reason or open a
-   * textarea nobody asked for; a queue worked at speed is exactly where that
-   * mistake gets made forty times.
-   */
-  const pursue = useCallback(() => {
-    if (!canDecide || busy != null || passing) return;
-    void act("pursue");
-  }, [canDecide, busy, passing, act]);
-  useWorkspaceShortcut("mod+Enter", pursue, canDecide && !passing);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            {/*
-              * The title appears once on this screen. It is already on the
-              * card in the queue beside it, and the audit is explicit that a
-              * title repeated three times is three chances to read the wrong
-              * one.
-              */}
-            <h2 className="truncate text-base font-medium text-foreground">{title}</h2>
-            <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>
-          </div>
-          <Link href={closeHref} className="tap shrink-0 text-sm text-slate-500 hover:text-accent lg:hidden">
-            Back
-          </Link>
-        </div>
-      </header>
-
-      <div className="scroll-thin min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
-        <section>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-sm font-medium ${TONE[brief.recommendation]}`}>
-              {RECOMMENDATION_LABEL[brief.recommendation]}
-            </span>
-            {brief.score != null && (
-              <span className="text-sm text-slate-600">
-                Fit <span className="num text-foreground">{brief.score}</span> / 100
-              </span>
-            )}
-            {/*
-              * A missing confidence is unmeasured, not certain. Rendering
-              * nothing here would leave the fit score looking like the whole
-              * story on a record nobody ever assessed the readability of.
-              */}
-            {brief.confidence ? (
-              <span className="text-sm text-slate-600">
-                Data confidence{" "}
-                <span className="num text-foreground">{Math.round(brief.confidence.percent)}</span>{" "}
-                / 100 ({brief.confidence.level})
-              </span>
-            ) : (
-              <span className="text-sm text-slate-500">
-                Data confidence not measured on this one
-              </span>
-            )}
-          </div>
-          <p className="mt-2 text-sm text-foreground">{brief.rationale}</p>
-        </section>
-
-        {/*
-          Two sources stating different facts, above the arguments for and
-          against, because a set-aside the notice and the document disagree on
-          decides whether the rest of this page is worth reading.
-        */}
-        {brief.conflicts.length > 0 && (
-          <section className="rounded-md border border-risk/40 bg-risk/5 p-3">
-            <h3 className="label mb-2 text-risk">The notice and the document disagree</h3>
-            <ul className="space-y-3 text-sm">
-              {brief.conflicts.map((c) => (
-                <li key={c.field}>
-                  <p className="font-medium text-foreground">{c.field}</p>
-                  <p className="text-muted-foreground">
-                    The listing says <span className="text-foreground">{c.fromNotice}</span>. The
-                    solicitation says <span className="text-foreground">{c.fromDocument}</span>.
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{c.matters}</p>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <section>
-          <h3 className="label mb-2">Contract value</h3>
-          {/*
-            The figure and where it came from, together. A number with no
-            provenance on a decision screen is a number somebody will plan
-            against without knowing whether the government published it or an
-            AI read it off a page.
-          */}
-          <EstimatedValue value={brief.value.amount} source={brief.value.source} />
-        </section>
-
-        <BriefList
-          title="Strongest in its favour"
-          items={brief.positives}
-          empty="Nothing scored strongly. That is itself an argument."
-        />
-        <BriefList
-          title="Most important against"
-          items={brief.risks}
-          empty="Nothing was flagged and nothing scored badly."
-        />
-
-        <section>
-          <h3 className="label mb-2">Not known</h3>
-          {brief.missing.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              {/*
-                * Two different states, and they were reading the same. An
-                * assessment that found nothing missing is good news; no
-                * assessment at all is a gap, and saying "everything was in the
-                * notice" about a record nobody checked is exactly the kind of
-                * confident wrong answer this pass exists to remove.
-                */}
-              {brief.confidence
-                ? "Everything the scoring needed was in the notice."
-                : "Nobody measured how much of this notice could be read, so what is missing is itself unknown."}
-            </p>
-          ) : (
-            <ul className="space-y-1 text-sm text-slate-600">
-              {brief.missing.map((m) => (
-                <li key={m}>· {m}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section>
-          <h3 className="label mb-2">Dates</h3>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-500">
-                Government submission deadline
-              </dt>
-              <dd className={brief.deadline ? "text-foreground" : "text-slate-500"}>
-                {brief.deadline
-                  ? `${shortDate(brief.deadline)} · ${countdown(brief.deadline)}`
-                  : "Not stated in the notice"}
-              </dd>
-            </div>
-            <div>
-              {/*
-                * A different date about a different thing. Ours, not theirs.
-                * Conflating them is how somebody misses a bid because a review
-                * timer expired.
-                */}
-              <dt className="text-xs uppercase tracking-wide text-slate-500">
-                Dismissed automatically
-              </dt>
-              <dd className={brief.autoDismissAt ? "text-foreground" : "text-slate-500"}>
-                {brief.autoDismissAt
-                  ? `${shortDate(brief.autoDismissAt)} · ${countdown(brief.autoDismissAt)}`
-                  : "No timer on this one"}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section>
-          <h3 className="label mb-2">What pursuing it costs</h3>
-          <ul className="space-y-1 text-sm text-slate-600">
-            {brief.effort.map((e) => (
-              <li key={e}>· {e}</li>
-            ))}
-          </ul>
-        </section>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={recordHref ?? `/opportunity/${opportunityId}`}
-            className="btn-ghost inline-flex text-xs"
-          >
-            Open the full record
-          </Link>
-          {/* A decision made on a reading should be one click from the thing
-              being read. Only links that exist: a notice with no stored URL
-              gets no button rather than a dead one. */}
-          {brief.sourceLinks.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="btn-ghost inline-flex text-xs"
-            >
-              {l.label}
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <div className="shrink-0 border-t border-border/55 px-4 py-3 dark:border-white/10">
-        {!canDecide ? (
-          <p className="text-xs text-slate-500">
-            You can read the brief but not decide. An owner, admin, operator or
-            estimator can pursue or pass.
-          </p>
-        ) : passing ? (
-          <div className="space-y-2">
-            <label htmlFor="pass-reason" className="block text-xs text-slate-600">
-              Why are you passing? This is what the scoring learns from.
-            </label>
-            <textarea
-              id="pass-reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={2}
-              placeholder="Too far outside the service area."
-              className="input w-full resize-y text-sm"
-            />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => act("dismiss", { reason })}
-                disabled={busy != null || reason.trim().length < 3}
-                className="btn-danger text-sm"
-              >
-                {busy === "dismiss" ? "Passing…" : "Confirm pass"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPassing(false);
-                  setError(null);
-                }}
-                className="btn-ghost text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => act("pursue")}
-              disabled={busy != null}
-              className="btn-primary text-sm"
-            >
-              {busy === "pursue" ? "Starting…" : nextHref ? "Pursue & next" : "Pursue"}
-            </button>
-            <button type="button" onClick={() => setPassing(true)} className="btn-ghost text-sm">
-              Pass
-            </button>
-            <button
-              type="button"
-              onClick={() => act("rerun")}
-              disabled={busy != null}
-              className="btn-ghost text-sm"
-            >
-              {busy === "rerun" ? "Queued…" : "Request more analysis"}
-            </button>
-            <button
-              type="button"
-              onClick={() => act("extend_review")}
-              disabled={busy != null}
-              className="btn-ghost text-sm"
-            >
-              {busy === "extend_review" ? "Extending…" : "Give it another day"}
-            </button>
-            {/*
-              Snooze and extend are different acts and both belong here.
-              Extending moves the automatic-dismissal timer, which is about
-              whether this decision may lapse. Snoozing hides the row until a
-              chosen time and never touches the timer, which is about when the
-              operator wants to see it. Offering only one of them meant
-              somebody who wanted to think until Thursday had to spend a day of
-              the review window to get it.
-            */}
-            <SnoozeButton
-              kind="opportunity"
-              id={opportunityId}
-              className="btn-ghost text-sm"
-            />
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="mt-2 text-xs text-risk">
-            {error}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BriefList({
-  title,
-  items,
-  empty,
-}: {
-  title: string;
-  items: { label: string; detail: string }[];
-  empty: string;
-}) {
-  return (
-    <section>
-      <h3 className="label mb-2">{title}</h3>
-      {items.length === 0 ? (
-        <p className="text-sm text-slate-500">{empty}</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((p) => (
-            <li key={p.label}>
-              <p className="text-sm text-foreground">{p.label}</p>
-              <p className="text-xs text-slate-500">{p.detail}</p>
-            </li>
-          ))}
-        </ul>
-      )}
+      const result = await requestAction(`/api/opportunities/${opportunityId}/action`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...extra }), signal: controller.signal });
+      if (inFlight.current !== controller) return;
+      if (!result.ok) { setError(result.error); return; }
+      setPassing(false); setReason("");
+      if (action === "dismiss") push({ message: `Passed on “${title}”. The record stays in history.`, undo: { endpoint: `/api/opportunities/${opportunityId}/action`, body: { action: "restore" } } });
+      if (action === "pursue" || action === "dismiss") advance(); else router.refresh();
+    } finally { clearTimeout(timer); if (inFlight.current === controller) { inFlight.current = null; setBusy(null); } }
+  }, [opportunityId, push, title, advance, router]);
+  const unconfirmed = error === ACTION_UNCONFIRMED;
+  const disabled = busy != null || snoozing || unconfirmed;
+  const pursue = useCallback(() => { if (canDecide && !disabled && !passing) void act("pursue"); }, [canDecide, disabled, passing, act]);
+  useWorkspaceShortcut("mod+Enter", pursue, canDecide && !disabled && !passing);
+  return <article className="flex min-w-0 flex-1 flex-col" aria-busy={busy != null}>
+    <header className="border-b border-border/60 bg-surface px-5 py-5 sm:px-6">
+      <Link href={closeHref} className="mb-3 inline-flex min-h-8 items-center text-sm text-accent lg:hidden">Back to review queue</Link>
+      <div className="mb-3 flex flex-wrap items-center gap-2"><span className={`rounded-full px-3 py-1 text-sm font-semibold ${TONE[brief.recommendation]}`}>{RECOMMENDATION_LABEL[brief.recommendation]}</span><span className="text-sm text-muted-foreground">{brief.score == null ? "Not scored" : `Fit score ${brief.score} / 100`}</span></div>
+      <h2 ref={heading} tabIndex={-1} className="break-words text-xl font-semibold leading-snug text-foreground outline-none sm:text-2xl">{title}</h2>
+      <p className="mt-2 break-words text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
+      <p className="mt-4 text-base leading-relaxed">{brief.rationale}</p>
+    </header>
+    <section aria-label="Your decision" className="border-b border-border/60 bg-accent-soft/40 px-5 py-4 sm:px-6">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-semibold">Your decision</h3><span className="text-xs text-muted-foreground">{nextHref ? "Saved decisions open the next opportunity" : "Last opportunity in this queue"}</span></div>
+      {!canDecide ? <p className="text-sm text-muted-foreground">You can read the evidence. A team member with decision access can pursue or pass.</p> : passing ? <div className="space-y-3">
+        <label htmlFor="pass-reason" className="block text-sm font-medium">Why are you passing?</label>
+        <textarea id="pass-reason" autoFocus value={reason} onChange={event => setReason(event.target.value)} rows={2} disabled={busy != null} placeholder="For example, outside our service area." className="input w-full resize-y text-sm" />
+        <p className="text-xs text-muted-foreground">This reason is saved with the decision. The opportunity stays in history.</p>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void act("dismiss", { reason })} disabled={disabled || reason.trim().length < 3} className="btn-danger min-h-11 text-sm">{busy === "dismiss" ? "Saving decision…" : "Confirm pass"}</button><button type="button" disabled={busy != null} onClick={() => setPassing(false)} className="btn-ghost min-h-11 text-sm">Cancel</button></div>
+      </div> : <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={pursue} disabled={disabled} className="btn-primary min-h-11 text-sm">{busy === "pursue" ? "Saving decision…" : nextHref ? "Pursue & next" : "Pursue"}</button>
+        <button type="button" onClick={() => setPassing(true)} disabled={disabled} className="btn-ghost min-h-11 border border-border text-sm">Pass</button>
+        <SnoozeButton key={opportunityId} kind="opportunity" id={opportunityId} disabled={busy != null || unconfirmed} onPending={setSnoozing} onUnconfirmed={() => setError(ACTION_UNCONFIRMED)} onSnoozed={advance} className="btn-ghost min-h-11 text-sm" />
+      </div>}
+      {brief.autoDismissAt && <p className="mt-3 text-sm text-review">Review closes {shortDate(brief.autoDismissAt)} ({countdown(brief.autoDismissAt)}). Snooze does not extend this review deadline.</p>}
+      {error && <div role="alert" className="mt-3 rounded-lg border border-risk/40 bg-background p-3 text-sm text-risk"><p>{error}</p>{unconfirmed && <Link href={recordHref ?? `/opportunity/${opportunityId}`} className="mt-2 inline-flex min-h-11 items-center font-medium underline">Check this opportunity’s current status</Link>}</div>}
     </section>
-  );
+    <div className="space-y-5 px-5 py-5 sm:px-6">
+      <section aria-label="Key facts" className="rounded-xl border border-border/60 bg-surface p-4"><h3 className="mb-3 text-sm font-semibold">Key facts</h3><dl className="grid gap-4 sm:grid-cols-2">
+        <div><dt className="text-xs text-muted-foreground">Agency bid deadline</dt><dd className="mt-1 text-sm font-medium">{brief.deadline ? `${shortDate(brief.deadline)} · ${countdown(brief.deadline)}` : "Not stated"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Contract value</dt><dd className="mt-1"><EstimatedValue value={brief.value.amount} source={brief.value.source} /></dd></div>
+        {facts.map(fact => <div key={fact.label}><dt className="text-xs text-muted-foreground">{fact.label}</dt><dd className="mt-1 break-words text-sm">{fact.value}</dd></div>)}
+      </dl></section>
+      <section className="rounded-xl border border-review/35 bg-review/5 p-4" aria-label="Evidence and warnings"><h3 className="font-semibold">Check before deciding</h3><p className="mt-2 text-sm">{brief.confidence ? `Information confidence: ${Math.round(brief.confidence.percent)} / 100 (${brief.confidence.level}).` : "Information confidence has not been measured."}</p>
+        {brief.conflicts.map(conflict => <div key={conflict.field} className="mt-3 border-l-2 border-risk pl-3 text-sm"><p className="font-semibold text-risk">Conflicting information: {conflict.field}</p><p>The notice says {conflict.fromNotice}. The document says {conflict.fromDocument}.</p><p className="mt-1 text-muted-foreground">{conflict.matters}</p></div>)}
+        <BriefList items={brief.risks} empty="No risks were recorded in this assessment." />
+        {brief.missing.length > 0 && <div className="mt-3"><h4 className="text-sm font-semibold">Still unknown</h4><ul className="mt-1 list-disc space-y-1 pl-5 text-sm">{brief.missing.map(item => <li key={item}>{item}</li>)}</ul></div>}
+      </section>
+      <Disclosure title="Why this may fit" count={brief.positives.length}><BriefList items={brief.positives} empty="No strong fit factors were recorded." /></Disclosure>
+      <Disclosure title="Work needed if we pursue"><ul className="list-disc space-y-2 pl-5 text-sm">{brief.effort.map(item => <li key={item}>{item}</li>)}</ul></Disclosure>
+      {evidence && <Disclosure title="Score breakdown and source evidence">{evidence}</Disclosure>}
+      <Disclosure title="Original notice and full record"><div className="flex flex-col items-start gap-2">{brief.sourceLinks.length === 0 && <p className="text-sm text-muted-foreground">No source link was saved. Check the full record for available documents.</p>}{brief.sourceLinks.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener" className="inline-flex min-h-11 items-center text-sm text-accent underline">{link.label}</a>)}<Link href={recordHref ?? `/opportunity/${opportunityId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline">Open the full record</Link></div></Disclosure>
+      {canDecide && <Disclosure title="More review options"><p className="mb-3 text-sm text-muted-foreground">Extend the review deadline if you need more time. Requesting analysis may use your account’s AI allowance; it does not make a decision.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={disabled} onClick={() => void act("extend_review")} className="btn-ghost min-h-11 border border-border text-sm">{busy === "extend_review" ? "Extending…" : "Extend review by one day"}</button>{canAnalyze && <button type="button" disabled={disabled} onClick={() => void act("rerun")} className="btn-ghost min-h-11 border border-border text-sm">{busy === "rerun" ? "Requesting…" : "Request more analysis"}</button>}</div></Disclosure>}
+    </div>
+  </article>;
+}
+function Disclosure({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+  return <details className="rounded-xl border border-border/60 bg-surface open:shadow-sm"><summary className="min-h-12 cursor-pointer px-4 py-3 text-sm font-semibold marker:text-accent">{title}{count != null ? ` (${count})` : ""}</summary><div className="border-t border-border/40 px-4 py-4">{children}</div></details>;
+}
+function BriefList({ items, empty }: { items: { label: string; detail: string }[]; empty: string }) {
+  return items.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">{empty}</p> : <ul className="mt-3 space-y-3">{items.map(item => <li key={item.label}><p className="text-sm font-medium">{item.label}</p><p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.detail}</p></li>)}</ul>;
 }

@@ -87,7 +87,7 @@ export const subVerify: AgentDefinition = {
       `select org_id, location_state, work_mode from opportunities where id=$1 and org_id=$2`,
       [opportunityId, orgId]
     );
-    const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null }>(
+    const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null; archived_at?: string | null }>(
       `select * from subcontractors where id = $1 and org_id = $2`,
       [subcontractorId, orgId]
     );
@@ -108,11 +108,14 @@ export const subVerify: AgentDefinition = {
       };
     }
 
+    if (sub.archived_at) return { ok: true, summary: "Contact research skipped because this firm is archived." };
     // Read off the row just loaded: a verification queued before the switch
     // must not contact anybody when it finally runs.
     if (!outreachAllowed(await getWorkExecution(), owner)) {
       return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed), so nothing was verified or contacted." };
     }
+
+    if (ctx.payload.publicContactOnly === true) return backfillPublicContact(orgId, opportunityId, sub, trade);
 
     const profile = await getProfileJson();
     const std = profile?.sub_standards;
@@ -156,10 +159,6 @@ export const subVerify: AgentDefinition = {
         ok: true,
         summary: `${sub.company_name} ruled out: located in ${subState}, work is in ${workState}.`,
       };
-    }
-
-    if (ctx.payload.publicContactOnly === true) {
-      return backfillPublicContact(orgId, opportunityId, sub, trade);
     }
 
     // --- Website + phone enrichment via Google Place Details ---
@@ -299,6 +298,7 @@ export const subVerify: AgentDefinition = {
         email = scraped.email;
         emailSource = scraped.sourceType === "linked_social" ? "linked_public_profile" : "website_scrape";
         verification.email_discovery = {
+          email: scraped.email,
           source_url: scraped.sourceUrl ?? null,
           source_type: scraped.sourceType ?? "website",
           checked_at: scraped.checkedAt ?? new Date().toISOString(),

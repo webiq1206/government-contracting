@@ -478,6 +478,8 @@ export async function reviewQueue(): Promise<Opportunity[]> {
   return query<Opportunity>(
     `select * from opportunities
       where ${BID_OPPORTUNITY_SQL} and org_id = $1 and tier='review' and human_action_required=true and status='open'
+        and (snoozed_until is null or snoozed_until <= now())
+        and coalesce(pursuit_state, 'active') <> 'aborted'
       order by (review_expires_at is null), review_expires_at asc`,
     [orgId]
   );
@@ -985,6 +987,7 @@ export interface SubContactStats {
 
 /** Opportunity pairings for the persistent sub record. */
 export interface SubPairingRow {
+  verification_json?: Record<string, unknown> | null;
   removed_at?: string | null;
   pursuit_state?: string | null;
   opportunity_id: string;
@@ -1039,7 +1042,7 @@ export async function subDetail(id: string) {
     ),
     query<SubPairingRow>(
       `select os.opportunity_id, o.title as opportunity_title, o.stage, o.deadline, o.status,
-                os.trade, os.outreach_state, os.responded_at, os.removed_at, o.pursuit_state,
+                os.trade, os.outreach_state, os.responded_at, os.removed_at, os.verification_json, o.pursuit_state,
               q.quote_amount
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
@@ -2700,6 +2703,7 @@ export async function opportunityCompetitors(id: string): Promise<CompetitorRow[
 
 /** Sub paired to an opportunity, with contactability + this-bid touch counts. */
 export interface OppSubRow {
+  verification_json?: Record<string, unknown> | null;
   id: string;
   opportunity_id: string;
   subcontractor_id: string;
@@ -2786,7 +2790,7 @@ export async function opportunityDetail(id: string) {
     ),
     query<OppSubRow>(
       `select os.id, os.opportunity_id, os.subcontractor_id, os.trade, os.candidate_rank,
-              os.outreach_state, os.responded_at, os.verified,
+              os.outreach_state, os.responded_at, os.verified, os.verification_json,
               os.role, os.removed_at, os.removed_reason,
               s.company_name, s.phone, s.email, s.email_verified, s.google_rating,
               s.contact_status, s.last_contacted,

@@ -44,6 +44,7 @@ import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
 import { ShellDataWarning } from "@/components/shell-data-warning";
+import { ContactDiscoveryEvidence } from "@/components/contact-discovery-evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -615,7 +616,7 @@ export default async function SubDetailPage(
                             </p>
                           </div>
                           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-                            <Link className="text-xs text-accent" href={`/communications/history?sub=${sub.id}&project=${p.opportunity_id}`}>Invitation history</Link>
+                            <Link className="text-xs text-accent" href={`/communications/history?sub=${sub.id}&project=${p.opportunity_id}`}>Messages about this opportunity</Link>
                             {can(viewer?.orgRole, "outreach") && !sub.archived_at && !p.removed_at && (p.pursuit_state ?? "active") === "active" && p.status === "open" && !["won", "lost", "archived"].includes(p.stage) && <Link className="btn-ghost text-xs" href={`/communications/compose?sub=${sub.id}&project=${p.opportunity_id}&trade=${encodeURIComponent(p.trade ?? "")}`}>Compose message</Link>}
                             <span
                               className={`badge inline-flex items-center gap-1 ${outreachBadgeClass(p.outreach_state)}`}
@@ -629,6 +630,7 @@ export default async function SubDetailPage(
                               </span>
                             )}
                           </div>
+                          <div className="basis-full"><ContactDiscoveryEvidence verification={p.verification_json} /></div>
                         </li>
                       );
                     })}
@@ -662,7 +664,7 @@ export default async function SubDetailPage(
               <details className="card">
                   <summary className="min-h-11 cursor-pointer text-sm font-medium">Recent history ({communications.length})</summary>
                 <p className="mb-3 text-xs text-slate-500">
-                  Every email, reply, call, skip, and note is saved here automatically
+Recorded emails, replies, calls and notes appear here. Search communication history for older records
                   as work happens across opportunities.
                 </p>
                 {communications.length === 0 ? (

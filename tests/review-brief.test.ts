@@ -41,7 +41,7 @@ function confidence(level: DataConfidence["level"], unknown: string[] = []): Dat
 function input(over: Partial<BriefInput> = {}): BriefInput {
   return {
     score: 60,
-    dimensions: [],
+    dimensions: [dim({ key: "naics" })],
     riskFlags: [],
     confidence: confidence("high"),
     deadline: "2026-09-15T00:00:00Z",
@@ -54,6 +54,11 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
 }
 
 describe("recommend", () => {
+  it.each([{ confidence: null }, { dimensions: [] }])("does not recommend pursuit without supporting evidence: %j", (missing) => {
+    const result = recommend(input({ score: 95, ...missing }));
+    expect(result.recommendation).toBe("look");
+    expect(result.rationale).toContain("supporting evidence");
+  });
   it("passes on a blocker regardless of the score", () => {
     const r = recommend(input({ score: 69, riskFlags: ["prime_only"] }));
     expect(r.recommendation).toBe("pass");
@@ -183,12 +188,11 @@ describe("buildReviewBrief", () => {
     expect(measured.missing).toEqual([]);
   });
 
-  it("does not recommend a look purely because confidence is unmeasured", () => {
-    /*
-     * Unmeasured is not low. Treating it as low would send every record
-     * scored before confidence existed to a person, which is most of them.
-     */
-    expect(recommend(input({ score: 67, confidence: null })).recommendation).toBe("pursue");
+  it("asks for review when confidence is unmeasured without calling it low", () => {
+    const result = recommend(input({ score: 67, confidence: null }));
+    expect(result.recommendation).toBe("look");
+    expect(result.rationale).toContain("supporting evidence");
+    expect(result.rationale).not.toContain("could be read");
   });
 
   it("carries the deadline and the auto-dismiss moment separately", () => {

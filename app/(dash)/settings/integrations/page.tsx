@@ -1,6 +1,7 @@
 import { config, integrationStatus } from "@/lib/config";
 import { SERVICE_BY_ID, isServiceProvider } from "@/lib/domain/connected-services";
 import { ConnectedApps } from "@/components/connected-apps";
+import { connectionFailureMessage } from "@/lib/domain/connection-diagnostics";
 import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { PageFrame } from "@/components/page-frame";
 import { ReadOnlyBanner } from "@/components/permission-gate";
@@ -36,7 +37,7 @@ export const dynamic = "force-dynamic";
 
 export default async function IntegrationsPage(
   props: {
-    searchParams?: Promise<{ gmail?: string; gmailError?: string; sender?: string; service?: string; provider?: string; msg?: string; id?: string }>;
+    searchParams?: Promise<{ gmail?: string; gmailError?: string; sender?: string; service?: string; provider?: string; msg?: string; reason?: string; id?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -271,12 +272,12 @@ export default async function IntegrationsPage(
           )}
           {gmailParam === "connected" && (
             <div className="card border-pursue/40 bg-pursue/5 text-sm text-pursue">
-              Gmail connected successfully. Outreach emails can now send.
+Gmail connected. Review the sending address and outreach readiness below. This does not confirm a message was sent.
             </div>
           )}
           {searchParams?.sender === "reset" && (
             <div className="card border-review/40 bg-review/5 text-sm text-review">
-              Email is now going out from the account you just connected. The address you
+              Review the sending address for the account you just connected. The address you
               had chosen belonged to the previous mailbox, so it was cleared. Pick the one
               you want under Sending as below.
             </div>
@@ -288,7 +289,7 @@ export default async function IntegrationsPage(
           )}
           {gmailParam === "error" && (
             <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
-              Gmail connection failed. Check the OAuth client ID and secret below, then try again.
+              Gmail connection could not be confirmed. Review the connection status and setup details below before trying again.
             </div>
           )}
         </div>
@@ -337,7 +338,7 @@ export default async function IntegrationsPage(
             content: (
               <div className="space-y-4 px-5 py-6 sm:px-6">
                 <p className="text-sm text-muted-foreground">
-                  Required for intake and scoring. Without these, the pipeline stays empty.
+These services support automatic notice discovery and AI analysis. Manually added and historical records remain available.
                 </p>
                 <IntegrationManager
                   editable={canManageIntegrations}
@@ -416,15 +417,15 @@ function serviceNoticeFrom(params: Record<string, string | string[] | undefined>
   const status = typeof params?.service === "string" ? params.service : null;
   if (!status) return null;
   const provider = typeof params?.provider === "string" && isServiceProvider(params.provider) ? SERVICE_BY_ID[params.provider].name : "The app";
-  const msg = typeof params?.msg === "string" ? params.msg : "";
+  const reason = typeof params?.reason === "string" ? params.reason : undefined;
   switch (status) {
-    case "connected": return `${provider} is connected. Choose its preferences below, then press Test.`;
+    case "connected": return `${provider} is connected. Review its preferences and the effects of each optional connection check below.`;
     case "denied": return `${provider} was not connected: the sign-in was cancelled or access was declined. Nothing changed.`;
     case "csrf": return "That sign-in could not be matched to this session, so nothing was connected. Start again from the button below.";
     case "missing_code": return `${provider} sent back no authorization, so nothing was connected. Try again.`;
     case "forbidden": return "Connecting for the whole company needs the integrations permission. You can connect a personal one.";
     case "unavailable": return `${provider} is not available on this deployment yet.`;
-    case "error": return `${provider} could not be connected: ${msg || "the provider returned an error"}. Nothing changed.`;
+    case "error": return `${provider}: ${connectionFailureMessage(reason)}`;
     default: return null;
   }
 }

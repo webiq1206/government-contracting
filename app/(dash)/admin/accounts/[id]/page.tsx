@@ -83,7 +83,7 @@ export default async function AdminAccountPage(props: { params: Promise<{ id: st
           { label: org.name },
         ]}
         title={org.name}
-        status={org.suspended_at ? "Suspended" : (org.subscription_status ?? "no status")}
+        status={org.suspended_at ? "Suspended" : (org.subscription_status?.replace(/_/g, " ") ?? "Subscription status not recorded")}
         explanation={
           org.owner_email
             ? `Owned by ${org.owner_email}. Everything this account can currently do, and why.`
@@ -289,7 +289,7 @@ export default async function AdminAccountPage(props: { params: Promise<{ id: st
                 <div className="panel-inset">
                   {audit.length === 0 ? (
                     <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      No administrator has touched this account.
+No administrative actions are recorded for this account.
                     </p>
                   ) : (
                     <ul className="divide-y divide-border/60 text-sm">

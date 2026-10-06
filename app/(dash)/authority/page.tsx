@@ -188,7 +188,7 @@ export default async function AuthorityPage(
                 ? "Nothing waiting"
                 : `${pending.length} draft${pending.length === 1 ? "" : "s"} awaiting approval`
             }
-            explanation="Read the message and the evidence for the domain on one screen, then approve or reject. Nothing sends without a person."
+explanation="Read each draft and the website evidence, then approve or reject. Messages in this outreach workflow require approval before sending."
           />
         </div>
         <QueueKeys
@@ -513,7 +513,7 @@ export default async function AuthorityPage(
           <h2 className="label mb-2">
             Qualified prospects{" "}
             <span className="text-xs font-normal text-slate-500">
-              (quality-first; spammy, off-topic, and no-index domains are rejected automatically)
+(prospects are screened for relevance and site quality)
             </span>
           </h2>
           {prospects.length === 0 ? (

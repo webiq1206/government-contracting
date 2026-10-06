@@ -147,10 +147,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
       </dl>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-secondary text-sm" disabled={busy || !canRecover} onClick={run}>
-          {busy ? "Checking recovery" : "Run recovery check"}
-        </button>
-        <button type="button" className="btn-ghost text-sm" onClick={() => router.refresh()}>Check current status</button>
+        <button type="button" className="btn-secondary min-h-11 text-sm" onClick={() => router.refresh()}>Check current status</button>
         {incident.cause === "integration_auth" && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#gmail">Reconnect mailbox</Link>}
         {incident.cause.startsWith("provider_") && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#claude">Review AI connection</Link>}
         {incident.history.length > 0 && (
@@ -164,6 +161,11 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
           </button>
         )}
       </div>
+      {canRecover && <details className="mt-4 rounded-lg border border-border bg-background p-3">
+        <summary className="min-h-8 cursor-pointer text-sm font-medium">Recovery actions</summary>
+        <p className="mt-2 text-sm text-muted-foreground">Recovery sends a test request and may queue eligible work again. Provider requests may use your existing allowance. It does not increase spending limits. Check current status and fix the reported cause first.</p>
+        <button type="button" className="btn-secondary mt-3 min-h-11 text-sm" disabled={busy} onClick={run}>{busy ? "Running recovery…" : "Test connection and recover eligible work"}</button>
+      </details>}
 
       {/*
         What the button did, in the words the API used. Not re-worded here:

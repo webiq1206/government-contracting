@@ -2,6 +2,7 @@ import { query, queryOne } from "@/lib/db";
 import { listSettings } from "@/lib/integration-settings";
 import { integrationState, type IntegrationVerdict } from "@/lib/domain/integration-state";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
+import { BID_OPPORTUNITY_SQL } from "@/lib/domain/opportunity-kind";
 
 /**
  * What one customer account has actually done, and what it is running on.
@@ -34,8 +35,8 @@ export interface AccountUsage {
 export async function accountUsage(orgId: string): Promise<AccountUsage> {
   const row = await queryOne<Record<string, string | null>>(
     `select
-       (select count(*) from opportunities where org_id = $1) as opportunities,
-       (select count(*) from opportunities where org_id = $1 and stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building','review_submit','submitted','won')) as pursued,
+       (select count(*) from opportunities where org_id = $1 and ${BID_OPPORTUNITY_SQL}) as opportunities,
+       (select count(*) from opportunities where org_id = $1 and ${BID_OPPORTUNITY_SQL} and stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building','review_submit','submitted','won')) as pursued,
        (select count(*) from bids where org_id = $1) as bids,
        (select count(*) from bids where org_id = $1 and submitted_at is not null) as submitted,
        (select count(*) from contracts where org_id = $1) as contracts,

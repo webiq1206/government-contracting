@@ -626,7 +626,7 @@ function headline(
 ): string {
   const parts: string[] = [];
   if (counts.needsReply > 0) parts.push(`${counts.needsReply} need your reply`);
-  if (counts.deliveryFailed > 0) parts.push(`${counts.deliveryFailed} did not arrive`);
+  if (counts.deliveryFailed > 0) parts.push(`${counts.deliveryFailed} have delivery problems`);
   if (counts.overdue > 0) parts.push(`${counts.overdue} follow-up overdue`);
   if (parts.length === 0) {
     return `${total} conversation${total === 1 ? "" : "s"} · nothing waiting on you`;
@@ -646,7 +646,7 @@ function Deliverability({ rates }: { rates: ReturnType<typeof deliverability> })
       </div>
       <dl className="space-y-3">
         <Rate
-          label="Confirmed delivery"
+          label="Delivery or activity recorded"
           value={formatRate(rates.deliveryRate)}
           note="Delivery or engagement evidence was recorded. Unconfirmed sends are not necessarily failures."
         />
@@ -658,7 +658,7 @@ function Deliverability({ rates }: { rates: ReturnType<typeof deliverability> })
         <Rate
           label="Bounced"
           value={formatRate(rates.bounceRate)}
-          note="Refused permanently. The address is wrong or gone."
+          note="Permanent delivery rejection recorded. Check the saved reason before assuming the address is invalid."
         />
       </dl>
       {(rates.blocked > 0 || rates.failed > 0) && (
@@ -673,8 +673,8 @@ function Deliverability({ rates }: { rates: ReturnType<typeof deliverability> })
             <p className={rates.blocked > 0 ? "mt-2" : ""}>
               <span className="font-medium text-foreground">{rates.failed} never sent.</span> The
               send itself failed, so those are ours to fix.{" "}
-              <Link href="/agents" className="underline underline-offset-2">
-                Automation Health
+              <Link href="/settings/integrations#gmail" className="underline underline-offset-2">
+                Review email connection
               </Link>
             </p>
           )}

@@ -170,8 +170,8 @@ export default async function ContentLibraryPage() {
           {
             id: "snippets",
             label: snippetsUnavailable
-              ? "Proposal snippets (status unavailable)"
-              : `Proposal snippets (${items.length})`,
+              ? "Saved proposal text (status unavailable)"
+              : `Saved proposal text (${items.length})`,
             content: (
               <div className="px-5 py-6 sm:px-6">
                 {snippetsUnavailable ? (

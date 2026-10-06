@@ -1,4 +1,5 @@
 import { AppViewport } from "@/components/app-viewport";
+import { NavigationMemory } from "@/components/navigation-memory";
 import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { DashboardNav, DashboardNotices } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
@@ -51,7 +52,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           )}
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
-          {children}
+          <Suspense fallback={null}><NavigationMemory scope={user.organizationId}>{children}</NavigationMemory></Suspense>
         </ShellMain>
       </AppViewport>
       {access === "none" && <TrialExpiredModal />}

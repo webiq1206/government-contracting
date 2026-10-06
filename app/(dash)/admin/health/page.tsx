@@ -136,7 +136,7 @@ export default async function PlatformHealthPage() {
             <Impact label="Opportunities unscored" value={impact.unscored} />
             <Impact label="Waiting on outreach" value={impact.awaitingOutreach} />
             <Impact
-              label="Email not delivered"
+              label="Recorded email problems"
               value={impact.undeliveredEmail}
               tone={impact.undeliveredEmail > 0 ? "review" : undefined}
             />
@@ -190,6 +190,8 @@ export default async function PlatformHealthPage() {
                     <span className="label mr-1.5 inline">Fix:</span>
                     {spec.repair}
                   </p>
+                  <Link href={i.cause === "provider_credit" || i.cause === "spending_limit" ? "/admin/api-usage" : "/admin/accounts"} className="mt-2 inline-flex min-h-11 items-center text-sm text-accent underline">{i.cause === "provider_credit" || i.cause === "spending_limit" ? "Review account usage and limits" : "Find the affected account and review diagnostics"}</Link>
+                  {(i.orgIds?.length ?? 0) > 0 && <details className="mt-2"><summary className="min-h-11 cursor-pointer text-sm text-accent">Affected account records ({i.orgIds!.length})</summary><ul className="space-y-1">{i.orgIds!.map((id, index) => <li key={id}><Link className="inline-flex min-h-11 items-center text-sm text-accent underline" href={`/admin/accounts/${id}`}>Review affected account {index + 1}</Link></li>)}</ul></details>}
                   {i.sample && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-xs text-muted-foreground">
@@ -231,10 +233,10 @@ export default async function PlatformHealthPage() {
                   </p>
                 )}
                 <Link
-                  href={s.key === "billing_webhooks" ? "/admin/billing" : s.key === "provider_capacity" ? "/admin/api-usage" : "/agents"}
+                  href={s.key === "billing_webhooks" ? "/admin/billing" : s.key === "provider_capacity" ? "/admin/api-usage" : "/admin/accounts"}
                   className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
                 >
-                  View {s.key === "billing_webhooks" ? "billing diagnostics" : s.key === "provider_capacity" ? "AI usage" : "automation diagnostics"}
+                  View {s.key === "billing_webhooks" ? "billing diagnostics" : s.key === "provider_capacity" ? "AI usage" : "account diagnostics"}
                 </Link>
               </article>
             ))}

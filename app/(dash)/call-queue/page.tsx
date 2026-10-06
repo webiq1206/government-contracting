@@ -234,7 +234,7 @@ export default async function CallQueuePage(
           <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
             title="No calls waiting for this opportunity"
-            description="Every prepared call for this bid has been made, skipped, or snoozed. Other opportunities still have calls in the queue."
+description="No prepared calls are currently waiting for this opportunity. Check the full queue for other work."
             action={
               <Link href="/call-queue" className="btn-ghost text-sm">
                 Show all calls ({allCards.length})
@@ -246,7 +246,7 @@ export default async function CallQueuePage(
           <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
             title="No calls in the queue"
-            description="A call card appears here for every sub we email, so you can follow up by phone. Subs who reply are marked and sorted to the top."
+description="Prepared follow-up calls appear here when phone tasks are enabled and eligible. Recorded replies are marked so you can check them before calling."
             action={
               <Link href="/today" className="btn-ghost text-sm">
                 Back to Today

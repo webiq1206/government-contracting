@@ -5,6 +5,7 @@
  * export its HTTP handlers, and because this rule is worth testing on its own.
  */
 export interface OppHit {
+  is_sources_sought?: boolean | null;
   id: string;
   title: string | null;
   agency: string | null;
@@ -33,7 +34,8 @@ export function dedupeOpportunityHits(rows: OppHit[]): (OppHit & { duplicates: n
   const out: (OppHit & { duplicates: number })[] = [];
 
   for (const r of rows) {
-    const key = (r.solicitation_number ?? "").trim().toLowerCase();
+    const number = (r.solicitation_number ?? "").trim().toLowerCase();
+    const key = number ? `${r.is_sources_sought === true ? "research" : "bid"}:${number}` : "";
     if (!key) {
       out.push({ ...r, duplicates: 0 });
       continue;

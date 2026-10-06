@@ -33,6 +33,19 @@ beforeAll(async () => {
 afterAll(async () => { await state.db?.close(); });
 
 describe("Sources Sought separation and tenant scope", () => {
+  it("hides aborted and future-snoozed reviews but keeps paused and expired snoozes reviewable", async () => {
+    await state.db.exec(`insert into opportunities(id,org_id,title,score,tier,status,pursuit_state,snoozed_until,is_sources_sought,human_action_required)
+      values ('aborted','tenant-a','Stopped',70,'review','open','aborted',null,false,true),
+        ('snoozed','tenant-a','Later',71,'review','open','active',now()+interval '1 day',false,true),
+        ('paused','tenant-a','Paused for review',72,'review','open','paused',null,false,true),
+        ('returned','tenant-a','Ready again',73,'review','open','active',now()-interval '1 day',false,true);`);
+    try {
+      expect((await reviewQueue()).map(row => row.id).sort()).toEqual(["bid", "paused", "returned"]);
+      expect((await state.db.query("select id from opportunities where id in ('aborted','snoozed')")).rows).toHaveLength(2);
+    } finally {
+      await state.db.exec("delete from opportunities where id in ('aborted','snoozed','paused','returned')");
+    }
+  });
   it("excludes market research from lists, counts, review and score recommendations", async () => {
     expect((await pipelineOpportunities()).map(x => x.id)).toEqual(["bid"]);
     expect((await opportunityTable({ includeClosed: true })).map(x => x.id)).toEqual(["bid"]);

@@ -36,7 +36,7 @@ export default async function RulesPage() {
     <>
       <PageFrame
         help={PAGE_HELP["rules"]}
-        title="Automation Rules"
+        title="Rules & limits"
         explanation="Set deadlines, follow-ups, phone tasks, and how long records are kept."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
         status={editable ? "Changes apply everywhere the moment you save" : "Read-only for your role"}

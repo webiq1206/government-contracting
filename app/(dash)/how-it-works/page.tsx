@@ -248,7 +248,7 @@ export default async function KnowledgeCenterPage(
             ? `${WORKFLOW_STEPS.length} steps · ${needsYou} ${needsYou === 1 ? "step needs" : "steps need"} you`
             : `${WORKFLOW_STEPS.length} steps · ${terms.length} terms`
         }
-        explanation="Every step of the workflow, what it is doing on this account right now, and the words a solicitation uses."
+explanation="How the workflow works, with recent activity from this account and explanations of solicitation terms."
         primaryAction={
           <Link href={href({ full: full ? null : "1" })} className="btn-ghost text-xs">
             {full ? "Collapse the detail" : "Full reference"}

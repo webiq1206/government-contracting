@@ -1,4 +1,5 @@
 import { AppViewport } from "@/components/app-viewport";
+import { NavigationMemory } from "@/components/navigation-memory";
 import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { StreamedNavigation } from "@/components/streamed-navigation";
 import { DashboardNav, DashboardNotices } from "@/components/dashboard-shell";
@@ -90,7 +91,7 @@ export default async function AccountLayout({
           )}
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
-          {children}
+          <Suspense fallback={null}><NavigationMemory scope={user.organizationId}>{children}</NavigationMemory></Suspense>
         </ShellMain>
       </AppViewport>
       <CommandPalette storageScope={user.organizationId} />

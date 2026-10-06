@@ -235,7 +235,7 @@ export async function gatherPlatformFacts(
            where status = 'error' and started_at >= $1 and started_at < $2
              and summary->>'spendingHeld' = 'true') as jobs_held,
          (select count(*)::int from opportunities
-           where created_at >= $1 and created_at < $2) as new_opportunities,
+           where is_sources_sought is not true and created_at >= $1 and created_at < $2) as new_opportunities,
          (select count(*)::int from bids
            where submitted_at >= $1 and submitted_at < $2) as bids_submitted`,
       [start, end]
@@ -246,11 +246,11 @@ export async function gatherPlatformFacts(
             left join opportunities p on p.id = c.opportunity_id and p.org_id = c.org_id
            where c.org_id = o.id and c.direction = 'outbound' and c.channel = 'email'
              and c.delivery_state in ('draft','held') and c.provider is null
-             and (c.opportunity_id is null or (p.status = 'open'
+             and (c.opportunity_id is null or (p.status = 'open' and p.is_sources_sought is not true
                and coalesce(p.pursuit_state, 'active') = 'active'
                and (p.deadline is null or p.deadline > now())))) as drafts,
          (select count(*)::int from opportunities p
-           where p.org_id = o.id and p.status = 'open'
+           where p.org_id = o.id and p.status = 'open' and p.is_sources_sought is not true
              and coalesce(p.pursuit_state, 'active') = 'active'
              and (p.deadline is null or p.deadline > now())
              and 'outreach_incomplete' = any(coalesce(p.risk_flags, '{}'))

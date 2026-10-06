@@ -396,8 +396,8 @@ export default async function AgentsPage(
         </details>
 
         {/* Job run summary */}
-        <section>
-          <h2 className="label mb-2">Recent job runs</h2>
+        <details>
+          <summary className="min-h-11 cursor-pointer text-sm font-semibold">Recent job runs and technical identifiers</summary>
           {runs.length === 0 ? (
             <p className="card text-sm text-slate-600">
               No job runs are recorded yet. Review the setup status above if work is waiting.
@@ -443,7 +443,7 @@ export default async function AgentsPage(
               </div>
             </>
           )}
-        </section>
+        </details>
 
         {/* Log feed */}
         <section>

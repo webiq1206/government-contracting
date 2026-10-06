@@ -7,7 +7,7 @@ export default function Page() {
       <PageFrame
         breadcrumbs={[{ label: "Settings" }]}
         title="AI usage"
-        explanation="See your usage and manage connected API accounts."
+        explanation="See AI usage, costs and account spending limits."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <ApiUsageLedger />

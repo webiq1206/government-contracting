@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ACTION_UNCONFIRMED, actionError } from "@/lib/client/action-request";
 import { StatusPill } from "./status-pill";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -29,8 +30,12 @@ const GROUPS: { kind: ServiceDefinition["kind"]; title: string; blurb: string }[
 ];
 
 async function readJson(res: Response) {
-  return (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: string; message?: string };
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ConnectionActionError(actionError(res.status, data?.error));
+  if (!data || typeof data !== "object" || data.ok === false || data.error) throw new ConnectionActionError(ACTION_UNCONFIRMED);
+  return data as Record<string, unknown> & { error?: string; message?: string };
 }
+class ConnectionActionError extends Error {}
 
 /**
  * Connect, manage, and disconnect the apps a company already uses.
@@ -53,7 +58,7 @@ export function ConnectedApps({ notice }: { notice: string | null }) {
       setData((await res.json()) as Data);
       setLoadError(null);
     } catch {
-      setLoadError("Your connected apps could not be loaded. Try again; nothing was changed.");
+      setLoadError("Saved connection status could not be loaded. Reload it before retrying an action; a previous change may already have been saved.");
     }
   }
   useEffect(() => {
@@ -101,7 +106,10 @@ export function ConnectedApps({ notice }: { notice: string | null }) {
 }
 
 function ProviderCard({ provider: p, connections, canManage, onChanged }: { provider: Provider; connections: Connection[]; canManage: boolean; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const inFlight = useRef(false);
+  const busy = working || unconfirmed;
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Connection | null>(null);
@@ -109,15 +117,20 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
   const [calendars, setCalendars] = useState<Record<string, { id: string; name: string; primary: boolean }[]>>({});
 
   async function act(fn: () => Promise<void>) {
+    if (inFlight.current || unconfirmed) return;
+    inFlight.current = true;
     setBusy(true);
     setMsg(null);
     setErr(null);
     try {
       await fn();
     } catch (e) {
-      setErr((e as Error).message || "That did not work.");
+      const message = e instanceof ConnectionActionError ? e.message : ACTION_UNCONFIRMED;
+      setErr(message);
+      if (message === ACTION_UNCONFIRMED) setUnconfirmed(true);
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
 
@@ -220,6 +233,7 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
                 <select
                   id={`cal-${c.id}`}
                   className="select w-full"
+                  disabled={busy}
                   value={(c.settings.calendar_id as string) ?? "primary"}
                   onChange={(e) => void patch(c, { calendar_id: e.target.value }, "Calendar saved. Deadlines move there on the next sync.")}
                 >
@@ -267,7 +281,8 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
 
           {(c.mine || (!c.personal && canManage)) && (
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" className="btn-ghost min-h-11 text-xs" disabled={busy} onClick={() => void test(c)}>Test</button>
+              <button type="button" className="btn-ghost min-h-11 text-xs" disabled={busy} onClick={() => void test(c)}>{p.kind === "notifications" ? "Send a test message" : p.kind === "files" ? "Create a test folder" : "Read available calendars"}</button>
+              <p className="basis-full text-xs text-muted-foreground">{p.kind === "notifications" ? "This posts a real test message to the connected channel." : p.kind === "files" ? "This creates a Connection test folder in the connected storage." : "This reads the calendar list; it does not create an event."}</p>
               {c.status === "paused" ? (
                 <button type="button" className="btn-ghost min-h-11 text-xs" disabled={busy} onClick={() => void patch(c, { paused: false }, "Resumed.")}>Resume</button>
               ) : (
@@ -312,13 +327,14 @@ function ProviderCard({ provider: p, connections, canManage, onChanged }: { prov
       {!p.available && <p className="text-xs text-muted-foreground">{p.unavailableNote}</p>}
 
       {msg && <p role="status" className="text-sm text-pursue-strong">{msg}</p>}
-      {err && <p role="alert" className="text-sm text-risk">{err}</p>}
+      {err && <div role="alert" className="text-sm text-risk"><p>{err}</p>{unconfirmed && <button type="button" onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center underline">Reload saved connection status before retrying</button>}</div>}
 
       <ConfirmDialog
         open={confirm != null}
         title={`Disconnect ${p.name}?`}
         confirmLabel="Disconnect"
-        busy={busy}
+        busy={working}
+        confirmDisabled={unconfirmed}
         onConfirm={() => confirm && void disconnect(confirm)}
         onCancel={() => setConfirm(null)}
         body={
@@ -336,21 +352,29 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<string[]>(["opportunity", "bid", "reply"]);
   const [secret, setSecret] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const inFlight = useRef(false);
+  const busy = working || unconfirmed;
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [remove, setRemove] = useState<Webhook | null>(null);
 
   async function act(fn: () => Promise<void>) {
+    if (inFlight.current || unconfirmed) return;
+    inFlight.current = true;
     setBusy(true);
     setMsg(null);
     setErr(null);
     try {
       await fn();
     } catch (e) {
-      setErr((e as Error).message || "That did not work.");
+      const message = e instanceof ConnectionActionError ? e.message : ACTION_UNCONFIRMED;
+      setErr(message);
+      if (message === ACTION_UNCONFIRMED) setUnconfirmed(true);
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
   async function create() {
@@ -375,14 +399,14 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
   async function toggle(w: Webhook) {
     await act(async () => {
       const res = await fetch(`/api/services/webhooks/${w.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !w.active }), signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) throw new Error("That did not save.");
+      await readJson(res);
       onChanged();
     });
   }
   async function del(w: Webhook) {
     await act(async () => {
       const res = await fetch(`/api/services/webhooks/${w.id}`, { method: "DELETE", signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) throw new Error("That did not delete.");
+      await readJson(res);
       setRemove(null);
       onChanged();
     });
@@ -463,12 +487,13 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
         </div>
       )}
       {msg && <p role="status" className="text-sm">{msg}</p>}
-      {err && <p role="alert" className="text-sm text-risk">{err}</p>}
+      {err && <div role="alert" className="text-sm text-risk"><p>{err}</p>{unconfirmed && <button type="button" onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center underline">Reload saved webhook status before retrying</button>}</div>}
       <ConfirmDialog
         open={remove != null}
         title="Remove this webhook?"
         confirmLabel="Remove"
-        busy={busy}
+        busy={working}
+        confirmDisabled={unconfirmed}
         onConfirm={() => remove && void del(remove)}
         onCancel={() => setRemove(null)}
         body={<p className="text-left text-sm">Nothing more is sent to it. Anything the receiver already has stays with the receiver.</p>}

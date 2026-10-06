@@ -12,7 +12,7 @@ export default async function Page() {
       <PageFrame
         breadcrumbs={[{ label: "Platform admin" }]}
         title="AI usage"
-        explanation="Track service costs and tenant charges."
+explanation="Track service costs and charges to customer accounts."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <ApiUsageLedger admin />

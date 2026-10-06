@@ -119,7 +119,13 @@ export function recommend(i: BriefInput): { recommendation: Recommendation; rati
     };
   }
 
-  const low = i.confidence != null && i.confidence.level === "low";
+  if (i.confidence == null || i.dimensions.length === 0) {
+    return {
+      recommendation: "look",
+      rationale: "The saved score does not have enough supporting evidence. Check the original notice before deciding.",
+    };
+  }
+  const low = i.confidence.level === "low";
   if (low) {
     return {
       recommendation: "look",

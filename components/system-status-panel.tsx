@@ -7,6 +7,7 @@ import {
 
 const KIND_TONE: Record<SystemStatusKind, string> = {
   working: "bg-pursue/15 text-pursue",
+  configured: "bg-muted text-muted-foreground",
   needs_attention: "bg-review/15 text-review",
   waiting: "bg-muted text-muted-foreground",
   delayed: "bg-review/15 text-review",
@@ -23,7 +24,7 @@ const KIND_TONE: Record<SystemStatusKind, string> = {
  */
 export function SystemStatusPanel({ items }: { items: SystemStatusItem[] }) {
   if (items.length === 0) return null;
-  const problems = items.filter((i) => i.kind !== "working");
+  const problems = items.filter((i) => i.kind !== "working" && i.kind !== "configured");
   return (
     <section
       id="system-status"
@@ -33,7 +34,7 @@ export function SystemStatusPanel({ items }: { items: SystemStatusItem[] }) {
       <p className="eyebrow-gold">System and connections</p>
       <h2 id="system-status-heading" className="mt-1 font-display text-2xl font-normal text-foreground">
         {problems.length === 0
-          ? "Everything that should be running is running"
+          ? "Connection status and recent evidence"
           : `${problems.length} connection${problems.length === 1 ? "" : "s"} need${problems.length === 1 ? "s" : ""} a look`}
       </h2>
       <ul className="mt-3 divide-y divide-border/55 dark:divide-white/10">
@@ -48,10 +49,10 @@ export function SystemStatusPanel({ items }: { items: SystemStatusItem[] }) {
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
             </div>
-            {item.href && item.kind !== "working" && (
+            {item.href && (
               <Link
                 href={item.href}
-                className="btn-primary shrink-0 text-xs"
+                className="btn-ghost min-h-11 shrink-0 border border-border text-sm"
               >
                 {item.actionLabel ?? "Open"}
               </Link>

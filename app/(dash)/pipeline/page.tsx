@@ -1002,7 +1002,7 @@ async function PipelineOnboarding() {
         Start finding opportunities
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
-        No opportunities are in this account yet. Connect SAM.gov and add your industry codes in Company settings.
+        No bid opportunities are visible in this view. Check your filters and history. For automatic discovery, review SAM.gov and your industry codes in Company settings.
         When setup is ready and automation is running, searches run {cadence ? cadence.toLowerCase() : "on a schedule"}.
         Your setup checklist shows the next step for this account.
       </p>

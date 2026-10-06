@@ -600,6 +600,7 @@ export default async function WorkbenchPage(
                   canDecide={can(ctx.user.orgRole, "decide")}
                   canOutreach={can(ctx.user.orgRole, "outreach")}
                   canSubmit={can(ctx.user.orgRole, "submit")}
+                  canAnalyze={can(ctx.user.orgRole, "run_agents")}
                   position={{ index: position.index, total: position.total }}
                 />
               ) : selected && selectedDetailUnavailable ? (
@@ -684,7 +685,7 @@ export default async function WorkbenchPage(
                     </ContextSection>
                   )}
 
-                  <ContextSection title="Elsewhere">
+<ContextSection title="Related records">
                     <ul className="space-y-1.5 text-sm">
                       <li>
                         <Link

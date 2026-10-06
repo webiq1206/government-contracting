@@ -225,7 +225,8 @@ describe("platformIncidents", () => {
     const [first] = platformIncidents(rows);
     expect(first.cause).toBe("provider_credit");
     expect(first.failures).toBe(3);
-    expect(first.orgs).toBe(3);
+      expect(first.orgs).toBe(3);
+      expect(first.orgIds?.sort()).toEqual(["a", "b", "c"]);
     expect(first.agents.sort()).toEqual(["scoring-engine", "solicitation-analyst"]);
   });
 

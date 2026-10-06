@@ -58,7 +58,8 @@ import { looksLikeBounce, parseBounce, type BounceReport } from "../domain/email
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
 import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
-import { areCallsEnabled, getAutomationRules, isAutomationPaused } from "../app-settings";
+import { areCallsEnabled, getAutomationRules, isAutomationPaused, getWorkExecution } from "../app-settings";
+import { publicContactCandidates } from "../public-contact-backfill";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
@@ -3475,25 +3476,7 @@ export const contactRecheckSweep: AgentDefinition = {
     // reading.
     const rows: { subcontractor_id: string; opportunity_id: string; trade: string }[] = [];
     for (const org of orgs) {
-      const orgRows = await query<{
-        subcontractor_id: string;
-        opportunity_id: string;
-        trade: string;
-      }>(
-        `select distinct on (s.id) os.subcontractor_id, os.opportunity_id, os.trade
-           from subcontractors s
-           join opportunity_subs os on os.subcontractor_id = s.id and os.org_id=s.org_id and os.removed_at is null
-           join opportunities o on o.id = os.opportunity_id and o.org_id=s.org_id and o.status = 'open'
-          where s.org_id = $1
-            and s.blacklisted = false
-            and o.is_sources_sought is not true
-            and coalesce(o.pursuit_state,'active')='active'
-            and nullif(btrim(coalesce(s.email, '')), '') is null
-            and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
-          order by s.id, s.contact_checked_at asc nulls first
-          limit 20`,
-        [org.id]
-      );
+      const orgRows = await runWithOrg(org.id, async () => publicContactCandidates(org.id, await getWorkExecution()));
       rows.push(...orgRows);
     }
     if (rows.length === 0) {

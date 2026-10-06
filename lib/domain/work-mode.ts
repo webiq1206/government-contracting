@@ -117,5 +117,13 @@ export function outreachAllowedSql(alias: string, param: string): string {
   return `coalesce(${alias}.work_mode, ${param}) <> 'self'`;
 }
 
+/** SQL equivalent of tradeSelfPerformed for internal query expressions. */
+export function tradeSelfPerformedSql(alias: string, trade: string, defaultMode: string): string {
+  const key = (value: string) => `btrim(regexp_replace(lower(coalesce(${value},'')), '[^a-z0-9]+', ' ', 'g'))`;
+  return `(coalesce(${alias}.work_mode,${defaultMode})='self' or (coalesce(${alias}.work_mode,${defaultMode})='mixed'
+    and ${key(trade)}<>'' and exists (select 1 from unnest(coalesce(${alias}.self_performed_trades,'{}'::text[])) self_trade
+      where ${key("self_trade")}=${key(trade)})))`;
+}
+
 /** Queue jobs that only make sense when subcontractor outreach is on. */
 export const OUTREACH_JOBS: ReadonlySet<string> = new Set(["sub-finder", "sub-verify", "outreach", "call-prep"]);

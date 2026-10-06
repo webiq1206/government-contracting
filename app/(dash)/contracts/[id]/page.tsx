@@ -36,6 +36,7 @@ export default async function ContractPage(props: { params: Promise<{ id: string
     return null;
   });
   const canEdit = can(viewer?.orgRole, "manage_contracts");
+  let ownerUnavailable = false;
   const [teamMembers, owner] = await Promise.all([
     assignableMembers().catch(() => {
       loadWarnings.push(
@@ -44,8 +45,9 @@ export default async function ContractPage(props: { params: Promise<{ id: string
       return [];
     }),
     ownerOf("contract", params.id).catch(() => {
+      ownerUnavailable = true;
       loadWarnings.push(
-        "The contract owner could not be loaded, so it may appear unassigned."
+        "The contract assignment could not be loaded. Its status is unknown and assignment changes are unavailable."
       );
       return null;
     }),
@@ -91,6 +93,7 @@ export default async function ContractPage(props: { params: Promise<{ id: string
         <ContractDetail
           record={record}
           owner={owner}
+          ownerUnavailable={ownerUnavailable}
           members={teamMembers}
           viewerId={viewer?.id}
           canEdit={canEdit}

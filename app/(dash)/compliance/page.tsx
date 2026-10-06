@@ -967,7 +967,7 @@ export default async function CompliancePage(
 
         {capRows.length > 0 && (
           <section>
-            <h2 className="label mb-2">Non-small-business sub spend cap</h2>
+<h2 className="label mb-2">Subcontracting spending limit</h2>
             <p className="mb-2 text-xs text-slate-500">
               Federal rules: subs that are not small businesses can do at most
               50% of each contract. We warn at 45%.
