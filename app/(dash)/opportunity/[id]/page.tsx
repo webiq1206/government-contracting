@@ -920,7 +920,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 * a checklist nobody checks gets trusted more than it has
                 * earned.
                 */}
-              {oppBrief && !oppBrief.empty && (
+              {!opp.is_sources_sought && oppBrief && !oppBrief.empty && (
                 <div className="mb-3">
                   <Link
                     href={`/opportunity/${params.id}/requirements`}
@@ -942,7 +942,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                             history: tracking.history,
                             members: teamMembers,
                             viewerId: viewer?.id,
-                            canEdit: can(viewer?.orgRole, "decide"),
+                            canEdit: !opp.is_sources_sought && can(viewer?.orgRole, "decide"),
                           }
                         : undefined
                     }
@@ -1027,7 +1027,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           }
           coverage={
             <div className="space-y-6 px-5 py-8 sm:px-6" id="coverage">
-              {!outreachOn && (
+              {!opp.is_sources_sought && !outreachOn && (
                 <div className="card">
                   <p className="font-display text-base font-semibold">Subcontractor outreach is off for this opportunity</p>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -1040,7 +1040,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   </a>
                 </div>
               )}
-              <TradeCoverageStrip
+              {!opp.is_sources_sought && <TradeCoverageStrip
                 coverage={coverage}
                 analysis={analysis as unknown as Record<string, unknown> | null}
                 description={opp.description}
@@ -1050,16 +1050,17 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   outreach_state: s.outreach_state,
                   has_quote: quotedSubIds.has(s.subcontractor_id),
                 }))}
-              />
+              />}
               <div id="subs" data-guide-target="subs">
                 <OpportunitySubsPanel
+                  researchOnly={opp.is_sources_sought === true}
                   subs={subs}
                   communications={subComms}
                   analysis={analysis as unknown as Record<string, unknown> | null}
                   description={opp.description}
                   opportunityId={opp.id}
-                  canStopOutreach={can(viewer?.orgRole, "outreach")}
-                  canDecide={can(viewer?.orgRole, "decide")}
+                  canStopOutreach={!opp.is_sources_sought && can(viewer?.orgRole, "outreach")}
+                  canDecide={!opp.is_sources_sought && can(viewer?.orgRole, "decide")}
                   callsEnabled={rules.calls_enabled}
                 />
               </div>
@@ -1067,6 +1068,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           }
           pricing={
             <div className="space-y-6 px-5 py-8 sm:px-6">
+              {opp.is_sources_sought && <div className="card space-y-2"><h2 className="font-display text-lg">Saved pricing history</h2><p className="text-sm">Historical amounts only; this notice is excluded from bid preparation.</p><ul className="space-y-1 text-sm">{(quotes as Record<string, unknown>[]).map(q => <li key={String(q.id)}>{String(q.company_name ?? q.trade ?? "Quote")}: {currency(Number(q.quote_amount))}{q.is_out_of_range ? " · Recorded price warning" : ""}</li>)}</ul></div>}
               {/* The money facts used to sit on the Requirements tab under
                   "Score & money", which is not where anyone looks for them. */}
               <div className="card">
@@ -1126,13 +1128,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   scenarios={pricingScenarios}
                   subs={subOptions}
                   formula={pricingFormula}
-                  canPrice={can(viewer?.orgRole, "price")}
+                  canPrice={!opp.is_sources_sought && can(viewer?.orgRole, "price")}
                   lastCalculatedAt={lastPricedAt}
                   targetMarginPct={targetMarginPct}
                 />
               )}
 
-              {showQuotePanel && (
+              {!opp.is_sources_sought && showQuotePanel && (
                 <div
                   className="scroll-mt-editorial"
                   id="quotes"
@@ -1234,7 +1236,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </div>
               )}
 
-              {hasBid && !bidSubmitted && (
+              {!opp.is_sources_sought && hasBid && !bidSubmitted && (
                 <div className="card scroll-mt-editorial" id="revise-quotes">
                   <h2 className="mb-3 font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Revise quotes
@@ -1285,7 +1287,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               <CompetitiveLandscape competitors={competitors} pricing={pricing} />
 
 
-              {!showQuotePanel && !hasBid && (
+              {!opp.is_sources_sought && !showQuotePanel && !hasBid && (
                 <div className="card">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Pricing
@@ -1301,7 +1303,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             <div className="space-y-4 px-5 py-8 sm:px-6" id="docs">
               <SectionHeading
                 eyebrow="Documents"
-                title="Files for this bid"
+                title={opp.is_sources_sought ? "Saved notice files" : "Files for this bid"}
                 tip={termTip("documents")}
               >
                 Solicitation attachments, generated package pieces, and downloads.
@@ -1322,8 +1324,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   last={lastCheck}
                   live={liveCheck}
                   recommendation={checkRecommendation}
-                  canRun={can(viewer?.orgRole, "decide")}
-                  canAccept={can(viewer?.orgRole, "decide")}
+                  canRun={!opp.is_sources_sought && can(viewer?.orgRole, "decide")}
+                  canAccept={!opp.is_sources_sought && can(viewer?.orgRole, "decide")}
                 />
               )}
               {/* Where a person looks at the documents is where "save these to my Drive" belongs. */}
@@ -1331,8 +1333,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               <DocumentInventoryPanel
                 documents={inventory}
                 coverage={documentCoverage}
-                canDecide={can(viewer?.orgRole, "decide")}
-                canRunAgents={can(viewer?.orgRole, "run_agents")}
+                canDecide={!opp.is_sources_sought && can(viewer?.orgRole, "decide")}
+                canRunAgents={!opp.is_sources_sought && can(viewer?.orgRole, "run_agents")}
               />
               {otherFiles.length > 0 && (
                 <AttachmentsPanel
@@ -1352,7 +1354,18 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           }
           submission={
             <div className="space-y-8 px-5 py-8 sm:px-6">
-              {bid ? (
+              {opp.is_sources_sought ? (
+                <div className="card space-y-3">
+                  <h2 className="font-display text-lg">Saved submission history</h2>
+                  <p className="text-sm text-muted-foreground">This market research notice is excluded from bid preparation. Saved records remain available; no submission action is offered here.</p>
+                  {bid ? <>
+                    <p className="text-sm">Recorded state: {bid.submission_state ?? "Not recorded"}. Recorded submission time: {bid.submitted_at ? new Date(bid.submitted_at).toISOString() : "Not recorded"}. Outcome: {bid.outcome ?? "Not recorded"}.</p>
+                    {(bid.audit_findings?.length ?? 0) > 0 && <div><p className="label">Recorded audit findings</p><ul className="space-y-2 text-sm">{bid.audit_findings!.map(f => <li key={f.id}><strong>{f.severity}: </strong>{f.finding}<p className="text-muted-foreground">Saved recommendation: {f.recommendation}</p></li>)}</ul></div>}
+                    <details><summary className="min-h-11 cursor-pointer text-sm">Full saved submission details</summary><pre className="max-w-full overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(bid, null, 2)}</pre></details>
+                    <a href="#attachments" className="btn-ghost text-sm">View saved documents</a>
+                  </> : <p className="text-sm">No submission record is saved.</p>}
+                </div>
+              ) : bid ? (
                 <>
                   <div
                     id="submission"

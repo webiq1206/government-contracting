@@ -31,6 +31,18 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     }
     assert.equal(await page.locator('a[href="#next-step"]').count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+    await page.getByRole('tab', { name: 'Pricing', exact: true }).click();
+    assert(await page.getByRole('heading', { name: 'Saved pricing history', exact: true }).isVisible());
+    assert.equal(await page.getByText('Enter subcontractor quotes', { exact: true }).count(), 0);
+    await page.getByRole('tab', { name: 'Submission', exact: true }).click();
+    assert(await page.getByRole('heading', { name: 'Saved submission history', exact: true }).isVisible());
+    assert.equal(await page.getByRole('button', { name: 'Approve this package', exact: true }).count(), 0);
+    await page.getByRole('tab', { name: 'Subcontractors', exact: true }).click();
+    assert(await page.getByText('Saved subcontractor history', { exact: true }).isVisible());
+    assert(await page.getByText('Sample Electrical Services', { exact: true }).isVisible());
+    assert.equal(await page.getByText('Enter quote', { exact: true }).count(), 0);
+    assert.equal(await page.getByText(/Collect or confirm their quote/).count(), 0);
+    assert.equal(await page.locator('a[href="#quotes"]').count(), 0);
   });
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();

@@ -220,6 +220,7 @@ export function replayDecision(
   if (context.deadlinePassed) return no("deadline_passed");
   if (context.supersededBySuccess) return no("superseded");
   if (context.manuallyResolved) return no("manually_resolved");
+  if (classifyFailure(failure.error) === "completion_reconciliation") return no("unsafe_to_replay");
   if (OUTWARD_FACING.has(failure.agent)) return no("unsafe_to_replay");
   /*
    * A recovery fixes one cause. A job that failed on a bad API key during a
