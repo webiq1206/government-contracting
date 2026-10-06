@@ -170,7 +170,7 @@ export const INELIGIBLE_LABEL: Record<IneligibleReason, string> = {
   superseded: "a later run already did this work",
   manually_resolved: "somebody has already handled it",
   already_requeued: "it was requeued by an earlier recovery",
-  unsafe_to_replay: "replaying it could send something twice",
+  unsafe_to_replay: "replaying it could duplicate paid work or send something twice",
   different_cause: "it failed for a different reason, so this recovery would not fix it",
 };
 
