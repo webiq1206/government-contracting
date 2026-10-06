@@ -200,11 +200,12 @@ describe("reconcile", () => {
 });
 
 describe("webhookHealth", () => {
-  it("calls silence expected when nothing is subscribed", () => {
-    // A new deployment hears nothing from Stripe for weeks, correctly.
+  it("does not infer subscription history or working delivery from no current billable accounts", () => {
     const h = webhookHealth(null, 0, NOW);
     expect(h.state).toBe("quiet");
     expect(h.suspect).toBe(false);
+    expect(h.detail).toContain("historical subscriptions and payments may exist");
+    expect(h.detail).toContain("has not been verified");
   });
 
   it("calls silence a problem when there are subscriptions to hear about", () => {

@@ -14,6 +14,7 @@
 import { query } from "./db";
 import { dedupeOpportunityHits } from "./domain/search-dedupe";
 import { snippet, type SearchResult } from "./domain/search-results";
+import { messageState, MESSAGE_STATE_LABEL, type MessageRow } from "./domain/message-state";
 
 export async function searchEverything(
   rawQuery: string,
@@ -66,7 +67,7 @@ export async function searchEverything(
      * here; a search is the one place a tenant boundary is easiest to lose and
      * most expensive to lose.
      */
-    query<{
+    query<MessageRow & {
       id: string;
       subject: string | null;
       body: string | null;
@@ -74,8 +75,11 @@ export async function searchEverything(
       created_at: Date;
       opportunity_id: string | null;
       company_name: string | null;
+      channel: string;
     }>(
       `select c.id, c.subject, c.body, c.direction, c.created_at, c.opportunity_id,
+              c.channel, c.provider, c.delivery_state, c.delivery_detail,
+              c.opened_at, c.clicked_at, c.replied_at,
               s.company_name
          from communications c
          left join subcontractors s on s.id = c.subcontractor_id
@@ -151,7 +155,10 @@ export async function searchEverything(
       // long email shows the line that matched instead of its greeting.
       subtitle: [
         m.company_name,
-        m.direction === "inbound" ? "received" : "sent",
+        m.channel === "email"
+          ? MESSAGE_STATE_LABEL[messageState({ ...m, provider: m.provider || null })]
+          : m.channel === "phone" || m.channel === "call" ? "Call recorded"
+          : m.channel === "note" ? "Note recorded" : "Communication recorded",
         snippet(m.body ?? "", q),
       ]
         .filter(Boolean)

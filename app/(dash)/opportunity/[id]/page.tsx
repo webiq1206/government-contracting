@@ -42,6 +42,7 @@ import { Collapsible } from "@/components/collapsible";
 import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
+import { buildMatchBadges } from "@/lib/domain/opportunity-fit-summary";
 import { PricingCompsCard } from "@/components/pricing-comps-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 import { AttentionStrip } from "@/components/attention-strip";
@@ -579,9 +580,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     : "Open Requirements for identity details, Coverage for trades, and Pricing when quotes are ready.";
 
   const matchBadges = buildMatchBadges({
-    naics: opp.naics_code,
-    location: place,
-    setAside: opp.set_aside_type,
+    value: opp.value_estimated == null ? null : Number(opp.value_estimated),
     breakdown,
     riskCount: opp.risk_flags?.length ?? 0,
   });
@@ -631,7 +630,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           the page, at the top, past the scroll.
         */}
         <div className="hidden min-w-0 2xl:flex 2xl:flex-1 2xl:shrink">
-          <OpportunityStatusBar
+          {!opp.is_sources_sought && <OpportunityStatusBar
             stageLabel={stageLabel(opp.stage)}
             deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}
             score={opp.score ?? null}
@@ -643,7 +642,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             uncoveredTrades={coverage.totals.uncovered}
             riskFlags={opp.risk_flags}
             nextAction={null}
-          />
+          />}
         </div>
       </div>
 
@@ -682,7 +681,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
-                <TierBadge tier={opp.tier} />
+                {opp.is_sources_sought ? <span className="badge bg-muted text-muted-foreground">Sources Sought · Market research</span> : <TierBadge tier={opp.tier} />}
                 <DeadlineBadge deadline={opp.deadline} rules={rules} />
                 {opp.naics_code ? (
                   <span className="badge bg-surface-raised text-slate-600">
@@ -732,7 +731,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             page. The instruction is that a person must be able to stop work
             without hunting, and hunting is what a control in Settings means.
           */}
-          {abortImpact && (
+          {!opp.is_sources_sought && abortImpact && (
             <details className="mt-2"><summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-accent">Pursuit controls</summary>
               <PursuitControls
                 opportunityId={opp.id}
@@ -753,7 +752,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             person needs without hunting. A self-performed job here skips
             sourcing and outreach and goes straight to the company's own pricing.
           */}
-          <details className="mt-2" id="work-mode">
+          {!opp.is_sources_sought && <details className="mt-2" id="work-mode">
             <summary className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-accent">
               Who does the work
               <span className="badge bg-surface-raised text-slate-600">
@@ -770,7 +769,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 initialInherited={workMode?.inherited ?? true}
               />
             </div>
-          </details>
+          </details>}
         </header>
         <OpportunityWorkspace
           banner={
@@ -782,7 +781,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   </p>
                 ) : <NextStepBanner opportunityId={opp.id} {...stepInput} />}
               </div>
-              <details className="rounded-xl border border-border bg-surface">
+              {!opp.is_sources_sought && <details className="rounded-xl border border-border bg-surface">
                 <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-4 text-sm font-medium">
                   Readiness and full workflow
                   <span className="text-muted-foreground">{readiness.percent}% ready <span aria-hidden>⌄</span></span>
@@ -792,7 +791,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   <TradeRequirementSummary coverage={coverage} />
                   <AttentionStrip readiness={readiness} opportunityId={opp.id} />
                 </div>
-              </details>
+              </details>}
             </div>
           }
           brief={
@@ -831,10 +830,10 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                           className={
                             b.tone === "risk"
                               ? "badge bg-review/15 text-review"
-                              : "badge-match"
+                              : "badge bg-muted text-muted-foreground"
                           }
                         >
-                          {b.tone === "risk" ? "!! " : "✓ "}
+                          {b.tone === "risk" ? "!! " : ""}
                           {b.label}
                         </span>
                       ))}
@@ -842,7 +841,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   )}
                 </div>
                 <div className="lg:pl-10">
-                  {breakdown ? (
+                  {opp.is_sources_sought ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">Historical market research record. No bid readiness or pursue recommendation applies.</p>
+                      {opp.risk_flags.length > 0 && <div><p className="label mb-2">Recorded warnings</p><RiskFlagList flags={opp.risk_flags} /></div>}
+                      {breakdown && <details><summary className="min-h-11 cursor-pointer text-sm">Historical score details</summary><ScoreBreakdownCard breakdown={breakdown} currentScore={opp.score} /></details>}
+                    </div>
+                  ) : breakdown ? (
                     <ScoreBreakdownCard breakdown={breakdown} currentScore={opp.score} />
                   ) : (
                     <div className="rounded-md border border-border/55 bg-surface p-5 dark:border-white/10">
@@ -861,7 +866,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </div>
               </div>
 
-              <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
+              <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} researchOnly={opp.is_sources_sought === true} />
               <ContextualQuestion key={opp.id} path={`/opportunity/${opp.id}`} />
 
               {/*
@@ -870,7 +875,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 * belongs under the banner, not behind a word that describes a
                 * tab's position rather than its contents.
                 */}
-              <div id="workflow" data-guide-target="workflow" className="space-y-2">
+              {!opp.is_sources_sought && <div id="workflow" data-guide-target="workflow" className="space-y-2">
                 <SectionHeading
                   eyebrow="Current workflow"
                   title="Where this bid stands"
@@ -887,7 +892,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 <a href="#next-step" className="btn-ghost text-xs">
                   Jump to Next step
                 </a>
-              </div>
+              </div>}
             </div>
           }
           requirements={
@@ -988,7 +993,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 )}
               </div>
 
-              {opp.tier === "review" && opp.human_action_required && (
+              {!opp.is_sources_sought && opp.tier === "review" && opp.human_action_required && (
                 <div className="card space-y-2">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Triage
@@ -1002,7 +1007,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                 </div>
               )}
 
-              {pastPerfBlocked && (
+              {!opp.is_sources_sought && pastPerfBlocked && (
                 <div className="card border-risk/50 bg-risk/5">
                   <p className="text-sm font-medium text-risk">
                     Blocked: prime-only past performance required
@@ -1468,7 +1473,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               open on "No activity yet" and a screen of empty space, which is
               the least useful thing a record can say about itself. */}
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-            <div className="border-b border-border px-4 py-3">
+            {!opp.is_sources_sought && <div className="border-b border-border px-4 py-3">
               <p className="eyebrow">Right now</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Who is holding this opportunity, and what comes next.
@@ -1476,7 +1481,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               <div className="mt-2.5">
                 <OpportunityTaskList plan={plan} />
               </div>
-            </div>
+            </div>}
             <div className="px-4 py-3">
               <p className="eyebrow">Activity</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -1500,46 +1505,6 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       </datalist>
     </div>
   );
-}
-
-function buildMatchBadges({
-  naics,
-  location,
-  setAside,
-  breakdown,
-  riskCount,
-}: {
-  naics: string | null;
-  location: string | null;
-  setAside: string | null;
-  breakdown: ScoreBreakdown | null;
-  riskCount: number;
-}): { label: string; tone: "ok" | "risk" }[] {
-  const badges: { label: string; tone: "ok" | "risk" }[] = [];
-  const dims = breakdown?.dimensions ?? [];
-  const positive = (keyPart: string) =>
-    dims.some(
-      (d) =>
-        d.points > 0 &&
-        (d.key.toLowerCase().includes(keyPart) || d.label.toLowerCase().includes(keyPart))
-    );
-
-  if (naics || positive("naics") || positive("trade")) {
-    badges.push({ label: "NAICS match", tone: "ok" });
-  }
-  if (location || positive("geo") || positive("location") || positive("service")) {
-    badges.push({ label: "Service area", tone: "ok" });
-  }
-  if (setAside || positive("set") || positive("size")) {
-    badges.push({ label: "Size band", tone: "ok" });
-  }
-  if (riskCount > 0) {
-    badges.push({
-      label: `${riskCount} risk${riskCount === 1 ? "" : "s"} to review`,
-      tone: "risk",
-    });
-  }
-  return badges;
 }
 
 function Fact({

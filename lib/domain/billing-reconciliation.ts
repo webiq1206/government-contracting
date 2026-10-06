@@ -238,7 +238,7 @@ export function webhookHealth(
       : {
           state: "quiet",
           label: "No Stripe events yet",
-          detail: "Nothing has subscribed, so there is nothing for Stripe to send. This is expected.",
+          detail: "No Stripe events are recorded here. No current billable accounts were counted, but historical subscriptions and payments may exist. Webhook delivery has not been verified.",
           suspect: false,
         };
   }
@@ -253,7 +253,7 @@ export function webhookHealth(
     return {
       state: "healthy",
       label: `Last Stripe event ${ago}`,
-      detail: "Delivery is current, so the figures below are as good as the last event.",
+      detail: "A Stripe event was recorded recently. This does not confirm that every subscription or payment is synchronized; compare the saved records with the provider when investigating a discrepancy.",
       suspect: false,
     };
   }
@@ -261,7 +261,7 @@ export function webhookHealth(
     return {
       state: "quiet",
       label: `Last Stripe event ${ago}`,
-      detail: "Nothing is subscribed, so there is nothing for Stripe to send. Quiet is correct here.",
+      detail: "No current billable accounts were counted. Historical subscriptions and payments may exist; the older event does not verify current webhook delivery.",
       suspect: false,
     };
   }

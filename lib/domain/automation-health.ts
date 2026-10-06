@@ -47,6 +47,8 @@ export type AutomationState = "healthy" | "degraded" | "blocked" | "paused" | "n
  * exception happened to say.
  */
 export type IncidentCause =
+  | "completion_reconciliation"
+  | "sender_not_ready"
   | "spending_limit"
   | "provider_credit"
   | "provider_auth"
@@ -88,6 +90,18 @@ export interface IncidentSpec {
  * an outage.
  */
 const CAUSES: Record<IncidentCause, IncidentSpec> = {
+  completion_reconciliation: {
+    title: "Saved AI work needs reconciliation",
+    effect: "The affected work is held because a previous completion is unresolved. This guard prevents another paid request.",
+    repair: "Review and reconcile the saved output before retrying. Do not replay the paid request or bypass the spending guard.",
+    blocking: true,
+  },
+  sender_not_ready: {
+    title: "The platform email sender is not ready",
+    effect: "The recorded recap attempts did not send because the platform connection or verified sender identity was not ready. This does not establish the state of inbox reading.",
+    repair: "Ask the platform administrator to check the Gmail connection and verified sender identity. Confirm the current state before any authorized retry.",
+    blocking: true,
+  },
   spending_limit: {
     title: "API work stopped at a spending control",
     effect: "New paid requests are on hold to protect your account’s budget. Some automated tasks are waiting.",
@@ -118,8 +132,8 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     blocking: false,
   },
   mailbox_rate_limit: {
-    title: "Gmail is limiting inbox requests",
-    effect: "Email checks are delayed. Messages stay in the inbox and polling resumes as allowance becomes available.",
+    title: "Gmail limited requests",
+    effect: "The recorded Gmail operation exceeded an allowance. Check the error details to distinguish inbox reading, sender lookup and sending; this does not prove a current outage or a later retry.",
     repair: "Wait for the Gmail allowance to reset. Reconnecting Gmail or changing the AI key will not raise this limit.",
     repairHref: "/settings/integrations#gmail",
     blocking: false,
@@ -171,9 +185,9 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
   model_output: {
     title: "An analysis came back unreadable",
     effect:
-      "Scoring still ran, but some solicitations were not analysed, so briefs and bid packages wait on those records.",
+      "The affected AI response was incomplete or could not be read. The failure alone does not establish whether scoring or other work completed.",
     repair:
-      "The agent retries on its own. If the same records keep failing, open the incident and send the sample to support.",
+      "Review the saved response and error details before any authorized retry. Do not assume a partial response was accepted or bypass spending controls.",
     blocking: false,
   },
   unknown: {
@@ -212,6 +226,8 @@ export function causeSpec(cause: IncidentCause, errors: readonly string[] = []):
 export function classifyFailure(error: string | null | undefined): IncidentCause {
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
+  if (/ai work has an unresolved completion|reconcile its saved output before retrying/.test(text)) return "completion_reconciliation";
+  if (/no verified platform sender|platform gmail connection or verified sender identity is not ready/.test(text)) return "sender_not_ready";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
   if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";

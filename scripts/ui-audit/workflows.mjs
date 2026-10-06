@@ -22,6 +22,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     checkpoint();
     console.log(JSON.stringify({ device, route, task, status: record.status, error: record.error }));
   };
+  await check(`/opportunity/${ids.research}`, 'sources-sought-research-history', async () => {
+    await page.getByRole('heading', { name: 'Historical Sources Sought audit', exact: true }).waitFor();
+    assert(await page.getByRole('heading', { name: 'Notice summary', exact: true }).isVisible());
+    assert(await page.getByText('Recorded warnings', { exact: true }).isVisible());
+    for (const text of ['Bid Brief', 'Where this bid stands', 'Readiness and full workflow', 'Jump to Next step', 'Pursuit controls', 'Who does the work']) {
+      assert.equal(await page.getByText(text, { exact: true }).count(), 0, `Research must not show ${text}`);
+    }
+    assert.equal(await page.locator('a[href="#next-step"]').count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+  });
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();
     assert(await page.getByText('Friday works.', { exact: true }).isVisible());

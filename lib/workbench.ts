@@ -194,6 +194,14 @@ export async function loadWorkbenchDetail(
   if (!oppId) return { pane: "gone", why: "This task is no longer attached to a solicitation." };
   const detail = await opportunityDetail(oppId);
   if (!detail) return { pane: "gone", why: "That solicitation is no longer on this account." };
+  if (pane === "decide" && (
+    detail.opp.status !== "open" || detail.opp.stage !== "scoring" ||
+    detail.opp.tier !== "review" || !detail.opp.human_action_required ||
+    (detail.opp.pursuit_state ?? "active") !== "active" || detail.opp.is_sources_sought === true ||
+    (detail.opp.snoozed_until != null && new Date(detail.opp.snoozed_until).getTime() > Date.now())
+  )) {
+    return { pane: "gone", why: "This opportunity is no longer awaiting a pursue-or-pass decision. Open the record to check its current state." };
+  }
 
   const documents = detail.documents as Record<string, unknown>[];
   const kindToPath: Record<string, string> = {};

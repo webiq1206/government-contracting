@@ -174,6 +174,7 @@ export function serviceStatuses(
       return {
         ...def,
         ...extras.billingWebhooks,
+        stateWord: extras.billingWebhooks.state === "unknown" ? "Not verified" : undefined,
         runs: 0,
         errors: 0,
         failureRate: null,
