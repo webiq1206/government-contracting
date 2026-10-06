@@ -81,10 +81,16 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
   });
   await check(`/opportunity/${ids.sourceAudit}/requirements`, 'requirement-source-page-alignment', async () => {
     const frame=page.locator('iframe');
-    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
     await page.getByText('Synthetic requirement page 44',{exact:true}).first().click();
+    const fallback=page.getByRole('link',{name:'Open displayed document in new tab',exact:true});
+    assert.equal(await fallback.getAttribute('target'),'_blank');
+    assert.match(await fallback.getAttribute('rel'),/noopener/);
+    assert.match(await fallback.getAttribute('rel'),/noreferrer/);
+    assert.equal(await fallback.getAttribute('href'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
     await page.getByLabel('The document',{exact:true}).selectOption(ids.sourceDocs[0]);
     assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[0]}/open`);
+    assert.equal(await fallback.getAttribute('href'),`/api/documents/${ids.sourceDocs[0]}/open`);
     await page.getByRole('button',{name:'Show where it says so',exact:true}).click();
     assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
     await page.getByRole('button',{name:'Next requirement',exact:true}).click();
@@ -96,6 +102,29 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByRole('button',{name:/^Ask the agency/}).click();
     assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=12`);
     if(device!=='desktop') await page.getByText('Synthetic requirement page 12',{exact:true}).first().click();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+  });
+  await check(`/opportunity/${ids.opportunity}`, 'guide-stored-score-context', async () => {
+    await page.evaluate(()=>window.dispatchEvent(new Event('open-guide-wizard')));
+    const dialog=page.getByRole('dialog'); await dialog.waitFor();
+    await dialog.getByText('Current recorded score: 62/100 · Recorded tier: review',{exact:true}).waitFor();
+    assert.equal(await dialog.getByText(/Synthetic historical prose/).count(),0);
+    await dialog.getByRole('button',{name:'Score details',exact:true}).click();
+    await dialog.getByText(/Saved scoring analysis is historical/).waitFor();
+    const history=dialog.locator('details').filter({hasText:'Saved scoring analysis'});
+    assert.equal(await history.evaluate(node=>node.open),false);
+    await history.locator('summary').click();
+    await history.getByText(/Synthetic historical prose: 75 points/).waitFor();
+    await page.screenshot({path:join(out,`${device}-guide-historical-score.png`)});
+    await dialog.getByRole('button',{name:'Close',exact:true}).click();
+  });
+  await check(`/pipeline?peek=opportunity:${ids.archived}`, 'closed-record-quick-look', async () => {
+    const dialog=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true}); await dialog.waitFor();
+    await dialog.getByText('Expired',{exact:true}).waitFor();
+    await dialog.getByText('Saved workflow stage',{exact:true}).waitFor();
+    await dialog.getByText('Recorded bid deadline',{exact:true}).waitFor();
+    await dialog.getByText('Saved flags',{exact:true}).waitFor();
+    assert.equal(await dialog.getByText('In the way',{exact:true}).count(),0);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
   });
   await check(`/opportunity/${ids.opportunity}`, 'guide-answer-source-links', async () => {
@@ -177,6 +206,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.getByText('No active saved subcontractor associations on open bids are available. Use sample values; Sources Sought is market research.', { exact: true }).waitFor();
     assert.equal(await picker.locator('option').count(), 1);
     assert.equal(await picker.inputValue(), '');
+    await page.getByRole('note').filter({hasText:'No files are attached or verified'}).waitFor();
+    assert.equal(await page.locator('.email-preview').getByText(/The 2 attached documents/).count(),0);
     assert.equal(await page.getByText(/firm whose trades match/).count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
     await page.getByRole('button', { name: 'Close', exact: true }).click();

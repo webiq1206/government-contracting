@@ -71,6 +71,9 @@ jobs:
             if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
             sleep 2
           done
+          if [ "$AUDIT_DEVICE" = "desktop" ]; then
+            timeout 180s xvfb-run --auto-servernum node scripts/ui-audit/pdf-embedding.mjs
+          fi
           timeout 1200s node scripts/ui-audit/browser.mjs
           timeout 180s node scripts/ui-audit/mobile-scroll-check.mjs
           if [ "$AUDIT_DEVICE" = "mobile" ]; then

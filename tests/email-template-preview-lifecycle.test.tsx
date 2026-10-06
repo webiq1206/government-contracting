@@ -35,8 +35,8 @@ afterEach(async () => { await act(async () => root.unmount()); vi.unstubAllGloba
 function button(text: string) {
   return [...container.querySelectorAll("button")].find(node => node.textContent === text)!;
 }
-async function mount() {
-  await act(async () => root.render(<EmailTemplateEditor template={template} followupHours={48}
+async function mount(selectedTemplate = template) {
+  await act(async () => root.render(<EmailTemplateEditor template={selectedTemplate} followupHours={48}
     metrics={templateMetrics({ sent: 0, delivered: 0, opened: 0, replied: 0, bounced: 0, lastSentAt: null })} />));
   await act(async () => button("Preview email").dispatchEvent(new window.Event("click", { bubbles: true })));
 }
@@ -112,4 +112,16 @@ it("does not start two sends from repeated clicks before React updates the butto
   expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
   await act(async () => pending.resolve(response({ ok: true, messageId: "test-receipt", sentTo: "operator@example.test" })));
   expect(container.textContent).toContain("Gmail accepted the test to operator@example.test");
+});
+
+it("labels unchanged custom wording honestly and does not invent attached files in sample preview", async () => {
+  fetchMock.mockResolvedValue(response({pairings: []}));
+  const body="Please review attached bid documents. Keep this approved custom wording.";
+  await mount({...template, body});
+  expect(container.querySelector('.email-preview')?.textContent).toContain(body);
+  expect(container.querySelector('.email-preview')?.textContent).not.toContain('The 2 attached documents');
+  expect(container.querySelector('[role="note"]')?.textContent).toContain('No files are attached or verified');
+  expect(container.querySelector('[role="note"]')?.textContent).toContain('Template wording below is unchanged');
+  expect(container.textContent).not.toContain('this preview always looks right');
+  expect(fetchMock.mock.calls.some(([,options]) => options?.method === 'POST')).toBe(false);
 });

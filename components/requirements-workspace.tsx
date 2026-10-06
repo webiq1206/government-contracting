@@ -199,6 +199,9 @@ export function RequirementsWorkspace({
     && Number.isInteger(selected?.sourcePage) && (selected?.sourcePage ?? 0) > 0
     && (doc.pageCount == null || selected!.sourcePage! <= doc.pageCount)
     ? selected!.sourcePage : null;
+  const documentHref = doc
+    ? `/api/documents/${doc.id}/open${sourcePage ? `?page=${sourcePage}` : ""}`
+    : null;
 
   return (
     <div
@@ -474,6 +477,15 @@ export function RequirementsWorkspace({
                       </option>
                     ))}
                   </select>
+                  {documentHref && <div className="mt-2">
+                    <a href={documentHref} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex min-h-11 items-center text-sm text-accent underline underline-offset-4">
+                      Open displayed document in new tab
+                    </a>
+                    <p className="text-xs text-muted-foreground">
+                      Use this if the preview is unavailable. Page links use the stored citation; verify the text in the document.
+                    </p>
+                  </div>}
                   {selected && !sourceDoc && <p className="mt-2 text-xs text-muted-foreground">
                     No stored source document is linked here. The file shown is
                     browsing context, not evidence for this requirement.
@@ -483,20 +495,20 @@ export function RequirementsWorkspace({
                 {doc == null || doc.preview === "none" ? (
                   <p className="text-sm text-muted-foreground">
                     A browser will not render this format, so it cannot be shown here.
-                    Open it from the Files tab to read it.
+                    Use the link above to open the document separately.
                   </p>
                 ) : (
                   <>
                     {doc.preview === "image" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={`/api/documents/${doc.id}/open`}
+                        src={documentHref!}
                         alt={`${doc.name}, as it arrived`}
                         className="w-full rounded-md border border-border object-contain"
                       />
                     ) : (
                       <iframe
-                        src={`/api/documents/${doc.id}/open${sourcePage ? `?page=${sourcePage}` : ""}`}
+                        src={documentHref!}
                         title={`${doc.name}, as it arrived`}
                         className="h-[60vh] w-full rounded-md border border-border xl:h-[calc(100vh-16rem)]"
                       />

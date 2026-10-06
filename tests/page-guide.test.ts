@@ -7,6 +7,8 @@ import {
   type GuideContextInput,
 } from "@/lib/domain/page-guide";
 import type { SetupChecklist } from "@/lib/domain/setup";
+import { buildAskUserPrompt } from "@/lib/domain/guide-ask";
+import { buildNarrateUserPrompt } from "@/lib/domain/guide-narrate";
 import type { StepInput } from "@/lib/domain/journey";
 
 const completeSetup: SetupChecklist = {
@@ -282,4 +284,30 @@ it.each([['won', 'Won', '/contracts'], ['lost', 'Lost', '/today']])('keeps %s na
   expect(guide.steps[0]).toMatchObject({kind: 'link', href});
   expect(guide.badgeCount).toBe(0);
   expect(guide.brostHandling).toEqual([]);
+});
+
+describe("Guide current facts versus saved scoring prose", () => {
+  it.each([67, null])("does not promote saved prose to current advice with score %s", score => {
+    const id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const summary="Historical prose says 75 points, AUTO-PURSUE and strong deadline runway.";
+    const guide=buildPageGuide(base({pathname:`/opportunity/${id}`,opportunity:{id,title:"Synthetic current record",stage:"scoring",score,deadline:"2026-10-06T22:00:00Z",
+      stepInput:stepInput({stage:"scoring",tier:"review",humanActionRequired:true}),
+      scoreExplain:{total:67,summary,factors:[{label:"Deadline",points:10,max:10,reasoning:"Weeks remaining"}]}}}));
+    expect(guide.scoreLine).toContain(score===null ? "Current score unavailable" : "Current recorded score: 67/100");
+    expect(guide.scoreLine).not.toContain(summary);
+    expect(guide.situation).toContain("Oct 6, 2026"); expect(guide.situation).toContain("UTC");
+    expect(guide.scoreExplain?.summary).toBe(summary);
+    expect(guide.scoreExplain?.freshnessNote).toContain("not been verified");
+    expect(buildAskUserPrompt({guide,question:"What should I do?",history:[]})).not.toContain(summary);
+    expect(buildNarrateUserPrompt(guide)).not.toContain(summary);
+  });
+  it("distinguishes a different saved analysis total without modifying it", () => {
+    const id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const guide=buildPageGuide(base({pathname:`/opportunity/${id}`,opportunity:{id,title:"Closed history",stage:"call_queue",score:67,deadline:null,
+      stepInput:stepInput({status:"archived"}),scoreExplain:{total:75,summary:"Saved assessment",factors:[]}}}));
+    expect(guide.scoreExplain?.total).toBe(75);
+    expect(guide.scoreExplain?.freshnessNote).toContain("75 differs from the current recorded score 67");
+    expect(guide.steps).toHaveLength(1); expect(guide.steps[0].kind).toBe("link");
+    expect(guide.situation).toContain("No deadline recorded");
+  });
 });

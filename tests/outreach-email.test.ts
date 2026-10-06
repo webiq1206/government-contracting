@@ -99,8 +99,8 @@ describe("seed Template 1 render", () => {
     // bulleted structure come from the brief appended beneath it. Asserting on
     // the body alone would no longer describe what a subcontractor receives.
     const html = plainToHtml(filled) + renderOutreachBrief(previewBriefSections()).html;
-    // The attachments are not inventoried by name; the email says to read them.
-    expect(html).toMatch(/attached documents have the plans, specifications/);
+    // Sample preview has no real files; do not invent a validated attachment count.
+    expect(html).not.toMatch(/The 2 attached documents/);
     expect(html).not.toContain("Statement of Work.pdf");
     expect(html).toContain("Scope to price");
     expect(html).toContain("What to include with your quote");
