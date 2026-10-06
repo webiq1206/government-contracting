@@ -250,3 +250,36 @@ describe("buildPageGuide", () => {
     );
   });
 });
+
+describe("closed opportunity guide", () => {
+  it.each([false, true])("suppresses call, upload, and submission work with expired=%s", (expired) => {
+    const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const guide = buildPageGuide(base({ pathname: `/opportunity/${id}`, opportunity: {
+      id, title: "Saved archived bid", stage: "call_queue", score: null, deadline: null,
+      stepInput: stepInput({status: "archived", expired, hasBid: true}), packageReady: true, bidSubmitted: false,
+      readiness: {percent: 20, summary: "Old incomplete work", attention: [], complete: [], blocked: [], actionRequired: [{key: "upload", label: "Upload a document", why: "Old requirement", severity: "action", who: "admin", action: {label: "Upload document", modal: "upload"}}]},
+    }}));
+    expect(guide.stageLabel).toBe(expired ? "Expired" : "Archived");
+    expect(guide.steps).toHaveLength(1);
+    expect(guide.steps[0]).toMatchObject({kind: "link", href: "/pipeline"});
+    expect(guide.badgeCount).toBe(0);
+    expect(guide.brostHandling).toEqual([]);
+    expect(guide.needsAttention).toEqual([]);
+    expect(guide.completed).toEqual([]);
+    expect(guide.idle).toBe(false);
+    expect(guide.whatHappensNext).not.toMatch(/continue automatically/i);
+  });
+});
+
+it.each([['won', 'Won', '/contracts'], ['lost', 'Lost', '/today']])('keeps %s navigation while removing stale guide work', (stage, label, href) => {
+  const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const guide = buildPageGuide(base({pathname: `/opportunity/${id}`, opportunity: {
+    id, title: 'Saved outcome', stage, score: null, deadline: null,
+    stepInput: stepInput({stage, status: 'archived', hasBid: true}), packageReady: true, bidSubmitted: false,
+  }}));
+  expect(guide.stageLabel).toBe(label);
+  expect(guide.steps).toHaveLength(1);
+  expect(guide.steps[0]).toMatchObject({kind: 'link', href});
+  expect(guide.badgeCount).toBe(0);
+  expect(guide.brostHandling).toEqual([]);
+});

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { splitEmailBody } from "@/lib/domain/email-body";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 
 export function EmailMessage({ body, direction, contact, recipient, sender, subject, date, label, latest = false, children }: {
   body: string | null; direction: "inbound" | "outbound"; contact: string;
@@ -7,6 +8,7 @@ export function EmailMessage({ body, direction, contact, recipient, sender, subj
 }) {
   const { current, quoted } = splitEmailBody(body);
   const inbound = direction === "inbound";
+  const recorded = communicationTimestamp(date);
   return (
     <article className={`min-w-0 overflow-hidden rounded-xl border ${inbound ? "border-accent/35 border-l-4 bg-surface" : "border-border bg-muted/30"}`}>
       <header className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-4 py-3">
@@ -18,7 +20,7 @@ export function EmailMessage({ body, direction, contact, recipient, sender, subj
           {inbound && <p className="mt-1 break-all text-xs text-muted-foreground">From: {sender || recipient || "Not recorded for this historical message"}</p>}
           {!inbound && <p className="mt-0.5 break-all text-xs text-muted-foreground">To: {recipient || "Not recorded for this historical message"}</p>}
         </div>
-        <time dateTime={date} className="text-xs text-muted-foreground">{new Date(date).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</time>
+        <time dateTime={recorded.dateTime} title="Time this record was stored; not proof of sending or delivery." className="text-xs text-muted-foreground">Recorded: {recorded.label}</time>
       </header>
       <div className="space-y-3 px-4 py-4 text-sm leading-6 text-foreground [overflow-wrap:anywhere]">
         <p className="whitespace-pre-wrap">{current || "No message body was stored."}</p>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 
 export interface PendingMessage {
   id: string;
@@ -122,6 +123,7 @@ function MessageRow({
   };
 
   if (completed) return <li role="status" className="py-3 text-sm text-muted-foreground">Message reviewed. Updating your inbox.</li>;
+  const recorded = communicationTimestamp(message.receivedAt);
 
   return (
     <li className="py-3">
@@ -129,9 +131,9 @@ function MessageRow({
         <p className="text-sm font-medium text-foreground">
           {message.subcontractorName ?? message.fromName ?? message.fromEmail}
         </p>
-        <p className="text-xs text-muted-foreground">
-          {new Date(message.receivedAt).toLocaleString()}
-        </p>
+        <time className="text-xs text-muted-foreground" dateTime={recorded.dateTime}>
+          {recorded.label}
+        </time>
       </div>
       <p className="text-xs text-muted-foreground">{message.fromEmail}</p>
       {message.subject && (

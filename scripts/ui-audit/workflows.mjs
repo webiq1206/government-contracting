@@ -22,6 +22,167 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     checkpoint();
     console.log(JSON.stringify({ device, route, task, status: record.status, error: record.error }));
   };
+  await check('/analytics', 'focused-report-views', async () => {
+    const views=page.getByRole('group',{name:'Report view',exact:true});
+    await views.waitFor();
+    for(const label of ['Overview','Pipeline','Win performance','Revenue']) {
+      const control=views.getByRole('button',{name:label,exact:true});
+      await control.click();
+      assert.equal(await control.getAttribute('aria-pressed'),'true');
+      if(label==='Overview') assert(await page.getByText('Top Subcontractors',{exact:true}).isVisible());
+      if(label==='Pipeline') {
+        assert(await page.getByText('Opportunities by stage',{exact:true}).isVisible());
+        assert(await page.getByText('Recorded pipeline value',{exact:true}).isVisible());
+        assert.equal(await page.getByText('Active contract revenue',{exact:true}).isVisible(),false);
+      }
+      if(label==='Win performance') {
+        assert(await page.getByText('Avg margin on wins',{exact:true}).isVisible());
+        assert(await page.getByRole('heading',{name:'Win rate by NAICS',exact:true}).isVisible());
+      }
+      if(label==='Revenue') {
+        assert(await page.getByText('Active contract revenue',{exact:true}).isVisible());
+        assert(await page.getByText('Cash Flow Projection',{exact:true}).isVisible());
+        assert(await page.getByText('Not projected',{exact:true}).isVisible());
+        assert.equal(await page.getByText('Recorded pipeline value',{exact:true}).isVisible(),false);
+      }
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+      await page.screenshot({path:join(out,`${device}-reports-${label.toLowerCase().replaceAll(' ','-')}.png`),fullPage:true});
+    }
+    if(device!=='desktop') {
+      const trigger=page.getByRole('button',{name:/Last 90 days.*by Agency/});
+      await trigger.click();
+      const dialog=page.getByRole('dialog',{name:'Filter analytics',exact:true});
+      await dialog.waitFor();
+      await dialog.getByRole('button',{name:'Close',exact:true}).waitFor();
+      assert(await dialog.getByRole('button',{name:'Close',exact:true}).evaluate(node=>node===document.activeElement));
+      await page.keyboard.press('Shift+Tab');
+      assert(await dialog.getByRole('link',{name:'Show these',exact:true}).evaluate(node=>node===document.activeElement));
+      await page.keyboard.press('Tab');
+      assert(await dialog.getByRole('button',{name:'Close',exact:true}).evaluate(node=>node===document.activeElement));
+      await page.evaluate(()=>document.querySelector('main a')?.focus());
+      assert(await dialog.evaluate(node=>node.contains(document.activeElement)),'Native modal prevents background focus');
+      await page.screenshot({path:join(out,`${device}-analytics-filter-dialog.png`)});
+      await page.keyboard.press('Escape');
+      assert.equal(await dialog.count(),0); assert(await trigger.evaluate(node=>node===document.activeElement));
+    }
+  });
+  await check('/search?q=Connections', 'navigation-only-search', async () => {
+    await page.locator('main a[href="/settings/integrations"]').first().waitFor();
+    await page.goto(base+'/search?q=Reports',{waitUntil:'networkidle'});
+    await page.locator('main a[href="/analytics"]').first().waitFor();
+    await page.goto(base+'/search?q=Review&kind=page',{waitUntil:'networkidle'});
+    await page.locator('main a[href="/review"]').first().waitFor();
+    await page.keyboard.press('Control+k');
+    const search=page.getByRole('combobox',{name:/Search pages, opportunities/});
+    await search.fill('Connections');
+    await page.getByRole('group',{name:'Pages & tools',exact:true}).getByRole('option').first().waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+    await page.keyboard.press('Escape');
+  });
+  await check(`/opportunity/${ids.sourceAudit}/requirements`, 'requirement-source-page-alignment', async () => {
+    const frame=page.locator('iframe');
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
+    await page.getByText('Synthetic requirement page 44',{exact:true}).first().click();
+    await page.getByLabel('The document',{exact:true}).selectOption(ids.sourceDocs[0]);
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[0]}/open`);
+    await page.getByRole('button',{name:'Show where it says so',exact:true}).click();
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=44`);
+    await page.getByRole('button',{name:'Next requirement',exact:true}).click();
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=12`);
+    await page.getByRole('button',{name:'Next requirement',exact:true}).click();
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open`);
+    assert(await page.getByText(/browsing context, not evidence for this requirement/).isVisible());
+    if(device!=='desktop') await page.getByRole('button',{name:'Back to the checklist',exact:true}).click();
+    await page.getByRole('button',{name:/^Ask the agency/}).click();
+    assert.equal(await frame.getAttribute('src'),`/api/documents/${ids.sourceDocs[1]}/open?page=12`);
+    if(device!=='desktop') await page.getByText('Synthetic requirement page 12',{exact:true}).first().click();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+  });
+  await check(`/opportunity/${ids.opportunity}`, 'guide-answer-source-links', async () => {
+    const askPattern='**/api/guide/ask';
+    await page.route(askPattern,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      answer:'Synthetic answer based on saved fixture facts.',sources:[
+        {label:'A long descriptive source label for the synthetic opportunity record, with enough detail to check phone wrapping safely',href:`/opportunity/${ids.opportunity}#brief`},
+        {label:'Untrusted external source',href:'https://invalid.example'},
+        {label:'Wrong record',href:`/opportunity/${ids.research}#brief`}
+      ]})}));
+    try {
+      await page.evaluate(()=>window.dispatchEvent(new Event('open-guide-wizard')));
+      const dialog=page.getByRole('dialog'); await dialog.waitFor();
+      await dialog.getByRole('button',{name:'Ask',exact:true}).click();
+      await dialog.getByLabel('Ask about this page',{exact:true}).fill('What needs attention?');
+      await dialog.locator('form').getByRole('button',{name:'Ask',exact:true}).click();
+      await dialog.getByText('Synthetic answer based on saved fixture facts.',{exact:false}).first().waitFor();
+      const source=dialog.locator(`a[href="/opportunity/${ids.opportunity}#brief"]`); await source.waitFor();
+      assert.equal(await dialog.getByText('Untrusted external source',{exact:true}).count(),0);
+      assert.equal(await dialog.getByText('Wrong record',{exact:true}).count(),0);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+      await page.screenshot({path:join(out,`${device}-guide-source-citations.png`)});
+      await source.focus(); await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>location.hash==='#brief');
+      assert.equal(await page.getByRole('dialog').count(),0);
+    } finally { await page.unroute(askPattern); }
+  });
+  await check('/settings/profile', 'in-flow-analytics-preferences', async () => {
+    const control=page.getByRole('button',{name:'Analytics preferences',exact:true}); await control.waitFor();
+    assert(await control.evaluate(node=>!['fixed','absolute'].includes(getComputedStyle(node).position)));
+    assert.equal(await page.locator('button').evaluateAll(nodes=>nodes.some(node=>node.textContent==='Analytics preferences'&&getComputedStyle(node).position==='fixed')),false);
+    // Loopback deliberately disables trackers. Consent choice/withdrawal is
+    // verified separately with mocked providers, not enabled by this audit.
+    assert(await control.isDisabled());
+  });
+  await check('/today', 'empty-account-setup-link', async () => {
+    const isolated=await page.context().browser().newContext({viewport:page.viewportSize()});
+    await isolated.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
+    const empty=await isolated.newPage();
+    try {
+      await empty.goto(base+'/login');
+      await empty.getByLabel('Email',{exact:true}).fill('ui-setup@example.test');
+      await empty.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
+      await empty.getByRole('button',{name:'Sign in',exact:true}).click();
+      await empty.waitForURL('**/today',{waitUntil:'networkidle'});
+      await empty.getByRole('link',{name:'Continue setup',exact:true}).click();
+      await empty.waitForFunction(()=>location.hash==='#setup-checklist'&&document.querySelector('[data-today-details]')?.open);
+      const setup=empty.locator('#setup-checklist'); assert(await setup.isVisible());
+      assert(await setup.locator('a[href^="/settings/"]').count()>0);
+      await empty.screenshot({path:join(out,`${device}-empty-setup-checklist.png`)});
+      await empty.goto(base+'/analytics',{waitUntil:'networkidle'});
+      const views=empty.getByRole('group',{name:'Report view',exact:true});
+      await views.getByRole('button',{name:'Revenue',exact:true}).click();
+      assert.equal(await empty.getByText('Cash Flow Projection',{exact:true}).count(),0,'No stored projection must stay absent');
+      await empty.screenshot({path:join(out,`${device}-reports-no-snapshot.png`)});
+      await empty.goto(base+'/search?q=Accounts',{waitUntil:'networkidle'});
+      assert.equal(await empty.locator('main a[href^="/admin/"]').count(),0,'A tenant owner never receives platform destinations');
+    } finally { await isolated.close(); }
+  });
+  await check(`/opportunity/${ids.archived}`, 'archived-document-coverage', async () => {
+    await page.getByRole('heading', { name: 'Archived document coverage audit', exact: true }).waitFor();
+    assert.equal(await page.getByText('Calls to make', { exact: true }).count(), 0, 'An archived record must not advertise active calls');
+    await page.getByText('Closed record', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('link', {name: /Start calling/}).count(), 0);
+    await page.getByRole('tab', { name: 'Documents', exact: true }).click();
+    await page.getByText('11 of 13 document(s) read in full; 1 only partly read, 1 marked as having no text.', { exact: true }).waitFor();
+    const visibleReadLabels = await page.getByText('Read in full', { exact: true }).evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).length);
+    assert.equal(visibleReadLabels, 11, 'Summary must agree with the visible document rows/cards');
+    assert.equal(await page.getByText('No text to read', { exact: true }).evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).length), 1);
+    assert.equal(await page.getByText('Partly read', { exact: true }).evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).length), 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+  });
+  await check('/settings/content', 'template-preview-sample-fallback', async () => {
+    await page.getByRole('button', { name: 'Preview email', exact: true }).first().click();
+    const picker = page.getByLabel('Preview against', { exact: true });
+    await picker.waitFor();
+    // This fixture has no contactable saved pairing. Research and guesses must
+    // not be invented simply to populate the picker.
+    await page.getByText('No active saved subcontractor associations on open bids are available. Use sample values; Sources Sought is market research.', { exact: true }).waitFor();
+    assert.equal(await picker.locator('option').count(), 1);
+    assert.equal(await picker.inputValue(), '');
+    assert.equal(await page.getByText(/firm whose trades match/).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Preview email', exact: true }).first().click();
+    assert.equal(await picker.inputValue(), '');
+  });
   await check(`/opportunity/${ids.research}`, 'sources-sought-research-history', async () => {
     await page.getByRole('heading', { name: 'Historical Sources Sought audit', exact: true }).waitFor();
     assert(await page.getByRole('heading', { name: 'Notice summary', exact: true }).isVisible());
@@ -61,6 +222,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();
     assert(await page.getByText('Friday works.', { exact: true }).isVisible());
+    const recordedTimes = await page.locator('article time').allTextContents();
+    assert(recordedTimes.length > 0 && recordedTimes.every(text => text.startsWith('Recorded: ') && text.endsWith(' UTC')), 'All message times must identify the same recorded UTC clock');
     const earlier = page.getByText('Earlier messages (1)', { exact: true });
     assert.equal(await earlier.evaluate(node => node.parentElement.open), false);
     await earlier.click();

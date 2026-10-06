@@ -838,6 +838,28 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
 > {
   const opp = input.opportunity!;
   const ns = deriveStep(opp.stepInput);
+  if (ns.closedLabel) {
+    return {
+      headline: ns.title,
+      situation: ns.why,
+      stageLabel: ns.closedLabel,
+      completed: [],
+      needsAttention: [],
+      brostHandling: [],
+      whatHappensNext: ns.after ?? null,
+      steps: [{
+        id: "closed-record-navigation", title: ns.cta,
+        why: "This record remains available as saved history.",
+        cta: ns.cta, href: ns.href ?? "/pipeline", tone: "info",
+        owner: "you", kind: "link", source: "page",
+      }],
+      // The idle view promises automatic work; a closed record offers navigation only.
+      idle: false,
+      scoreExplain: opp.scoreExplain ?? null,
+      badgeCount: 0,
+      opportunityId: opp.id,
+    };
+  }
   // Same preference the banner reads, so the guide never walks the operator to
   // a call step the account has turned off.
   const journey = journeySteps(opp.stage, {

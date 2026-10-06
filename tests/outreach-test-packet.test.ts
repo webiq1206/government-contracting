@@ -27,10 +27,40 @@ describe("controlled test packet", () => {
     expect(m.gather).not.toHaveBeenCalled();
   });
   it("holds the copy when actual bid links cannot be verified", async () => {
-    m.one.mockResolvedValue({ id: "record" });
+    m.one.mockResolvedValueOnce({ id: "opp", status: "open", is_sources_sought: false })
+      .mockResolvedValueOnce({ id: "sub" }).mockResolvedValueOnce({ trade: "HVAC" });
     m.profile.mockResolvedValue({});
     m.gather.mockResolvedValue({ files: [], expected: 1, links: [{ name: "Scope.pdf", url: "https://example.com/scope.pdf", reachable: false }], undelivered: [] });
     await expect(buildOutreachTest("org", template, pair)).rejects.toThrow("actual bid package is not sendable");
     expect(m.gather).toHaveBeenCalledWith("org", expect.anything(), "HVAC");
   });
+});
+
+it("does not claim sample delivery includes the default template's bid documents", async () => {
+  const result = await buildOutreachTest("org", {
+    subject: "Pricing request",
+    body: "Please review the complete scope, requirements, and attached bid documents. If your team can perform the complete trade scope, reply with your price.",
+  });
+  expect(result.text).not.toContain("and attached bid documents");
+  expect(result.html).not.toContain("and attached bid documents");
+  expect(result.text).toContain("sample scope and requirements");
+  expect(result.attachments).toEqual([]);
+  expect(m.gather).not.toHaveBeenCalled();
+});
+
+it.each([
+  [{ id: "opp", status: "open", is_sources_sought: true }, "Sources Sought"],
+  [{ id: "opp", status: "archived", is_sources_sought: false }, "closed record"],
+])("refuses research or closed records before document gathering", async (opp, message) => {
+  m.one.mockResolvedValueOnce(opp).mockResolvedValueOnce({ id: "sub" });
+  await expect(buildOutreachTest("org", template, pair)).rejects.toThrow(message);
+  expect(m.gather).not.toHaveBeenCalled();
+  expect(m.profile).not.toHaveBeenCalled();
+});
+it("refuses a guessed or removed bid/subcontractor/trade pairing before gathering", async () => {
+  m.one.mockResolvedValueOnce({ id: "opp", status: "open" })
+    .mockResolvedValueOnce({ id: "sub" }).mockResolvedValueOnce(null);
+  await expect(buildOutreachTest("org", template, pair)).rejects.toThrow("no active saved association");
+  expect(m.gather).not.toHaveBeenCalled();
+  expect(m.profile).not.toHaveBeenCalled();
 });

@@ -256,3 +256,13 @@ describe("guided plan", () => {
     expect(checklist.blockers?.[1].what).toMatch(/1 required item only you can supply/);
   });
 });
+
+describe("closed status with a saved active stage", () => {
+  it.each(["archived", "closed"])("does not offer actions or an active step for %s", (status) => {
+    const plan = buildGuidedPlan(input({ status, stage: "call_queue", pendingCalls: 2, hasBid: true, needsSignature: 1, missingInfo: [{what: "Missing source"}] }));
+    expect(plan.closed?.label).toBe(status === "archived" ? "Archived" : "Closed");
+    expect(plan.active).toBeUndefined();
+    expect(plan.steps.some(step => step.action)).toBe(false);
+    expect(plan.closed?.note).not.toMatch(/expired|deadline passed|automatically/i);
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/lib/domain/funnel";
 
 /**
- * Analytics on a phone.
+ * Focused report views on every screen size.
  *
  * The desktop page is a column of eight sections, most of them tables. That is
  * the right shape on a wide screen, where the eye can skip; on 390 pixels it is
@@ -19,10 +19,9 @@ import {
  * horizontal scroll of their own, and the figure somebody opened the page for
  * is somewhere in the middle of it.
  *
- * So on a phone: the numbers first, then one section at a time behind a
- * picker, and the two filters behind a button rather than eating the top of
- * the viewport. Nothing is removed, and desktop is untouched: every section
- * still renders, and the CSS simply stops hiding them above the breakpoint.
+ * Overview first, then the existing pipeline, win and revenue evidence in
+ * separate views. No metric or filter definition changes. The two filters
+ * still sit behind a sheet on phones rather than consuming the viewport.
  *
  * State is local rather than in the URL on purpose. Which section a phone is
  * looking at is not worth a navigation, and putting it in the URL would make
@@ -47,15 +46,15 @@ export function AnalyticsMobileNav({
   return (
     <SectionCtx.Provider value={selected}>
       <div
-        className="scroll-thin -mx-5 flex gap-1.5 overflow-x-auto px-5 pb-1 lg:hidden"
-        role="tablist"
-        aria-label="Analytics section"
+        className="flex flex-wrap gap-2 border-b border-border pb-3"
+        role="group"
+        aria-label="Report view"
       >
         {sections.map((s) => (
           <button
             key={s.id}
-            role="tab"
-            aria-selected={s.id === selected}
+            type="button"
+            aria-pressed={s.id === selected}
             onClick={() => setSelected(s.id)}
             className={`tap shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${
               s.id === selected
@@ -73,23 +72,24 @@ export function AnalyticsMobileNav({
 }
 
 /**
- * One section of the page: always on desktop, only when picked on a phone.
+ * One group of existing metrics, visible in its selected report view.
  *
- * `hidden lg:block` rather than two copies of the markup. Rendering the page
- * twice would double every query result in the DOM and give every heading and
- * form control a duplicate id, which is a real accessibility failure and not
- * a theoretical one.
+ * Each metric renders once. Headline cards can belong to Overview as well as
+ * their focused view without duplicating values or form-control identities.
  */
 export function AnalyticsSection({
   id,
   children,
+  display = "block",
 }: {
-  id: string;
+  id: string | string[];
   children: React.ReactNode;
+  display?: "block" | "contents";
 }) {
   const selected = useContext(SectionCtx);
+  const active = typeof id === "string" ? selected === id : id.includes(selected);
   return (
-    <div className={selected === id ? "block" : "hidden lg:block"}>{children}</div>
+    <div hidden={!active} className={active ? display === "contents" ? "contents" : "block space-y-6" : undefined}>{children}</div>
   );
 }
 
@@ -112,13 +112,37 @@ export function AnalyticsFilterSheet({
   const [open, setOpen] = useState(false);
   const [nextRange, setNextRange] = useState<RangeKey>(range);
   const [nextBy, setNextBy] = useState<BreakdownKey>(by);
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  // The same native-modal lifecycle used by the shared detail/confirmation
+  // dialogs: browser focus containment and inert background, restored on exit.
+  useEffect(() => {
+    if (!open || !dialog.current) return;
+    const element = dialog.current;
+    const opener = trigger.current;
+    const overflow = document.body.style.overflow;
+    element.showModal();
+    document.body.style.overflow = "hidden";
+    close.current?.focus({ preventScroll: true });
+    return () => {
+      element.close();
+      document.body.style.overflow = overflow;
+      opener?.focus({ preventScroll: true });
+    };
+  }, [open]);
 
   const rangeLabel = RANGE_OPTIONS.find((o) => o.key === range)?.label ?? "";
   const byLabel = BREAKDOWN_OPTIONS.find((o) => o.key === by)?.label ?? "";
 
-  if (!open) {
-    return (
+  const triggerButton = (
       <button
+        ref={trigger}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
         className="btn-ghost w-full text-sm lg:hidden"
         onClick={() => {
           setNextRange(range);
@@ -134,7 +158,6 @@ export function AnalyticsFilterSheet({
         {comparison ? ` · vs ${comparison}` : ""}
       </button>
     );
-  }
 
   /*
    * A real anchor rather than a scripted navigation, so middle-click,
@@ -156,22 +179,34 @@ export function AnalyticsFilterSheet({
    * portals its sheet.
    */
   const body = typeof document === "undefined" ? null : document.body;
-  if (!body) return null;
+  if (!open || !body) return triggerButton;
 
-  return createPortal(
-    <div
-      role="dialog"
+  return <>{triggerButton}{createPortal(
+    <dialog
+      ref={dialog}
+      id={id}
       aria-modal="true"
       aria-label="Filter analytics"
-      className="fixed inset-0 z-[85] flex flex-col bg-background p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] lg:hidden"
+      onCancel={(event) => { event.preventDefault(); setOpen(false); }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") { event.preventDefault(); setOpen(false); return; }
+        if (event.key !== "Tab") return;
+        const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex="0"]'
+        )).filter(control => control.getClientRects().length > 0);
+        const first = controls[0], last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}
+      className="fixed inset-0 m-0 flex h-dvh max-h-dvh w-full max-w-none flex-col border-0 bg-background p-5 text-foreground pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold text-foreground">Filter</h2>
-        <button className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+        <button ref={close} type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
           Close
         </button>
       </div>
-      <div className="scroll-thin mt-4 flex-1 space-y-5 overflow-y-auto">
+      <div className="scroll-thin mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain">
         <fieldset>
           <legend className="label mb-2">Period</legend>
           <div className="flex flex-wrap gap-1.5">
@@ -218,7 +253,7 @@ export function AnalyticsFilterSheet({
       >
         Show these
       </Link>
-    </div>,
+    </dialog>,
     body
-  );
+  )}</>;
 }

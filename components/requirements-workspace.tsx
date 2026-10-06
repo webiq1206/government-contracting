@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ContextSection,
@@ -110,7 +110,8 @@ export function RequirementsWorkspace({
    * time they select a requirement with no anchor would take the document away
    * from somebody in the middle of reading it.
    */
-  const [docId, setDocId] = useState<string | null>(documents[0]?.id ?? null);
+  const [manualDoc, setManualDoc] = useState<{ requirementKey: string; id: string } | null>(null);
+  const lastDocument = useRef<string | null>(null);
   /**
    * Whether the reader has actually chosen a requirement, as opposed to the
    * pane having opened on the first one for a wide screen.
@@ -152,19 +153,21 @@ export function RequirementsWorkspace({
   const selected =
     shown.find((r) => r.id === selectedId) ?? shown[0] ?? null;
   const index = selected ? shown.findIndex((r) => r.id === selected.id) : -1;
+  const requirementKey = `${selected?.id ?? ""}|${selected?.sourceDocumentId ?? ""}|${selected?.sourcePage ?? ""}`;
+  const sourceDoc = documents.find((d) => d.id === selected?.sourceDocumentId);
+  const manualDocument = documents.find((d) => d.id === manualDoc?.id);
+  const browsing = manualDoc?.requirementKey === requirementKey && Boolean(manualDocument);
+  const retainedDocument = manualDocument ?? documents.find((d) => d.id === lastDocument.current) ?? documents[0];
+  const docId = browsing ? manualDocument!.id : sourceDoc?.id ?? retainedDocument?.id ?? null;
+  useEffect(() => { if (docId) lastDocument.current = docId; }, [docId]);
 
   function select(id: string) {
     setSelectedId(id);
     setOpened(true);
-    const r = requirements.find((x) => x.id === id);
-    /*
-     * Follow the requirement to its source, when it has one. This is the whole
-     * point of the screen: the anchor turns "stated in Section L.3" into the
-     * page it was read from.
-     */
-    if (r?.sourceDocumentId && documents.some((d) => d.id === r.sourceDocumentId)) {
-      setDocId(r.sourceDocumentId);
-    }
+    // Source selection is derived from the effective filtered requirement,
+    // so it also works on initial load and when a filter changes the row.
+    const target = requirements.find((r) => r.id === id)?.sourceDocumentId;
+    if (target && documents.some((d) => d.id === target)) setManualDoc(null);
   }
 
   function move(delta: number) {
@@ -192,6 +195,10 @@ export function RequirementsWorkspace({
   });
 
   const doc = documents.find((d) => d.id === docId) ?? null;
+  const sourcePage = !browsing && doc?.preview === "pdf" && doc.id === sourceDoc?.id
+    && Number.isInteger(selected?.sourcePage) && (selected?.sourcePage ?? 0) > 0
+    && (doc.pageCount == null || selected!.sourcePage! <= doc.pageCount)
+    ? selected!.sourcePage : null;
 
   return (
     <div
@@ -241,7 +248,7 @@ export function RequirementsWorkspace({
                     <button
                       key={f}
                       type="button"
-                      onClick={() => setFilter(f)}
+                      onClick={() => { setFilter(f); setManualDoc(null); }}
                       aria-pressed={f === filter}
                       className={`inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5 ${
                         f === filter
@@ -324,7 +331,7 @@ export function RequirementsWorkspace({
                     documents.some((d) => d.id === selected.sourceDocumentId) && (
                       <button
                         type="button"
-                        onClick={() => setDocId(selected.sourceDocumentId!)}
+                        onClick={() => setManualDoc(null)}
                         className="btn-ghost text-sm"
                       >
                         Show where it says so
@@ -456,7 +463,7 @@ export function RequirementsWorkspace({
                     id="req-doc"
                     className="input w-full text-sm"
                     value={docId ?? ""}
-                    onChange={(e) => setDocId(e.target.value)}
+                    onChange={(e) => setManualDoc({ requirementKey, id: e.target.value })}
                   >
                     {documents.map((d) => (
                       <option key={d.id} value={d.id}>
@@ -467,6 +474,10 @@ export function RequirementsWorkspace({
                       </option>
                     ))}
                   </select>
+                  {selected && !sourceDoc && <p className="mt-2 text-xs text-muted-foreground">
+                    No stored source document is linked here. The file shown is
+                    browsing context, not evidence for this requirement.
+                  </p>}
                 </div>
 
                 {doc == null || doc.preview === "none" ? (
@@ -485,7 +496,7 @@ export function RequirementsWorkspace({
                       />
                     ) : (
                       <iframe
-                        src={`/api/documents/${doc.id}/open`}
+                        src={`/api/documents/${doc.id}/open${sourcePage ? `?page=${sourcePage}` : ""}`}
                         title={`${doc.name}, as it arrived`}
                         className="h-[60vh] w-full rounded-md border border-border xl:h-[calc(100vh-16rem)]"
                       />

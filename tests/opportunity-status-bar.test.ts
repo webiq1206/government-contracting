@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { OpportunityStatusBar } from "../components/opportunity-status-bar";
+import { buildGuidedPlan } from "../lib/domain/guided-plan";
+import { deriveStep, stageLabel } from "../lib/domain/journey";
 
 /**
  * The bar that stays on screen.
@@ -14,6 +19,7 @@ import { readFileSync } from "node:fs";
  */
 
 const BAR = readFileSync("components/opportunity-status-bar.tsx", "utf8");
+const PREVIEW = readFileSync("app/api/opportunities/[id]/preview/route.ts", "utf8");
 const PAGE = readFileSync("app/(dash)/opportunity/[id]/page.tsx", "utf8");
 
 describe("what it carries", () => {
@@ -44,6 +50,62 @@ describe("what it carries", () => {
 });
 
 describe("what it refuses to claim", () => {
+  it("uses the resolved closed label instead of an archived record's last active stage", () => {
+    // Source wiring matters: the standalone bar renders the label it receives.
+    expect(PAGE).toContain("stageLabel={plan.closed?.label ?? stageLabel(opp.stage)}");
+    expect(PREVIEW).toContain("status: opp.status");
+    expect(PREVIEW).toContain("stageLabel: step.closedLabel ?? stageLabel(opp.stage)");
+    const record = { stage: "call_queue", status: "archived", riskFlags: ["expired"] };
+    const expired = record.status === "archived" && record.riskFlags.includes("expired");
+    const shared = {
+      stage: record.stage,
+      tier: "pursue",
+      humanActionRequired: false,
+      pastPerfBlocked: false,
+      expired,
+      hasBid: false,
+      bidSubmitted: false,
+      outcome: null,
+      callsEnabled: true,
+      outreachDraftOnly: false,
+    };
+    const plan = buildGuidedPlan({
+      ...shared,
+      score: null,
+      hasAnalysis: true,
+      missingInfo: [],
+      coverage: { trades: [] },
+      quotesEntered: 0,
+      pendingCalls: 0,
+      bidAmount: null,
+      packageReady: null,
+      packageBlockers: [],
+      needsSignature: 0,
+      needsProvide: 0,
+    });
+    const step = deriveStep({ ...shared, quoteCount: 0, requiredTradeCount: 0 });
+    const html = renderToStaticMarkup(createElement(OpportunityStatusBar, {
+      stageLabel: plan.closed?.label ?? stageLabel(record.stage),
+      deadline: null,
+      score: null,
+      scoreBreakdown: null,
+      owner: null,
+      readinessPercent: null,
+      packageReady: null,
+      uncoveredTrades: 0,
+      riskFlags: record.riskFlags,
+      nextAction: null,
+    }));
+    expect(plan.closed?.label).toBe("Expired");
+    expect(plan.active).toBeUndefined();
+    expect(step.title).toBe("Nothing, this one expired");
+    expect(step.href).toBe("/pipeline");
+    expect(html).toContain(">Expired</span>");
+    expect(html).not.toContain("Calls to make");
+    expect(html).not.toContain("/call-queue");
+    expect(record.stage).toBe("call_queue");
+  });
+
   it("does not print a dash for a deadline the notice never stated", () => {
     expect(BAR).toContain("No deadline in the notice");
   });

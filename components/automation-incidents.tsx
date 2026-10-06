@@ -245,8 +245,8 @@ export function AutomationBlockerBanner({ health }: { health: AutomationHealth }
         <p className="font-display text-sm font-semibold text-risk">{health.headline}</p>
         <details className="min-w-0 flex-1 text-sm text-foreground"><summary className="cursor-pointer text-muted-foreground">What this affects</summary><p className="mt-2">{health.detail}</p></details>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-        {worst && <p className="min-w-0 flex-1 text-foreground">{worst.spec.repair}</p>}
+      <div className="mt-2 flex flex-col items-start gap-3 text-sm sm:flex-row sm:items-center">
+        {worst && <p className="min-w-0 w-full text-foreground sm:flex-1">{worst.spec.repair}</p>}
         <Link href={worst?.spec.repairHref ?? "/agents"} className="btn-ghost min-h-11 shrink-0 text-xs">
           {worst?.cause === "spending_limit" ? "Review spending limits" : worst?.spec.repairHref ? "Resolve this issue" : "Open Automation Health"}
         </Link>

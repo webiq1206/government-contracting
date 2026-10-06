@@ -8,6 +8,8 @@ export function FocusedToday({ items, overdue, dueToday, completed, activity, in
   activity: string[]; incomplete?: boolean; setupRemaining?: number;
 }) {
   const [next, ...upcoming] = focusTasks(items);
+  // Native fragment navigation reliably emits hashchange for TodayDetails.
+  const ActionLink = !next && !incomplete && setupRemaining > 0 ? "a" : Link;
   return <section aria-label="Your day at a glance" className="focused-today space-y-7">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">{incomplete ? "Some information needs a refresh." : "One thing at a time. Start here."}</p>
@@ -19,7 +21,7 @@ export function FocusedToday({ items, overdue, dueToday, completed, activity, in
       {next?.context && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{next.context}</p>}
       {next && <div className="mt-3"><DeadlineBadge deadline={next.due ?? null} /></div>}
       {next?.blocker || next?.reason ? <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{next.blocker || next.reason}</p> : null}
-      <Link href={next?.href ?? (incomplete ? "/today" : setupRemaining ? "/setup" : "/pipeline")} className="btn-primary mt-5">{next ? next.actionLabel || "Open task" : incomplete ? "Refresh Today" : setupRemaining ? "Continue setup" : "View opportunities"}</Link>
+      <ActionLink href={next?.href ?? (incomplete ? "/today" : setupRemaining ? "/today#setup-checklist" : "/pipeline")} className="btn-primary mt-5">{next ? next.actionLabel || "Open task" : incomplete ? "Refresh Today" : setupRemaining ? "Continue setup" : "View opportunities"}</ActionLink>
     </article>
     <div className="grid gap-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)]">
       <section aria-labelledby="up-next-title">

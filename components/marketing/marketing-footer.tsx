@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
+import { AnalyticsPreferencesButton } from "@/components/marketing/clarity-analytics";
 
 export function MarketingFooter({
   loginHref = "/login",
@@ -71,6 +72,7 @@ export function MarketingFooter({
           <p>© {new Date().getFullYear()} BROSTCO HOLDINGS LLC.</p>
           <Link href={loginHref}>Log in</Link>
           <Link href="/signup">Start free trial</Link>
+          <AnalyticsPreferencesButton inheritColor />
         </div>
       </div>
     </footer>

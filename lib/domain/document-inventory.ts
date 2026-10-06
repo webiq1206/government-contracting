@@ -228,7 +228,10 @@ export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCover
   const count = (set: readonly InventoryRow[], fn: (r: InventoryRow) => boolean) =>
     set.filter(fn).length;
   const active = rows.filter((r) => !r.supersededBy && r.disposition !== "excluded");
-  const read = count(active, (r) => extractionIsComplete(r.extractionState));
+  // A no-text disposition can be accounted for without proving it was read.
+  // The summary's "read in full" count must match that exact row label.
+  const read = count(active, (r) => r.extractionState === "extracted");
+  const noText = count(active, (r) => r.extractionState === "not_applicable");
   const partial = count(active, (r) => r.extractionState === "partial");
   const notRead = count(active, (r) => r.extractionState === "not_read");
   const unreadable = count(active, (r) => r.extractionState === "unreadable");
@@ -260,13 +263,15 @@ export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCover
   if (unreasonedExclusions > 0) problems.push(`${unreasonedExclusions} excluded with no reason given`);
   const pending = count(active, (r) => r.extractionState === "pending");
   if (pending > 0) problems.push(`${pending} not processed yet`);
+  const details = [...problems];
+  if (noText > 0) details.push(`${noText} marked as having no text`);
 
   const summary =
     rows.length === 0
       ? "No source documents on this opportunity."
-      : problems.length === 0
+      : details.length === 0
         ? `All ${rows.length} document(s) accounted for.`
-        : `${read} of ${rows.length} document(s) read in full; ${problems.join(", ")}.`;
+        : `${read} of ${rows.length} document(s) read in full; ${details.join(", ")}.`;
 
   return { total: rows.length, read, partial, notRead, unreadable, excluded, blocked, complete, summary };
 }

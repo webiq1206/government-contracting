@@ -68,6 +68,8 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   const step = deriveStep({
     opportunityId: opp.id,
     stage: opp.stage,
+    status: opp.status,
+    expired: opp.status === "archived" && (opp.risk_flags ?? []).includes("expired"),
     tier: opp.tier,
     humanActionRequired: opp.human_action_required,
     quoteCount: quotes.length,
@@ -87,7 +89,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     title: opp.title,
     agency: [opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || null,
     solicitationNumber: opp.solicitation_number,
-    stageLabel: stageLabel(opp.stage),
+    stageLabel: step.closedLabel ?? stageLabel(opp.stage),
     score: opp.score,
     tier: opp.tier,
     deadline: opp.deadline,

@@ -130,7 +130,35 @@ describe("inventory coverage", () => {
   it("is complete only when every file is accounted for", () => {
     const cov = inventoryCoverage([row({}), row({ id: "d2", extractionState: "not_applicable" })]);
     expect(cov.complete).toBe(true);
-    expect(cov.summary).toBe("All 2 document(s) accounted for.");
+    expect(cov.read).toBe(1);
+    expect(cov.summary).toBe("1 of 2 document(s) read in full; 1 marked as having no text.");
+  });
+
+  it("reconciles eleven fully read files, one partial file and one no-text record", () => {
+    const noText = describeDocument(toDocumentRecord({
+      id: "no-text",
+      name: "Synthetic_Pricing_Schedule.docx",
+      document_class: "pricing_schedule",
+      extraction_state: "not_applicable",
+      page_count: null,
+      disposition: "delivered",
+    }));
+    const rows = [
+      ...Array.from({ length: 11 }, (_, i) => row({ id: `read-${i}` })),
+      row({ id: "partial", extractionState: "partial" }),
+      noText,
+    ];
+    const cov = inventoryCoverage(rows);
+    expect(cov.total).toBe(13);
+    expect(cov.read).toBe(11);
+    expect(cov.partial).toBe(1);
+    expect(cov.complete).toBe(false);
+    expect(cov.summary).toBe(
+      "11 of 13 document(s) read in full; 1 only partly read, 1 marked as having no text."
+    );
+    expect(rows.at(-1)?.extractionState).toBe("not_applicable");
+    expect(noText.extractionLabel).toBe("No text to read");
+    expect(noText.pageCount).toBeNull();
   });
 
   it("is not complete when one document was stored but never read", () => {

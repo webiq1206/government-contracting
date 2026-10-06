@@ -18,14 +18,16 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
   const step = deriveStep({ ...input, opportunityId });
   const hasLink = Boolean(step.cta && (step.href || step.anchor));
   const linkClass = `${step.decision ? "btn-ghost" : "btn-primary"} text-xs`;
-  const waitingBadge =
-    step.waitingOn === "you"
+  const waitingBadge = step.closedLabel
+    ? "bg-muted text-muted-foreground"
+    : step.waitingOn === "you"
       ? "bg-pursue/10 text-pursue"
       : step.waitingOn === "system"
         ? "bg-gold/15 text-foreground"
         : "bg-muted text-muted-foreground";
-  const waitingText =
-    step.waitingOn === "you"
+  const waitingText = step.closedLabel
+    ? "Closed record"
+    : step.waitingOn === "you"
       ? "Action required"
       : `Waiting on ${PARTY_LABEL[step.waitingOn]}`;
 

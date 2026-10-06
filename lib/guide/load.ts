@@ -251,6 +251,7 @@ export async function loadGuideBundle(
         deadline: opp.deadline,
         stepInput: {
           stage: opp.stage,
+          status: opp.status,
           tier: opp.tier,
           humanActionRequired: opp.human_action_required,
           quoteCount: readiness.tradesWithQuotes,

@@ -38,6 +38,7 @@ import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
 import { needsMatching } from "@/lib/needs-matching";
 import { query } from "@/lib/db";
 import { ShellDataWarning } from "@/components/shell-data-warning";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 
 export const dynamic = "force-dynamic";
 
@@ -58,17 +59,6 @@ function href(
   if (page > 1) p.set("page", String(page));
   const s = p.toString();
   return s ? `/communications?${s}` : "/communications";
-}
-
-function when(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const ageDays = (Date.now() - d.getTime()) / 86_400_000;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(ageDays < 1 ? { hour: "numeric", minute: "2-digit" } : {}),
-  });
 }
 
 function stateChipClass(state: ConversationSummary["state"]): string {
@@ -471,6 +461,7 @@ export default async function CommunicationsPage(
             <ul>
               {shown.map((c) => {
                 const active = c.threadKey === selectedKey;
+                const recorded = communicationTimestamp(c.lastAt);
                 return (
                   <li key={c.threadKey}>
                     <a
@@ -480,7 +471,7 @@ export default async function CommunicationsPage(
                         active ? "bg-gold/10" : ""
                       }`}
                     >
-                      <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <span
                           className={`truncate text-sm ${
                             c.unreadCount > 0 ? "font-semibold text-foreground" : "text-foreground"
@@ -488,7 +479,7 @@ export default async function CommunicationsPage(
                         >
                           {c.subcontractorName}
                         </span>
-                        <span className="shrink-0 text-[11px] text-slate-500">{when(c.lastAt)}</span>
+                        <time dateTime={recorded.dateTime} title="Latest stored record" className="shrink-0 text-[11px] text-slate-500">{recorded.label}</time>
                       </div>
                       <div className="mt-0.5 flex items-center gap-2">
                         <span className="truncate text-xs text-slate-600">{c.subject}</span>

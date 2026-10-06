@@ -25,7 +25,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
   const pct = Math.round((checklist.done / checklist.total) * 100);
 
   return (
-    <div className="rounded-md border border-accent/40 bg-accent-soft p-5">
+    <div id="setup-checklist" className="rounded-md border border-accent/40 bg-accent-soft p-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="eyebrow text-accent-strong">Finish setting up</p>

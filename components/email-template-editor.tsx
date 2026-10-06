@@ -548,12 +548,11 @@ export function EmailTemplateEditor({
     attachedNames: string[];
   };
   const [pairings, setPairings] = useState<Pairing[]>([]);
-  /** True when no outreach exists yet and these pairs were matched by trade. */
-  const [pairsAreHypothetical, setPairsAreHypothetical] = useState(false);
   const [pairKey, setPairKey] = useState("");
   const [realCtx, setRealCtx] = useState<RealContext | null>(null);
   const [ctxBusy, setCtxBusy] = useState(false);
   const [ctxError, setCtxError] = useState<string | null>(null);
+  const contextRequest = useRef(0);
 
   async function loadPairings() {
     if (pairings.length) return;
@@ -561,17 +560,18 @@ export function EmailTemplateEditor({
       const res = await fetch("/api/templates/preview-context?list=1");
       const data = (await res.json()) as { pairings?: Pairing[]; synthesized?: boolean };
       setPairings(data.pairings ?? []);
-      setPairsAreHypothetical(Boolean(data.synthesized));
     } catch {
       // A preview that cannot list real work still previews with samples.
     }
   }
 
   async function loadRealContext(key: string) {
+    const request = ++contextRequest.current;
     setPairKey(key);
+    setRealCtx(null);
     setCtxError(null);
     if (!key) {
-      setRealCtx(null);
+      setCtxBusy(false);
       return;
     }
     const [opportunityId, subcontractorId, trade] = key.split("|");
@@ -580,9 +580,10 @@ export function EmailTemplateEditor({
       const res = await fetch(
         `/api/templates/preview-context?opportunityId=${encodeURIComponent(opportunityId)}` +
           `&subcontractorId=${encodeURIComponent(subcontractorId)}` +
-          (trade ? `&trade=${encodeURIComponent(trade)}` : "")
+          `&trade=${encodeURIComponent(trade ?? "")}`
       );
       const data = (await res.json()) as RealContext & { error?: string };
+      if (request !== contextRequest.current) return;
       if (!res.ok) {
         setCtxError(data.error ?? "Could not load that record.");
         setRealCtx(null);
@@ -590,13 +591,16 @@ export function EmailTemplateEditor({
       }
       setRealCtx(data);
     } catch (e) {
-      setCtxError((e as Error).message);
-      setRealCtx(null);
+      if (request === contextRequest.current) {
+        setCtxError((e as Error).message);
+        setRealCtx(null);
+      }
     } finally {
-      setCtxBusy(false);
+      if (request === contextRequest.current) setCtxBusy(false);
     }
   }
   const [testBusy, setTestBusy] = useState(false);
+  const testInFlight = useRef(false);
   const [testRecipient, setTestRecipient] = useState("");
   const [testResult, setTestResult] = useState<{ ok: boolean; email?: string; messageId?: string; error?: string } | null>(null);
 
@@ -705,8 +709,11 @@ export function EmailTemplateEditor({
   // -------------------------------------------------------------------------
 
   async function sendTestEmail() {
+    if (testInFlight.current) return;
+    testInFlight.current = true;
     setTestResult(null);
     setTestBusy(true);
+    const uncertain = "Delivery is unconfirmed. Check Gmail Sent and the test inbox before sending another test.";
     try {
       const [opportunityId, subcontractorId, trade = ""] = pairKey.split("|");
       const res = await fetch(`/api/templates/${template.slug}`, {
@@ -724,13 +731,17 @@ export function EmailTemplateEditor({
         error?: string;
       };
       if (!res.ok) {
-        setTestResult({ ok: false, error: data.error ?? "Send failed" });
+        setTestResult({ ok: false, error: data.error ?? uncertain });
+      } else if (data.ok !== true || typeof data.messageId !== "string" || !data.messageId.trim()
+        || typeof data.sentTo !== "string" || !data.sentTo.trim()) {
+        setTestResult({ ok: false, error: uncertain });
       } else {
         setTestResult({ ok: true, email: data.sentTo, messageId: data.messageId });
       }
-    } catch (e) {
-      setTestResult({ ok: false, error: (e as Error).message });
+    } catch {
+      setTestResult({ ok: false, error: uncertain });
     } finally {
+      testInFlight.current = false;
       setTestBusy(false);
     }
   }
@@ -1323,6 +1334,7 @@ export function EmailTemplateEditor({
                   id={`preview-pair-${template.slug}`}
                   className="input h-9 w-full max-w-md text-xs"
                   value={pairKey}
+                  disabled={testBusy}
                   onChange={(e) => void loadRealContext(e.target.value)}
                 >
                   <option value="">Sample values</option>
@@ -1340,18 +1352,17 @@ export function EmailTemplateEditor({
                 {ctxBusy && (
                   <p className="mt-1 text-xs text-muted-foreground">Loading that record...</p>
                 )}
-                {pairsAreHypothetical && pairings.length > 0 && (
+                {pairings.length > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    No subcontractor has been approached on a live job yet, so these
-                    pair each open opportunity with a firm whose trades match. The
-                    values are real, and so are the gaps.
+                    These are saved bid and subcontractor associations. Review the
+                    scope before sending; an association does not verify trade fit.
                   </p>
                 )}
                 {ctxError && <p className="mt-1 text-xs text-risk">{ctxError}</p>}
                 {!ctxBusy && !ctxError && pairings.length === 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    No open opportunities with contactable subcontractors yet, so
-                    only sample values are available.
+                    No active saved subcontractor associations on open bids are
+                    available. Use sample values; Sources Sought is market research.
                   </p>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { usePathname } from "next/navigation";
 import { PendingLink as Link } from "@/components/pending-link";
 import { SETTINGS_DESTINATIONS, navigationMatches } from "@/lib/navigation";
+import { AnalyticsPreferencesButton } from "@/components/marketing/clarity-analytics";
 
 export function SettingsNav() {
   const path = usePathname();
@@ -50,6 +51,7 @@ export function SettingsNav() {
         ))}
       </nav>
       </div>
+      <div className="flex justify-end"><AnalyticsPreferencesButton /></div>
     </div>
   );
 }

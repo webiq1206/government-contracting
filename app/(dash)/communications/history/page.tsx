@@ -5,6 +5,7 @@ import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import { communicationsLedger, LEDGER_FILTERS, type LedgerOptions } from "@/lib/communications-ledger";
 import { EmailMessage } from "@/components/email-message";
 import { MESSAGE_STATE_LABEL, MESSAGE_STATE_MEANING } from "@/lib/domain/message-state";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,9 @@ export default async function CommunicationsHistory({ searchParams }: {
         {(opts.sub || opts.project || opts.thread) && <Link href="/communications/history" className="btn-ghost">View all account history</Link>}
       </form>
       {rows.length === 0 && <p className="card">No stored records match these filters.</p>}
-      <div className="space-y-6">{rows.map(row => <section key={row.id} className="space-y-2">
+      <div className="space-y-6">{rows.map(row => {
+        const recorded = communicationTimestamp(row.created_at);
+        return <section key={row.id} className="space-y-2">
         <div className="flex flex-wrap gap-3 text-sm">
           {row.subcontractor_id && <Link className="text-accent" href={`/subs/${row.subcontractor_id}`}>{row.company_name ?? "Contact record"}</Link>}
           {row.opportunity_id && <Link className="text-accent" href={`/opportunity/${row.opportunity_id}`}>{row.opportunity_title ?? "Project record"}</Link>}
@@ -62,10 +65,11 @@ export default async function CommunicationsHistory({ searchParams }: {
           {row.gmail_message_id && <span className="text-xs text-muted-foreground">Mail service message ID recorded; this alone does not confirm delivery</span>}
         </EmailMessage> : <article className="card space-y-2">
           <p className="text-sm font-medium">{row.channel} · {row.subject ?? "Saved record"}</p>
-          <time className="text-xs text-muted-foreground" dateTime={row.created_at}>{new Date(row.created_at).toLocaleString()}</time>
+          <time className="text-xs text-muted-foreground" dateTime={recorded.dateTime}>Recorded: {recorded.label}</time>
           <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">{row.body ?? "No content recorded."}</p>
         </article>}
-      </section>)}</div>
+      </section>;
+      })}</div>
       <nav className="flex justify-between pb-6" aria-label="Ledger pages">
         {opts.before ? <Link className="btn-ghost" href={href({ before: undefined })}>Newest records</Link> : <span />}
         {next && <Link className="btn-ghost" href={href({ before: next })}>Older records</Link>}
