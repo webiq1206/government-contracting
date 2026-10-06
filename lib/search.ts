@@ -104,7 +104,7 @@ export async function searchEverything(
       kind: "opportunity" as const,
       title: o.title ?? "Untitled opportunity",
       subtitle: [
-        o.is_sources_sought ? "Sources Sought — market research, not a bid opportunity" : null,
+      o.is_sources_sought ? "Sources Sought: market research, not a bid opportunity" : null,
         o.agency,
         o.solicitation_number,
         o.status === "archived" ? "archived" : o.stage.replace(/_/g, " "),
