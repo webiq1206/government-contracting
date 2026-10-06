@@ -344,7 +344,7 @@ export default async function SubsPage(
             ? "Empty"
             : `${total} on the roster${filtered ? " matching these filters" : ""}`
         }
-        explanation="Firms Brost Co finds, verifies and reuses across bids. Preferred subs are contacted first on new work."
+explanation="Your subcontractor roster, contact evidence and work history. Preferred firms are considered first when eligible."
       />
 
       <ShellDataWarning items={loadWarnings} />
@@ -489,7 +489,7 @@ export default async function SubsPage(
               ) : (
                 <EmptyState
                   title="Your roster is empty"
-                  description="Sub Finder fills this when you pursue an opportunity: it searches for local contractors in each required trade, verifies contact details, and keeps them here for future bids."
+                  description="No firms are recorded in this view. Eligible pursued opportunities can request local subcontractor research. Finding an address does not by itself verify it or send a message."
                   action={
                     <Link href="/pipeline" className="btn-ghost text-sm">
                       Open opportunities

@@ -38,6 +38,7 @@ export function WorkbenchPanel({
   canDecide,
   canOutreach,
   canSubmit,
+  canAnalyze = false,
   position,
 }: {
   item: WorkItem;
@@ -47,6 +48,7 @@ export function WorkbenchPanel({
   canDecide: boolean;
   canOutreach: boolean;
   canSubmit: boolean;
+  canAnalyze?: boolean;
   position: { index: number; total: number };
 }) {
   const pane = paneFor(item);
@@ -91,6 +93,9 @@ export function WorkbenchPanel({
         subtitle={briefSubtitle(opp)}
         brief={briefFor(opp)}
         canDecide={canDecide}
+        canAnalyze={canAnalyze}
+        facts={[{ label: "Agency", value: opp.agency ?? "Not stated" }, { label: "Location", value: opp.location_state ?? "Not stated" }, { label: "Eligible businesses", value: opp.set_aside_type ?? "Not stated" }, { label: "Industry code", value: opp.naics_code ? String(opp.naics_code) : "Not stated" }]}
+        evidence={<div className="space-y-3 text-sm">{opp.score_breakdown?.dimensions?.length ? opp.score_breakdown.dimensions.map(d => <div key={d.key}><p className="font-medium">{d.label}: {d.points} / {d.max_points}</p><p className="text-muted-foreground">{d.reasoning}</p></div>) : <p>No score breakdown was saved. Check the original notice before deciding.</p>}</div>}
         closeHref={doneHref}
         nextHref={nextHref}
         recordHref={item.recordHref}

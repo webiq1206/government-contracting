@@ -455,7 +455,7 @@ export function deliverability(messages: CentreMessage[]): Deliverability {
 
 /** A rate as a percentage, or the reason there is no rate. */
 export function formatRate(rate: number | null): string {
-  if (rate == null) return "Nothing sent yet";
+  if (rate == null) return "No qualifying outbound attempts in this period";
   return `${Math.round(rate * 100)}%`;
 }
 

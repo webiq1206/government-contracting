@@ -32,7 +32,7 @@ export default async function FeedbackPage() {
       <>
         <PageFrame
           title="Feedback and feature requests"
-          explanation="Tell us what is wrong with this product."
+explanation="Report a problem or suggest an improvement."
         />
         <div className="p-5">
           <p className="text-sm text-muted-foreground">
@@ -56,7 +56,7 @@ export default async function FeedbackPage() {
     <>
       <PageFrame
         title="Feedback and feature requests"
-        explanation="What is broken, what reads wrong, and what this should do that it does not."
+explanation="Report a problem, suggest clearer wording or describe a feature you need."
         status={
           previous.length > 0
             ? `${previous.length} sent from this account`

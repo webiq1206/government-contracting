@@ -170,7 +170,7 @@ export default async function AdminBillingPage({ searchParams }: {
 
         {!config.ok && (
           <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
-            Billing is not fully configured, so nobody can subscribe. Missing:{" "}
+New subscriptions may be blocked by missing billing configuration. Missing:{" "}
             <span className="num">{config.missing.join(", ")}</span>
           </div>
         )}
@@ -185,7 +185,7 @@ export default async function AdminBillingPage({ searchParams }: {
           {[
             { label: "Accounts", value: String(s.total) },
             { label: "On trial", value: String(s.trialing) },
-            { label: "Paying", value: String(s.active) },
+            { label: "Active subscription records", value: String(s.active) },
             { label: "Payment problems", value: String(s.pastDue) },
             { label: "MRR", value: money(s.mrrCents) },
           ].map((c) => (

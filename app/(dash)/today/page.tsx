@@ -994,7 +994,7 @@ export default async function TodayPage(
                 <EmptyState
                   tone="success"
                   title="You are clear for now"
-                  description={`${data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities are being worked automatically. Anything that needs a person will show up here.`}
+                  description={`${data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} open bid opportunities are recorded. Check Automation for current background-work status.`}
                   action={
                     <Link href="/pipeline" className="shell-ghost text-sm">
                       Browse opportunities
@@ -1097,7 +1097,7 @@ export default async function TodayPage(
                     Automated email and follow-up already went out.{" "}
                     {rules.calls_enabled
                       ? "These still need a person, usually a quick call, before pricing can land."
-                      : "These have not answered yet. Open the opportunity to email them again or line up another sub for the trade."}
+: "No reply is recorded for these contacts. Open the opportunity to review messages and decide on the next follow-up."}
                   </p>
                   {data.subFollowUps.map((s) => (
                     <Link

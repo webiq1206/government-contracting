@@ -28,7 +28,7 @@ export default async function CommunicationsHistory({ searchParams }: {
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <header className="space-y-2">
         <Link href="/communications" className="text-sm text-accent">Back to inbox</Link>
-        <h1 className="text-2xl font-semibold">Communications ledger</h1>
+        <h1 className="text-2xl font-semibold">Communication history</h1>
         <p className="text-sm text-muted-foreground">Search every stored email, reply, call and note. Sender details and outcomes reflect the saved record; missing historical evidence stays unknown.</p>
         {opts.sub && <Link href={`/subs/${encodeURIComponent(opts.sub)}`} className="mr-4 text-sm text-accent">Contact record</Link>}
         {opts.project && <Link href={`/opportunity/${encodeURIComponent(opts.project)}`} className="text-sm text-accent">Project record</Link>}
@@ -44,7 +44,8 @@ export default async function CommunicationsHistory({ searchParams }: {
           </select>
         </label>
         <button className="btn-primary" type="submit">Search</button>
-        <Link href="/communications/history" className="btn-ghost">Clear filters</Link>
+        <Link href={href({ q: undefined, status: undefined, before: undefined })} className="btn-ghost">Clear search filters</Link>
+        {(opts.sub || opts.project || opts.thread) && <Link href="/communications/history" className="btn-ghost">View all account history</Link>}
       </form>
       {rows.length === 0 && <p className="card">No stored records match these filters.</p>}
       <div className="space-y-6">{rows.map(row => <section key={row.id} className="space-y-2">
@@ -58,7 +59,7 @@ export default async function CommunicationsHistory({ searchParams }: {
           direction={row.direction === "inbound" ? "inbound" : "outbound"}
           sender={row.sender_email} recipient={row.recipient_email} contact={row.company_name ?? "Contact"} date={row.created_at}>
           <span className="text-xs font-medium" title={MESSAGE_STATE_MEANING[row.state]}>{MESSAGE_STATE_LABEL[row.state]}</span>
-          {row.gmail_message_id && <span className="text-xs text-muted-foreground">Provider message receipt recorded</span>}
+          {row.gmail_message_id && <span className="text-xs text-muted-foreground">Mail service message ID recorded; this alone does not confirm delivery</span>}
         </EmailMessage> : <article className="card space-y-2">
           <p className="text-sm font-medium">{row.channel} · {row.subject ?? "Saved record"}</p>
           <time className="text-xs text-muted-foreground" dateTime={row.created_at}>{new Date(row.created_at).toLocaleString()}</time>

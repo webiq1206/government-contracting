@@ -279,7 +279,7 @@ export function DataTable<T extends { id: string }>({
                            header row is unhittable on a phone, and sorting is
                            exactly what somebody does on a small screen to make
                            a wide table usable. */
-                        className={`-mx-2 inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground lg:mx-0 lg:justify-start px-0 ${
+                        className={`inline-flex min-h-11 items-center whitespace-nowrap px-2 transition-colors hover:text-foreground ${
                           active ? "text-gold-text" : ""
                         }`}
                       >

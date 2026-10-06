@@ -1,6 +1,6 @@
 import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import { PendingLink as Link } from "@/components/pending-link";
-import { workspaceSections, SETTINGS_DESTINATIONS } from "@/lib/navigation";
+import { workspaceSections } from "@/lib/navigation";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
 import { MoreAccount } from "@/components/more-account";
@@ -16,9 +16,9 @@ export default async function MorePage({ searchParams }: { searchParams?: Promis
   const params = await searchParams;
   const requested = typeof params?.section === "string" ? params.section : "manage";
   const active = sections.find(section => section.key === requested) ?? sections[0];
-  const items = active.key === "utility" ? SETTINGS_DESTINATIONS : active.items;
+  const items = active.items;
   return <div className="page-shell">
-    <PageFrame title="Workspace" explanation="Tools and settings, when you need them." breadcrumbs={[{label:"Today",href:"/today"},{label:"Workspace"}]} />
+    <PageFrame title="Workspace tools" explanation="Review decisions, follow up with subcontractors and inspect account activity. Use Settings to change your company, connections or limits." breadcrumbs={[{label:"Today",href:"/today"},{label:"Workspace tools"}]} primaryAction={<Link href="/settings/profile" className="btn-ghost min-h-11 border border-border text-sm">Open Settings</Link>} />
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 pb-10 pt-4 sm:px-6">
       <nav aria-label="Workspace sections" className="flex flex-wrap gap-2">
         {sections.map(section => <Link key={section.key} href={`/more?section=${section.key}`} aria-current={section.key === active.key ? "page" : undefined} className={`inline-flex min-h-11 items-center rounded-full px-4 text-sm ${section.key === active.key ? "bg-accent-soft font-semibold text-accent" : "text-muted-foreground hover:bg-muted"}`}>{section.label === "Insights & system" ? "Insights" : section.label}</Link>)}
@@ -30,7 +30,6 @@ export default async function MorePage({ searchParams }: { searchParams?: Promis
         </Link>)}
       </section>
       {active.key === "utility" && <>
-        <div className="flex flex-wrap gap-4"><Link href="/how-it-works" className="min-h-11 text-sm text-accent underline">Help</Link><Link href="/feedback" className="min-h-11 text-sm text-accent underline">Send feedback</Link></div>
         <MoreAccount email={ctx.user.email} />
       </>}
     </div>

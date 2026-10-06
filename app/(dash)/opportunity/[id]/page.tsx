@@ -1,5 +1,6 @@
 import { RiskFlagList } from "@/components/risk-flag-list";
 import Link from "next/link";
+import { ContextBackLink } from "@/components/navigation-memory";
 import { listServices } from "@/lib/connected-services";
 import { SaveToStorage } from "@/components/save-to-storage";
 import { WorkModeControl } from "@/components/work-mode-control";
@@ -608,18 +609,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       {/* Thin utility bar stays pinned; hero scrolls with content. */}
       <div className="flex shrink-0 flex-col gap-2 border-b border-border px-4 py-2 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          {/* The record-page back affordance: every detail page names the
-              collection it belongs to and takes you back in one tap. On a
-              phone this bar is the only persistent "where am I" once the
-              hero scrolls away, and it used to be a dead label. Always
-              /pipeline rather than history: arriving from Today or Review
-              still leaves you knowing where opportunities live. */}
-          <Link
+          {/* Restore the originating list; direct entry falls back to Opportunities. */}
+          <ContextBackLink
             href="/pipeline"
             className="flex coarse:min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <span aria-hidden>←</span> Opportunities
-          </Link>
+          </ContextBackLink>
           {opp.solicitation_number && (
             <p className="truncate text-sm font-medium text-muted-foreground/70">
               · {opp.solicitation_number}
@@ -1290,8 +1286,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                     Pricing
                   </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Quote entry opens once this opportunity reaches capture. Pricing comps and
-                    the bid package will appear here when available.
+                    No bid package is recorded yet. Review preparation status and the saved pricing evidence before requesting more work.
                   </p>
                 </div>
               )}
@@ -1434,8 +1429,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                     Nothing to submit yet
                   </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    The package is assembled once pricing is in. This section is where the
-                    checks, the required forms and the submission itself will live.
+                    No submission package is recorded. Review pricing and preparation status. Required forms and submission evidence appear here when saved.
                   </p>
                 </div>
               )}

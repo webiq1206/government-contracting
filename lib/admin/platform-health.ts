@@ -9,6 +9,7 @@
 import { query, queryOne } from "../db";
 import { classifyFailure } from "../domain/automation-health";
 import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
+import { BID_OPPORTUNITY_SQL } from "../domain/opportunity-kind";
 import type { AgentRunFacts, FailureRow, ServiceState } from "../domain/platform-health";
 
 /** The window every figure on the page is measured over. */
@@ -108,10 +109,10 @@ export async function platformImpact(): Promise<{
          where status = 'error' and created_at >= now() - interval '24 hours'
            and org_id is not null) as orgs_affected,
        (select count(*)::int from opportunities
-         where status = 'open' and score is null
+         where status = 'open' and score is null and ${BID_OPPORTUNITY_SQL}
            and stage in ('monitoring','scoring')) as unscored,
        (select count(*)::int from opportunities
-         where status = 'open' and stage = 'outreach') as awaiting_outreach,
+         where status = 'open' and stage = 'outreach' and ${BID_OPPORTUNITY_SQL}) as awaiting_outreach,
        (select count(*)::int from communications c
          where ${sentEmailSql()}
            and c.created_at >= now() - interval '24 hours') as sent_email,

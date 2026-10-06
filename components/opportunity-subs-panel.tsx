@@ -17,6 +17,7 @@ import { StopOutreach } from "@/components/stop-outreach";
 import { SubActions } from "@/components/sub-actions";
 import { isEmailable } from "@/lib/domain/sub-contactability";
 import { OpportunityMessageHistory } from "./opportunity-message-history";
+import { ContactDiscoveryEvidence } from "./contact-discovery-evidence";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -264,6 +265,7 @@ export function OpportunitySubsPanel({
                           </div>
                         )}
 
+                        <ContactDiscoveryEvidence verification={s.verification_json} />
                         <OpportunityMessageHistory messages={history} />
 
                       </li>

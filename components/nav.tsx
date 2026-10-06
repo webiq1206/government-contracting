@@ -349,7 +349,7 @@ export function Nav({
             Settings
           </Link>
           <Link href="/more" onClick={() => setOpen(false)} aria-current={pathname === "/more" ? "page" : undefined} className="flex min-h-11 items-center justify-between rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground">
-            Workspace<span aria-hidden>↗</span>
+            Tools<span aria-hidden>↗</span>
           </Link>
           <button type="button" onClick={() => setAccountOpen(true)} aria-expanded={accountOpen} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground">
             <span aria-hidden className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs text-foreground">{initials}</span>

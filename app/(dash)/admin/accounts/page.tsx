@@ -67,7 +67,7 @@ const SPECS: FilterSpec[] = [
     label: "Use",
     kind: "select",
     placeholder: "Any",
-    hint: "Never signed in is a failed onboarding and is recoverable. Dormant is churn already under way.",
+hint: "Accounts with no recorded sign-in, or no recent sign-in, may need follow-up.",
     options: ACTIVITY_FILTERS.map((f) => ({ value: f.value, label: f.label })),
   },
   {

@@ -25,6 +25,7 @@ export function ContractDetail({
   members,
   viewerId,
   canEdit,
+  ownerUnavailable = false,
   /**
    * The column the sections sit in.
    *
@@ -39,6 +40,7 @@ export function ContractDetail({
   members: Owner[];
   viewerId?: string;
   canEdit: boolean;
+  ownerUnavailable?: boolean;
   className?: string;
 }) {
   const { header: h, money } = record;
@@ -120,7 +122,7 @@ export function ContractDetail({
                     * is, and printing "Owner here" over "Owner" made the field
                     * look like two fields.
                     */}
-                  <OwnerPicker
+                  {ownerUnavailable ? <p role="status" className="text-sm text-review">Assignment unavailable. Reload before changing it.</p> : <OwnerPicker
                     kind="contract"
                     recordId={h.id}
                     owner={owner}
@@ -128,7 +130,7 @@ export function ContractDetail({
                     viewerId={viewerId}
                     canAssign={canEdit}
                     compact
-                  />
+                  />}
                 </div>
               </div>
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">

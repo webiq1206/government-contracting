@@ -20,6 +20,11 @@ const hit = (over: Partial<OppHit>): OppHit => ({
 });
 
 describe("dedupeOpportunityHits", () => {
+  it("keeps market research separate from a bid sharing the same solicitation number", () => {
+    const out = dedupeOpportunityHits([hit({ id: "research", is_sources_sought: true }), hit({ id: "bid", is_sources_sought: false })]);
+    expect(out.map(row => row.id)).toEqual(["research", "bid"]);
+    expect(out.every(row => row.duplicates === 0)).toBe(true);
+  });
   it("collapses the same solicitation and says how many were folded in", () => {
     const out = dedupeOpportunityHits([
       hit({ id: "a" }),

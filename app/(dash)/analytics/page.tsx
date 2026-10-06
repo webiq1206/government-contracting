@@ -946,7 +946,7 @@ export default async function AnalyticsPage(
           {breakdown.length === 0 ? (
             <EmptyState
               title="Nothing to break down yet"
-              description="This table cuts the same batch as the funnel above. Once opportunities arrive in the selected period, they appear here grouped by whichever dimension you pick."
+description="The same opportunities from the selected period, grouped by the category you choose."
             />
           ) : (
             <div className="card">
@@ -1161,7 +1161,7 @@ export default async function AnalyticsPage(
         {/* Pipeline velocity */}
         {velocity && Object.keys(velocity).length > 0 && (
           <div className="card">
-            <h3 className="mb-1 text-sm font-semibold text-slate-900">Pipeline Velocity</h3>
+<h3 className="mb-1 text-sm font-semibold text-slate-900">Opportunities by stage</h3>
             <p className="mb-3 text-xs text-slate-500">{freshness.label} by the Analytics Engine.</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {Object.entries(velocity).map(([stage, count]) => (

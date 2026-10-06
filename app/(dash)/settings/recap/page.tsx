@@ -67,7 +67,7 @@ export default async function RecapSettingsPage() {
     <>
       <PageFrame
         title="Daily Recap"
-        explanation="Choose who gets the morning summary, when it arrives, and what it includes."
+explanation="Choose account summary recipients, the scheduled send time and the included sections."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
         status={
           settingsUnavailable

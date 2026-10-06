@@ -22,7 +22,7 @@ export default async function NewOpportunityPage() {
       <PageFrame
         title="Add a solicitation"
         breadcrumbs={[{ label: "Opportunities", href: "/pipeline" }, { label: "Add a solicitation" }]}
-        explanation="Paste a link, upload the documents, or type the essentials. Brost Co reads what it can, shows where each detail came from, and then treats the record like any opportunity it found itself."
+        explanation="Add a notice by link, document or manual entry. Review the extracted details and sources. Sources Sought notices stay in market-research history rather than the bid pipeline."
       />
       <div className="mx-auto w-full max-w-3xl px-4 pb-10 sm:px-6">
         {!allowed && (

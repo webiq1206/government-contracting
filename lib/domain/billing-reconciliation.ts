@@ -232,7 +232,7 @@ export function webhookHealth(
           state: "never",
           label: "No Stripe event has ever been recorded",
           detail:
-            "There are subscriptions on file, so events should have arrived. Either the webhook endpoint was never registered, or none of its deliveries has reached this deployment. Everything below is whatever was last written by hand.",
+            "Subscriptions are saved, but no Stripe events are recorded here. Billing synchronization has not been confirmed. These figures reflect saved records; check the webhook configuration and provider records before relying on them.",
           suspect: true,
         }
       : {

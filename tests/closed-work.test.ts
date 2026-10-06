@@ -165,9 +165,9 @@ describe("system status labels", () => {
     expect(item.actionLabel).toBe("Fix email connection");
   });
 
-  it("does not treat a missing SAM key as working", () => {
+  it("distinguishes a saved SAM key from verified operation", () => {
     expect(samStatusItem(false).kind).toBe("action_required");
-    expect(samStatusItem(true).kind).toBe("working");
+    expect(samStatusItem(true).kind).toBe("configured");
   });
 
   it("maps blocked automation to Failed", () => {

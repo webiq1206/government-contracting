@@ -103,7 +103,7 @@ export default async function PlatformRecapPage(
     <>
       <PageFrame
         title="Platform Recap"
-        explanation="What happened across every account on one day: what broke, whose mail did not arrive, and who has gone quiet."
+explanation="Recorded activity across accounts for one day: service failures, email delivery problems and accounts that may need follow-up."
         breadcrumbs={[{ label: "Platform admin", href: "/admin/accounts" }]}
         status={
           !recap

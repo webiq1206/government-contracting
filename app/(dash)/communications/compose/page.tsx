@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ContextBackLink } from "@/components/navigation-memory";
 import { notFound } from "next/navigation";
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
@@ -20,8 +21,8 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
   if (!target) notFound();
   const sender = await resolveOutreachSender(ctx.orgId);
   return <div className="page-shell overflow-y-auto p-5"><div className="mx-auto w-full max-w-3xl space-y-5">
-    <Link className="text-sm text-accent" href={`/subs/${sub}`}>Back to {target.company_name}</Link>
-    <h1 className="text-2xl font-semibold">Compose project message</h1>
+    <ContextBackLink returnToOrigin className="text-sm text-accent" href={`/subs/${sub}`}>Back to {target.company_name}</ContextBackLink>
+    <h1 className="text-2xl font-semibold">New message about this opportunity</h1>
     <p className="text-sm"><Link href={`/opportunity/${project}`} className="text-accent">{target.title}</Link>{trade && ` · ${trade}`}</p>
     <ProjectMessageComposer subId={sub} projectId={project} trade={trade} recipient={target.email ?? ""} sender={sender.from}
       ready={!!target.email && target.email_verified && sender.connected && !sender.unknown} />

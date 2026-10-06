@@ -82,7 +82,7 @@ export default async function AdminAuditPage(
           <p className="panel-inset px-4 py-8 text-center text-sm text-muted-foreground">
             {includeTests
               ? "No administrative action has been recorded."
-              : "No administrative action has been taken on a real account. Test history is hidden; include it above if you are looking for a specific run."}
+: "No administrative actions are recorded for these filters. Test history is hidden; include it above to search it."}
           </p>
         ) : (
           <>
@@ -93,7 +93,7 @@ export default async function AdminAuditPage(
                 <p className="mt-1 text-sm font-medium text-foreground">{a.action.replace(/_/g, " ")}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{a.admin_email}</p>
                 <p className="mt-1 text-sm">
-                  {a.target_org_id ? (
+                  {a.target_org_id && a.target_org_exists ? (
                     <Link
                       href={`/admin/accounts/${a.target_org_id}`}
                       className="text-accent hover:underline"
@@ -137,7 +137,7 @@ export default async function AdminAuditPage(
                       {/* The account name is kept on the audit row itself, so a
                           deleted account still reads as a name rather than as a
                           dangling identifier. */}
-                      {a.target_org_id ? (
+                      {a.target_org_id && a.target_org_exists ? (
                         <Link
                           href={`/admin/accounts/${a.target_org_id}`}
                           className="text-accent hover:underline"

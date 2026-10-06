@@ -90,7 +90,7 @@ export default async function AccountSettingsPage() {
     <>
       <PageFrame
         title="Your account"
-        explanation="Your details, what your role lets you do, your password, and every device signed in as you."
+explanation="Your details, permissions, password and active sign-in sessions."
         breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={roleLabel(role)}
       />
@@ -315,7 +315,7 @@ export default async function AccountSettingsPage() {
               <p className="font-medium text-foreground">Time zone</p>
               <p className="mt-0.5 leading-relaxed text-muted-foreground">
                 Set above, because the daily recap reads it: it decides which twenty-four
-                hours &quot;yesterday&quot; covers and what hour the email arrives. Everywhere
+                  hours &quot;yesterday&quot; covers and the scheduled email time. Everywhere
                 else, dates and times are still shown in this device&apos;s zone. Quote
                 deadlines in outreach email spell out the zone they are in, so a subcontractor
                 in another one is never left guessing.

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { ContextBackLink as Link } from "@/components/navigation-memory";
 import { PageHeader } from "@/components/badges";
 import type { HelpContent } from "@/components/help-popover";
 

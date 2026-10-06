@@ -365,15 +365,14 @@ export default async function BillingSettingsPage(
         ) : (
           searchParams?.error && (
             <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
-              Billing action failed ({searchParams.error}). Try again or contact
-              hello@brostco.com.
+              The billing action could not be confirmed. Check the current subscription and invoices before trying again, or contact hello@brostco.com.
             </div>
           )
         )}
         {comped && (
           <div className="rounded-md border border-pursue/40 bg-pursue/5 px-4 py-3 text-sm text-pursue">
-            This account is comped. You have full access to everything and there
-            is nothing to pay.
+            Current product access is complimentary. Spending limits still apply.
+            Review the records below for any historical invoices or usage charges.
             {org?.billing_exempt_reason ? ` (${org.billing_exempt_reason})` : ""}
           </div>
         )}
@@ -481,16 +480,14 @@ export default async function BillingSettingsPage(
               Full access, no billing required
             </p>
             <p className="text-sm leading-relaxed text-slate-600">
-              There is no plan, no renewal date and no payment method on this account,
-              because nothing is charged.
+              This account currently has complimentary access. No subscription payment is required for this access.
               {org?.billing_exempt_reason
                 ? ` ${org.billing_exempt_reason.replace(/\.\s*$/, "")}.`
                 : ""}{" "}
               Every feature is available exactly as it is on a paid account.
             </p>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              If this ever changes you will be told before anything is charged, and the
-              plan and payment sections will appear here.
+              This access status does not describe historical subscriptions or payments. Contact support if you need earlier billing records.
             </p>
           </div>
         ) : (

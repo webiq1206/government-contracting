@@ -118,7 +118,7 @@ export default async function RequirementsPage(
           { label: "Requirements" },
         ]}
         title="What it takes to bid"
-        explanation="Every submission requirement, with the part of the solicitation it was read from open beside it."
+explanation="Recorded submission requirements, alongside the source documents. Check the original notice for completeness."
         status={
           requirements.length === 0
             ? "Nothing extracted yet"
@@ -139,7 +139,7 @@ export default async function RequirementsPage(
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
             title="No submission requirements were extracted"
-            description="Until the analysis finishes, the original solicitation is the source of truth for what has to be submitted. Retry analysis from the record if the files are already there."
+description="No submission requirements are recorded. Check the original solicitation and analysis status before requesting another analysis."
             action={
               <Link href={recordHref} className="btn-primary text-sm">
                 Open the record to retry analysis

@@ -7,6 +7,7 @@ import { resolveTenantOrgId } from "@/lib/tenant";
 import { exchangeCode, saveConnection } from "@/lib/connected-services";
 import { SERVICE_BY_ID, isServiceProvider } from "@/lib/domain/connected-services";
 import { logAgent } from "@/lib/logger";
+import { connectionFailureReason } from "@/lib/domain/connection-diagnostics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,10 @@ export async function GET(req: Request, props: { params: Promise<{ provider: str
   if (!expected || !returned || returned !== expected) return done("csrf");
   const [, provider, scope] = expected.split(".");
   if (!isServiceProvider(provider) || SERVICE_BY_ID[provider].family !== family) return done("csrf");
-  if (url.searchParams.get("error")) return done("denied", { provider });
+  if (url.searchParams.get("error")) {
+    const reason = connectionFailureReason(url.searchParams.get("error"));
+    return done(reason === "access_denied" ? "denied" : "error", { provider, reason });
+  }
   const code = url.searchParams.get("code");
   if (!code) return done("missing_code", { provider });
   const personal = scope === "personal";
@@ -64,6 +68,6 @@ export async function GET(req: Request, props: { params: Promise<{ provider: str
     });
     return done("connected", { provider, id: row.id });
   } catch (e) {
-    return done("error", { provider, msg: (e as Error).message.slice(0, 300) });
+    return done("error", { provider, reason: connectionFailureReason(e) });
   }
 }

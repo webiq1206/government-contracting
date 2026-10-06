@@ -59,6 +59,7 @@ export type AdminAction =
   | "platform_automation_resumed";
 
 export interface AdminAuditEntry {
+  target_org_exists?: boolean;
   id: string;
   admin_email: string;
   action: AdminAction;
@@ -137,7 +138,8 @@ export async function recentAdminActions(
    */
   const rows = await query<AdminAuditEntry>(
     `select id, admin_email, action, target_org_id, target_org_name,
-            target_user_id, detail, created_at
+            target_user_id, detail, created_at,
+            exists(select 1 from organizations o where o.id=admin_audit_log.target_org_id) as target_org_exists
        from admin_audit_log
       order by created_at desc
       limit $1`,

@@ -176,7 +176,7 @@ export default async function ReviewPage(
           <WorkspaceShell
             selected={opened}
             queueLabel="Decision queue"
-            queueWidth="lg:w-[420px]"
+            queueWidth="lg:w-[340px] xl:w-[380px]"
             queue={
               <div data-guide-target="review-list">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background px-4 py-2 dark:border-white/5">
@@ -209,6 +209,14 @@ export default async function ReviewPage(
                   subtitle={briefSubtitle(selected)}
                   brief={brief}
                   canDecide={canDecide}
+                  canAnalyze={can(ctx.user.orgRole, "run_agents")}
+                  facts={[
+                    { label: "Agency", value: selected.agency ?? "Not stated" },
+                    { label: "Location", value: selected.location_state ?? "Not stated" },
+                    { label: "Eligible businesses", value: selected.set_aside_type ?? "Not stated" },
+                    { label: "Industry code (NAICS)", value: selected.naics_code ? String(selected.naics_code) : "Not stated" },
+                  ]}
+                  evidence={<Evidence o={selected} />}
                   closeHref={base}
                   nextHref={nextHref}
                 />
@@ -219,8 +227,6 @@ export default async function ReviewPage(
                 </WorkspacePlaceholder>
               )
             }
-            context={selected && !peeked ? <Evidence o={selected} /> : undefined}
-            contextLabel="The evidence behind the score"
           />
 
           {/*

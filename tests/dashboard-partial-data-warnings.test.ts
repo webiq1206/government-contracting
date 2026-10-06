@@ -18,7 +18,7 @@ describe("dashboard partial-data failures stay visible", () => {
     [
       "contract detail",
       "app/(dash)/contracts/[id]/page.tsx",
-      "contract owner could not be loaded",
+      "contract assignment could not be loaded",
     ],
     [
       "compliance board",

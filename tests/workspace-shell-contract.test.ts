@@ -86,7 +86,10 @@ describe("the quick view drawer, on the surfaces the shell hosts", () => {
   });
 
   it("stands the supporting pane down instead of crowding into a fourth column", () => {
-    for (const file of ["app/(dash)/review/page.tsx", "app/(dash)/workbench/page.tsx"]) {
+    const review = readFileSync("app/(dash)/review/page.tsx", "utf8");
+    expect(review).not.toMatch(/context=\{/);
+    expect(review).toContain("evidence={<Evidence o={selected} />}");
+    for (const file of ["app/(dash)/workbench/page.tsx"]) {
       const src = readFileSync(file, "utf8");
       expect(src).toMatch(/context=\{[^}]*peek/);
     }

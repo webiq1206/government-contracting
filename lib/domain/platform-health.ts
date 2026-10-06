@@ -346,6 +346,7 @@ export function platformStatus(services: ServiceStatus[]): PlatformStatus {
 // ---------------------------------------------------------------------------
 
 export interface PlatformIncident {
+  orgIds?: string[];
   cause: IncidentCause;
   /** Failures across every organization in the window. */
   failures: number;
@@ -407,7 +408,7 @@ export function platformIncidents(rows: FailureRow[]): PlatformIncident[] {
     }
   }
   return [...byCause.values()]
-    .map(({ orgSet, ...rest }) => ({ ...rest, orgs: orgSet.size }))
+    .map(({ orgSet, ...rest }) => ({ ...rest, orgs: orgSet.size, orgIds: [...orgSet] }))
     .sort(
       (a, b) =>
         Number(b.blocking) - Number(a.blocking) || b.orgs - a.orgs || b.failures - a.failures

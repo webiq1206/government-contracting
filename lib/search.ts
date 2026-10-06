@@ -32,8 +32,8 @@ export async function searchEverything(
   const like = `%${q}%`;
 
   const [opps, subs, contracts, messages, docs] = await Promise.all([
-    query<{ id: string; title: string | null; agency: string | null; solicitation_number: string | null; stage: string; status: string }>(
-      `select id, title, agency, solicitation_number, stage, status
+    query<{ id: string; title: string | null; agency: string | null; solicitation_number: string | null; stage: string; status: string; is_sources_sought: boolean | null }>(
+      `select id, title, agency, solicitation_number, stage, status, is_sources_sought
          from opportunities
         where org_id = $2 and (title ilike $1 or solicitation_number ilike $1 or agency ilike $1)
         order by (status='open') desc, updated_at desc
@@ -104,6 +104,7 @@ export async function searchEverything(
       kind: "opportunity" as const,
       title: o.title ?? "Untitled opportunity",
       subtitle: [
+      o.is_sources_sought ? "Sources Sought: market research, not a bid opportunity" : null,
         o.agency,
         o.solicitation_number,
         o.status === "archived" ? "archived" : o.stage.replace(/_/g, " "),

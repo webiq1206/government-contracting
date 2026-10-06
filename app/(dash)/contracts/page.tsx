@@ -283,7 +283,7 @@ export default async function ContractsPage(
           <div className="mx-auto max-w-4xl">
             <EmptyState
               title="No contracts yet"
-              description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
+              description="No contracts are recorded in this view. Review won opportunities or add a contract to track milestones, coordination and compliance."
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <Link href="/pipeline" className="btn-ghost text-sm">
@@ -341,7 +341,7 @@ export default async function ContractsPage(
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="eyebrow mb-1">Contract</p>
-                          <h2 className="truncate text-base font-medium text-foreground">
+                          <h2 className="break-words text-base font-medium text-foreground">
                             {record.header.contract_number ??
                               record.header.opportunity_title ??
                               "Contract"}
@@ -421,7 +421,7 @@ export default async function ContractsPage(
                     <NonSsGauge pctValue={Number(selectedRow.non_ss_sub_pct ?? 0)} />
                   </ContextSection>
 
-                  <ContextSection title="Elsewhere">
+<ContextSection title="Related records">
                     <ul className="space-y-1.5 text-sm">
                       <li>
                         <Link

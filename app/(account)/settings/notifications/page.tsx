@@ -122,7 +122,7 @@ function Category({ status }: { status: CategoryStatus }) {
           }`}
         >
           {status.deliveryGap
-            ? "Not reaching you"
+? "Not sent by email"
             : status.route === "account_owner"
               ? "Emailed to account owner"
             : status.route === "operations_address"
@@ -142,7 +142,7 @@ function Category({ status }: { status: CategoryStatus }) {
         </p>
       ) : status.deliveryGap ? (
         <p className="mt-1.5 text-xs leading-relaxed text-risk">
-          <span className="label mr-1.5 inline">Not reaching you:</span>
+<span className="label mr-1.5 inline">Not sent by email:</span>
           Email alerts are unavailable for this category. Use the link below to check it regularly.{" "}
           {status.whyMandatory}
         </p>

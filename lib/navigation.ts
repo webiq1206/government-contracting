@@ -117,7 +117,7 @@ export function recordParent(path: string): { href: string; label: string } | nu
 }
 
 /** Utilities live in a directory, not a second expanded menu. */
-export const WORKSPACE_DESTINATION = { href: "/more", label: "Workspace" };
+export const WORKSPACE_DESTINATION = { href: "/more", label: "Tools" };
 export function workspaceSections(isAdmin: boolean) {
   return NAVIGATION_SECTIONS.filter(section => section.key !== "primary" && (!section.adminOnly || isAdmin));
 }

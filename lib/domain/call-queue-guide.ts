@@ -32,7 +32,7 @@ export function buildCallQueueGuide(input: CallQueueGuideInput): StepPlan {
       n: 1,
       title: "Open the top call",
       plain: input.first.fromReply
-        ? `${who} replied to your email, so they are expecting to hear from you.`
+        ? `${who} has a recorded reply. Review it before calling.`
         : `${who} is next by deadline. One tap opens the guided workspace.`,
       status: "current",
       owner: "you",

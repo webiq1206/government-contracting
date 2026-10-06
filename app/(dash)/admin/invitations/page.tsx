@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { listInvitations, invitationState, INVITATION_DAYS } from "@/lib/admin/invitations";
@@ -163,8 +164,7 @@ export default async function AdminInvitationsPage() {
                         // it. Rare, and invisible to the customer until an
                         // invoice, so it is said here in full.
                         <div className="pt-1 text-xs text-risk">
-                          Terms did not apply. This account is on standard
-                          pricing; grant the discount from its account page.
+                          The invited terms are not recorded as applied. Review the account's current billing before changing anything. <Link href="/admin/accounts" className="underline">Find the account</Link>.
                         </div>
                       )}
                     </td>

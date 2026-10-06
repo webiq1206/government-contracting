@@ -446,7 +446,7 @@ describe("deliverability", () => {
     expect(d.deliveryRate).toBeNull();
     expect(d.responseRate).toBeNull();
     expect(d.bounceRate).toBeNull();
-    expect(formatRate(null)).toBe("Nothing sent yet");
+    expect(formatRate(null)).toBe("No qualifying outbound attempts in this period");
   });
 
   it("computes rates over outbound mail only", () => {

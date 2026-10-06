@@ -60,9 +60,9 @@ export default async function ProfilePage() {
   const approvalsPanel =
     proposed.length > 0 ? (
       <div className="space-y-3 px-5 py-6 sm:px-6">
-        <h2 className="font-display text-xl text-foreground">Proposed scoring weights</h2>
+        <h2 className="font-display text-xl text-foreground">Suggested scoring changes</h2>
         <p className="text-sm text-muted-foreground">
-          The Learning Loop suggested these changes. Approve to use them on future scoring, or
+          These changes were suggested from recorded outcomes. Approve to use them on future scoring, or
           reject to keep the current weights.
         </p>
         <div className="space-y-2">
@@ -102,8 +102,8 @@ export default async function ProfilePage() {
     ) : (
       <div className="px-5 py-6 sm:px-6">
         <EmptyState
-          title="No weight proposals waiting"
-          description="When the Learning Loop suggests new scoring weights, they will show up here for your approval."
+          title="No scoring changes awaiting review"
+          description="Suggested changes to opportunity scoring appear here for your approval. Existing decisions are unchanged."
         />
       </div>
     );

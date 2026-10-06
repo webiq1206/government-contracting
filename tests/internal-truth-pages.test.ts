@@ -32,7 +32,7 @@ describe("unknown internal state is not rendered as empty or healthy", () => {
     const page = source("app/(dash)/settings/content/page.tsx");
     expect(page).toContain("snippetsUnavailable");
     expect(page).toContain("snippet changes are disabled");
-    expect(page).toContain("Proposal snippets (status unavailable)");
+    expect(page).toContain("Saved proposal text (status unavailable)");
   });
 
   it("surfaces setup helper warnings on both dashboard checklists", () => {

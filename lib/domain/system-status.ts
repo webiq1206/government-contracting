@@ -7,6 +7,7 @@
 
 export type SystemStatusKind =
   | "working"
+  | "configured"
   | "needs_attention"
   | "waiting"
   | "delayed"
@@ -16,6 +17,7 @@ export type SystemStatusKind =
 
 export const SYSTEM_STATUS_LABEL: Record<SystemStatusKind, string> = {
   working: "Working",
+  configured: "Configured · not verified here",
   needs_attention: "Needs attention",
   waiting: "Waiting",
   delayed: "Delayed",
@@ -44,9 +46,7 @@ export function inboxStatusItem(inbox: {
       id: "inbox",
       label: "Email inbox",
       kind: "action_required",
-      detail: inbox.lastError
-        ? `Google stopped the connection. ${inbox.lastError}`
-        : "Google stopped the connection. Reconnect the mailbox to send and read email again.",
+      detail: "Google stopped the connection. Review the saved email connection details before reconnecting.",
       actionLabel: "Fix email connection",
       href: "/settings/integrations",
     };
@@ -67,9 +67,7 @@ export function inboxStatusItem(inbox: {
       id: "inbox",
       label: "Email inbox",
       kind: "failed",
-      detail: inbox.lastError
-        ? `Email last failed: ${inbox.lastError}`
-        : "The last email send or sync failed. Open Integrations to retry.",
+      detail: "A previous email send or sync failed. Review its recorded outcome and connection details before retrying.",
       actionLabel: "Fix email connection",
       href: "/settings/integrations",
     };
@@ -77,11 +75,12 @@ export function inboxStatusItem(inbox: {
   return {
     id: "inbox",
     label: "Email inbox",
-    kind: "working",
+    kind: "configured",
     detail: inbox.email
-      ? `Sending and reading from ${inbox.email}.`
-      : "The mailbox is connected and can send.",
-    href: "/settings/integrations",
+      ? `Mailbox configured for ${inbox.email}. Connection settings alone do not confirm a send or reply sync.`
+      : "A mailbox connection is saved. Check recent sending and reply-sync evidence.",
+    actionLabel: "Review email evidence",
+    href: "/settings/integrations#gmail",
   };
 }
 
@@ -100,8 +99,9 @@ export function samStatusItem(configured: boolean): SystemStatusItem {
   return {
     id: "sam",
     label: "Opportunity search",
-    kind: "working",
-    detail: "SAM.gov is connected. New notices arrive on the regular search.",
+    kind: "configured",
+    detail: "A SAM.gov key is configured. Review its last recorded use or test to confirm automatic search is working.",
+    actionLabel: "Review search connection",
     href: "/settings/integrations",
   };
 }
