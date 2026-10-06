@@ -54,7 +54,7 @@ try {
       source_document_id:'00000000-0000-4000-8000-000000000000',source_document:'Unavailable synthetic source.pdf',source_page:9,satisfied_by:'operator_signature'
     }])
   })]);
-  await query("insert into requirement_states(org_id,opportunity_id,requirement_id,state) values($1,$2,'audit-page-12','needs_clarification')",[org!.id,sourceAudit!.id]);
+  await query("insert into requirement_states(org_id,opportunity_id,requirement_id,state,blocking_reason) values($1,$2,'audit-page-12','needs_clarification','Synthetic source question for filter coverage.')",[org!.id,sourceAudit!.id]);
   const setupOrg=await queryOne<{id:string}>("insert into organizations(name,subscription_status,plan_key,billing_exempt,classification) values('Empty Setup Audit','active','standard',true,'test') returning id");
   const setupUser=await queryOne<{id:string}>("insert into users(email,password_hash,role,name) values('ui-setup@example.test',$1,'operator','Setup Audit') returning id",[hashPassword('DisposableUiAudit123!')]);
   await query("insert into organization_members(org_id,user_id,role) values($1,$2,'owner')",[setupOrg!.id,setupUser!.id]);
