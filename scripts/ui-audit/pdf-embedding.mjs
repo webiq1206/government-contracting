@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
+import { PDFDocument } from 'pdf-lib';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const base='http://127.0.0.1:3100';
@@ -10,9 +11,14 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 // A headed Chromium under Xvfb exercises its real PDF viewer. The default
 // headless shell does not support PDF navigation/paint.
 const browser=await chromium.launch({headless:false});
-const evidence={sameOrigin:false,externalBlocked:false,authDenied:false,crossOrgDenied:false,headers:[]};
+const evidence={sameOrigin:false,externalBlocked:false,authDenied:false,crossOrgDenied:false,headers:[],blockedRequests:[],failedRequests:[],console:[],frames:[]};
+let diagnosticPage;
 async function isolate(context) {
-  await context.route('**/*',route=>new URL(route.request().url()).origin===base ? route.continue() : route.abort());
+  context.on('requestfailed',request=>evidence.failedRequests.push({url:request.url(),error:request.failure()?.errorText}));
+  await context.route('**/*',route=>{
+    if(new URL(route.request().url()).origin===base) return route.continue();
+    evidence.blockedRequests.push(route.request().url()); return route.abort();
+  });
 }
 async function login(context,email) {
   const page=await context.newPage();
@@ -40,11 +46,22 @@ async function painted(frame,color,path) {
 try {
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
   await isolate(context);
-  const page=await login(context,'ui-owner@example.test');
+  const page=await login(context,'ui-owner@example.test'); diagnosticPage=page;
+  page.on('console',message=>evidence.console.push({type:message.type(),text:message.text()}));
+  evidence.nativePdf=await page.evaluate(()=>({enabled:navigator.pdfViewerEnabled,plugins:Array.from(navigator.plugins).map(plugin=>plugin.name)}));
+  evidence.browser=browser.version();
   const pdfResponse=page.waitForResponse(r=>r.url().includes('/api/files/') && r.headers()['content-type']==='application/pdf');
   await page.goto(`${base}/opportunity/${ids.sourceAudit}/requirements`,{waitUntil:'networkidle'});
   const response=await pdfResponse;
   const headers=response.headers();
+  assert.equal(new URL(response.url()).origin,base);
+  evidence.finalUrl=response.url();
+  const direct=await context.request.get(response.url());
+  assert.equal(direct.status(),200);
+  const bytes=await direct.body();
+  evidence.document={bytes:bytes.length,pages:(await PDFDocument.load(bytes)).getPageCount()};
+  writeFileSync(`${out}/pdf-fixture-source.pdf`,bytes);
+  assert.equal(evidence.document.pages,50);
   assert.equal(response.status(),200);
   assert.equal(headers['content-security-policy'],"frame-ancestors 'self'");
   assert.equal(headers['x-frame-options'],'DENY','Global restriction remains inherited');
@@ -52,6 +69,7 @@ try {
   assert.match(headers['cache-control'],/no-store/);
   evidence.headers.push({status:200,type:headers['content-type'],csp:headers['content-security-policy'],xfo:headers['x-frame-options']});
   const frame=page.locator('iframe');
+  evidence.requestedSource=await frame.getAttribute('src');
   await frame.scrollIntoViewIfNeeded();
   await painted(frame,'red',`${out}/desktop-pdf-page-44.png`);
   await page.getByRole('button',{name:'Next requirement',exact:true}).click();
@@ -91,6 +109,12 @@ try {
   await context.close();
   console.log('PDF embedding: authenticated final 200 headers, real page 44/12 paint, auth/cross-org refusal, unchanged HTML denial, and external-origin frame refusal passed.');
 } finally {
+  if(diagnosticPage&&!diagnosticPage.isClosed()) {
+    evidence.frames=await Promise.all(diagnosticPage.frames().map(async frame=>({url:frame.url(),parent:frame.parentFrame()?.url(),
+      dom:await frame.evaluate(()=>({contentType:document.contentType,title:document.title,text:document.body?.innerText?.slice(0,500),
+        media:Array.from(document.querySelectorAll('iframe,embed,object')).map(node=>({tag:node.tagName,src:node.getAttribute('src'),type:node.getAttribute('type'),width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height}))})).catch(error=>({error:String(error)}))})));
+    await diagnosticPage.screenshot({path:`${out}/desktop-pdf-diagnostic-page.png`}).catch(()=>{});
+  }
   writeFileSync(`${out}/pdf-embedding-results.json`,JSON.stringify(evidence,null,2));
   await browser.close();
 }
