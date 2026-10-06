@@ -31,6 +31,28 @@ function run(over: Partial<RunFact> = {}): RunFact {
 const BEATING = { paused: false, heartbeatAt: RECENT, phase: "ready", now: NOW };
 
 describe("classifyFailure", () => {
+  it("keeps unresolved paid completions distinct and prohibits paid replay", () => {
+    const cause = classifyFailure("AI work has an unresolved completion. Reconcile its saved output before retrying; no paid replay is allowed.");
+    expect(cause).toBe("completion_reconciliation");
+    expect(causeSpec(cause).repair).toContain("Do not replay the paid request");
+  });
+  it("does not turn a platform sender failure into an inbox outage", () => {
+    const cause = classifyFailure("The platform Gmail connection or verified sender identity is not ready, so no recaps were sent.");
+    expect(cause).toBe("sender_not_ready");
+    expect(causeSpec(cause).effect).toContain("does not establish the state of inbox reading");
+  });
+  it("does not promise polling recovery for a sender lookup quota failure", () => {
+    const cause = classifyFailure("Google could not list verified sending addresses. Quota Total Query Cost / Units per minute per user / gmail.googleapis.com. Nothing was sent.");
+    expect(cause).toBe("mailbox_rate_limit");
+    expect(causeSpec(cause).effect).toContain("sender lookup");
+    expect(causeSpec(cause).effect).not.toMatch(/polling resumes/);
+  });
+  it("does not infer scoring success or automatic retries from incomplete output", () => {
+    const cause = classifyFailure("completeJson failed after 1 attempts: AI response was not complete (max_tokens); no partial result was accepted.");
+    expect(cause).toBe("model_output");
+    expect(causeSpec(cause).effect).not.toContain("Scoring still ran");
+    expect(causeSpec(cause).repair).not.toContain("retries on its own");
+  });
   it("reads an exhausted credit balance as a credit problem", () => {
     expect(
       classifyFailure("The Anthropic account cannot pay for requests (its credit balance is too low).")

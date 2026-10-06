@@ -50,6 +50,7 @@ export function BidBrief({
   analysis,
   documents,
   states,
+  researchOnly = false,
 }: {
   analysis: SolicitationAnalysis;
   documents: DocRow[];
@@ -60,6 +61,7 @@ export function BidBrief({
    * anybody having tracked them.
    */
   states?: Record<string, RequirementStateView>;
+  researchOnly?: boolean;
 }) {
   const requirements = buildOpportunityBrief(briefInputFrom(analysis));
 
@@ -75,8 +77,9 @@ export function BidBrief({
         <div>
           {/* "Why this fits" is the panel above this card. This one is the
               solicitation itself, so it says so. */}
-          <p className="eyebrow-gold">The solicitation, in plain English</p>
-          <h2 className="mt-1 font-display text-2xl font-normal text-foreground">Bid Brief</h2>
+          <p className="eyebrow-gold">{researchOnly ? "Saved market research" : "The solicitation, in plain English"}</p>
+          <h2 className="mt-1 font-display text-2xl font-normal text-foreground">{researchOnly ? "Notice summary" : "Bid Brief"}</h2>
+          {researchOnly && <p className="mt-2 text-sm text-muted-foreground">Saved analysis of a Sources Sought notice. These historical notes are not a recommendation to bid.</p>}
           {analysis.brief_source === "notice" && (
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">
               This summary is from the notice and the score, not a full reading of the
@@ -108,7 +111,7 @@ export function BidBrief({
         </div>
 
         {(has(analysis.project_overview) || has(analysis.scope_plain_language)) && (
-          <Section title="What this job is">
+          <Section title={researchOnly ? "What the notice describes" : "What this job is"}>
             {has(analysis.project_overview) && (
               <ScannableText text={analysis.project_overview} className="text-slate-800" />
             )}
@@ -128,7 +131,7 @@ export function BidBrief({
             which is the tab named after it: keeping forty rows here is what
             stopped Overview fitting on one screen, and it left the
             Requirements tab holding the classification record instead. */}
-        <CriticalRequirements brief={requirements} states={states} />
+        {!researchOnly && <CriticalRequirements brief={requirements} states={states} />}
 
         {analysis.key_dates?.length > 0 && (
           <Section title="Dates that matter">
@@ -172,13 +175,13 @@ export function BidBrief({
           <div className="rounded-md border border-review/30 bg-review/5 px-3 py-2.5">
             <p className="eyebrow text-review">Risks flagged in this brief</p>
             <ul className="mt-2 space-y-1">
-              {analysis.attention_items.slice(0, 4).map((a, i) => (
+              {(researchOnly ? analysis.attention_items : analysis.attention_items.slice(0, 4)).map((a, i) => (
                 <li key={i} className="text-sm text-slate-800">
                   {a}
                 </li>
               ))}
             </ul>
-            {analysis.attention_items.length > 4 && (
+            {!researchOnly && analysis.attention_items.length > 4 && (
               <a href="#attention" className="mt-2 inline-block text-xs text-accent hover:underline">
                 See all attention items ↑
               </a>
@@ -191,9 +194,9 @@ export function BidBrief({
             <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="eyebrow">More from the solicitation</p>
+                  <p className="eyebrow">{researchOnly ? "More saved analysis" : "More from the solicitation"}</p>
                   <p className="mt-0.5 text-sm text-slate-600">
-                    How bids are scored, the amendment log, and who to contact
+                    {researchOnly ? "Recorded criteria, amendments and contacts" : "How bids are scored, the amendment log, and who to contact"}
                   </p>
                 </div>
                 <span
@@ -206,10 +209,9 @@ export function BidBrief({
             </summary>
             <div className="space-y-7 border-t border-border px-4 py-5">
               {analysis.evaluation_criteria?.length > 0 && (
-                <Section title="How bids are scored">
+                <Section title={researchOnly ? "Recorded evaluation criteria" : "How bids are scored"}>
                   <p className="mb-2 text-xs text-slate-500">
-                    What the agency weighs when comparing offers. Useful for deciding how
-                    much effort to spend, but nothing here can disqualify a bid.
+                    {researchOnly ? "Historical criteria extracted from the source. Check the original notice for context." : "What the agency weighs when comparing offers. Check these criteria against the source before acting."}
                   </p>
                   <Bullets items={analysis.evaluation_criteria} />
                 </Section>

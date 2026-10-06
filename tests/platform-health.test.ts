@@ -210,7 +210,7 @@ describe("platformIncidents", () => {
       error: "The platform Gmail connection or verified sender identity is not ready, so no recaps were sent.",
       at: "2026-09-28T18:00:00Z",
     }]);
-    expect(incident.cause).toBe("integration_auth");
+    expect(incident.cause).toBe("sender_not_ready");
   });
   const rows: FailureRow[] = [
     { agent: "scoring-engine", orgId: "a", error: "credit balance too low", at: "2026-08-26T09:00:00Z" },

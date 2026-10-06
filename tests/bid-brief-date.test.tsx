@@ -4,6 +4,15 @@ import { BidBrief } from "@/components/bid-brief";
 import { buildNoticeBrief } from "@/lib/domain/notice-brief";
 
 describe("database dates in the opportunity brief", () => {
+  it("presents Sources Sought as saved research and retains every warning", () => {
+    const brief = buildNoticeBrief({});
+    brief.attention_items = ["Warning one", "Warning two", "Warning three", "Warning four", "Warning five"];
+    const html = renderToStaticMarkup(<BidBrief analysis={brief} documents={[]} researchOnly />);
+    expect(html).toContain("Notice summary");
+    expect(html).toContain("Warning five");
+    expect(html).not.toContain("Bid Brief");
+    expect(html).not.toContain('href="#attention"');
+  });
   it("renders a native PostgreSQL timestamp without crashing the detail page", () => {
     const brief = buildNoticeBrief({ deadline: new Date("2026-09-11T17:00:00Z") });
     expect(() => renderToStaticMarkup(<BidBrief analysis={brief} documents={[]} />)).not.toThrow();

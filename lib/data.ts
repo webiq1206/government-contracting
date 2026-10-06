@@ -102,7 +102,7 @@ export const WORKABLE_CALL_CARD_SQL = `
  *
  * Expects the opportunities table aliased as `o`.
  */
-export const TRIAGE_WHERE_SQL = `o.status='open' and ${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL} and o.tier='review' and o.human_action_required=true
+export const TRIAGE_WHERE_SQL = `o.status='open' and o.stage='scoring' and ${BID_OPPORTUNITY_O_SQL} and coalesce(o.pursuit_state, 'active')='active' and o.tier='review' and o.human_action_required=true
   and (o.snoozed_until is null or o.snoozed_until <= now())`;
 
 export async function queueCounts(): Promise<{
@@ -477,9 +477,9 @@ export async function reviewQueue(): Promise<Opportunity[]> {
   const orgId = await currentOrg();
   return query<Opportunity>(
     `select * from opportunities
-      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and tier='review' and human_action_required=true and status='open'
+      where ${BID_OPPORTUNITY_SQL} and org_id = $1 and tier='review' and stage='scoring' and human_action_required=true and status='open'
         and (snoozed_until is null or snoozed_until <= now())
-        and coalesce(pursuit_state, 'active') <> 'aborted'
+        and coalesce(pursuit_state, 'active') = 'active'
       order by (review_expires_at is null), review_expires_at asc`,
     [orgId]
   );
@@ -3913,9 +3913,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
         snooze: { kind: "opportunity" as const, id: d.id },
         decide: { opportunityId: d.id, title: d.title ?? "opportunity" },
       },
-      reason: d.review_expires_at
-        ? "Scored close enough to the line that a person has to call it. It is dismissed automatically if nobody does."
-        : "Scored close enough to the line that a person has to call it.",
+      reason: "A decision is still requested. Check the current notice and agency bid deadline before choosing. A past review target does not confirm automatic dismissal.",
     })),
     ...calls.map((c) => ({
       key: `call:${c.id}`,

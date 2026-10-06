@@ -65,6 +65,7 @@ export function OpportunitySubsPanel({
   canStopOutreach = false,
   canDecide = false,
   callsEnabled = true,
+  researchOnly = false,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
@@ -76,6 +77,7 @@ export function OpportunitySubsPanel({
   canDecide?: boolean;
   /** Calling can be turned off for the account, and the row must say so. */
   callsEnabled?: boolean;
+  researchOnly?: boolean;
   /** Solicitation analysis — used for per-trade "what we need them to do". */
   analysis?: Record<string, unknown> | null;
   description?: string | null;
@@ -108,14 +110,13 @@ export function OpportunitySubsPanel({
       {subs.length >= 300 && <p className="mb-3 text-sm text-attention">Showing the first 300 subcontractor pairings. The totals above describe this loaded list.</p>}
       {communications.length >= 400 && <p role="status" className="mb-3 text-sm text-attention">Showing the latest 400 communication records for this opportunity. Open a subcontractor&apos;s conversation to review older records.</p>}
       <Collapsible
-        title="Subcontractors on this bid"
+        title={researchOnly ? "Saved subcontractor history" : "Subcontractors on this bid"}
         meta={<span className="num">{subs.length}</span>}
         defaultOpen={subs.length > 0}
       >
         {subs.length === 0 ? (
           <p className="text-sm leading-relaxed text-slate-500">
-            No subcontractors have been linked to this opportunity. Review the
-            required trades and research settings before starting a search.
+            {researchOnly ? "No subcontractors are saved for this notice." : "No subcontractors have been linked to this opportunity. Review the required trades and research settings before starting a search."}
           </p>
         ) : (
           <div className="space-y-5">
@@ -139,7 +140,11 @@ export function OpportunitySubsPanel({
                 </div>
                 {tradeWork.work && (
                   <div className="mb-2">
-                    <SubWorkNeeded work={tradeWork} variant="compact" />
+                    {researchOnly ? <div className="rounded-md border border-border p-3 text-xs">
+                      <p className="font-medium">Saved description: {trade}</p>
+                      {!tradeWork.tradeSpecific && <p className="mt-1 text-muted-foreground">This is the overall saved description. No separate scope for this trade was recorded.</p>}
+                      <p className="mt-2 whitespace-pre-wrap break-words">{tradeWork.work}</p>
+                    </div> : <SubWorkNeeded work={tradeWork} variant="compact" />}
                   </div>
                 )}
                 <ul className="divide-y divide-border panel-inset">
@@ -210,7 +215,7 @@ export function OpportunitySubsPanel({
                           )}
                         </div>
                         {(() => {
-                          const next = nextActionForSub(s);
+                          const next = researchOnly ? null : nextActionForSub(s);
                           return next ? (
                             <p className="mt-2 text-xs font-medium text-slate-800">
                               Next: {next}
@@ -224,7 +229,7 @@ export function OpportunitySubsPanel({
                           hunted for; here is where an operator is standing
                           when they decide this firm has had enough emails.
                         */}
-                        <SubActions
+                        {!researchOnly && <SubActions
                           opportunityId={opportunityId ?? ""}
                           pairingId={s.id}
                           subcontractorId={s.subcontractor_id}
@@ -252,7 +257,8 @@ export function OpportunitySubsPanel({
                             hasThread: s.touches > 0,
                             callsEnabled,
                           }}
-                        />
+                        />}
+                        {researchOnly && s.thread_key && <Link className="inline-flex min-h-11 items-center text-sm text-accent" href={`/communications?c=${encodeURIComponent(s.thread_key)}`}>Open saved conversation</Link>}
 
                         {canStopOutreach && !s.removed_at && (
                           <div className="mt-2">

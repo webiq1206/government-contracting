@@ -22,6 +22,30 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     checkpoint();
     console.log(JSON.stringify({ device, route, task, status: record.status, error: record.error }));
   };
+  await check(`/opportunity/${ids.research}`, 'sources-sought-research-history', async () => {
+    await page.getByRole('heading', { name: 'Historical Sources Sought audit', exact: true }).waitFor();
+    assert(await page.getByRole('heading', { name: 'Notice summary', exact: true }).isVisible());
+    assert(await page.getByText('Recorded warnings', { exact: true }).isVisible());
+    for (const text of ['Bid Brief', 'Where this bid stands', 'Readiness and full workflow', 'Jump to Next step', 'Pursuit controls', 'Who does the work']) {
+      assert.equal(await page.getByText(text, { exact: true }).count(), 0, `Research must not show ${text}`);
+    }
+    assert.equal(await page.locator('a[href="#next-step"]').count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+    await page.getByRole('tab', { name: 'Pricing', exact: true }).click();
+    assert(await page.getByRole('heading', { name: 'Saved pricing history', exact: true }).isVisible());
+    assert.equal(await page.getByText('Enter subcontractor quotes', { exact: true }).count(), 0);
+    await page.getByRole('tab', { name: 'Submission', exact: true }).click();
+    assert(await page.getByRole('heading', { name: 'Saved submission history', exact: true }).isVisible());
+    assert.equal(await page.getByRole('button', { name: 'Approve this package', exact: true }).count(), 0);
+    await page.getByRole('tab', { name: 'Subcontractors', exact: true }).click();
+    assert(await page.getByText('Saved subcontractor history', { exact: true }).isVisible());
+    assert(await page.getByText('Sample Electrical Services', { exact: true }).isVisible());
+    assert.equal(await page.getByText('Enter quote', { exact: true }).count(), 0);
+    assert.equal(await page.getByText(/Collect or confirm their quote/).count(), 0);
+    assert.equal(await page.getByText(/Re-run the analysis to break it out/).count(), 0);
+    assert(await page.getByText('Saved description: Electrical', { exact: true }).isVisible());
+    assert.equal(await page.locator('a[href="#quotes"]').count(), 0);
+  });
   await check('/communications?c=clarity-audit-thread', 'email-message-separation', async () => {
     await page.getByText('Latest message', { exact: true }).waitFor();
     assert(await page.getByText('Friday works.', { exact: true }).isVisible());

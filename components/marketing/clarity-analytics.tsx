@@ -57,13 +57,13 @@ export function ClarityAnalytics() {
   }
 
   if (!ready) return null;
-  if (choice !== null && !settings) return <button type="button" onClick={() => setSettings(true)} className="fixed bottom-2 left-2 z-50 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm">Analytics preferences</button>;
+  if (choice !== null && !settings) return <button type="button" onClick={() => setSettings(true)} className="fixed bottom-2 left-2 z-50 min-h-11 rounded border border-border-strong bg-surface px-3 py-2 text-xs text-foreground shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">Analytics preferences</button>;
   return (
-    <section aria-label="Optional analytics" className="fixed bottom-3 left-3 right-3 z-50 mx-auto max-w-xl rounded-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 shadow-lg">
+    <section aria-label="Optional analytics" className="fixed bottom-3 left-3 right-3 z-50 mx-auto max-w-xl rounded-xl border border-border-strong bg-surface p-4 text-sm text-foreground shadow-lg">
       <p>Allow Google Analytics to measure website visits and signups, and Microsoft Clarity to help us improve BrostCo with masked recordings and heatmaps? Optional analytics uses cookies. <a className="underline" href="/privacy">Privacy details</a></p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className="rounded border border-slate-400 px-4 py-2" onClick={() => choose("denied")}>Decline</button>
-        <button type="button" className="rounded bg-slate-900 px-4 py-2 text-white" onClick={() => choose("granted")}>Allow analytics</button>
+        <button type="button" className="min-h-11 rounded border border-border-strong bg-surface px-4 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
+        <button type="button" className="min-h-11 rounded bg-accent px-4 py-2 text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("granted")}>Allow analytics</button>
       </div>
     </section>
   );

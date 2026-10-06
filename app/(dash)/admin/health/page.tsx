@@ -70,7 +70,7 @@ export default async function PlatformHealthPage() {
   const webhook = webhookHealth(pulse.lastEventAt, pulse.billableAccounts, refreshedAt);
   const services = serviceStatuses(facts, {
     billingWebhooks: {
-      state: webhook.state === "stale" || webhook.state === "never" ? "degraded" : "healthy",
+      state: webhook.state === "stale" || webhook.state === "never" ? "degraded" : webhook.state === "healthy" ? "healthy" : "unknown",
       detail: `${webhook.label}. ${webhook.detail}`,
     },
     providerCapacity: providerCapacityState(failures.rows),
