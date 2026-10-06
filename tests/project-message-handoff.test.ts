@@ -26,7 +26,7 @@ const request = () => new Request("http://test/api/conversations/compose", { met
 const refuse = () => refuseProjectMessage({ orgId: state.org, actorId: "operator", ...body });
 beforeAll(async () => {
   state.db = new PGlite(); await state.db.exec(`
-    create table opportunities(id uuid primary key,org_id uuid,title text,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer);
+    create table opportunities(id uuid primary key,org_id uuid,title text,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer,is_sources_sought boolean not null default false);
     create table subcontractors(id uuid primary key,org_id uuid,company_name text,email text,email_verified boolean,archived_at timestamptz);
     create table opportunity_subs(id uuid default gen_random_uuid(),opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz);
     create table communications(id uuid primary key default gen_random_uuid(),org_id uuid,subcontractor_id uuid,opportunity_id uuid,
@@ -43,7 +43,7 @@ beforeEach(async () => {
   state.outcome = "accepted"; state.deliveries = 0;
   body = { requestKey: randomUUID(), subcontractorId: randomUUID(), opportunityId: randomUUID(), trade: "Paint",
     recipient: "sub@example.test", sender: "owner@example.test", subject: "Station painting", message: "Please provide a quote for the station painting project." };
-  await state.db!.query("insert into opportunities values($1,$2,'Station','outreach','open','active',null,1)", [body.opportunityId,state.org]);
+  await state.db!.query("insert into opportunities(id,org_id,title,stage,status,pursuit_state,pursuit_reason,pursuit_version) values($1,$2,'Station','outreach','open','active',null,1)", [body.opportunityId,state.org]);
   await state.db!.query("insert into subcontractors values($1,$2,'Acme',$3,true,null)", [body.subcontractorId,state.org,body.recipient]);
   await state.db!.query("insert into opportunity_subs(opportunity_id,subcontractor_id,trade) values($1,$2,'Paint')", [body.opportunityId,body.subcontractorId]);
 });
