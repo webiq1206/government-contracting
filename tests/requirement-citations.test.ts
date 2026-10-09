@@ -39,6 +39,13 @@ describe("carrying a citation through to the screen", () => {
     expect(r.sourceDocumentId).toBe("doc-1");
     expect(r.sourceDocumentName).toBe("PWS.pdf");
     expect(r.sourcePage).toBe(44);
+    expect(r.sourcePageVerified).toBe(false);
+  });
+
+  it("carries deterministic page verification without upgrading legacy references", () => {
+    const [r] = requirementsOf([req({ source_document_id: "doc-1", source_page: 3, source_page_verified: true })]);
+    expect(r.sourcePage).toBe(3);
+    expect(r.sourcePageVerified).toBe(true);
   });
 
   it("keeps the document when there is no page", () => {

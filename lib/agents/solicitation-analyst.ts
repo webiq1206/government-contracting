@@ -1,5 +1,5 @@
 import { attachmentReadingCoverage, extractionStateFor } from "../domain/attachment-reading";
-import { sourceEvidenceMatches } from "../domain/source-evidence";
+import { sourceEvidenceMatches, verifiedSourcePage } from "../domain/source-evidence";
 import { reviewAnalysis } from "../ai/analysis-review";
 /**
  * SOLICITATION ANALYST, triggered after scoring (pursue or review) and again
@@ -440,6 +440,8 @@ async function processAttachment(
   outcome: AttachmentFetchOutcome;
   documentId: string | null;
   pages: number | null;
+  /** Native extractor boundaries; absent for OCR or unpaginated text. */
+  pageTexts?: string[];
   ocrState: OcrState | null;
   extractionModel?: string;
 }> {
@@ -722,6 +724,7 @@ async function processAttachment(
           parsedChars: text.length,
           documentId,
           pages,
+          pageTexts,
           // A text layer was there. Nothing needed transcribing.
           ocrState: "not_needed" as const,
           outcome: {
@@ -895,6 +898,8 @@ async function processStoredAnalysisSource(
   outcome: AttachmentFetchOutcome;
   documentId: string | null;
   pages: number | null;
+  /** Native extractor boundaries; absent for OCR or unpaginated text. */
+  pageTexts?: string[];
   ocrState: OcrState | null;
   extractionModel?: string;
 }> {
@@ -956,6 +961,7 @@ async function processStoredAnalysisSource(
         parsedChars: text.length,
         documentId: source.id,
         pages: extracted.total,
+        pageTexts: extracted.pages,
         ocrState: "not_needed",
         outcome: {
           name: source.name,
@@ -1677,12 +1683,16 @@ export const solicitationAnalyst: AgentDefinition = {
         .filter((r) => r.title?.trim())
         .map((r, i) => {
           const cite = resolveCitation(r.source_document, r.source_page, citable);
-          if (cite.problem === "unknown_document" || cite.problem === "page_out_of_range") {
+          const sourceDocument = cite.documentId
+            ? processed.find(p => p.documentId === cite.documentId)
+            : undefined;
+          const source = sourceDocument?.context ?? "";
+          const verifiedPage = verifiedSourcePage(sourceDocument?.pageTexts, r.source_quote, cite.page);
+          if (cite.problem === "unknown_document" || (cite.problem === "page_out_of_range" && verifiedPage == null)) {
             unresolvedCitations++;
           }
-          const source = processed.find(p => p.documentId === cite.documentId)?.context ?? "";
           const grounded = cite.documentId
-            ? cite.problem !== "page_out_of_range" && sourceEvidenceMatches(source, r.source_quote, cite.page)
+            ? verifiedPage != null || (cite.page == null && cite.problem !== "page_out_of_range" && sourceEvidenceMatches(source, r.source_quote))
             : !r.source_document && sourceEvidenceMatches(opp.description ?? "", r.source_quote);
           if (r.mandatory && !grounded) {
             evidenceIssues.push(`Verify the source evidence for required item: ${r.title}.`);
@@ -1699,7 +1709,8 @@ export const solicitationAnalyst: AgentDefinition = {
               `requirement_${i + 1}`,
             source_document: cite.documentName ?? undefined,
             source_document_id: cite.documentId ?? undefined,
-            source_page: cite.page ?? undefined,
+            source_page: verifiedPage,
+            source_page_verified: verifiedPage != null,
           };
         });
       /*

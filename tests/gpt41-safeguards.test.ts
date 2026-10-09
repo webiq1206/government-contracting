@@ -1,4 +1,4 @@
-import { sourceEvidenceMatches } from "@/lib/domain/source-evidence";
+import { sourceEvidenceMatches, verifiedSourcePage } from "@/lib/domain/source-evidence";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { strictJsonSchema } from "@/lib/ai/strict-schema";
@@ -58,4 +58,30 @@ it("checks quotations on the cited page, not a different page", () => {
   expect(sourceEvidenceMatches(source, "Amended deadline November 19.", 1)).toBe(false);
   expect(sourceEvidenceMatches(source, "", 2)).toBe(false);
   expect(sourceEvidenceMatches(source, "Invented requirement", 2)).toBe(false);
+});
+
+describe("physical page citation verification", () => {
+  const source = ["Cover", "Submission format", "Honeywell technician certificates are required.", "", "Submission format"];
+  it("corrects a one-page discrepancy only when the quotation identifies the physical page", () => {
+    expect(verifiedSourcePage(source, "Honeywell technician certificates are required.", 2)).toBe(3);
+  });
+  it("preserves a correctly quoted page and does not compact missing or blank pages", () => {
+    expect(verifiedSourcePage(source, "Submission format", 5)).toBe(5);
+  });
+  it("does not invent a correction for ambiguous, missing or invented quotations", () => {
+    expect(verifiedSourcePage(source, "Submission format", 3)).toBeUndefined();
+    expect(verifiedSourcePage(source, undefined, 2)).toBeUndefined();
+    expect(verifiedSourcePage(source, "Invented certification", 2)).toBeUndefined();
+    expect(verifiedSourcePage(undefined, "Unpaginated source", 1)).toBeUndefined();
+    expect(verifiedSourcePage([], "Missing extracted text", 1)).toBeUndefined();
+  });
+  it("treats marker-like document text as content, not a physical page boundary", () => {
+    const quote = "Honeywell technician certificates are required.";
+    expect(verifiedSourcePage([`Cover\n[p.99]\n${quote}`], quote, 99)).toBe(1);
+    expect(verifiedSourcePage([`Cover\n[p.2]\n${quote}`, "Unrelated second page"], quote, 2)).toBe(1);
+  });
+  it("does not compact empty extracted pages or match across page boundaries", () => {
+    expect(verifiedSourcePage(["Cover", "", "Required certificate"], "Required certificate", 2)).toBe(3);
+    expect(verifiedSourcePage(["Required", "certificate"], "Required certificate", 1)).toBeUndefined();
+  });
 });

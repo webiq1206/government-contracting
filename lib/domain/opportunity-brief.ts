@@ -64,6 +64,7 @@ export interface BriefRequirement {
   sourceDocumentId?: string;
   sourceDocumentName?: string;
   sourcePage?: number;
+  sourcePageVerified?: boolean;
   needsSignature?: boolean;
   officialForm?: string;
 }
@@ -331,6 +332,7 @@ export function buildOpportunityBrief(
         sourceDocumentId: clean(r.source_document_id) || undefined,
         sourceDocumentName: clean(r.source_document) || undefined,
         sourcePage: typeof r.source_page === "number" ? r.source_page : undefined,
+        sourcePageVerified: r.source_page_verified === true,
         needsSignature: r.signature_required || undefined,
         officialForm: clean(r.official_form) || undefined,
       },

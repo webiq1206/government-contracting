@@ -44,7 +44,7 @@ export interface WorkItem {
   context: string;
   /** ISO deadline of the underlying opportunity, when known. */
   due?: string | null;
-  /** Auto-dismiss or expiry moment, when the item has one. */
+  /** Recorded expiry target, not proof that a dismissal actually happened. */
   expiresAt?: string | null;
   /**
    * Where one tap takes you to complete the item.

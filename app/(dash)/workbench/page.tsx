@@ -649,10 +649,13 @@ export default async function WorkbenchPage(
                       {selected.expiresAt && (
                         <div>
                           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                            Dismissed automatically
+                            Recorded review expiry
                           </dt>
                           <dd className="text-foreground">
                             {shortDate(selected.expiresAt)} · {countdown(selected.expiresAt)}
+                          </dd>
+                          <dd className="mt-1 text-xs text-muted-foreground">
+                            A scheduled timestamp, not confirmation of dismissal. Check the current record status.
                           </dd>
                         </div>
                       )}

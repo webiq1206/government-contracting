@@ -188,7 +188,7 @@ export function RequirementsWorkspace({
       context: r.disqualifying
         ? researchOnly ? "Recorded mandatory requirement" : "Can sink the bid"
         : r.sourceDocumentName ?? r.source ?? null,
-      meta: r.sourcePage != null ? `p.${r.sourcePage}` : null,
+      meta: r.sourcePage != null ? `${r.sourcePageVerified ? "p." : "Recorded p."}${r.sourcePage}` : null,
       state: { label: REQUIREMENT_STATE_LABEL[s], tone: TONE[s] },
       done: s === "done" || s === "not_applicable",
     };
@@ -395,7 +395,7 @@ export function RequirementsWorkspace({
                   </div>
                   <div>
                     <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Read from
+                      Recorded source
                     </dt>
                     {/*
                       * The name is resolved against the documents this pane
@@ -414,9 +414,14 @@ export function RequirementsWorkspace({
                       }
                     >
                       {sourceName(selected, documents)
-                        ? `${sourceName(selected, documents)}${selected.sourcePage != null ? `, page ${selected.sourcePage}` : ""}`
+                        ? `${sourceName(selected, documents)}${selected.sourcePage != null ? `, ${selected.sourcePageVerified ? "page" : "recorded page"} ${selected.sourcePage}` : ""}`
                         : "The analysis did not resolve this to a document"}
                     </dd>
+                    {selected.sourcePage != null && !selected.sourcePageVerified && (
+                      <dd className="mt-1 text-xs text-muted-foreground">
+                        This page number has not been verified against the source text. It may open on the wrong page; find the stated section in the original document.
+                      </dd>
+                    )}
                   </div>
                   {selected.officialForm && (
                     <div>

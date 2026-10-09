@@ -630,6 +630,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
             packageReady={readiness.packageReady}
             uncoveredTrades={coverage.totals.uncovered}
             riskFlags={opp.risk_flags}
+            isClosed={Boolean(plan.closed)}
             nextAction={null}
           />}
         </div>

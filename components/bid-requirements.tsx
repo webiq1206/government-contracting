@@ -272,7 +272,7 @@ function SourceLine({ req }: { req: BriefRequirement }) {
   }
   const where = req.sourcePage ? `?page=${req.sourcePage}` : "";
   const label = req.sourcePage
-    ? `${req.sourceDocumentName ?? "source document"}, page ${req.sourcePage}`
+    ? `${req.sourceDocumentName ?? "source document"}, ${req.sourcePageVerified ? "page" : "recorded page"} ${req.sourcePage}`
     : (req.sourceDocumentName ?? "source document");
   return (
     <p className="mt-1 text-xs text-muted-foreground">
@@ -283,7 +283,7 @@ function SourceLine({ req }: { req: BriefRequirement }) {
         target="_blank"
         rel="noreferrer"
       >
-        Read it in {label}
+        Open {label}{req.sourcePage != null && !req.sourcePageVerified ? " (page unverified)" : ""}
       </a>
     </p>
   );
