@@ -46,8 +46,12 @@ describe("recovery checks the failed dependency", () => {
     expect(mocks.complete).not.toHaveBeenCalled();
   });
   it("uses a small, bounded AI test without including the company profile", async () => {
-    expect((await testIncidentDependency("provider_credit", "org-a")).passed).toBe(true);
-    expect(mocks.complete).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ injectProfile: false, maxTokens: 16, timeoutMs: 15000, maxRetries: 0 }));
+    expect((await testIncidentDependency("provider_credit", "org-a", "openai")).passed).toBe(true);
+    expect(mocks.complete).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ model: expect.stringMatching(/^gpt-/), injectProfile: false, maxTokens: 16, timeoutMs: 15000, maxRetries: 0 }));
+  });
+  it("fails closed when a provider incident has no trustworthy service identity", async () => {
+    expect((await testIncidentDependency("provider_auth", "org-a", null)).passed).toBe(false);
+    expect(mocks.complete).not.toHaveBeenCalled();
   });
   it("does not claim an unknown or missing-setup issue was repaired by an AI response", async () => {
     expect((await testIncidentDependency("unknown", "org-a")).passed).toBe(false);

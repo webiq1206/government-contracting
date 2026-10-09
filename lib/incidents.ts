@@ -135,6 +135,7 @@ export async function openOrUpdateIncident(input: OpenIncidentInput): Promise<In
        failed_count = excluded.failed_count,
        remaining_count = greatest(0, excluded.failed_count - automation_incidents.completed_count),
        severity = excluded.severity,
+       provider = coalesce(excluded.provider, automation_incidents.provider),
        started_at = least(automation_incidents.started_at, excluded.started_at),
        last_agent_success_at = excluded.last_agent_success_at,
        next_run_at = excluded.next_run_at,
@@ -159,6 +160,22 @@ export async function openOrUpdateIncident(input: OpenIncidentInput): Promise<In
     ]
   );
   return toRow(row!);
+}
+
+/** Identify the service from the evidence already shown with the incident. */
+export function incidentProvider(input: {
+  sample?: string | null;
+  affectedWorkflows?: readonly string[];
+}): string | null {
+  const evidence = `${input.sample ?? ""} ${(input.affectedWorkflows ?? []).join(" ")}`;
+  const providers = new Set<string>();
+  if (/\bopenai\b/i.test(evidence)) providers.add("openai");
+  if (/\banthropic\b|\bclaude\b/i.test(evidence)) providers.add("anthropic");
+  if (/\bahrefs\b|\bbacklink[ -]scout\b/i.test(evidence)) providers.add("ahrefs");
+  if (/\bhunter\b/i.test(evidence)) providers.add("hunter");
+  if (/\bgoogle maps\b/i.test(evidence)) providers.add("google_maps");
+  if (/\btwilio\b/i.test(evidence)) providers.add("twilio");
+  return providers.size === 1 ? [...providers][0] : null;
 }
 
 export class IllegalTransition extends Error {
@@ -323,6 +340,8 @@ export async function syncAutomationIncidents(
       spec: { blocking: boolean; repair?: string };
       failures: number;
       firstSeen: string;
+      sample?: string;
+      affectedWorkflows?: string[];
     }[];
     lastSuccessAt: string | null;
   },
@@ -334,7 +353,7 @@ export async function syncAutomationIncidents(
       orgId,
       cause: found.cause,
       severity: "blocking",
-      provider: found.cause.startsWith("provider_") ? "anthropic"
+      provider: found.cause.startsWith("provider_") ? incidentProvider(found)
         : found.cause.startsWith("mailbox_") || found.cause === "integration_auth" ? "gmail" : null,
       startedAt: new Date(found.firstSeen),
       failedCount: found.failures,

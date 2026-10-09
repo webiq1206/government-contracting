@@ -92,6 +92,7 @@ describe("completed free-tool use", () => {
     await fill(container.querySelector("textarea")!, "Confidential requirement");
     expect(completions()).toHaveLength(0);
     expect(button("Download").disabled).toBe(false);
+    expect(button("Download").textContent).toContain("Download CSV (1 row)");
     await click(button("Download")); await click(button("Download"));
     expect(completions()).toEqual([["tool_completed", { location: "content" }]]);
     expect(vi.mocked(marketingEvent).mock.calls.filter(([event]) => event === "resource_download")).toHaveLength(2);
