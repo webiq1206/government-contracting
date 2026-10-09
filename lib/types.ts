@@ -314,6 +314,8 @@ export interface ComplianceRequirement {
   source_document_id?: string;
   source_quote?: string;
   source_page?: number;
+  /** Set only by quotation matching against extracted physical PDF pages. */
+  source_page_verified?: boolean;
 }
 
 /** A finding from the independent compliance auditor. */

@@ -94,6 +94,7 @@ describe("what it refuses to claim", () => {
       packageReady: null,
       uncoveredTrades: 0,
       riskFlags: record.riskFlags,
+      isClosed: Boolean(plan.closed),
       nextAction: null,
     }));
     expect(plan.closed?.label).toBe("Expired");
@@ -104,6 +105,20 @@ describe("what it refuses to claim", () => {
     expect(html).not.toContain("Calls to make");
     expect(html).not.toContain("/call-queue");
     expect(record.stage).toBe("call_queue");
+  });
+
+  it.each(["Expired", "Won", "Lost", "Archived"])("marks %s risks as saved history without rewriting them", (closedLabel) => {
+    const flags = ["deadline_soon", "missing_statement_of_work"];
+    const html = renderToStaticMarkup(createElement(OpportunityStatusBar, {
+      stageLabel: closedLabel, deadline: null, score: 57, scoreBreakdown: null,
+      owner: null, readinessPercent: 0, packageReady: false, uncoveredTrades: 0,
+      riskFlags: flags, isClosed: true, nextAction: null,
+    }));
+    expect(html).toContain("Saved flags (inactive): ");
+    expect(html).toContain("this record is no longer active");
+    expect(html).not.toContain("bg-risk/15");
+    expect(flags).toEqual(["deadline_soon", "missing_statement_of_work"]);
+    expect(PAGE).toContain("isClosed={Boolean(plan.closed)}");
   });
 
   it("does not print a dash for a deadline the notice never stated", () => {

@@ -63,6 +63,18 @@ function render(props: Partial<Parameters<typeof RequirementsWorkspace>[0]> = {}
 }
 
 describe("the checklist beside its source", () => {
+  it("calls an older page reference unverified while preserving access to the original", () => {
+    const html = render({ requirements: [req({ id: "r1", sourceDocumentId: DOC.id, sourcePage: 2 })] });
+    expect(html).toContain("Recorded p.2");
+    expect(html).toContain("recorded page 2");
+    expect(html).toContain("This page number has not been verified against the source text.");
+    expect(html).toContain('src="/api/documents/d1/open?page=2"');
+  });
+  it("does not call an actual quotation match an unverified page", () => {
+    const html = render({ requirements: [req({ id: "r1", sourceDocumentId: DOC.id, sourcePage: 3, sourcePageVerified: true })] });
+    expect(html).not.toContain("This page number has not been verified");
+    expect(html).toContain('src="/api/documents/d1/open?page=3"');
+  });
   it("initially opens the effective requirement's second PDF at its recorded page", () => {
     const html = render({ requirements: [req({ id: "r1", sourceDocumentId: "d2", sourcePage: 44 })],
       documents: [DOC, { ...DOC, id: "d2", name: "Second source.pdf" }] });

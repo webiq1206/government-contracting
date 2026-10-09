@@ -34,6 +34,7 @@ export function OpportunityStatusBar({
   uncoveredTrades,
   riskFlags,
   nextAction,
+  isClosed = false,
 }: {
   stageLabel: string;
   deadline: string | null;
@@ -48,6 +49,8 @@ export function OpportunityStatusBar({
   riskFlags: string[] | null;
   /** The one thing to do next, and where it is. */
   nextAction: { label: string; href: string } | null;
+  /** Saved flags on a closed record describe its history, not current work. */
+  isClosed?: boolean;
 }) {
   const confidence = readConfidence(scoreBreakdown);
   return (
@@ -98,8 +101,13 @@ export function OpportunityStatusBar({
       )}
 
       {riskFlags && riskFlags.length > 0 && (
-        <span className="badge shrink-0 bg-risk/15 text-risk" title={flagSummary(riskFlags)}>
-          {flagSummary(riskFlags)}
+        <span
+          className={`badge shrink-0 ${isClosed ? "bg-surface-raised text-muted-foreground" : "bg-risk/15 text-risk"}`}
+          title={isClosed
+            ? `Saved flags; this record is no longer active. ${flagSummary(riskFlags)}`
+            : flagSummary(riskFlags)}
+        >
+          {isClosed ? "Saved flags (inactive): " : ""}{flagSummary(riskFlags)}
         </span>
       )}
 
