@@ -16,16 +16,11 @@ export function sourceEvidenceMatches(source: string, quote: string | undefined,
   return normalize(text).includes(normalize(quote));
 }
 
-/** Locate a quotation in physical PDF pages. Never guess a page offset. */
-export function verifiedSourcePage(source: string, quote: string | undefined, recordedPage?: number | null): number | undefined {
-  if (!quote?.trim()) return undefined;
-  const markers = [...source.matchAll(/\[p\.(\d+)\]/g)];
+/** Locate a quotation using extractor page boundaries, never markers in document text. */
+export function verifiedSourcePage(pages: readonly string[] | undefined, quote: string | undefined, recordedPage?: number | null): number | undefined {
+  if (!pages || !quote?.trim()) return undefined;
   const excerpt = normalize(quote);
-  const matches = [...new Set(markers.flatMap((marker, index) => {
-    const page = Number(marker[1]);
-    const text = source.slice(marker.index! + marker[0].length, markers[index + 1]?.index ?? source.length);
-    return page > 0 && normalize(text).includes(excerpt) ? [page] : [];
-  }))];
+  const matches = pages.flatMap((text, index) => normalize(text).includes(excerpt) ? [index + 1] : []);
   // A repeated header does not identify a new location. Keep the requested
   // page only when the actual quotation is present there.
   if (recordedPage != null && matches.includes(recordedPage)) return recordedPage;

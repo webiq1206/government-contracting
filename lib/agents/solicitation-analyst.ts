@@ -440,6 +440,8 @@ async function processAttachment(
   outcome: AttachmentFetchOutcome;
   documentId: string | null;
   pages: number | null;
+  /** Native extractor boundaries; absent for OCR or unpaginated text. */
+  pageTexts?: string[];
   ocrState: OcrState | null;
   extractionModel?: string;
 }> {
@@ -722,6 +724,7 @@ async function processAttachment(
           parsedChars: text.length,
           documentId,
           pages,
+          pageTexts,
           // A text layer was there. Nothing needed transcribing.
           ocrState: "not_needed" as const,
           outcome: {
@@ -895,6 +898,8 @@ async function processStoredAnalysisSource(
   outcome: AttachmentFetchOutcome;
   documentId: string | null;
   pages: number | null;
+  /** Native extractor boundaries; absent for OCR or unpaginated text. */
+  pageTexts?: string[];
   ocrState: OcrState | null;
   extractionModel?: string;
 }> {
@@ -956,6 +961,7 @@ async function processStoredAnalysisSource(
         parsedChars: text.length,
         documentId: source.id,
         pages: extracted.total,
+        pageTexts: extracted.pages,
         ocrState: "not_needed",
         outcome: {
           name: source.name,
@@ -1677,8 +1683,11 @@ export const solicitationAnalyst: AgentDefinition = {
         .filter((r) => r.title?.trim())
         .map((r, i) => {
           const cite = resolveCitation(r.source_document, r.source_page, citable);
-          const source = processed.find(p => p.documentId === cite.documentId)?.context ?? "";
-          const verifiedPage = verifiedSourcePage(source, r.source_quote, cite.page);
+          const sourceDocument = cite.documentId
+            ? processed.find(p => p.documentId === cite.documentId)
+            : undefined;
+          const source = sourceDocument?.context ?? "";
+          const verifiedPage = verifiedSourcePage(sourceDocument?.pageTexts, r.source_quote, cite.page);
           if (cite.problem === "unknown_document" || (cite.problem === "page_out_of_range" && verifiedPage == null)) {
             unresolvedCitations++;
           }
