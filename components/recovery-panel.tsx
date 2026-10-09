@@ -11,6 +11,7 @@ export interface OpenIncident {
   stateLabel: string;
   nextAction: string;
   cause: string;
+  provider: string | null;
   startedAt: string;
   failedCount: number;
   requeuedCount: number;
@@ -22,6 +23,15 @@ export interface OpenIncident {
   testPassed: boolean | null;
   recoveryNote: string | null;
   history: { to: string; label: string; actor: string; detail: string | null; at: string }[];
+}
+
+function providerRecoveryLink(provider: string | null): { href: string; label: string } {
+  switch (provider) {
+    case "openai": return { href: "/settings/integrations#openai", label: "Review OpenAI connection" };
+    case "anthropic": return { href: "/settings/integrations#claude", label: "Review Claude connection" };
+    case "ahrefs": return { href: "/settings/integrations#ahrefs", label: "Review Ahrefs connection" };
+    default: return { href: "/settings/integrations", label: "Review provider connection" };
+  }
 }
 
 /**
@@ -63,6 +73,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const providerLink = providerRecoveryLink(incident.provider);
 
   const run = async () => {
     if (!canRecover || inFlight.current) return;
@@ -149,7 +160,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button type="button" className="btn-secondary min-h-11 text-sm" onClick={() => router.refresh()}>Check current status</button>
         {incident.cause === "integration_auth" && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#gmail">Reconnect mailbox</Link>}
-        {incident.cause.startsWith("provider_") && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#claude">Review AI connection</Link>}
+        {incident.cause.startsWith("provider_") && canRecover && <Link className="btn-ghost text-sm" href={providerLink.href}>{providerLink.label}</Link>}
         {incident.history.length > 0 && (
           <button
             type="button"

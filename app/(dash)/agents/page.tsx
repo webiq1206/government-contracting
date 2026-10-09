@@ -262,6 +262,7 @@ export default async function AgentsPage(
             stateLabel: INCIDENT_STATE_LABEL[i.state],
             nextAction: INCIDENT_NEXT_ACTION[i.state],
             cause: i.cause,
+            provider: i.provider,
             startedAt: i.startedAt.toISOString(),
             failedCount: i.failedCount,
             requeuedCount: i.requeuedCount,

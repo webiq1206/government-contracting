@@ -56,16 +56,22 @@ export interface ProviderTest {
  * still fails the test, because something is wrong, but it says so honestly
  * instead of sending somebody to top up an account that was never the problem.
  */
-export async function testProvider(): Promise<ProviderTest> {
+export async function testProvider(provider?: string | null): Promise<ProviderTest> {
   // The complex tier is what a bid depends on, so that is what gets tested,
   // on whichever provider the router would give it. No fallback: a test that
   // quietly succeeded on the other provider would hide the very fault it
   // exists to find.
-  let model = config.ai.complexProvider === "OpenAI" ? config.openai.modelSmart : config.claude.modelSmart;
+  let model = provider === "openai"
+    ? config.openai.modelSmart
+    : provider === "anthropic"
+      ? config.claude.modelSmart
+      : config.ai.complexProvider === "OpenAI"
+        ? config.openai.modelSmart
+        : config.claude.modelSmart;
   try {
     const { text, usage } = await complete(
       "Reply with the single word: ready. Nothing else.",
-      { complexity: "complex", fallback: false, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
+      { model, complexity: "complex", fallback: false, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
     );
     model = usage?.model ?? model;
     const got = text.trim().toLowerCase();
@@ -106,7 +112,7 @@ export async function testProvider(): Promise<ProviderTest> {
 /** Check the service that actually failed. An AI response proves nothing
  * about a disconnected mailbox or an unavailable queue. These probes send no
  * email and never weaken a pause, permission or tenant check. */
-export async function testIncidentDependency(cause: string, orgId: string): Promise<ProviderTest> {
+export async function testIncidentDependency(cause: string, orgId: string, provider?: string | null): Promise<ProviderTest> {
   if (cause === "spending_limit") {
     try {
       const { checkRecentSpending } = await import("./api-usage/check-spending");
@@ -120,7 +126,28 @@ export async function testIncidentDependency(cause: string, orgId: string): Prom
           : "Spending protection could not be verified. Check the account’s API connection and budget before retrying." };
     }
   }
-  if (cause.startsWith("provider_") || cause === "model_output") return testProvider();
+  if (cause.startsWith("provider_")) {
+    if (provider === "openai" || provider === "anthropic") return testProvider(provider);
+    if (provider === "ahrefs") {
+      try {
+        const [{ orgApiKey }, { VALIDATORS }] = await Promise.all([
+          import("./integration-keys"),
+          import("./integration-validators"),
+        ]);
+        const key = await orgApiKey("AHREFS_API_KEY", orgId);
+        if (!key) return { passed: false, model: "ahrefs", technical: null,
+          detail: "No Ahrefs API key is available to test. A platform administrator must review the Site Authority connection." };
+        const result = await VALIDATORS.ahrefs({ AHREFS_API_KEY: key });
+        return { passed: result.ok, model: "ahrefs", technical: null, detail: result.message };
+      } catch (error) {
+        return { passed: false, model: "ahrefs", technical: error instanceof Error ? error.message : String(error),
+          detail: "The Ahrefs connection check could not finish. No AI request was sent and no recovery work was queued." };
+      }
+    }
+    return { passed: false, model: provider ?? "unknown", technical: null,
+      detail: "The affected provider could not be identified safely. Review the named failure before running recovery." };
+  }
+  if (cause === "model_output") return testProvider(provider);
   try {
     if (cause === "mailbox_content") {
       return { passed: false, model: "gmail", technical: null,
@@ -318,7 +345,7 @@ async function recoverIncident(incidentId: string, orgId: string, actor: string)
       confirmation: incident.recoveryNote, message: "This incident was already recovered. No duplicate work was queued." };
   }
 
-  const test = await testIncidentDependency(incident.cause, orgId);
+  const test = await testIncidentDependency(incident.cause, orgId, incident.provider);
 
   if (!test.passed) {
     /*
