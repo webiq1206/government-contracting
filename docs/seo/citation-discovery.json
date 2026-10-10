@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-09T14:22:32.381Z",
+  "checkedAt": "2026-10-10T13:41:25.073Z",
   "domain": "brostco.com",
   "coverage": "Free keyless sources only (Wikimedia, OpenAlex, Crossref, Common Crawl). This is NOT a complete inbound-link picture: enumerating backlinks needs a paid index, and directory listings or blog mentions will not appear here.",
   "filtering": "OpenAlex and Crossref expose relevance search, not substring search, so a hit is kept only when the domain appears literally in the record. `discardedRelevanceHits` counts results the ranker returned that never mention the domain; a high number there is the filter working.",
