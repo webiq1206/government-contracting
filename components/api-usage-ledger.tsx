@@ -1,4 +1,5 @@
 "use client";
+import { StoredTime } from "@/components/stored-time";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
@@ -503,9 +504,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                     {data.rows.map((r: Row) => (
                       <tr className="border-t" key={r.id}>
                         <td className="p-2 whitespace-nowrap">
-                          {new Date(r.started_at).toLocaleString("en-US", {
-                            timeZone: "UTC",
-                          })}
+                          <StoredTime value={r.started_at} seconds />
                         </td>
                         <td className="p-2 min-w-40">
                           {r.tenant}

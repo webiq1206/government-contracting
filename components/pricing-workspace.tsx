@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -164,7 +165,7 @@ export function PricingWorkspace({
 
         <p className="mt-3 text-xs text-muted-foreground">
           {lastCalculatedAt
-            ? `Last change to the pricing: ${lastCalculatedAt.toLocaleString()}.`
+            ? `Last change to the pricing: ${storedTimestamp(lastCalculatedAt).label}.`
             : "Nothing has been priced yet."}
         </p>
       </div>

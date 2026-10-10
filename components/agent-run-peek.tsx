@@ -1,3 +1,4 @@
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import Link from "next/link";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
 import { ActionButton } from "@/components/action-button";
@@ -35,7 +36,7 @@ export function AgentRunPeek({
   /** Re-running is a write. Offered only to a role that could actually do it. */
   canRun: boolean;
 }) {
-  const when = new Date(run.created_at);
+  const when = storedTimestamp(run.created_at, { seconds: true });
   const level = (run.level || "info").toLowerCase();
   const tone =
     level === "error"
@@ -73,7 +74,7 @@ export function AgentRunPeek({
   return (
     <DetailDrawer
       title={`${run.agent} · ${run.action}`}
-      subtitle={when.toLocaleString()}
+      subtitle={when.label}
       closeHref={closeHref}
       openHref={links[0]?.href ?? closeHref}
       openLabel={links[0] ? "Open the record it touched" : "Back to the log"}

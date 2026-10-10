@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { UnsavedGuard } from "@/components/unsaved-guard";
@@ -137,17 +138,7 @@ export function slugGuidance(
 }
 
 function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  return storedTimestamp(iso).label;
 }
 
 /** Insert text at the cursor position of a textarea. */

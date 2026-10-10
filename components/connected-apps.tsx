@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useEffect, useRef, useState } from "react";
 import { ACTION_UNCONFIRMED, actionError } from "@/lib/client/action-request";
 import { StatusPill } from "./status-pill";
@@ -431,7 +432,7 @@ function WebhooksSection({ webhooks, canManage, onChanged }: { webhooks: Webhook
                   <p className="text-xs text-muted-foreground">
                     {w.events.map((e) => NOTIFY_EVENTS.find((n) => n.key === e)?.label ?? e).join(", ") || "No events chosen"}
                     {" · "}
-                    {!w.active ? "Off" : w.failure_count > 0 ? `Last delivery failed (${w.failure_count} in a row)` : w.last_delivered_at ? `Last delivered ${new Date(w.last_delivered_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Nothing sent yet"}
+                    {!w.active ? "Off" : w.failure_count > 0 ? `Last delivery failed (${w.failure_count} in a row)` : w.last_delivered_at ? `Last delivered ${storedTimestamp(w.last_delivered_at).label}` : "Nothing sent yet"}
                   </p>
                 </div>
                 <StatusPill tone={!w.active ? "neutral" : w.failure_count > 0 ? "blocked" : "good"}>

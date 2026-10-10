@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UnsavedGuard } from "./unsaved-guard";
@@ -116,7 +117,7 @@ export function RecapSettingsForm({
       }
       if (!data.settings || typeof data.settings !== "object") throw new Error("Missing saved settings");
       setForm(data.settings);
-      setSavedAt(new Date().toLocaleTimeString());
+      setSavedAt(new Date().toLocaleTimeString("en-US", { timeZoneName: "short" }));
       if (typeof data.warning === "string" && data.warning) {
         setNotice(data.warning);
       }
@@ -824,7 +825,7 @@ function DeliveryHistory({
                         ? ` · ${selected.attempts} attempts`
                         : ""}
                       {selected.sentAt
-                        ? ` · sent ${new Date(selected.sentAt).toLocaleString()}`
+                        ? ` · sent ${storedTimestamp(selected.sentAt).label}`
                         : ""}
                     </p>
                   </div>

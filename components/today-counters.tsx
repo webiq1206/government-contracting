@@ -93,6 +93,7 @@ export function CompletedList({ items, timezone }: { items: CompletedItem[] | nu
                   hour: "numeric",
                   minute: "2-digit",
                   timeZone: timezone,
+                  timeZoneName: "short",
                 })}
               </time>
             </Link>

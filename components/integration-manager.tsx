@@ -6,6 +6,7 @@
  * no database access. Testing is explicit because provider checks may cost credits.
  */
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { actionError } from "@/lib/client/action-request";
@@ -337,11 +338,11 @@ export function IntegrationManager({ initial, editable = false }: { initial: Int
             {(def.last_success_at || def.last_tested_at) && (
               <p className="text-xs text-slate-500">
                 {def.last_success_at && (
-                  <>Last did real work {new Date(def.last_success_at).toLocaleString()}</>
+                  <>Last did real work {storedTimestamp(def.last_success_at).label}</>
                 )}
                 {def.last_success_at && def.last_tested_at && " · "}
                 {def.last_tested_at && (
-                  <>Last tested {new Date(def.last_tested_at).toLocaleString()}</>
+                  <>Last tested {storedTimestamp(def.last_tested_at).label}</>
                 )}
               </p>
             )}
