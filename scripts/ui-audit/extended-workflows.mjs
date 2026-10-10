@@ -3,6 +3,34 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check('/communications/unmatched', 'unmatched-complete-queue-search-pagination', async () => {
+    await page.getByText('153 stored messages', {exact:true}).waitFor();
+    await page.getByRole('link',{name:'Next 50 messages',exact:true}).click();
+    await page.waitForURL(url=>url.searchParams.has('after'));
+    await page.getByText('Synthetic queue 51',{exact:true}).waitFor();
+    await page.getByLabel('Known suppliers only',{exact:true}).check();
+    await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+    await page.waitForURL(url=>url.searchParams.get('known')==='yes' && !url.searchParams.has('after'));
+    await page.getByText('Synthetic queue 153',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('link',{name:'Next 50 messages',exact:true}).count(),0);
+    await page.getByLabel('Search all unmatched mail',{exact:true}).fill('does-not-exist-synthetic');
+    await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+    await page.getByText('0 stored messages',{exact:true}).waitFor();
+    assert.equal(await page.getByText('Every message that arrived has been placed against an opportunity.',{exact:true}).count(),0);
+  });
+  await check(`/outreach?project=${ids.opportunity}&days=all`, 'outreach-evidence-filters-and-project-scope', async () => {
+    await page.getByRole('heading',{name:'Outreach overview',exact:true}).waitFor();
+    await page.getByLabel('Outcome',{exact:true}).selectOption('accepted');
+    await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+    await page.getByText('Subject: Synthetic acceptance receipt',{exact:true}).waitFor();
+    await page.getByText('1 stored email records',{exact:true}).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('project'),ids.opportunity);
+    assert.equal(await page.getByRole('button',{name:/send/i}).count(),0);
+    await page.getByLabel('Outcome',{exact:true}).selectOption('automatic');
+    await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+    await page.getByText('Subject: Re: synthetic absence',{exact:true}).waitFor();
+    await page.getByText('1 stored email records',{exact:true}).waitFor();
+  });
   await check('/settings/integrations', 'connected-apps-load-retry', async () => {
     await page.route('**/api/services', r => r.fulfill({status:503, contentType:'application/json',body:'{"error":"Unavailable"}'}));
     try {

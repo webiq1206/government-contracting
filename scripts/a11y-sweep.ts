@@ -72,6 +72,8 @@ const ROUTES = [
   "/subs",
   "/communications",
   "/communications/history",
+  "/communications/unmatched",
+  "/outreach",
   "/contracts",
   "/compliance",
   "/analytics",

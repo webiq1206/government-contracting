@@ -35,7 +35,7 @@ import { conversationQuickViewData } from "@/lib/quick-view-data";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
-import { needsMatching } from "@/lib/needs-matching";
+import { needsMatching, needsMatchingCount } from "@/lib/needs-matching";
 import { query } from "@/lib/db";
 import { ShellDataWarning } from "@/components/shell-data-warning";
 import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
@@ -98,7 +98,7 @@ export default async function CommunicationsPage(
   const selectedKey = (Array.isArray(selectedRaw) ? selectedRaw[0] : selectedRaw) ?? null;
   const loadWarnings: string[] = [];
 
-  const [all, rates, pending, matchTargets] = await Promise.all([
+  const [all, rates, pending, matchTargets, pendingTotal] = await Promise.all([
     conversationList(),
     deliverabilityMessages().then(deliverability),
     /*
@@ -124,6 +124,10 @@ export default async function CommunicationsPage(
     ).catch(() => {
       loadWarnings.push("Opportunities for manually filing a reply could not be loaded.");
       return [];
+    }),
+    needsMatchingCount(ctx.orgId).catch(() => {
+      loadWarnings.push("The total unmatched-message count could not be checked.");
+      return null;
     }),
   ]);
 
@@ -257,6 +261,8 @@ export default async function CommunicationsPage(
         <ShellDataWarning items={loadWarnings} />
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <Link href="/communications/history" className="btn-ghost mb-3">Search full communications ledger</Link>
+          <Link href="/outreach" className="btn-ghost mb-3">Outreach overview</Link>
+          <Link href="/communications/unmatched" className="btn-ghost mb-3">Review unmatched mail ({pendingTotal === null ? "count unavailable" : pendingTotal.toLocaleString("en-US")})</Link>
           <EmptyState
             title="No mail either way yet"
             description="Conversations appear here once outreach runs on an opportunity you are pursuing, and once subcontractors write back."
@@ -290,6 +296,8 @@ export default async function CommunicationsPage(
 
         <PageToolbar>
         <Link href="/communications/history" className="btn-ghost mb-2 text-sm">Search full communications ledger</Link>
+        <Link href="/outreach" className="btn-ghost mb-2 text-sm">Outreach overview</Link>
+        <Link href="/communications/unmatched" className="btn-ghost mb-2 text-sm">All unmatched mail ({pendingTotal === null ? "count unavailable" : pendingTotal.toLocaleString("en-US")})</Link>
         {all.length >= 2000 && <p className="mb-2 text-xs text-muted-foreground">Inbox counts cover the most recent 2,000 conversations. Older records remain searchable in the full ledger.</p>}
         <form method="get" action="/communications" className="search-row">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
@@ -361,6 +369,7 @@ export default async function CommunicationsPage(
               }))}
               opportunities={matchTargets}
               canAct={canSend}
+              totalCount={pendingTotal}
             />
           </div>
         )}

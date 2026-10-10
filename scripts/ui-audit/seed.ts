@@ -92,6 +92,14 @@ try {
   await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,subject,body,recipient_email,delivery_state,gmail_thread_id,created_at)
     values ($1,$2,$3,'email','outbound','Email clarity audit','Please quote the electrical work.','fixture@example.test','sent','clarity-audit-thread',now()-interval '2 hours'),
            ($1,$2,$3,'email','inbound','Re: Email clarity audit','Friday works.\n\nOn Tuesday Alex wrote:\n> Please quote the electrical work.','owner@example.test','sent','clarity-audit-thread',now()-interval '1 hour')`, [org!.id,sub!.id,opp!.id]);
+  await query(`insert into unmatched_inbound(org_id,from_email,subject,snippet,received_at,subcontractor_id,message_id)
+    select $1,'fixture@example.test','Synthetic queue '||n,
+      case when n=153 then 'Synthetic response beyond the former 100-message preview.' else 'Unrelated synthetic newsletter.' end,
+      now()-interval '1 day'+n*interval '1 second',case when n=153 then $2::uuid end,'synthetic-queue-'||n
+    from generate_series(1,153) n`,[org!.id,sub!.id]);
+  await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,subject,body,provider,gmail_message_id,provider_attempted_at,provider_accepted_at,delivery_state)
+    values($1,$2,$3,'email','outbound','Synthetic acceptance receipt','Preserved synthetic original message.','gmail','synthetic-accepted',now()-interval '1 hour',now()-interval '1 hour','sent'),
+      ($1,$2,$3,'email','inbound','Re: synthetic absence','I am currently out of the office, but I will return Wednesday.',null,'synthetic-absence',null,null,'sent')`,[org!.id,sub!.id,opp!.id]);
   writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,research:research!.id,archived:archived!.id,sourceAudit:sourceAudit!.id,sourceDocs:sourceDocs.map(d=>d.id),sub:sub!.id,contract:contract!.id,call:call!.id,vendorToken:encodePortalToken({s:sub!.id,e:Math.floor(Date.now()/1000)+3600})}));
 } finally { await closePool(); }
 

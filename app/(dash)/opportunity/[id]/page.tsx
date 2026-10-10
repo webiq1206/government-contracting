@@ -984,6 +984,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           }
           coverage={
             <div className="space-y-6 px-5 py-8 sm:px-6" id="coverage">
+              <Link className="btn-ghost inline-flex min-h-11 items-center text-sm" href={`/outreach?project=${opp.id}&days=all`}>Review this solicitation’s outreach history and evidence</Link>
               {!opp.is_sources_sought && !outreachOn && (
                 <div className="card">
                   <p className="font-display text-base font-semibold">Subcontractor outreach is off for this opportunity</p>

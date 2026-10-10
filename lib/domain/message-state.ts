@@ -98,6 +98,7 @@ export interface MessageRow {
   clicked_at: string | Date | null;
   replied_at: string | Date | null;
   subject: string | null;
+  body?: string | null;
   meta?: { kind?: string; auto?: boolean } | null;
 }
 
@@ -187,11 +188,31 @@ export const AUTOMATIC_SUBJECT_SQL = AUTOMATIC_SUBJECT_SOURCES.map((s) => `(${s}
 
 const AUTOMATIC_SUBJECT_PATTERNS = AUTOMATIC_SUBJECT_SOURCES.map((s) => new RegExp(s, "i"));
 
+// A saved plain-subject absence notice is not a substantive bid response.
+// Inspect only the opening, never an old quoted notice beneath a real reply.
+// A price, attachment or substantive answer keeps it in the review path.
+export const ABSENCE_BODY_PREFIX = String.raw`^\s*(i am|i'm|i’m)\s+(currently\s+)?(out of (the )?office|away from (the )?office)`;
+export const SUBSTANTIVE_REPLY_BODY = String.raw`(quote|pricing|price|estimate|attach|interested|declin|proposal|can perform|cannot perform|can't perform|unable to perform|not available for|available for (this|the) (job|project))`;
+
+/** Same evidence rule for the thread list, navigation count and detail pane. */
+export function automaticMessageSql(alias: string, subjectPatternParameter: string): string {
+  if (!/^[a-z][a-z0-9_]*$/i.test(alias) || !/^\$[1-9][0-9]*$/.test(subjectPatternParameter))
+    throw new Error("Automatic-message SQL requires trusted aliases and parameters.");
+  const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
+  return `(coalesce(${alias}.meta->>'auto','false')='true'
+    or coalesce(${alias}.subject,'') ~* ${subjectPatternParameter}
+    or (left(coalesce(${alias}.body,''),700) ~* ${literal(ABSENCE_BODY_PREFIX)}
+      and left(coalesce(${alias}.body,''),700) !~* ${literal(SUBSTANTIVE_REPLY_BODY)}))`;
+}
+
 /** True when an inbound message was written by a machine, not a person. */
-export function isAutomatic(m: Pick<MessageRow, "subject" | "meta">): boolean {
+export function isAutomatic(m: Pick<MessageRow, "subject" | "body" | "meta">): boolean {
   if (m.meta?.auto === true) return true;
   const subject = m.subject ?? "";
-  return AUTOMATIC_SUBJECT_PATTERNS.some((re) => re.test(subject));
+  if (AUTOMATIC_SUBJECT_PATTERNS.some((re) => re.test(subject))) return true;
+  const opening = (m.body ?? "").slice(0, 700);
+  return new RegExp(ABSENCE_BODY_PREFIX, "i").test(opening)
+    && !new RegExp(SUBSTANTIVE_REPLY_BODY, "i").test(opening);
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 
@@ -13,6 +14,9 @@ export interface PendingMessage {
   receivedAt: string;
   subcontractorId: string | null;
   subcontractorName: string | null;
+  attachmentNames?: string[];
+  unreadableAttachments?: string[];
+  capturedThreadKey?: string | null;
 }
 
 export interface MatchTarget {
@@ -37,35 +41,43 @@ export function NeedsMatchingInbox({
   messages,
   opportunities,
   canAct,
+  totalCount,
+  expanded = false,
 }: {
   messages: PendingMessage[];
   /** Open opportunities this reply could belong to. */
   opportunities: MatchTarget[];
   canAct: boolean;
+  /** Null means the count could not be loaded; never substitute the preview length. */
+  totalCount?: number | null;
+  expanded?: boolean;
 }) {
-  const [shown, setShown] = useState(10);
+  const [shown, setShown] = useState(expanded ? 50 : 10);
+  const count = totalCount === undefined ? messages.length : totalCount;
   if (messages.length === 0) {
     return (
       <div className="card">
         <p className="eyebrow mb-2">Needs matching</p>
         <p className="text-sm text-muted-foreground">
-          Every message that arrived has been placed against an opportunity.
+          No stored unmatched messages are shown here. This does not establish that the provider mailbox has been fully synchronized.
         </p>
+        <Link href="/communications/unmatched" className="mt-2 inline-flex min-h-11 items-center text-sm text-accent">Search all unmatched mail</Link>
       </div>
     );
   }
 
   return (
-    <details className="card border-review/40 bg-review/5">
-      <summary className="min-h-11 cursor-pointer font-medium text-sm">Review unmatched messages ({messages.length})</summary>
+    <details id="unmatched" open={expanded || undefined} className="card border-review/40 bg-review/5">
+      <summary className="min-h-11 cursor-pointer font-medium text-sm">Review unmatched messages ({count === null ? "total unavailable" : count.toLocaleString("en-US")})</summary>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <p className="eyebrow">
-          Needs matching · <span className="num">{messages.length}</span>
+          Loaded on this page · <span className="num">{messages.length}</span>
         </p>
         <p className="text-xs text-muted-foreground">
-          Replies that arrived but could not be tied to any outreach we sent.
+          Stored inbound mail that could not be tied to an outreach message.
         </p>
       </div>
+      {!expanded && <Link href="/communications/unmatched" className="mb-3 inline-flex min-h-11 items-center text-sm text-accent">Search and page through all unmatched mail</Link>}
       <ul className="divide-y divide-border">
         {messages.slice(0, shown).map((m) => (
           <MessageRow key={m.id} message={m} opportunities={opportunities} canAct={canAct} />
@@ -132,13 +144,16 @@ function MessageRow({
           {message.subcontractorName ?? message.fromName ?? message.fromEmail}
         </p>
         <time className="text-xs text-muted-foreground" dateTime={recorded.dateTime}>
-          {recorded.label}
+          Stored received: {recorded.label}
         </time>
       </div>
       <p className="text-xs text-muted-foreground">{message.fromEmail}</p>
       {message.subject && (
         <p className="mt-1 text-sm text-slate-700">{message.subject}</p>
       )}
+      {!!message.attachmentNames?.length && <p className="mt-2 text-xs break-words">Recorded attachment names: {message.attachmentNames.join(", ")}. Names alone do not establish that file contents are available.</p>}
+      {!!message.unreadableAttachments?.length && <p className="mt-1 text-xs text-review break-words">Contents were not read: {message.unreadableAttachments.join(", ")}. Review the original message before using an estimate or quote.</p>}
+      {message.capturedThreadKey && <p className="mt-2 text-sm">This provider message ID is already present in a saved conversation. <Link className="text-accent" href={`/communications/history?thread=${encodeURIComponent(message.capturedThreadKey)}`}>Review the existing attribution</Link>.</p>}
       {/*
         The body, not just a sender and a subject. "What is this about" is the
         entire decision, and it is not answerable without reading the message.
@@ -147,7 +162,7 @@ function MessageRow({
         <details className="mt-1"><summary className="min-h-11 cursor-pointer text-xs text-muted-foreground">Read message</summary><p className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm text-muted-foreground">{message.snippet}</p></details>
       )}
 
-      {canAct && (
+      {canAct && !message.capturedThreadKey && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             type="button"

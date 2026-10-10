@@ -349,8 +349,10 @@ try {
     await page.getByRole('combobox',{name:/^Status(?:\s|$)/}).selectOption('failed');
     await page.getByRole('heading',{name:'No matching activity',exact:true}).waitFor();
     await page.getByRole('button',{name:'Clear filters',exact:true}).click();
-    await page.getByRole('heading',{name:'Email draft: Ledger Audit Draft',exact:true}).first().waitFor();
     assert.equal(await search.inputValue(),'');
+    // The unfiltered first page may now contain newer unmatched mail.
+    await search.fill('Ledger Audit Draft');
+    await page.getByRole('heading',{name:'Email draft: Ledger Audit Draft',exact:true}).first().waitFor();
     await page.screenshot({path:join(out,device+'-activity-filters.png')});
     results.push({device,route:'/activity',status:'draft history search, status filtering, empty state and clear checked',screenshot:device+'-activity-filters.png'});
   } catch(error) {

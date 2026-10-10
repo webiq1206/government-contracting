@@ -19,6 +19,7 @@ import { THREAD_KEY_SQL } from "./thread-key";
 import {
   messageState,
   AUTOMATIC_SUBJECT_SQL,
+  automaticMessageSql,
   type MessageState,
 } from "./domain/message-state";
 import {
@@ -108,7 +109,7 @@ export async function conversationList(opts: { q?: string; threadKey?: string } 
                   and (f.read_at is null or m.created_at > f.read_at)
               ) as unread_count,
               max(m.created_at) filter (
-                where m.direction = 'inbound' and coalesce(m.subject,'') !~* $3
+                where m.direction = 'inbound' and not ${automaticMessageSql("m", "$3")}
               ) as last_genuine_inbound_at,
               max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at,
               min(m.follow_up_at) filter (
@@ -332,7 +333,7 @@ export async function deliverabilityMessages(days = 90): Promise<CentreMessage[]
       id: r.id,
       direction: r.direction,
       subject: r.subject,
-      body: null,
+      body: r.direction === "inbound" ? r.body?.slice(0,700) ?? null : null,
       created_at: r.created_at,
       provider: r.provider,
       sender_email: r.sender_email,
@@ -421,14 +422,14 @@ export async function inboxNeedsReplyCount(): Promise<number> {
   // verdict's precedence: current resolution, failed delivery, then our turn.
   const row = await queryOne<{ n: number }>(
     `with msg as (
-       select c.created_at, c.direction, c.subject, c.delivery_state,
+       select c.created_at, c.direction, c.subject, c.body, c.meta, c.delivery_state,
               ${THREAD_KEY_SQL} as thread_key
          from communications c
         where c.org_id = $1 and c.channel = 'email'
      ), agg as (
        select m.thread_key, max(m.created_at) as last_at,
               max(m.created_at) filter (
-                where m.direction = 'inbound' and coalesce(m.subject,'') !~* $2
+                where m.direction = 'inbound' and not ${automaticMessageSql("m", "$2")}
               ) as last_genuine_inbound_at,
               max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at
          from msg m group by m.thread_key

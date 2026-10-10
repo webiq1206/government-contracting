@@ -113,9 +113,9 @@ export async function needsMatching(orgId: string, limit = 100): Promise<Unmatch
     `select u.id, u.from_email, u.from_name, u.subject, u.snippet, u.received_at,
             u.gmail_thread_id, u.subcontractor_id, u.state, s.company_name
        from unmatched_inbound u
-       left join subcontractors s on s.id = u.subcontractor_id
+       left join subcontractors s on s.id = u.subcontractor_id and s.org_id = u.org_id
       where u.org_id = $1 and u.state = 'needs_matching'
-      order by u.received_at
+      order by u.received_at, u.id
       limit $2`,
     [orgId, limit]
   );
