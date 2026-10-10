@@ -633,7 +633,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
 }
 
 export async function auditRoles({ browser, device, width, height, base, out, results, failures, checkpoint }) {
-  const routes = ['/today', '/pipeline', '/subs', '/communications', '/communications/history', '/contracts', '/compliance', '/settings/profile', '/settings/content', '/settings/integrations', '/settings/api-usage', '/settings/rules', '/settings/billing', '/more'];
+  const routes = ['/today', '/pipeline', '/subs', '/communications', '/communications/history', '/communications/unmatched', '/outreach', '/contracts', '/compliance', '/settings/profile', '/settings/content', '/settings/integrations', '/settings/api-usage', '/settings/rules', '/settings/billing', '/more'];
   for (const role of ['tenant-owner', 'admin', 'operator', 'member', 'viewer']) {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: device !== 'desktop', hasTouch: device !== 'desktop' });
     await context.route('**/*', r => new URL(r.request().url()).origin === base ? r.continue() : r.abort());
@@ -654,6 +654,7 @@ export async function auditRoles({ browser, device, width, height, base, out, re
         if (route === '/settings/integrations' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.locator('#sam input').count(), 0);
         if (route === '/contracts' && ['member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Record one by hand', exact: true }).count(), 0);
         if (route === '/subs' && role === 'viewer') assert.equal(await page.getByRole('button', { name: /^Edit contact info for/ }).count(), 0);
+        if (route === '/communications/unmatched' && role === 'viewer') assert.equal(await page.getByRole('button',{name:/^(This is about a bid|Not ours)$/}).count(),0);
         if (route === '/compliance' && role === 'viewer') {
           assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
           assert.equal(await page.getByRole('button', { name: /^(Edit|Delete|Add file)$/ }).count(), 0);

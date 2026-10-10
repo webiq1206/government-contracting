@@ -4,7 +4,8 @@ const m=vi.hoisted(()=>({query:vi.fn()}));
 vi.mock("../lib/db",()=>({query:m.query}));
 vi.mock("../lib/data",()=>({currentOrg:async()=>"ours"}));
 import { subConversations } from "../lib/domain/conversation";
-import { conversationMessages } from "../lib/conversations";
+import { conversationMessages, deliverabilityMessages } from "../lib/conversations";
+import { isGenuineReply } from "../lib/domain/message-state";
 let db:PGlite;
 beforeAll(async()=>{
  db=new PGlite();
@@ -33,4 +34,11 @@ it('the main inbox also shows the newest message in a long thread',async()=>{
  expect(messages[0].body).toBe('Message 11');
  expect(messages.at(-1)?.body).toBe('Message 510');
  expect(await conversationMessages('private')).toEqual([]);
+});
+it('retains bounded inbound evidence when calculating response counts',async()=>{
+ await db.exec(`insert into communications(id,org_id,channel,direction,subject,body,created_at)
+ values('absence','ours','email','inbound','Re: outreach','I am currently out of the office, but I will return Wednesday.',now());`);
+ const [absence]=(await deliverabilityMessages()).filter(m=>m.id==='absence');
+ expect(absence.body).toContain('out of the office');
+ expect(isGenuineReply(absence)).toBe(false);
 });

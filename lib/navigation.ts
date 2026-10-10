@@ -94,7 +94,7 @@ export function navigationMatches(pathname: string, href: string): boolean {
   if (href === "/today" && (pathname === "/workbench" || pathname === "/call-queue")) return true;
   if (href === "/workbench" && pathname === "/call-queue") return true;
   if (href === "/agents" && pathname === "/automation") return true;
-  if (href === "/communications" && pathname === "/email-log") return true;
+  if (href === "/communications" && (pathname === "/email-log" || pathname === "/outreach")) return true;
 
   return pathname === href || pathname.startsWith(href + "/");
 }
