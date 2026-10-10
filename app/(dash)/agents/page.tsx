@@ -308,9 +308,9 @@ export default async function AgentsPage(
         {live.errors24h > 0 && (
           <p className="text-xs text-muted-foreground">
             <Link prefetch={false} href={link({ level: "error", page: undefined })} className="underline underline-offset-2">
-              See every failed run
+              See recorded errors
             </Link>{" "}
-            ({live.errors24h} of {live.runs24h} runs in the last 24 hours).
+            ({live.errors24h} of {live.runs24h} completed events in the last 24 hours).
           </p>
         )}
 

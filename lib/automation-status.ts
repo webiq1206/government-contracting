@@ -29,6 +29,7 @@ import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { orgHasKey } from "./integration-keys";
 import { assessAutomation, type AutomationHealth, type RunFact, type IncidentCause } from "./domain/automation-health";
 import { ROSTER } from "./agents/registry";
+import { providerRouteRefusal } from "./ai/provider-facts";
 
 /** agent name -> the label an operator would recognise. */
 const LABELS = new Map(ROSTER.map((a) => [a.name, a.label]));
@@ -57,7 +58,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
 const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
   return runWithOrg(org, async () => {
 
-  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered] = await Promise.all([
+  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered, providerHolds] = await Promise.all([
     getAutomationState().then((s) => s.paused),
     readWorkerHeartbeat(),
     query<{ runs: number; errors: number }>(
@@ -128,6 +129,13 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
         group by cause`,
       [org]
     ),
+    // Current configured routes, including fallback/pending safeguards. These
+    // are stored facts only: never a provider request or recovery test. Let a
+    // failed read surface as unavailable, not as a cleared hold.
+    Promise.all((["routine", "complex"] as const).map(async (tier) => {
+      const refusal = await providerRouteRefusal(org, tier, true);
+      return refusal ? { provider: refusal.provider, tier, reason: refusal.reason } : null;
+    })),
   ]);
 
   const rows = [...errors, ...latestOk];
@@ -143,6 +151,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
     paused,
     platformPaused: platform.paused,
     recoveredThrough: Object.fromEntries(recovered.map((r) => [r.cause, r.recovered_at])),
+    providerHolds: providerHolds.filter((hold) => hold !== null),
     heartbeatAt: heartbeat?.updatedAt ?? null,
     phase: heartbeat?.phase ?? null,
     runs,

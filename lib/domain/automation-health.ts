@@ -226,7 +226,7 @@ export function causeSpec(cause: IncidentCause, errors: readonly string[] = []):
 export function classifyFailure(error: string | null | undefined): IncidentCause {
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
-  if (/ai work has an unresolved completion|reconcile its saved output before retrying/.test(text)) return "completion_reconciliation";
+  if (/ai work has an unresolved completion|reconcile its saved output before retrying|provider request is in progress or has an unresolved outcome/.test(text)) return "completion_reconciliation";
   if (/no verified platform sender|platform gmail connection or verified sender identity is not ready/.test(text)) return "sender_not_ready";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
   if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota/.test(text)) return "provider_credit";
@@ -274,6 +274,8 @@ export interface HealthInput {
   platformPaused?: boolean;
   /** Only a completed recovery can retire historical failures of its cause. */
   recoveredThrough?: Partial<Record<IncidentCause, string>>;
+  /** Current route admission evidence, independent of the rolling event log. */
+  providerHolds?: { provider: string; tier: string; reason: string }[];
   /** The worker's own check-in, when it has written one. */
   heartbeatAt?: string | Date | null;
   /** What the worker says it is doing: "ready", "queue-unreachable", ... */
@@ -316,6 +318,8 @@ export interface Incident {
   lastSeen: string;
   /** One representative error, kept for the "Technical details" disclosure. */
   sample: string;
+  /** A current route hold is not an additional failed event. */
+  currentProviderHold?: boolean;
 }
 
 export interface AutomationHealth {
@@ -425,6 +429,29 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
   for (const incident of byCause.values()) {
     incident.spec = causeSpec(incident.cause,
       failures.filter((run) => classifyFailure(run.error) === incident.cause).map((run) => run.error ?? ""));
+  }
+
+  // Admission refusals persist until relevant provider evidence changes.
+  // Aging out of the 24-hour log, a recovered historical incident, or an
+  // unrelated successful event cannot retire a currently blocked AI route.
+  // Do not add these observations to the event count or failure percentage.
+  for (const hold of input.providerHolds ?? []) {
+    const message = `${hold.provider}: ${hold.reason}`;
+    const cause = classifyFailure(message);
+    const existing = byCause.get(cause);
+    const workflow = `${hold.provider} (${hold.tier} AI work)`;
+    if (existing) {
+      existing.currentProviderHold = true;
+      if (!existing.affectedWorkflows.includes(workflow)) existing.affectedWorkflows.push(workflow);
+      existing.sample = [existing.sample, message].filter(Boolean).join("\n");
+      existing.spec = { ...causeSpec(cause, [existing.sample]), blocking: true };
+    } else {
+      byCause.set(cause, {
+        cause, spec: { ...causeSpec(cause, [message]), blocking: true }, failures: 0,
+        affectedWorkflows: [workflow], firstSeen: now.toISOString(), lastSeen: now.toISOString(),
+        sample: message, currentProviderHold: true,
+      });
+    }
   }
 
   const incidents = [...byCause.values()].sort((a, b) => {

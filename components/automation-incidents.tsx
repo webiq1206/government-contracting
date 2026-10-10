@@ -100,17 +100,17 @@ export function AutomationStatusPanel({
           * draw a rate from.
           */}
         <Fact
-          label="Failure rate (24h)"
+          label="Recorded event failure rate (24h)"
           value={
             health.failureRate == null
               ? health.runs24h === 0
-                ? "No runs in 24 hours"
-                : `Too few runs to say (${health.runs24h})`
+                ? "No completed events in 24 hours"
+                : `Too few completed events (${health.runs24h})`
               : formatFailureRate(health.failureRate, health.runs24h)
           }
         />
         <Fact
-          label="Last successful run"
+          label="Last successful event"
           value={health.lastSuccessAt ? timeAgo(health.lastSuccessAt) : "None in 24 hours"}
         />
         <Fact
@@ -124,6 +124,9 @@ export function AutomationStatusPanel({
           }
         />
       </dl>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Counts use recorded success and error events in the last 24 hours. One job can record several events; skipped or held work is excluded from the rate. A successful event does not confirm that every provider has recovered.
+      </p>
     </section>
   );
 }
@@ -176,9 +179,11 @@ export function AutomationIncidents({ health, showDiagnostics = false }: { healt
               {incident.spec.title}
             </h3>
             <span className="text-xs text-muted-foreground">
-              {incident.failures > 0
-                ? `${incident.failures} failure${incident.failures === 1 ? "" : "s"}, first ${timeAgo(incident.firstSeen)}`
-                : `Detected ${timeAgo(incident.lastSeen)}`}
+              {incident.currentProviderHold
+                ? `Current provider hold${incident.failures > 0 ? ` · ${incident.failures} recorded errors in 24h` : " · no failed event added"}`
+                : incident.failures > 0
+                  ? `${incident.failures} recorded error${incident.failures === 1 ? "" : "s"}, first ${timeAgo(incident.firstSeen)}`
+                  : `Detected ${timeAgo(incident.lastSeen)}`}
             </span>
           </div>
 
