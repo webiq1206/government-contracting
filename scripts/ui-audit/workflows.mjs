@@ -347,6 +347,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     await page.goForward({ waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'No matching activity', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    assert.equal(await search.inputValue(), '');
+    await search.fill('Ledger Audit Draft');
     await heading.waitFor();
   });
   await check('/activity', 'activity-storage-and-network-recovery', async () => {
@@ -371,6 +373,8 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       await page.getByRole('alert').filter({ hasText: 'Your activity could not be loaded' }).waitFor();
     } finally { await page.unroute('**/api/activity?**'); }
     await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'Your activity could not be loaded' }).waitFor({ state: 'hidden' });
+    await page.getByRole('textbox', { name: 'Search messages, subjects, recipients or opportunities' }).fill('Ledger Audit Draft');
     await page.getByRole('heading', { name: 'Email draft: Ledger Audit Draft', exact: true }).first().waitFor();
   });
   await check(`/opportunity/${ids.opportunity}`, 'pursuit-pause-network-recovery-and-resume', async () => {

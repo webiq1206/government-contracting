@@ -29,13 +29,13 @@ export async function auditExtendedWorkflows({ page, device, ids, base, out, che
     await page.getByRole('heading',{name:'Outreach overview',exact:true}).waitFor();
     await page.getByLabel('Outcome',{exact:true}).selectOption('accepted');
     await page.getByRole('button',{name:'Apply filters',exact:true}).click();
-    await page.getByText('Synthetic acceptance receipt',{exact:true}).waitFor();
+    await page.getByText('Subject: Synthetic acceptance receipt',{exact:true}).waitFor();
     await page.getByText('1 stored email records',{exact:true}).waitFor();
     assert.equal(new URL(page.url()).searchParams.get('project'),ids.opportunity);
     assert.equal(await page.getByRole('button',{name:/send/i}).count(),0);
     await page.getByLabel('Outcome',{exact:true}).selectOption('automatic');
     await page.getByRole('button',{name:'Apply filters',exact:true}).click();
-    await page.getByText('Re: synthetic absence',{exact:true}).waitFor();
+    await page.getByText('Subject: Re: synthetic absence',{exact:true}).waitFor();
     await page.getByText('1 stored email records',{exact:true}).waitFor();
   });
   await check('/settings/integrations', 'connected-apps-load-retry', async () => {
