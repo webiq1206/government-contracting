@@ -14,6 +14,7 @@ const ids=JSON.parse(readFileSync('/tmp/ui-fixtures.json','utf8'));
 function walk(dir) {return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):e.name==='page.tsx'?[join(dir,e.name)]:[]);}
 const routes=walk('app').map(file=>({file,route:'/'+file.split('/').slice(1,-1).filter(s=>!s.startsWith('(')).join('/')})).filter(x=>!x.route.startsWith('/theme-qa'));
 function resolve(route) {
+  if (route === '/outreach/[id]') return `/outreach/${ids.evidenceMail}`;
   if (route === '/communications/compose') return `/communications/compose?sub=${ids.sub}&project=${ids.opportunity}&trade=Electrical`;
   return route.replace('/opportunity/[id]',`/opportunity/${ids.opportunity}`).replace('/subs/[id]',`/subs/${ids.sub}`).replace('/contracts/[id]',`/contracts/${ids.contract}`).replace('/admin/accounts/[id]',`/admin/accounts/${ids.org}`).replace('[token]',ids.vendorToken);
 }

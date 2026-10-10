@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { timeAgo, shortDate } from "@/lib/format";
+import { communicationTimestamp } from "@/lib/domain/communication-timestamp";
 import {
   activityCounts,
   filterActivity,
@@ -117,16 +117,18 @@ export function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
       )}
 
       <ul className="space-y-3">
-        {shown.map((e) => (
+        {shown.map((e) => {
+          const recorded = communicationTimestamp(e.at);
+          return (
           <li key={e.id} className="border-l-2 border-border pl-3">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className={`badge ${KIND_BADGE[e.kind]}`}>{KIND_LABEL[e.kind]}</span>
               {e.actor && e.actor !== KIND_LABEL[e.kind] && (
                 <span className="text-slate-500">{e.actor}</span>
               )}
-              <span className="ml-auto text-slate-500" title={shortDate(e.at)}>
-                {timeAgo(e.at)}
-              </span>
+              <time className="ml-auto text-slate-500" dateTime={recorded.dateTime}>
+                {recorded.label}
+              </time>
             </div>
             <p className="mt-1 text-sm font-medium text-slate-900">{e.title}</p>
             {e.detail && (
@@ -135,7 +137,8 @@ export function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
               </p>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {/*

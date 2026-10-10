@@ -37,7 +37,7 @@ export interface OutreachSendParams {
   postAwardCompliance?: { contractId: string };
   scheduled?: import("../scheduled-email").ScheduledEmail;
   /** Commit durable attempt evidence before Gmail may send. Failure prevents sending. */
-  beforeProviderSend?: (from: string) => Promise<void>;
+  beforeProviderSend?: (from: string, identity?: import("./gmail").MailboxSendEvidence) => Promise<void>;
   to: string;
   subject: string;
   html: string;

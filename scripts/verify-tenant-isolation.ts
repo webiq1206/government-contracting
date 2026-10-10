@@ -65,6 +65,7 @@ const REQUIRED_OWNERS = [
   "bids",
   "contracts",
   "communications",
+  "communication_events",
   "documents",
   "templates",
   "compliance_items",

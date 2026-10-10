@@ -91,7 +91,9 @@ try {
     if (page.route.includes("[id]"))
       page.route = page.route.replace(
         "[id]",
-        page.route.includes("/admin/accounts")
+          page.route.includes("/outreach")
+            ? fixtures.evidenceMail
+            : page.route.includes("/admin/accounts")
           ? fixtures.org
           : page.route.includes("/opportunity")
             ? fixtures.opportunity

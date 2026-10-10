@@ -78,6 +78,18 @@ describe('Gmail sender checks at the provider boundary', () => {
 
 
 describe('grant-bound health writes',()=>{
+ it('records the actual grant identity and refuses a replaced grant before provider handoff',async()=>{
+  const old='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',fresh='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let generation=old;
+  vi.mocked(queryOne).mockImplementation(async()=>({data:{refresh_token:'synthetic'},email:'actual-mailbox@example.test',connection_generation:generation,status:'connected'}) as never);
+  const stamp=vi.fn(async()=>{});
+  await gmail.send({...params,beforeProviderSend:stamp});
+  expect(stamp).toHaveBeenCalledWith(params.from,{mailboxEmail:'actual-mailbox@example.test',connectionGeneration:old});
+  mocks.send.mockClear();stamp.mockClear();
+  mocks.list.mockImplementation(async()=>{generation=fresh;return{data:{sendAs:[{sendAsEmail:'hello@brostco.com',verificationStatus:'accepted'}]}};});
+  expect(await gmail.send({...params,beforeProviderSend:stamp})).toMatchObject({outcome:'not_attempted',disabled:true});
+  expect(stamp).not.toHaveBeenCalled();expect(mocks.send).not.toHaveBeenCalled();
+ });
  it('does not revoke a reconnected grant on a late invalid_grant from the old client',async()=>{
   const old='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',fresh='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   let generation=old,status='connected';

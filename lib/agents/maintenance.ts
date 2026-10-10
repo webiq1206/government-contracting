@@ -2847,6 +2847,8 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           ccAddresses: r.cc,
           attachmentNames: (r.attachments ?? []).map((attachment) => attachment.filename),
           unreadableAttachments: unmatchedDocs.unreadable,
+          originalDateHeader: r.date || null,
+          receivedAt: r.date && Number.isFinite(Date.parse(r.date)) ? new Date(r.date) : null,
           subcontractorId: known?.id ?? null,
         });
         if (filed && known) {
@@ -2915,6 +2917,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         toAddresses: r.to,
         ccAddresses: r.cc,
         sentAt: r.date,
+        sourceDateUnknown: !r.date || !Number.isFinite(Date.parse(r.date)),
         rfc822MessageId: r.rfc822MessageId,
         references: [...r.references, ...(r.inReplyTo ? [r.inReplyTo] : [])],
         attachmentNames: (r.attachments ?? []).map((a) => a.filename),

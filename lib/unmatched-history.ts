@@ -18,7 +18,7 @@ export async function unmatchedHistory(orgId: string, opts: UnmatchedOptions = {
   const needle = opts.q?.trim().slice(0,300).replace(/[\\%_]/g,"\\$&");
   const [result] = await query<{ total: number; rows: PendingMessage[] }>(`with waiting as (
     select u.id,u.received_at,u.from_email,u.from_name,u.subject,u.snippet,u.subcontractor_id,s.company_name,
-      u.attachment_names,u.unreadable_attachments,
+      u.attachment_names,u.unreadable_attachments,u.original_date_header,u.created_at,
       (select ${THREAD_KEY_SQL} from communications c where c.org_id=u.org_id and c.gmail_message_id=u.message_id
         and c.channel='email' and c.direction='inbound' order by c.created_at,c.id limit 1) as captured_thread_key
       from unmatched_inbound u left join subcontractors s on s.id=u.subcontractor_id and s.org_id=u.org_id
@@ -28,7 +28,8 @@ export async function unmatchedHistory(orgId: string, opts: UnmatchedOptions = {
   ), page as (
     select id,received_at::text as "receivedAt",from_email as "fromEmail",from_name as "fromName",
       subject,snippet,subcontractor_id as "subcontractorId",company_name as "subcontractorName",
-      attachment_names as "attachmentNames",unreadable_attachments as "unreadableAttachments",captured_thread_key as "capturedThreadKey"
+      attachment_names as "attachmentNames",unreadable_attachments as "unreadableAttachments",captured_thread_key as "capturedThreadKey",
+      original_date_header as "originalDateHeader",created_at::text as "ingestedAt"
     from waiting where ($4::timestamptz is null or (received_at,id)>($4::timestamptz,$5::uuid))
     order by received_at,id limit 51
   ) select (select count(*)::int from waiting) as total,

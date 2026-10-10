@@ -104,6 +104,7 @@ export default async function OutreachPage({ searchParams }: {
           {row.opportunity_id && <a className="text-accent" href={href({project:row.opportunity_id,before:undefined})}>{row.opportunity_title ?? "Solicitation history"}{row.solicitation_number ? ` · ${row.solicitation_number}` : ""}</a>}
           {row.subcontractor_id && <Link className="text-accent" href={`/subs/${row.subcontractor_id}`}>{row.company_name ?? "Supplier record"}</Link>}
           <Link className="text-accent" href={`/communications/history?thread=${encodeURIComponent(row.thread_key)}`}>Read full conversation history</Link>
+          <Link className="text-accent" href={`/outreach/${row.id}`}>Recorded attempts and changes</Link>
         </div>
         <EmailMessage body={row.body} subject={row.subject} direction={row.direction==="inbound"?"inbound":"outbound"}
           sender={row.sender_email} recipient={row.recipient_email} contact={row.company_name ?? "Contact"} date={row.created_at}>

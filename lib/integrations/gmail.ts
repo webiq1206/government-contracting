@@ -191,17 +191,17 @@ async function resolveOrg(orgId?: string): Promise<string | null> {
   return orgId ?? (await tryResolveTenantOrgId());
 }
 
-async function getRefreshGrant(orgId: string): Promise<{refresh: string; generation: string | null} | null> {
-  const row = await queryOne<{ data: { refresh_token?: string }; connection_generation?: string }>(
-    `select data, connection_generation from integration_tokens where provider = 'gmail' and org_id = $1`,
+async function getRefreshGrant(orgId: string): Promise<{refresh: string; generation: string | null; mailboxEmail: string | null} | null> {
+  const row = await queryOne<{ data: { refresh_token?: string }; connection_generation?: string; email?: string | null }>(
+    `select data, connection_generation, email from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
   );
   const stored = readRefreshToken(row?.data);
-  if (stored) return {refresh:stored,generation:row?.connection_generation ?? null};
+  if (stored) return {refresh:stored,generation:row?.connection_generation ?? null,mailboxEmail:row?.email ?? null};
   // Headless escape hatch, founding tenant only. Handing this env token to any
   // other org would let them send from the platform's own mailbox.
   if (orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
-    return {refresh:config.gmail.refreshToken,generation:null};
+    return {refresh:config.gmail.refreshToken,generation:null,mailboxEmail:null};
   }
   return null;
 }
@@ -278,6 +278,8 @@ export function __resetSendAsCache(orgId?: string): void {
 }
 
 const clientGenerations = new WeakMap<object,string | null>();
+export interface MailboxSendEvidence { mailboxEmail: string | null; connectionGeneration: string | null }
+const clientIdentities = new WeakMap<object,MailboxSendEvidence>();
 
 /** Authorized Gmail client for one organization, or null if not connected. */
 async function gmailClient(orgId?: string) {
@@ -290,11 +292,12 @@ async function gmailClient(orgId?: string) {
   client.setCredentials({ refresh_token: grant.refresh });
   const api = google.gmail({ version: "v1", auth: client });
   clientGenerations.set(api,grant.generation);
+  clientIdentities.set(api,{mailboxEmail:grant.mailboxEmail,connectionGeneration:grant.generation});
   return api;
 }
 
 export interface SendEmailParams {
-  beforeProviderSend?: (from: string) => Promise<void>;
+  beforeProviderSend?: (from: string, identity?: MailboxSendEvidence) => Promise<void>;
   to: string;
   subject: string;
   html: string;
@@ -882,7 +885,14 @@ export const gmail = {
       if (!sender.ok) return { disabled: true, error: sender.error };
       await reserveGmailQuota(org!, 120);
       const raw = buildGmailRawMessage(params, sender.from);
-      await params.beforeProviderSend?.(sender.from);
+      const identity = clientIdentities.get(client);
+      if (identity?.connectionGeneration) {
+        const current = await queryOne<{connection_generation:string;status:string}>(
+          "select connection_generation,status from integration_tokens where provider='gmail' and org_id=$1",[org]);
+        if (!current || current.connection_generation !== identity.connectionGeneration || current.status === 'revoked')
+          return {outcome:'not_attempted',disabled:true,error:'The connected mailbox changed before the send. No provider attempt was made; review the current sender before retrying.'};
+      }
+      await params.beforeProviderSend?.(sender.from,identity);
       providerAttempted = true;
       const res = await client.users.messages.send({
         userId: "me",
