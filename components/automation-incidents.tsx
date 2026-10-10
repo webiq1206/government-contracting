@@ -189,6 +189,12 @@ export function AutomationIncidents({ health, showDiagnostics = false }: { healt
 
           <p className="mt-1 text-sm text-foreground">{incident.spec.effect}</p>
 
+          {Boolean(incident.heldRoutes?.length) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Held routes: {incident.heldRoutes?.join(", ")}
+            </p>
+          )}
+
           {incident.affectedWorkflows.length > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
               Affected: {incident.affectedWorkflows.slice(0, 6).join(", ")}

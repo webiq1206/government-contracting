@@ -320,6 +320,8 @@ export interface Incident {
   sample: string;
   /** A current route hold is not an additional failed event. */
   currentProviderHold?: boolean;
+  /** Configured routes are not observed failed workflows. */
+  heldRoutes?: string[];
 }
 
 export interface AutomationHealth {
@@ -439,16 +441,17 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
     const message = `${hold.provider}: ${hold.reason}`;
     const cause = classifyFailure(message);
     const existing = byCause.get(cause);
-    const workflow = `${hold.provider} (${hold.tier} AI work)`;
+    const route = `${hold.provider} (${hold.tier} AI work)`;
     if (existing) {
       existing.currentProviderHold = true;
-      if (!existing.affectedWorkflows.includes(workflow)) existing.affectedWorkflows.push(workflow);
+      existing.heldRoutes ??= [];
+      if (!existing.heldRoutes.includes(route)) existing.heldRoutes.push(route);
       existing.sample = [existing.sample, message].filter(Boolean).join("\n");
       existing.spec = { ...causeSpec(cause, [existing.sample]), blocking: true };
     } else {
       byCause.set(cause, {
         cause, spec: { ...causeSpec(cause, [message]), blocking: true }, failures: 0,
-        affectedWorkflows: [workflow], firstSeen: now.toISOString(), lastSeen: now.toISOString(),
+        affectedWorkflows: [], heldRoutes: [route], firstSeen: now.toISOString(), lastSeen: now.toISOString(),
         sample: message, currentProviderHold: true,
       });
     }

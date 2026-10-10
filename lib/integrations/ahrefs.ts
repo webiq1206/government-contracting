@@ -14,7 +14,7 @@
 import { orgApiKey } from "../integration-keys";
 import { recordIntegrationUse } from "../integration-settings";
 import { LEGACY_ORG_ID } from "../tenant-context";
-import { fetchJson, withRetry, type FetchJsonOptions } from "./http";
+import { fetchJson, HttpError, withRetry, type FetchJsonOptions } from "./http";
 
 const BASE = "https://api.ahrefs.com/v3";
 const DEFAULT_TARGET = "brostco.com";
@@ -31,9 +31,16 @@ export interface AhrefsConfiguration {
 }
 
 export class AhrefsProviderError extends Error {
+  readonly status: number | null;
+  readonly retryable: boolean;
+
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "AhrefsProviderError";
+    this.status = options?.cause instanceof HttpError ? options.cause.status : null;
+    // Preserve the HTTP client's decision through the agent runner. Otherwise
+    // a refused key/plan is retried by the queue after withRetry already stopped.
+    this.retryable = this.status === null || this.status === 429 || this.status >= 500;
   }
 }
 

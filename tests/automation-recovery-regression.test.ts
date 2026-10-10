@@ -71,7 +71,8 @@ describe("active blockers and verified history", () => {
     expect(result.errors24h).toBe(1);
     expect(result.incidents).toHaveLength(1);
     expect(result.incidents[0].failures).toBe(0);
-    expect(result.incidents[0].affectedWorkflows).toHaveLength(2);
+    expect(result.incidents[0].affectedWorkflows).toHaveLength(0);
+    expect(result.incidents[0].heldRoutes).toEqual(["OpenAI (routine AI work)", "OpenAI (complex AI work)"]);
   });
 
   it("requires reconciliation of an unresolved provider attempt even without recent failures", () => {
