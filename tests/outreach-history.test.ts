@@ -19,7 +19,7 @@ beforeAll(async()=>{
       delivery_state text,delivery_detail text,opened_at timestamptz,clicked_at timestamptz,replied_at timestamptz,follow_up_at timestamptz);
     create table quotes(org_id uuid,opportunity_id uuid,subcontractor_id uuid);
     create table subcontractor_reply_events(org_id uuid,gmail_message_id text,opportunity_id uuid,subcontractor_id uuid,needs_review boolean,reviewed_at timestamptz);
-    create table unmatched_inbound(id uuid default gen_random_uuid(),org_id uuid,received_at timestamptz,from_email text,from_name text,subject text,snippet text,subcontractor_id uuid,state text);`);
+    create table unmatched_inbound(id uuid default gen_random_uuid(),org_id uuid,received_at timestamptz,from_email text,from_name text,subject text,snippet text,subcontractor_id uuid,state text,message_id text,attachment_names jsonb,unreadable_attachments jsonb);`);
   await db.query(`insert into opportunities values($1,$3,'Station repair','SYN-1','open','outreach','active'),($2,$3,'Closed example','SYN-2','closed','lost','aborted')`,[project,project2,org]);
   await db.query(`insert into subcontractors values($1,$3,'Synthetic supplier','website_scrape',false),($2,$4,'Private other tenant','secret',true)`,[sub,foreignSub,org,other]);
   await db.query(`insert into communications(org_id,subcontractor_id,opportunity_id,subject,body,delivery_state,provider,gmail_message_id)
@@ -79,6 +79,10 @@ it('finds known-supplier mail beyond 10,000 queue records without leaking cross-
   const known=await unmatchedHistory(org,{known:'yes'});expect(known.total).toBe(1);expect(known.rows[0].subject).toBe('Queue record 10108');
   expect((await unmatchedHistory(org,{q:'40%'})).total).toBe(1);
   expect((await unmatchedHistory(org,{q:'Private other tenant'})).total).toBe(0);
+  await db.query(`update unmatched_inbound set message_id='captured-copy',attachment_names='["Synthetic estimate.pdf"]',unreadable_attachments='["Synthetic estimate.pdf"]' where org_id=$1 and subject='Queue record 10108'`,[org]);
+  await db.query(`insert into communications(org_id,direction,gmail_message_id,gmail_thread_id) values($1,'inbound','captured-copy','saved-thread')`,[org]);
+  const captured=(await unmatchedHistory(org,{known:'yes'})).rows[0];
+  expect(captured.capturedThreadKey).toBe('saved-thread');expect(captured.unreadableAttachments).toEqual(['Synthetic estimate.pdf']);
   const badRelation=await unmatchedHistory(org,{q:'foreign relation'});expect(badRelation.rows[0].subcontractorName).toBeNull();
   await expect(unmatchedHistory(org,{after:'bad'})).rejects.toThrow('Invalid unmatched');
 });

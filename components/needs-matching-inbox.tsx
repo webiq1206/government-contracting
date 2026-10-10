@@ -14,6 +14,9 @@ export interface PendingMessage {
   receivedAt: string;
   subcontractorId: string | null;
   subcontractorName: string | null;
+  attachmentNames?: string[];
+  unreadableAttachments?: string[];
+  capturedThreadKey?: string | null;
 }
 
 export interface MatchTarget {
@@ -141,13 +144,16 @@ function MessageRow({
           {message.subcontractorName ?? message.fromName ?? message.fromEmail}
         </p>
         <time className="text-xs text-muted-foreground" dateTime={recorded.dateTime}>
-          {recorded.label}
+          Stored received: {recorded.label}
         </time>
       </div>
       <p className="text-xs text-muted-foreground">{message.fromEmail}</p>
       {message.subject && (
         <p className="mt-1 text-sm text-slate-700">{message.subject}</p>
       )}
+      {!!message.attachmentNames?.length && <p className="mt-2 text-xs break-words">Recorded attachment names: {message.attachmentNames.join(", ")}. Names alone do not establish that file contents are available.</p>}
+      {!!message.unreadableAttachments?.length && <p className="mt-1 text-xs text-review break-words">Contents were not read: {message.unreadableAttachments.join(", ")}. Review the original message before using an estimate or quote.</p>}
+      {message.capturedThreadKey && <p className="mt-2 text-sm">This provider message ID is already present in a saved conversation. <Link className="text-accent" href={`/communications/history?thread=${encodeURIComponent(message.capturedThreadKey)}`}>Review the existing attribution</Link>.</p>}
       {/*
         The body, not just a sender and a subject. "What is this about" is the
         entire decision, and it is not answerable without reading the message.
@@ -156,7 +162,7 @@ function MessageRow({
         <details className="mt-1"><summary className="min-h-11 cursor-pointer text-xs text-muted-foreground">Read message</summary><p className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm text-muted-foreground">{message.snippet}</p></details>
       )}
 
-      {canAct && (
+      {canAct && !message.capturedThreadKey && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             type="button"
