@@ -16,9 +16,10 @@ export function SessionLoadFailure() {
           account.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          <Link href="/today" className="btn-primary">
+          {/* A full navigation reruns the session lookup in the shared layout. */}
+          <a href="/today" className="btn-primary">
             Try again
-          </Link>
+          </a>
           <Link href="/" className="btn-ghost">
             Go to the home page
           </Link>
