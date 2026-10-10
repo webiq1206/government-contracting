@@ -1506,6 +1506,8 @@ export const stalledPipelineSweep: AgentDefinition = {
     // tenants and every audit-log line lands in the owning tenant's log.
     let rescued = 0;
     let retryFailures = 0;
+    let deferred = 0;
+    let heldStages = 0;
     const stalled: { id: string; title: string | null; stage: string; hours: number; orgId: string }[] = [];
     for (const sweepOrgId of await activeOrgIds()) {
     const orgRules = await runWithOrg(sweepOrgId, () => getAutomationRules());
@@ -1524,6 +1526,23 @@ export const stalledPipelineSweep: AgentDefinition = {
       const agent = STAGE_AGENT[stage];
       const retryMarker = `auto_retried_${stage}`;
 
+      // The queue returns null for a known provider/spending hold. Check it
+      // before writing retry markers or escalating the stage: repeated
+      // sweeps must not manufacture hundreds of queue failures from one hold.
+      // This reads existing admission evidence; it makes no provider request.
+      if (agent) {
+        const { aiEnqueueHold } = await import("../queue/ai-admission");
+        const hold = await runWithOrg(sweepOrgId, () => aiEnqueueHold(agent, sweepOrgId));
+        if (hold) {
+          heldStages++;
+          await runWithOrg(sweepOrgId, () => logAgent({
+            agent: "stalled-pipeline-sweep", action: "retry-held", level: "warn", status: "skipped",
+            message: `${stage.replace(/_/g, " ")} recovery is held; no retry or escalation was attempted. ${hold}`,
+          }));
+          continue;
+        }
+      }
+
       // Strike 1: stuck, no retry attempted yet, and we know which agent to
       // re-run -> rescue automatically instead of bothering the operator.
       if (agent) {
@@ -1532,6 +1551,8 @@ export const stalledPipelineSweep: AgentDefinition = {
           `update opportunities
               set risk_flags = coalesce(risk_flags, '{}') || array[$3::text]
             where org_id = $4 and status = 'open' and human_action_required = false
+              and coalesce(pursuit_state, 'active') = 'active'
+              and is_sources_sought is not true
               and stage = $1
               and updated_at < now() - make_interval(hours => $2)
               and not ($3 = any(coalesce(risk_flags, '{}')))
@@ -1546,16 +1567,16 @@ export const stalledPipelineSweep: AgentDefinition = {
           // roll it back and say so; otherwise the record would skip straight
           // to strike 2, or sit forever, while the log claimed recovery ran.
           let queued = false;
+          let failure: { error: unknown } | null = null;
           try {
             const queuedId = await runWithOrg(sweepOrgId, () =>
               enqueue(agent, { opportunityId: o.id, trigger: "rescue" })
             );
-            if (!queuedId) {
-              throw new Error("the retry was not admitted; a pause, stopped pursuit, or unavailable record version may be preventing it");
-            }
-            queued = true;
+            queued = Boolean(queuedId);
           } catch (e) {
-            retryFailures++;
+            failure = { error: e };
+          }
+          if (!queued) {
             // Required cleanup: without it, the record claims a retry happened
             // and the next sweep skips directly to escalation. A cleanup
             // failure throws and makes the whole run visibly fail.
@@ -1567,6 +1588,18 @@ export const stalledPipelineSweep: AgentDefinition = {
                 [o.id, retryMarker, sweepOrgId]
               )
             );
+            if (!failure) {
+              // Admission can change after preflight, and singleton duplicates
+              // also return null. Neither proves a backend outage or a retry.
+              deferred++;
+              await runWithOrg(sweepOrgId, () => logAgent({
+                agent: "stalled-pipeline-sweep", action: "retry-deferred", opportunityId: o.id,
+                level: "warn", status: "skipped",
+                message: `Automatic recovery for "${o.title ?? o.id}" was not admitted. No retry was confirmed; the retry marker was removed. Check current holds and pursuit state before retrying.`,
+              }));
+              continue;
+            }
+            retryFailures++;
             await runWithOrg(sweepOrgId, () =>
               logAgent({
                 agent: "stalled-pipeline-sweep",
@@ -1574,7 +1607,7 @@ export const stalledPipelineSweep: AgentDefinition = {
                 opportunityId: o.id,
                 level: "error",
                 status: "error",
-                message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${(e as Error).message}). It stays marked stuck and will be retried on the next sweep.`,
+                message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${failure.error instanceof Error ? failure.error.message : String(failure.error)}). It stays marked stuck and will be retried on the next sweep.`,
               })
             );
           }
@@ -1600,10 +1633,13 @@ export const stalledPipelineSweep: AgentDefinition = {
             set human_action_required = true,
                 risk_flags = coalesce(risk_flags, '{}') || array['stalled_' || stage]
           where org_id = $5 and status = 'open' and human_action_required = false
+            and coalesce(pursuit_state, 'active') = 'active'
+            and is_sources_sought is not true
             and stage = $1
             and updated_at < now() - make_interval(hours => $2)
             and ($3::text is null or $4 = any(coalesce(risk_flags, '{}')))
             ${bidGuard}
+            ${outreachGuard}
           returning id, title, stage`,
         [stage, hours, agent ?? null, `auto_retried_${stage}`, sweepOrgId]
       ));
@@ -1625,11 +1661,14 @@ export const stalledPipelineSweep: AgentDefinition = {
     return {
       ok: retryFailures === 0,
       summary: `Auto-retried ${rescued} stuck record(s); flagged ${stalled.length} for review (retry didn't help).${
+        deferred > 0 ? ` ${deferred} automatic ${deferred === 1 ? "retry" : "retries"} deferred without confirmed admission.` : ""
+      }${heldStages > 0 ? ` Recovery held for ${heldStages} account/stage ${heldStages === 1 ? "combination" : "combinations"}; no retry or escalation attempted there.` : ""}${
         retryFailures > 0
           ? ` ${retryFailures} automatic ${retryFailures === 1 ? "retry" : "retries"} could not be queued and will be attempted again.`
           : ""
       }`,
       humanActionRequired: stalled.length > 0 || retryFailures > 0,
+      data: { rescued, stalled: stalled.length, deferred, heldStages, retryFailures },
     };
   },
 };

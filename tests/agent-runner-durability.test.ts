@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDefinition } from "@/lib/agents/types";
+import { AhrefsProviderError } from "@/lib/integrations/ahrefs";
+import { HttpError } from "@/lib/integrations/http";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -59,6 +61,31 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it.each([401, 403])("preserves an Ahrefs %i refusal through the runner without another queue attempt", async (status) => {
+    mocks.handler.mockRejectedValueOnce(new AhrefsProviderError("Ahrefs request refused", {
+      cause: new HttpError(status, `${status} provider refusal`),
+    }));
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, retryable: false, providerStatus: status, humanActionRequired: true });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(mocks.logAgent).toHaveBeenCalledWith(expect.objectContaining({ status: "error" }));
+  });
+  it.each([429, 503])("keeps a transient Ahrefs %i failure eligible for bounded queue retry", async (status) => {
+    mocks.handler.mockRejectedValueOnce(new AhrefsProviderError("Ahrefs temporarily unavailable", {
+      cause: new HttpError(status, `${status} transient failure`),
+    }));
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, retryable: true, providerStatus: status });
+    expect(shouldQueueRetry(result)).toBe(true);
+  });
+  it("keeps an Ahrefs network failure retryable without inventing an HTTP status", async () => {
+    mocks.handler.mockRejectedValueOnce(new AhrefsProviderError("Ahrefs network failure", {
+      cause: new Error("connection reset"),
+    }));
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, retryable: true, providerStatus: null });
+    expect(shouldQueueRetry(result)).toBe(true);
+  });
   it("shows a held outreach job as a warning without retrying the held work", async () => {
     mocks.handler.mockResolvedValueOnce({ ok: true, humanActionRequired: true, summary: "Bid documents are unverified. Nothing was sent." });
     const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
