@@ -5,6 +5,7 @@ import { apiUsageContext } from "./context";
 import { platformApiValue } from "./credentials";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { decryptSecret } from "../integration-settings";
+import { providerDiagnostics, configurationReference, type ProviderDiagnostics, type ConfigurationReference } from "./diagnostics";
 
 export type RequestIdentity = {
   orgId: string;
@@ -12,6 +13,7 @@ export type RequestIdentity = {
   value: string;
   source: "platform" | "tenant" | "unknown";
   accepted: boolean;
+  configurationReference?: ConfigurationReference;
 };
 /** Classify the exact credential being sent, not whichever setting was last saved. */
 export async function requestIdentity(
@@ -31,7 +33,8 @@ export async function requestIdentity(
     ),
   ]);
   // Matching the platform value always means the platform pays, even if someone pasted it as their own.
-  const platform = Boolean(value && value === (await platformApiValue(envKey)));
+  let platformStore: ConfigurationReference["credentialStore"] = "unknown";
+  const platform = Boolean(value && value === (await platformApiValue(envKey, store => { platformStore = store; })));
   const own = Boolean(
     value && saved && decryptSecret(saved.value_enc) === value,
   );
@@ -40,6 +43,11 @@ export async function requestIdentity(
     envKey,
     value,
     source: platform ? "platform" : own ? "tenant" : "unknown",
+    configurationReference: configurationReference({
+      credentialStore: platform ? platformStore : own ? "tenant_settings" : "unknown",
+      settingsOrgId: platform ? LEGACY_ORG_ID : own ? org : null,
+      credentialSetting: envKey,
+    }),
     accepted:
       platform &&
       org !== LEGACY_ORG_ID &&
@@ -245,6 +253,8 @@ export type UsageResult = {
   evidence?: string;
   errorCode?: string;
   failed?: boolean;
+  diagnostics?: ProviderDiagnostics;
+  configurationReference?: ConfigurationReference;
 };
 export async function finishUsage(
   id: string,
@@ -271,6 +281,7 @@ export async function finishUsage(
   await query(
     `update api_usage_events e set finished_at=now(), outcome=$2, provider_request_id=$3,
     usage=$4::jsonb,provider_cost=$5::numeric,evidence=$6,error_code=$7,
+    provider_diagnostics=$10::jsonb,configuration_reference=$11::jsonb,
     budget_cost=case when $9::boolean then 0
       when $8::boolean then null
       when e.provider='Anthropic' then api_message_estimate($4::jsonb,e.price_snapshot)*1.1
@@ -294,6 +305,8 @@ export async function finishUsage(
       result.errorCode ?? null,
       result.failed ?? false,
       providerRejected,
+      result.diagnostics ? JSON.stringify(providerDiagnostics({ diagnostics: result.diagnostics })) : null,
+      result.configurationReference ? JSON.stringify(configurationReference(result.configurationReference)) : null,
     ],
   );
 }
@@ -337,20 +350,26 @@ export async function metered<T>(
   try {
     value = await execute();
   } catch (error) {
-    const status = (error as { status?: number })?.status;
+    const diagnostics = providerDiagnostics(error, [identity.value]);
+    const status = diagnostics.httpStatus;
     await finishUsage(id, {
       failed: true,
       errorCode: status
         ? `HTTP ${status}`
         : "Request failed; cost needs review",
       units: { requests: 1 },
+      requestId: diagnostics.requestId ?? undefined,
+      diagnostics,
+      configurationReference: identity.configurationReference,
     }).catch(() =>
       console.error("[api-usage] pending request needs reconciliation", id),
     );
     throw error;
   }
   try {
-    await finishUsage(id, describe(value));
+    const result = describe(value);
+    await finishUsage(id, {...result, configurationReference: identity.configurationReference,
+      ...(result.diagnostics ? {diagnostics:providerDiagnostics({diagnostics:result.diagnostics},[identity.value])} : {})});
   } catch {
     console.error(
       "[api-usage] provider completed; pending ledger entry needs reconciliation",

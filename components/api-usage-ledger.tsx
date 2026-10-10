@@ -1,5 +1,6 @@
 "use client";
 import { StoredTime } from "@/components/stored-time";
+import { ProviderDiagnosticDetails } from "./provider-diagnostic-details";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
@@ -820,6 +821,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                 {selected.error_code}
               </p>
             )}
+            {admin && selected.outcome === "failed" && <ProviderDiagnosticDetails diagnostics={selected.provider_diagnostics} configuration={selected.configuration_reference} />}
             {admin && (
               <>
                 <form

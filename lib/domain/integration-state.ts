@@ -127,10 +127,14 @@ export function integrationState(f: IntegrationFacts, now = new Date()): Integra
     if (cause === "provider_credit") {
       return {
         state: "blocked",
-        reason: "The provider is refusing for want of credit.",
+        reason: "The provider has reached a billing or account allowance.",
         cause,
-        nextAction: "Add credit with the provider. Nothing here will fix it.",
+        nextAction: "Review the matched provider account's billing and usage limits. Only restore credit or change a limit when the recorded cause and approved budget support it.",
       };
+    }
+    if (cause === "provider_refusal") {
+      return { state: "blocked", reason: "The provider refused this request; its specific account or access cause is unresolved.", cause,
+        nextAction: "Review saved diagnostics and the matched provider account before retrying." };
     }
     if (cause === "provider_auth" || cause === "integration_auth") {
       return {

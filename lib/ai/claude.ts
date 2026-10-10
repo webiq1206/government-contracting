@@ -33,6 +33,7 @@ import {
   type RoutingConfig,
 } from "./routing";
 import { openAiResponse, describeOpenAiFailure } from "./openai";
+import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
 
 export type { AiProvider, AiRoute } from "./routing";
 
@@ -68,6 +69,7 @@ export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
  * which is the failure this class exists to make impossible.
  */
 export class AiUnavailableError extends Error {
+  diagnostics?: ProviderDiagnostics;
   handoffUncertain: boolean;
   readonly provider: AiProvider;
   /** Plain English, safe to show an operator. Never contains the key. */
@@ -159,7 +161,7 @@ export function describeClaudeFailure(
       reason:
         "The Anthropic account has reached its specified API usage limits. " +
         "Check Billing and Usage at console.anthropic.com. Requests using this provider must wait for its allowance to reset or an approved account change. " +
-        (text.match(/regain access on\s+[^\"\n}]+/i)?.[0] ?? ""),
+        "Any provider retry delay is retained separately in the saved diagnostics.",
       status,
       retryable: false,
     };
@@ -413,7 +415,7 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions, system: S
     // Anything but a provider refusing us is our own bug (or a parse
     // problem downstream). Switching providers would not fix a bad request.
     if (!(err instanceof AiUnavailableError) && !(err instanceof ProviderRefusalError)) throw err;
-    primaryFailure = unavailable(err.provider, err.reason, err.status, err.retryable);
+    primaryFailure = err instanceof AiUnavailableError ? err : unavailable(err.provider, err.reason, err.status, err.retryable);
   }
 
   if (!plan.fallback) throw primaryFailure;
@@ -442,6 +444,7 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions, system: S
     );
     combined.handoffUncertain = primaryFailure.handoffUncertain ||
       (err instanceof AiUnavailableError && err.handoffUncertain);
+    combined.diagnostics = primaryFailure.diagnostics;
     throw combined;
   }
 }
@@ -469,12 +472,15 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
 }
 
 /** Normalize only transport errors, never ledger/database preparation failures. */
-async function providerRequest<T>(provider: AiProvider, execute: () => Promise<T>): Promise<T> {
+async function providerRequest<T>(provider: AiProvider, execute: () => Promise<T>, secret: string): Promise<T> {
   try { return await execute(); }
   catch (error) {
     const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
-    if (cause) throw unavailable(provider, cause.reason, cause.status, cause.retryable);
-    throw error;
+    const diagnostics = providerDiagnostics(error, [secret]);
+    if (cause) throw Object.assign(unavailable(provider, cause.reason, cause.status, cause.retryable), { diagnostics });
+    // SDK error messages/bodies may echo prompt or credential data. Never
+    // propagate them into agent logs, even for malformed requests.
+    throw Object.assign(new Error(`${provider} request failed. Review saved provider diagnostics.`), { status: diagnostics.httpStatus, diagnostics });
   }
 }
 
@@ -541,7 +547,7 @@ async function runAnthropic(
       body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
       { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
         maxRetries: 0 }
-    )),
+    ), apiKey),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   const rawText = res.content
@@ -601,7 +607,7 @@ async function runOpenAi(
       temperature: opts.temperature ?? 0.2,
       timeoutMs: opts.timeoutMs,
       cacheKey: `brostco:${identity.orgId}`,
-    })),
+    }), apiKey),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
 
   return {

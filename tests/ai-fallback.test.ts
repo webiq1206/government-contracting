@@ -117,6 +117,25 @@ describe("routing through complete()", () => {
 });
 
 describe("fallback", () => {
+  it("preserves structured diagnostics through normalization without forwarding a private SDK message", async () => {
+    const privateText = "private synthetic mail and plan sk-oa";
+    openAi.mockRejectedValueOnce({ status: 429, code: "organization_spend_limit_exceeded", type: "insufficient_quota",
+      requestId: "req_abcdef", headers: { "retry-after": "180", authorization: "Bearer sk-oa" }, message: privateText, prompt: privateText });
+    const err = await call("Synthetic prompt", { fallback: false }).catch(e => e);
+    expect(err).toMatchObject({ retryable: false, diagnostics: { httpStatus: 429, errorCode: "organization_spend_limit_exceeded", errorType: "insufficient_quota", requestId: "req_abcdef", retryAfterSeconds: 180 } });
+    expect(String(err) + JSON.stringify(err)).not.toContain(privateText);
+    expect(String(err) + JSON.stringify(err)).not.toContain("sk-oa");
+    expect(anthropicCreate).not.toHaveBeenCalled();
+    expect(openAi).toHaveBeenCalledOnce();
+  });
+
+  it("does not copy an Anthropic error-message suffix into saved hold reasons", async () => {
+    anthropicCreate.mockRejectedValueOnce({ status: 400, error: { error: { type: "invalid_request_error", message: "specified API usage limits; regain access on private customer mail sk-ant" } } });
+    const err = await call("Synthetic prompt", { complexity: "complex", fallback: false }).catch(e => e);
+    expect(err.retryable).toBe(false);
+    expect(String(err) + JSON.stringify(err)).not.toMatch(/private customer|sk-ant/);
+  });
+
   it("retries once on the other provider when the primary refuses, and says so in the usage", async () => {
     anthropicCreate.mockRejectedValueOnce(overloaded);
     const res = await call("Analyze", { complexity: "complex" });

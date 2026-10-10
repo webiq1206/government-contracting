@@ -106,7 +106,8 @@ describe("describeOpenAiFailure", () => {
 
   it("tells an exhausted quota apart from a rate limit, though both arrive as 429", () => {
     const quota = describeOpenAiFailure(err(429, "insufficient_quota", "You exceeded your current quota, please check your plan and billing details."))!;
-    expect(quota.reason).toMatch(/insufficient credit/);
+    expect(quota.reason).toMatch(/billing quota or account allowance/);
+    expect(quota.reason).not.toMatch(/until you add credit/);
     expect(quota.retryable).toBe(false);
     const limit = describeOpenAiFailure(err(429, "rate_limit_exceeded", "Rate limit reached"))!;
     expect(limit.reason).toMatch(/rate limiting/);

@@ -7,6 +7,7 @@
 
 import { config } from "./config";
 import { buildOpenAiBody } from "./ai/openai";
+import { providerDiagnostics } from "./api-usage/diagnostics";
 
 export interface ValidationResult {
   ok: boolean;
@@ -46,7 +47,12 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
       const res = await fetch(url,{...init,signal:ctl.signal});
       const body = await res.clone().json().catch(()=>null);
       return {res,body};
-    },({res,body})=>({requestId:body?.id,units:body?.usage ?? {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`}));
+    },({res,body})=>{
+      const diagnostics = providerDiagnostics({status:res.status,body,headers:res.headers},[keyInfo.value]);
+      return {requestId:res.ok?body?.id:diagnostics.requestId ?? undefined,
+        units:res.ok ? body?.usage ?? {requests:1} : {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`,
+        ...(!res.ok ? {diagnostics} : {})};
+    });
     if (keyInfo.provider !== "Anthropic" && keyInfo.provider !== "OpenAI") return (await execute()).res;
     const provider = keyInfo.provider;
     const { withProviderFacts } = await import("./ai/provider-facts");
@@ -60,16 +66,18 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
           if (!transportStarted) throw error;
           if (error instanceof Error && error.name === "ApiUsageBlockedError") throw error;
           const cause = provider === "Anthropic" ? describeClaudeFailure(error) : describeOpenAiFailure(error);
-          if (cause) throw new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable);
+          if (cause) throw Object.assign(new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable),
+            {diagnostics:providerDiagnostics(error,[keyInfo.value])});
           throw error;
         });
         if (!res.ok) {
-          const raw = { status: res.status, code: body?.error?.code,
+          const diagnostics = providerDiagnostics({status:res.status,body,headers:res.headers},[keyInfo.value]);
+          const raw = { status: res.status, code: diagnostics.errorCode, type: diagnostics.errorType,
             message: body?.error?.message ?? "", error: { error: body?.error } };
           const cause = provider === "Anthropic" ? describeClaudeFailure(raw) : describeOpenAiFailure(raw);
           refused = res;
-          observedFailure = cause ? new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable)
-            : Object.assign(new Error("Provider connection test failed."), { provider, reason: "Provider connection test failed.", status: res.status, retryable: true });
+          observedFailure = cause ? Object.assign(new AiUnavailableError(provider, cause.reason, cause.status, cause.retryable),{diagnostics})
+            : Object.assign(new Error("Provider connection test failed."), { provider, reason: "Provider connection test failed.", status: res.status, retryable: true, diagnostics });
           throw observedFailure;
         }
         return res;
@@ -241,31 +249,11 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
     });
     if (res.ok) return { ok: true, message: `Connected. OpenAI answered a live request on ${config.openai.model}.` };
 
-    const detail = redactSecret(apiErrorDetail(await res.text().catch(() => "")), key);
-    if (res.status === 401 || res.status === 403)
-      return { ok: false, message: "OpenAI rejected this key. Copy it again from platform.openai.com." };
-    // An exhausted billing quota arrives as a 429 with code insufficient_quota.
-    // Waiting fixes nothing, so name it before the rate-limit case.
-    if (/insufficient_quota|exceeded your current quota|billing/i.test(detail))
-      return {
-        ok: false,
-        message:
-          "The key works, but the OpenAI account has insufficient credit, so every request is refused. " +
-          "Add credit at platform.openai.com under Billing.",
-      };
-    if (res.status === 429)
-      return { ok: false, message: "OpenAI is rate limiting this account right now. Try again shortly." };
-    if (res.status === 404 || /model/i.test(detail) && res.status === 400)
-      return {
-        ok: false,
-        message: `OpenAI does not offer the model this deployment is set to (${config.openai.model}). Set OPENAI_MODEL to a current model id. ${detail}`.trim(),
-      };
-    return {
-      ok: false,
-      message: detail
-        ? `OpenAI returned an error (HTTP ${res.status}): ${detail}`
-        : `OpenAI returned an error (HTTP ${res.status}).`,
-    };
+    const body = await res.json().catch(() => null);
+    const diagnostics = providerDiagnostics({status:res.status,body,headers:res.headers},[key]);
+    const {describeOpenAiFailure} = await import("./ai/openai");
+    const cause = describeOpenAiFailure({status:res.status,code:diagnostics.errorCode,type:diagnostics.errorType});
+    return {ok:false,message:cause?.reason ?? `OpenAI returned an error (HTTP ${res.status}). Review the saved diagnostics and configured model before retrying.`};
   },
   googleMaps: async (v) => {
     const key = v.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;

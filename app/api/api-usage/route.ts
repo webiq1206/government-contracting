@@ -50,7 +50,7 @@ export async function GET(req: Request) {
             platformAvailable: (
               await Promise.all(
                 [def.key, ...(def.extraFields ?? []).map((f) => f.key)].map(
-                  platformApiValue,
+                  (key) => platformApiValue(key),
                 ),
               )
             ).every(Boolean),
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     if (body.source === "platform") {
       if (body.acceptCharges !== true)
         throw new Error("Confirm that API usage will be added to your bill.");
-      if (!(await Promise.all(keys.map(platformApiValue))).every(Boolean))
+      if (!(await Promise.all(keys.map(key => platformApiValue(key)))).every(Boolean))
         throw new Error(
           "This platform service is not available. Connect your own account.",
         );

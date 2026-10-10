@@ -371,6 +371,7 @@ export interface FailureRow {
 const BLOCKING: IncidentCause[] = [
   "provider_credit",
   "provider_auth",
+  "provider_refusal",
   "queue_unreachable",
   "database",
 ];

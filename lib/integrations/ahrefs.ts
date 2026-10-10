@@ -15,6 +15,7 @@ import { orgApiKey } from "../integration-keys";
 import { recordIntegrationUse } from "../integration-settings";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { fetchJson, HttpError, withRetry, type FetchJsonOptions } from "./http";
+import { providerDiagnostics, isProviderAllowanceFailure } from "../api-usage/diagnostics";
 
 const BASE = "https://api.ahrefs.com/v3";
 const DEFAULT_TARGET = "brostco.com";
@@ -33,14 +34,16 @@ export interface AhrefsConfiguration {
 export class AhrefsProviderError extends Error {
   readonly status: number | null;
   readonly retryable: boolean;
+  readonly diagnostics: ReturnType<typeof providerDiagnostics>;
 
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "AhrefsProviderError";
     this.status = options?.cause instanceof HttpError ? options.cause.status : null;
+    this.diagnostics = providerDiagnostics(options?.cause);
     // Preserve the HTTP client's decision through the agent runner. Otherwise
     // a refused key/plan is retried by the queue after withRetry already stopped.
-    this.retryable = this.status === null || this.status === 429 || this.status >= 500;
+    this.retryable = options?.cause instanceof HttpError ? options.cause.retryable : this.status === null;
   }
 }
 
@@ -84,9 +87,12 @@ async function credentials(orgId = LEGACY_ORG_ID): Promise<AhrefsCredentials> {
 }
 
 function providerReason(error: unknown, apiKey: string): string {
-  const raw = error instanceof Error ? error.message : "Unknown provider error";
-  const redacted = apiKey ? raw.split(apiKey).join("[redacted]") : raw;
-  return redacted.replace(/\s+/g, " ").trim().slice(0, 300);
+  const d = providerDiagnostics(error, [apiKey]);
+  if (isProviderAllowanceFailure(d)) return "Ahrefs has reached a billing quota or account allowance. Review the saved provider code and matched workspace limits before an authorized retry";
+  if (d.httpStatus === 401 || d.httpStatus === 403)
+    return `Ahrefs provider refusal (HTTP ${d.httpStatus}). Review saved diagnostics and the matched account's access; the status alone does not establish a rejected key`;
+  if (d.httpStatus === 429) return "Ahrefs rate or quota refusal (HTTP 429). Review the saved diagnostics and retry delay";
+  return d.httpStatus ? `Ahrefs returned HTTP ${d.httpStatus}` : "Ahrefs request failed; the transport outcome is unconfirmed";
 }
 
 /**

@@ -72,7 +72,7 @@ describe("durable provider/account/current-credential evidence", () => {
     state.openai.mockRejectedValue(quota());
     await expect(call()).rejects.toMatchObject({ retryable: false, provider: "OpenAI" });
     for (let sweep = 0; sweep < 3; sweep++) {
-      for (let i = 0; i < 200; i++) expect(await providerEnqueueHold(state.org, "complex")).toContain("insufficient credit");
+      for (let i = 0; i < 200; i++) expect(await providerEnqueueHold(state.org, "complex")).toContain("billing quota or account allowance");
       await expect(call()).rejects.toMatchObject({ retryable: false, provider: "OpenAI" });
     }
     expect(state.openai).toHaveBeenCalledTimes(1); expect(state.attempts).toBe(1);
@@ -83,7 +83,7 @@ describe("durable provider/account/current-credential evidence", () => {
     expect(results.every(r => r.status === "rejected")).toBe(true);
     expect(state.attempts).toBe(1);
   });
-  it.each([{ status: 429, message: "rate limited" }, { status: 503, message: "unavailable" }, { message: "network timeout" }])("preserves transient backoff for %j", async err => {
+  it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }, { status: 503, message: "unavailable" }, { message: "network timeout" }])("preserves transient backoff for %j", async err => {
     state.openai.mockRejectedValueOnce(err);
     await expect(call()).rejects.toMatchObject({ retryable: true });
     expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
@@ -100,17 +100,17 @@ describe("durable provider/account/current-credential evidence", () => {
   it("keeps tenant, provider and rotated credential histories separate", async () => {
     state.openai.mockRejectedValueOnce(quota()); await expect(call()).rejects.toThrow();
     state.org = "tenant-b"; expect(await currentProviderFacts("OpenAI")).toBeNull(); await call();
-    state.org = "tenant-a"; expect(await providerEnqueueHold(state.org, "routine")).toContain("insufficient credit");
+    state.org = "tenant-a"; expect(await providerEnqueueHold(state.org, "routine")).toContain("billing quota or account allowance");
     expect(await currentProviderFacts("Anthropic")).toBeNull();
     state.keys.OPENAI_API_KEY = "rotated-synthetic";
     expect(await currentProviderFacts("OpenAI")).toBeNull(); await call();
     state.keys.OPENAI_API_KEY = "synthetic-openai";
-    expect(await providerEnqueueHold(state.org, "routine")).toContain("insufficient credit");
+    expect(await providerEnqueueHold(state.org, "routine")).toContain("billing quota or account allowance");
   });
   it("persists environment/platform failures without settings rows and shares only the actual platform credential", async () => {
     state.source = "platform"; state.openai.mockRejectedValueOnce(quota());
     await expect(call()).rejects.toThrow(); state.org = "tenant-b";
-    expect(await providerEnqueueHold(state.org, "routine")).toContain("insufficient credit");
+    expect(await providerEnqueueHold(state.org, "routine")).toContain("billing quota or account allowance");
     state.source = "tenant";
     expect(await currentProviderFacts("OpenAI")).toBeNull();
     state.source = "platform"; state.keys.OPENAI_API_KEY = "different-platform-account";
@@ -141,7 +141,7 @@ describe("durable provider/account/current-credential evidence", () => {
     state.budgetHeld = true;
     await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("API_BUDGET");
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("insufficient credit");
+    expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("billing quota or account allowance");
     state.budgetHeld = false;
     fetch.mockImplementation(async () => new Response(JSON.stringify({ id: "fake", usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 }));
     expect((await VALIDATORS.openai(state.keys)).ok).toBe(true);
@@ -152,7 +152,7 @@ describe("durable provider/account/current-credential evidence", () => {
   it("allows only configured fallback and records each provider independently", async () => {
     config.ai.fallback = true; state.openai.mockRejectedValueOnce(quota());
     const out = await call(); expect(out.usage.provider).toBe("Anthropic");
-    expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("insufficient credit");
+    expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("billing quota or account allowance");
     expect(providerProblem(await currentProviderFacts("Anthropic"))).toBeNull();
     expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
     await call(); expect(state.openai).toHaveBeenCalledTimes(1); expect(state.anthropic).toHaveBeenCalledTimes(2);
@@ -287,10 +287,10 @@ describe("pending primary admission",()=>{
 
  it("preserves real subclass HTTP429 backoff while holding a timeout from the fallback",async()=>{
   const work=()=>withApiUsageContext({workKey:"classify:record",relatedId:"record"},call);
-  state.openai.mockRejectedValueOnce({status:429,message:"rate limit"});
+  state.openai.mockRejectedValueOnce({status:429,type:"rate_limit_error",message:"rate limit"});
   await expect(work()).rejects.toMatchObject({retryable:true});
   await expect(work()).resolves.toMatchObject({text:"synthetic"});
-  config.ai.fallback=true;state.openai.mockRejectedValue({status:429,message:"rate limit"});state.anthropic.mockRejectedValue(new Error("socket timed out"));
+  config.ai.fallback=true;state.openai.mockRejectedValue({status:429,type:"rate_limit_error",message:"rate limit"});state.anthropic.mockRejectedValue(new Error("socket timed out"));
   const other=()=>withApiUsageContext({workKey:"classify:other",relatedId:"other"},call);
   await expect(other()).rejects.toMatchObject({retryable:false});
   const count=state.attempts;await expect(other()).rejects.toMatchObject({retryable:false});expect(state.attempts).toBe(count);
