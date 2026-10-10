@@ -74,6 +74,10 @@ import {
 import { readUsage } from "../lib/api-usage/read";
 import { readBudget, saveBudget } from "../lib/api-usage/budgets";
 import { invoiceCents } from "../lib/api-usage/money";
+import { openAiResponse } from "../lib/ai/openai";
+import { fetchJson, withRetry } from "../lib/integrations/http";
+import { VALIDATORS } from "../lib/integration-validators";
+import { runWithOrg } from "../lib/tenant-context";
 const org = "00000000-0000-4000-8000-000000000002";
 const other = "00000000-0000-4000-8000-000000000003";
 const identity = {
@@ -97,6 +101,7 @@ beforeAll(async () => {
   await state.db.exec(readFileSync("db/migrations/118_openai_provider.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/125_ai_provider_facts.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/126_ai_provider_attempts.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/131_provider_diagnostics.sql", "utf8"));
   await state.db.query(
     "insert into organizations(id,name) values($1,$2),($3,$4)",
     [org, "Test account", other, "Other account"],
@@ -163,6 +168,107 @@ it("keeps unknown failure costs unknown and captures failed requests", async () 
     billing_status: "review",
   });
   expect(execute).toHaveBeenCalledTimes(1);
+});
+it("persists allowlisted failure evidence and configuration while excluding it from tenant responses", async () => {
+  const secret = "synthetic-private-credential";
+  const privateText = "private synthetic mail and client plan";
+  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: { code: "project_spend_limit_exceeded", type: "insufficient_quota", message: `${secret} ${privateText}` } }), { status: 429, headers: { "x-request-id": "req_abcdef", "retry-after": "60" } }));
+  await expect(metered({ ...identity, value: secret, configurationReference: { credentialStore: "platform_settings", settingsOrgId: "00000000-0000-4000-8000-000000000001", credentialSetting: "OPENAI_API_KEY" } }, "OpenAI", "gpt-4.1", "Synthetic diagnostic",
+    () => openAiResponse({ apiKey: secret, model: "gpt-4.1", prompt: privateText, instructions: null, maxTokens: 1 }, fetchImpl as typeof fetch))).rejects.toThrow("OpenAI request failed");
+  expect(fetchImpl).toHaveBeenCalledOnce();
+  const stored = (await state.db.query("select * from api_usage_events")).rows[0];
+  expect(stored.provider_diagnostics).toMatchObject({ httpStatus: 429, errorCode: "project_spend_limit_exceeded", errorType: "insufficient_quota", requestId: "req_abcdef", retryAfterSeconds: 60 });
+  expect(stored.provider_request_id).toBe("req_abcdef");
+  expect(stored.error_code).toBe("HTTP 429");
+  expect(Number(stored.budget_cost)).toBe(0);
+  expect(stored.provider_cost).toBeNull();
+  expect(stored.configuration_reference.credentialStore).toBe("platform_settings");
+  expect(JSON.stringify(stored)).not.toContain(secret); expect(JSON.stringify(stored)).not.toContain(privateText);
+  const admin = await readUsage(new URLSearchParams());
+  expect(admin.rows[0]).toHaveProperty("provider_diagnostics");
+  const tenant = await readUsage(new URLSearchParams(), org);
+  for (const field of ["provider_diagnostics", "configuration_reference", "provider_request_id"]) expect(tenant.rows[0]).not.toHaveProperty(field);
+  expect(JSON.stringify(tenant)).not.toContain("req_abcdef");
+});
+it.each([
+  [429, "rate_limit_error", "rate limiting", false],
+  [429, "insufficient_quota", "billing quota or account allowance", true],
+  [403, undefined, "specific account or access cause was not established", true],
+] as const)("retains safe connection-test response diagnostics for HTTP %i / %s", async (status,type,message,held) => {
+  const secret = "synthetic-connection-key";
+  const privateText = "synthetic private email and prompt";
+  await state.db.query("insert into integration_settings values($1,'OPENAI_API_KEY',$2)",[org,secret]);
+  const fakeFetch = vi.fn(async()=>new Response(JSON.stringify({error:{type,message:`${secret} ${privateText}`},usage:{[privateText]:1,[secret]:2}}),
+    {status,headers:{"x-request-id":"req_cafefeed","retry-after":"600"}}));
+  vi.stubGlobal("fetch",fakeFetch);
+  try {
+    const result = await runWithOrg(org,()=>VALIDATORS.openai({OPENAI_API_KEY:secret}));
+    expect(result).toMatchObject({ok:false}); expect(result.message).toContain(message);
+    expect(fakeFetch).toHaveBeenCalledOnce();
+    const row = (await state.db.query("select * from api_usage_events")).rows[0];
+    expect(row.provider_diagnostics).toMatchObject({httpStatus:status,errorType:type??null,requestId:"req_cafefeed",retryAfterSeconds:600});
+    expect(row.configuration_reference).toMatchObject({credentialStore:"tenant_settings",settingsOrgId:org,credentialSetting:"OPENAI_API_KEY"});
+    expect(row.provider_request_id).toBe("req_cafefeed");
+    const fact = (await state.db.query("select * from ai_provider_facts")).rows[0];
+    expect(Boolean(fact.refusal_reason)).toBe(held);
+    for (const evidence of [row,fact,result]) {
+      expect(JSON.stringify(evidence)).not.toContain(secret);
+      expect(JSON.stringify(evidence)).not.toContain(privateText);
+    }
+  } finally {vi.unstubAllGlobals();}
+});
+it("keeps HTTP 200 provider failure costs unresolved while preserving the observed status", async () => {
+  const fakeFetch = vi.fn(async()=>new Response(JSON.stringify({status:"failed",error:{code:"server_error"}}),
+    {status:200,headers:{"x-request-id":"req_abcdef"}}));
+  await expect(metered(identity,"OpenAI","test","Synthetic diagnostic",()=>openAiResponse({apiKey:identity.value,model:"gpt-4.1",prompt:"synthetic",instructions:null,maxTokens:1},fakeFetch as typeof fetch))).rejects.toThrow();
+  const row = (await state.db.query("select * from api_usage_events")).rows[0];
+  expect(row.provider_diagnostics.httpStatus).toBe(200);
+  expect(row.budget_cost).toBeNull(); expect(row.provider_cost).toBeNull();
+});
+it("captures a normal metered Ahrefs HTTP failure without preserving raw body, path, key or mail", async () => {
+  const secret = "synthetic-ahrefs-credential";
+  const privateText = "private synthetic client mail";
+  await state.db.query("insert into integration_settings values($1,'AHREFS_API_KEY',$2)",[org,secret]);
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { code: "permission_denied", type: "permission_error", message: `${secret} ${privateText}` }, private: privateText }), { status: 403, headers: { "x-request-id": "req_deadbeef", "retry-after": "30" } }));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    const err = await fetchJson("https://api.ahrefs.com/v3/site-explorer/domain-rating", { metering: { orgId: org, envKey: "AHREFS_API_KEY", value: secret, provider: "Ahrefs", service: "DOMAIN_RATING", feature: "Synthetic diagnostic" }, headers: { authorization: `Bearer ${secret}` }, query: { target: "synthetic.example.test" } }).catch(e => e);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(err).toMatchObject({ status: 403, retryable: false, diagnostics: { errorCode: "permission_denied", requestId: "req_deadbeef" } });
+    expect(err.body).toBeUndefined();
+    expect(String(err)+JSON.stringify(err)).not.toContain(secret); expect(String(err)+JSON.stringify(err)).not.toContain(privateText);
+    const row = (await state.db.query("select * from api_usage_events")).rows[0];
+    expect(row.configuration_reference.credentialStore).toBe("tenant_settings");
+    expect(row.provider_diagnostics.httpStatus).toBe(403);
+    expect(JSON.stringify(row)).not.toContain(secret); expect(JSON.stringify(row)).not.toContain(privateText);
+  } finally { vi.unstubAllGlobals(); }
+});
+it("does not immediately replay an explicit Ahrefs allowance refusal", async () => {
+  const { HttpError } = await import("../lib/integrations/http");
+  const { providerDiagnostics } = await import("../lib/api-usage/diagnostics");
+  const execute = vi.fn().mockRejectedValue(new HttpError(429,"synthetic refusal",undefined,providerDiagnostics({status:429,code:"units_limit_exceeded"})));
+  await expect(withRetry(execute,{baseMs:1})).rejects.toMatchObject({retryable:false});
+  expect(execute).toHaveBeenCalledOnce();
+});
+it("records effective configuration precedence without serializing credential values", async () => {
+  const foundation = "00000000-0000-4000-8000-000000000001";
+  vi.stubEnv("OPENAI_API_KEY", "synthetic-env-platform");
+  try {
+    const env = await requestIdentity("OPENAI_API_KEY", "synthetic-env-platform", org);
+    expect(env.configurationReference).toEqual({ credentialStore: "platform_environment", settingsOrgId: foundation, credentialSetting: "OPENAI_API_KEY" });
+    await state.db.query("insert into integration_settings values($1,'OPENAI_API_KEY','synthetic-saved-platform')",[foundation]);
+    const saved = await requestIdentity("OPENAI_API_KEY", "synthetic-saved-platform", org);
+    expect(saved.configurationReference?.credentialStore).toBe("platform_settings");
+    expect((await requestIdentity("OPENAI_API_KEY", "synthetic-env-platform", org)).source).toBe("unknown");
+    await state.db.query("insert into integration_settings values($1,'OPENAI_API_KEY','synthetic-saved-platform')",[org]);
+    const duplicate = await requestIdentity("OPENAI_API_KEY", "synthetic-saved-platform", org);
+    expect(duplicate.source).toBe("platform");
+    expect(duplicate.configurationReference?.settingsOrgId).toBe(foundation);
+    await state.db.query("update integration_settings set value_enc='synthetic-tenant' where org_id=$1",[org]);
+    const own = await requestIdentity("OPENAI_API_KEY", "synthetic-tenant", org);
+    expect(own.configurationReference).toEqual({ credentialStore: "tenant_settings", settingsOrgId: org, credentialSetting: "OPENAI_API_KEY" });
+    expect(JSON.stringify([env.configurationReference,saved.configurationReference,duplicate.configurationReference,own.configurationReference])).not.toContain("synthetic-");
+  } finally { vi.unstubAllEnvs(); }
 });
 it("does not replay a successful provider action when ledger finalization fails", async () => {
   state.failFinish = true;

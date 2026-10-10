@@ -1,5 +1,6 @@
 "use client";
 
+import { StoredTime } from "@/components/stored-time";
 import { GuideScoreDetails } from "@/components/guide-score-details";
 
 /**
@@ -622,17 +623,7 @@ export function GuideWizard() {
                     <ul className="space-y-2">
                       {guide.recentChanges.map((c, i) => (
                         <li key={`${c.at}-${i}`} className="flex gap-3 text-sm">
-                          <time
-                            dateTime={c.at}
-                            className="num w-24 shrink-0 text-xs text-muted-foreground"
-                          >
-                            {new Date(c.at).toLocaleString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </time>
+                          <StoredTime value={c.at} className="num w-32 shrink-0 text-xs text-muted-foreground" />
                           <span className="min-w-0 flex-1 text-foreground">
                             {c.text}
                             {/*

@@ -23,6 +23,7 @@
  *     prompt_cache_key steers repeat calls to the same cache.
  */
 
+import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 /** Default output-token headroom when reasoning is on. Tuned, not measured. */
@@ -33,13 +34,15 @@ export class OpenAiApiError extends Error {
   readonly code: string | null;
   readonly type: string | null;
   readonly requestId: string | null;
-  constructor(message: string, status: number | null, code: string | null, type: string | null, requestId: string | null) {
-    super(message);
+  readonly diagnostics: ProviderDiagnostics;
+  constructor(_message: string, status: number | null, code: string | null, type: string | null, requestId: string | null, diagnostics?: ProviderDiagnostics) {
+    super(`OpenAI request failed${status ? ` (HTTP ${status})` : ""}. Review saved provider diagnostics.`);
     this.name = "OpenAiApiError";
-    this.status = status;
-    this.code = code;
-    this.type = type;
-    this.requestId = requestId;
+    this.diagnostics = providerDiagnostics({ status, code, type, requestId, diagnostics });
+    this.status = this.diagnostics.httpStatus;
+    this.code = this.diagnostics.errorCode;
+    this.type = this.diagnostics.errorType;
+    this.requestId = this.diagnostics.requestId;
   }
 }
 
@@ -53,41 +56,51 @@ export class OpenAiApiError extends Error {
 export function describeOpenAiFailure(
   err: unknown
 ): { reason: string; status: number | null; retryable: boolean } | null {
-  const e = err as { status?: number; code?: string | null; message?: string; name?: string };
+  const e = err as { status?: number; code?: string | null; type?: string | null; message?: string; name?: string };
   const status = typeof e?.status === "number" ? e.status : null;
   const code = e?.code ?? null;
   const text = `${code ?? ""} ${e?.message ?? ""}`;
 
-  if (status === 401 || status === 403) {
+  if (code === "invalid_api_key") {
     return {
       reason:
-        "OpenAI rejected the API key. It was deleted, revoked, or copied incompletely. " +
-        "Create a new key at platform.openai.com under API keys and save it under Settings, Integrations.",
+        "OpenAI rejected the API key. Review the affected connection and its account access before an authorized replacement.",
       status,
       retryable: false,
     };
   }
 
-  // An exhausted billing quota arrives as a 429 with code insufficient_quota.
-  // It is not a rate limit: waiting fixes nothing, so check it first.
-  if (/insufficient_quota|exceeded your current quota|billing|payment/i.test(text)) {
+  if (code === "credit_balance_exhausted") {
     return {
       reason:
-        "The OpenAI account has insufficient credit (its billing quota is used up). " +
-        "Nothing will be scored, analysed, or drafted on it until you add credit at platform.openai.com under Billing.",
+        "OpenAI reported an exhausted credit balance. Review the matched account's Billing within the approved budget before retrying.",
       status,
       retryable: false,
     };
   }
 
-  if (status === 429) {
+  const allowance: Record<string, string> = {
+    organization_spend_limit_exceeded: "organization spend limit",
+    project_spend_limit_exceeded: "project spend limit",
+    organization_usage_limit_exceeded: "assigned organization usage limit",
+    insufficient_quota: "billing quota or account allowance",
+  };
+  const allowanceName = code && Object.hasOwn(allowance, code) ? allowance[code] : null;
+  if (allowanceName || e?.type === "insufficient_quota") {
+    return { reason: `OpenAI reached its ${allowanceName ?? "billing quota or account allowance"}. Review the matched account's billing and usage limits before an authorized retry. This does not establish its remaining credit balance.`, status, retryable: false };
+  }
+  if (code === "rate_limit_exceeded" || code === "slow_down" || e?.type === "rate_limit_error") {
     return {
       reason:
         "OpenAI is rate limiting this account, so requests are being refused. " +
-        "This usually clears on its own; if it does not, the account's rate limits need raising.",
+        "Respect its saved Retry-After delay before an authorized retry.",
       status,
       retryable: true,
     };
+  }
+
+  if (status === 401 || status === 403 || status === 429) {
+    return { reason: `OpenAI provider refusal (HTTP ${status}): the specific account or access cause was not established. Review the saved diagnostics and matched account before retrying; do not infer a revoked key or zero balance.`, status, retryable: false };
   }
 
   if (status != null && status >= 500) {
@@ -257,7 +270,6 @@ export async function openAiResponse(
       body: JSON.stringify(buildOpenAiBody(req)),
       signal: ctl.signal,
     });
-    const requestId = res.headers.get("x-request-id");
     const text = await res.text();
     let body: ResponsesBody | null = null;
     try {
@@ -267,22 +279,29 @@ export async function openAiResponse(
     }
     if (!res.ok) {
       const err = body?.error;
+      const diagnostics = providerDiagnostics({ status: res.status, code: err?.code, type: err?.type, headers: res.headers }, [req.apiKey]);
       throw new OpenAiApiError(
-        `${res.status} ${err?.message ?? (text ? text.slice(0, 300) : res.statusText)}`,
+        "OpenAI request failed",
         res.status,
-        err?.code ?? null,
-        err?.type ?? null,
-        requestId
+        diagnostics.errorCode,
+        diagnostics.errorType,
+        diagnostics.requestId,
+        diagnostics
       );
     }
-    if (!body) throw new OpenAiApiError("OpenAI returned an empty response body.", null, null, null, requestId);
+    if (!body) {
+      const diagnostics = providerDiagnostics({status:res.status,headers:res.headers},[req.apiKey]);
+      throw new OpenAiApiError("OpenAI returned an empty response body.", res.status, null, null, diagnostics.requestId, diagnostics);
+    }
     if (body.status === "failed") {
+      const diagnostics = providerDiagnostics({ status: res.status, code: body.error?.code, type: body.error?.type, headers: res.headers }, [req.apiKey]);
       throw new OpenAiApiError(
-        `OpenAI marked the response failed: ${body.error?.message ?? "no detail"}`,
-        null,
-        body.error?.code ?? null,
-        body.error?.type ?? null,
-        requestId
+        "OpenAI marked the response failed",
+        res.status,
+        diagnostics.errorCode,
+        diagnostics.errorType,
+        diagnostics.requestId,
+        diagnostics
       );
     }
     return parseOpenAiResponse(body);

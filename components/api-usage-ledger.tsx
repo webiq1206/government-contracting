@@ -1,4 +1,6 @@
 "use client";
+import { StoredTime } from "@/components/stored-time";
+import { ProviderDiagnosticDetails } from "./provider-diagnostic-details";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
@@ -503,9 +505,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                     {data.rows.map((r: Row) => (
                       <tr className="border-t" key={r.id}>
                         <td className="p-2 whitespace-nowrap">
-                          {new Date(r.started_at).toLocaleString("en-US", {
-                            timeZone: "UTC",
-                          })}
+                          <StoredTime value={r.started_at} seconds />
                         </td>
                         <td className="p-2 min-w-40">
                           {r.tenant}
@@ -821,6 +821,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                 {selected.error_code}
               </p>
             )}
+            {admin && selected.outcome === "failed" && <ProviderDiagnosticDetails diagnostics={selected.provider_diagnostics} configuration={selected.configuration_reference} />}
             {admin && (
               <>
                 <form

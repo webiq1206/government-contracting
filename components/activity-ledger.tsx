@@ -1,4 +1,5 @@
 "use client";
+import { StoredTime } from "@/components/stored-time";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -376,9 +377,7 @@ export function ActivityLedger({initialData = null, initialQuery = ""}: {initial
                       </p>
                     </div>
                     <div className="shrink-0 text-xs text-muted-foreground">
-                      <time dateTime={r.occurred_at}>
-                        {new Date(r.occurred_at).toLocaleString()}
-                      </time>
+                      <StoredTime value={r.occurred_at} seconds />
                       <p className="mt-1">{label(r.actor)}</p>
                       {r.historical && (
                         <p className="mt-1">Historical snapshot</p>

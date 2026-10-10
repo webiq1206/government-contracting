@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -345,13 +346,6 @@ function formatDay(iso: string | null): string {
 }
 
 function formatMoment(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "at an unrecorded time"
-    : d.toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
+  const recorded = storedTimestamp(iso);
+  return recorded.dateTime ? recorded.label : "at an unrecorded time";
 }

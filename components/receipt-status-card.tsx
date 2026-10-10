@@ -1,5 +1,6 @@
 "use client";
 
+import { StoredTime } from "@/components/stored-time";
 import { needsReceiptFollowUp, type SubmissionState } from "@/lib/domain/submission-state";
 
 /**
@@ -58,14 +59,14 @@ export function ReceiptStatusCard({
         <p className="text-sm font-medium text-foreground">{headline(state, overdue)}</p>
         {sentAt && (
           <p className="text-xs text-muted-foreground">
-            {sentAt.toLocaleString()}
-            {timezone ? ` (${timezone})` : ""}
+            <StoredTime value={sentAt} />
           </p>
         )}
       </div>
 
       <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <Line label="How" value={method} fallback="Not recorded" />
+        {timezone && <Line label="Recorded timezone" value={timezone} fallback="Not recorded" />}
         <Line label="Where" value={destination} fallback="Not recorded" />
         {/* Absent for a good reason, and said as such: plenty of portals issue
             none, and a blank here would read as somebody forgetting. */}

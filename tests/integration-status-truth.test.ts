@@ -120,7 +120,7 @@ describe("Ahrefs settings and provider outcomes", () => {
       "AHREFS_API_KEY",
       expect.objectContaining({
         ok: false,
-        error: expect.stringContaining("quota exhausted"),
+        error: expect.stringContaining("transport outcome is unconfirmed"),
       })
     );
   });
@@ -135,7 +135,7 @@ describe("Ahrefs settings and provider outcomes", () => {
     });
     expect(fetchJson).toHaveBeenCalledOnce();
     expect(recordIntegrationUse).toHaveBeenCalledWith("AHREFS_API_KEY",
-      expect.objectContaining({ ok: false, error: expect.stringContaining("403 Forbidden") }));
+      expect.objectContaining({ ok: false, error: expect.stringContaining("provider refusal (HTTP 403)") }));
   });
 });
 

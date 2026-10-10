@@ -1,3 +1,5 @@
+import { storedTimestamp } from "./stored-timestamp";
+
 /**
  * Connected apps: what each one is for, what it reads and writes, and how
  * its status is judged. Pure; the OAuth flows, API calls and database live
@@ -208,8 +210,7 @@ export function syncLine(s: { status: ServiceStatus; last_synced_at: string | Da
   if (s.status === "paused") return "Paused. Nothing is sent until you resume.";
   if (s.status === "needs_attention") return s.last_error ?? "The connection stopped working. Reconnect to continue.";
   if (!s.last_synced_at) return "Connected. Nothing has needed syncing yet.";
-  const at = new Date(s.last_synced_at);
-  return Number.isNaN(at.getTime()) ? "Connected." : `Connected. Last synced ${at.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.`;
+  return `Connected. Last synced ${storedTimestamp(s.last_synced_at).label}.`;
 }
 
 /**

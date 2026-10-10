@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -100,7 +101,7 @@ export function PursuitControls({
         <p className="mt-1 text-sm text-muted-foreground">
           {impact.title ?? "This opportunity"}
           {impact.solicitationNumber ? ` · ${impact.solicitationNumber}` : ""}
-          {impact.deadline ? ` · closes ${new Date(impact.deadline).toLocaleString()}` : ""}
+          {impact.deadline ? ` · closes ${storedTimestamp(impact.deadline).label}` : ""}
           {` · currently ${impact.stage.replace(/_/g, " ")}`}
         </p>
 

@@ -52,6 +52,7 @@ export type IncidentCause =
   | "spending_limit"
   | "provider_credit"
   | "provider_auth"
+  | "provider_refusal"
   | "provider_rate_limit"
   | "mailbox_rate_limit"
   | "mailbox_content"
@@ -123,6 +124,13 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
       "Requests using this provider connection are blocked. Check the affected workflows below; this does not mean every integration has stopped.",
     repair: "Check the provider named in the failure and update only that connection under Settings, Integrations. Confirm recovery before retrying affected work.",
     repairHref: "/settings/integrations",
+    blocking: true,
+  },
+  provider_refusal: {
+    title: "A provider refusal needs review",
+    effect: "The affected work is held. The recorded refusal does not establish a revoked key, exhausted balance or rate limit.",
+    repair: "Review the saved provider diagnostics and the matched account's access and limits before an authorized retry.",
+    repairHref: "/settings/api-usage",
     blocking: true,
   },
   provider_rate_limit: {
@@ -229,7 +237,8 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/ai work has an unresolved completion|reconcile its saved output before retrying|provider request is in progress or has an unresolved outcome/.test(text)) return "completion_reconciliation";
   if (/no verified platform sender|platform gmail connection or verified sender identity is not ready/.test(text)) return "sender_not_ready";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
-  if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota/.test(text)) return "provider_credit";
+  if (/provider refusal/.test(text)) return "provider_refusal";
+  if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota|billing quota|organization spend limit|project spend limit|organization usage limit/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
   // Google can return quota exhaustion as HTTP 403. Check throttling before
   // authentication, including historical messages with a reconnect suffix.

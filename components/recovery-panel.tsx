@@ -1,5 +1,6 @@
 "use client";
 
+import { StoredTime } from "@/components/stored-time";
 import Link from "next/link";
 import { requestAction, ACTION_UNCONFIRMED } from "@/lib/client/action-request";
 import { useEffect, useRef, useState } from "react";
@@ -197,7 +198,7 @@ function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRec
               {" · "}
               {h.actor}
               {" · "}
-              {new Date(h.at).toLocaleString()}
+              <StoredTime value={h.at} seconds />
               {h.detail && <span className="block pl-2">{h.detail}</span>}
             </li>
           ))}

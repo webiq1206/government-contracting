@@ -155,7 +155,7 @@ export function AutomationRulesForm({
       // somebody edits something.
       setImpacts([]);
       setConfirm(false);
-      setSavedAt(new Date().toLocaleTimeString());
+      setSavedAt(new Date().toLocaleTimeString("en-US", { timeZoneName: "short" }));
       router.refresh();
     } catch {
       setError(

@@ -87,7 +87,7 @@ export async function readUsage(params: URLSearchParams, tenantId?: string) {
     e.outcome,e.credential_source,e.usage,case when e.credential_source='platform' and e.provider_cost is null then null else e.tenant_charge end::text as tenant_charge,(${amount})::text as usage_amount, (e.provider_cost is null and e.estimated_cost is not null) as is_estimate,e.billing_status,${tenantId ? "case when e.outcome='failed' then 'This request did not complete. Review Automation Health for next steps.' else null end as error_code" : "e.error_code"},e.invoice_reference`;
   const costs = tenantId
     ? ""
-    : ",e.provider_cost::text,e.estimated_cost::text,e.evidence,e.provider_request_id,e.billing_accepted,e.user_id";
+    : ",e.provider_cost::text,e.estimated_cost::text,e.evidence,e.provider_request_id,e.billing_accepted,e.user_id,e.provider_diagnostics,e.configuration_reference";
   const [
     rows,
     summary,

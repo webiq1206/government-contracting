@@ -56,7 +56,7 @@ export function CallLater({
       setError(data.error ?? "That could not be recorded.");
       return;
     }
-    setMoved(when.toLocaleString());
+    setMoved(when.toLocaleString("en-US", { timeZoneName: "short" }));
     setOpen(false);
     router.refresh();
   }

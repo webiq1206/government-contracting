@@ -1,5 +1,6 @@
 "use client";
 
+import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -354,8 +355,7 @@ function Line({ label, value }: { label: string; value: string }) {
 
 function when(d: string | Date | null): string {
   if (!d) return "Never";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+  return storedTimestamp(d).label;
 }
 
 function short(hash: string | null): string {

@@ -30,7 +30,9 @@ describe("audit regression coverage", () => {
     expect(classifyFailure(message)).toBe("provider_credit");
     const failure = describeClaudeFailure({ status: 429, message });
     expect(failure?.retryable).toBe(false);
-    expect(failure?.reason).toContain("2026-10-01");
+    // Free-form provider text is no longer copied into persistent reasons.
+    expect(failure?.reason).not.toContain("2026-10-01");
+    expect(failure?.reason).toContain("saved diagnostics");
     expect(failure?.reason).not.toContain("rejected the API key");
     expect(causeSpec("provider_auth").title).not.toContain("AI key");
     expect(describeClaudeFailure({ status: 429, message: "Too many requests" })?.retryable).toBe(true);

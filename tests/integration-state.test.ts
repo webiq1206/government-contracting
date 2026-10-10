@@ -51,7 +51,7 @@ describe("integrationState", () => {
     );
     expect(v.state).toBe("blocked");
     expect(v.cause).toBe("provider_credit");
-    expect(v.nextAction).toContain("Nothing here will fix it");
+    expect(v.nextAction).toContain("recorded cause and approved budget");
   });
 
   it("calls a rejected key blocked rather than degraded", () => {
