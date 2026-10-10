@@ -194,6 +194,7 @@ export const DISALLOWED_PREFIXES: { prefix: string; why: string }[] = [
   { prefix: "/review", why: "Signed-in application." },
   { prefix: "/call-queue", why: "Signed-in application." },
   { prefix: "/communications", why: "Signed-in application." },
+  { prefix: "/outreach", why: "Signed-in account outreach evidence." },
   { prefix: "/email-log", why: "Signed-in application." },
   { prefix: "/subs", why: "Signed-in application, per-record." },
   { prefix: "/contracts", why: "Signed-in application, per-record." },
