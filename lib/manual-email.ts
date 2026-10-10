@@ -40,12 +40,13 @@ export async function sendManualEmail({ requestKey, actorId, params }: ManualEma
   let attempted = false;
   try {
     const result = await sendOutreachEmail({ ...params,
-      beforeProviderSend: async (from) => {
-        await params.beforeProviderSend?.(from);
+      beforeProviderSend: async (from,identity) => {
+        await params.beforeProviderSend?.(from,identity);
         const stamped = await queryOne<{ id: string }>(`update communications set
           delivery_state='attempting', sender_email=$3, provider_attempted_at=now(),
-          delivery_updated_at=now() where id=$1 and org_id=$2 and delivery_state='queued' returning id`,
-          [claim.id, params.orgId, from]);
+          delivery_updated_at=now(),meta=coalesce(meta,'{}'::jsonb) || $4::jsonb
+          where id=$1 and org_id=$2 and delivery_state='queued' returning id`,
+          [claim.id, params.orgId, from,JSON.stringify({provider_account_email:identity?.mailboxEmail ?? null,provider_connection_generation:identity?.connectionGeneration ?? null})]);
         if (!stamped) throw new Error("The send claim could not be confirmed.");
         attempted = true;
       },

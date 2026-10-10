@@ -38,6 +38,7 @@ const EXEMPT = new Map<string, string>([
   // reaching into the database. Their layout is exercised by the pages above
   // that link to them, and by the per-piece browser probes.
   ["/opportunity/[id]", "Needs a record id."],
+  ["/outreach/[id]", "Needs a communication id; exercised with populated disposable event history in all three UI audit devices."],
   ["/opportunity/[id]/requirements", "Needs a record id, and a solicitation with extracted requirements."],
   ["/subs/[id]", "Needs a record id."],
   ["/communications/compose", "Needs an active contact/project/trade assignment; exercised with disposable fixtures in scripts/ui-audit/browser.mjs on all three devices."],

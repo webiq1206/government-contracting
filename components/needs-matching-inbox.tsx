@@ -17,6 +17,8 @@ export interface PendingMessage {
   attachmentNames?: string[];
   unreadableAttachments?: string[];
   capturedThreadKey?: string | null;
+  originalDateHeader?: string | null;
+  ingestedAt?: string;
 }
 
 export interface MatchTarget {
@@ -148,6 +150,7 @@ function MessageRow({
         </time>
       </div>
       <p className="text-xs text-muted-foreground">{message.fromEmail}</p>
+      {message.ingestedAt && <p className="text-xs text-muted-foreground break-words">Saved to this queue: {communicationTimestamp(message.ingestedAt).label}. Original Date header: {message.originalDateHeader || "not preserved; stored arrival may reflect ingestion"}.</p>}
       {message.subject && (
         <p className="mt-1 text-sm text-slate-700">{message.subject}</p>
       )}

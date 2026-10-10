@@ -19,7 +19,7 @@ beforeAll(async()=>{
       delivery_state text,delivery_detail text,opened_at timestamptz,clicked_at timestamptz,replied_at timestamptz,follow_up_at timestamptz);
     create table quotes(org_id uuid,opportunity_id uuid,subcontractor_id uuid);
     create table subcontractor_reply_events(org_id uuid,gmail_message_id text,opportunity_id uuid,subcontractor_id uuid,needs_review boolean,reviewed_at timestamptz);
-    create table unmatched_inbound(id uuid default gen_random_uuid(),org_id uuid,received_at timestamptz,from_email text,from_name text,subject text,snippet text,subcontractor_id uuid,state text,message_id text,attachment_names jsonb,unreadable_attachments jsonb);`);
+    create table unmatched_inbound(id uuid default gen_random_uuid(),org_id uuid,received_at timestamptz,from_email text,from_name text,subject text,snippet text,subcontractor_id uuid,state text,message_id text,attachment_names jsonb,unreadable_attachments jsonb,original_date_header text,created_at timestamptz default now());`);
   await db.query(`insert into opportunities values($1,$3,'Station repair','SYN-1','open','outreach','active'),($2,$3,'Closed example','SYN-2','closed','lost','aborted')`,[project,project2,org]);
   await db.query(`insert into subcontractors values($1,$3,'Synthetic supplier','website_scrape',false),($2,$4,'Private other tenant','secret',true)`,[sub,foreignSub,org,other]);
   await db.query(`insert into communications(org_id,subcontractor_id,opportunity_id,subject,body,delivery_state,provider,gmail_message_id)

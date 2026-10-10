@@ -92,6 +92,8 @@ export interface CaptureReplyInput {
   ccAddresses?: string | null;
   /** The Date header as sent: when THEY wrote, not when we happened to poll. */
   sentAt?: string | null;
+  /** Imported mail may have only an ingestion timestamp, not the author's date. */
+  sourceDateUnknown?: boolean;
   attachmentNames?: string[];
   /** The reply's own RFC822 Message-ID, so a later message can cite it. */
   rfc822MessageId?: string | null;
@@ -646,6 +648,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     decision = holdForReview(
       "The sender address differs from the contact that received the request. Confirm who sent it before applying the answer."
     );
+  } else if (extracted.isQuote && input.sourceDateUnknown) {
+    decision = holdForReview("The original message date is unavailable. Verify the quote date and validity before applying this price; ingestion time cannot establish quote freshness.");
   }
 
   const meta = {
@@ -829,6 +833,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
         opportunityId: comm.opportunity_id,
         subcontractorId: subId,
         proposal: proposal.row,
+        sourceCommunicationId: inbound.id,
         notes: ["Auto-captured from email reply.", extracted.notes ?? ""].filter(Boolean).join(" "),
         receivedAt: Number.isNaN(replyWrittenAt.getTime()) ? new Date() : replyWrittenAt,
       });

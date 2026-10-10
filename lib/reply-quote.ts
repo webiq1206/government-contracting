@@ -11,6 +11,7 @@ export async function persistReplyQuote(input: {
   proposal: ProposedRow;
   notes: string;
   receivedAt: Date;
+  sourceCommunicationId?: string;
 }): Promise<"saved" | "kept_existing" | "not_editable"> {
   return transaction(async (client) => {
     const { orgId, opportunityId, subcontractorId, proposal } = input;
@@ -40,12 +41,12 @@ export async function persistReplyQuote(input: {
 
     const quote = await client.query<{ id: string }>(
       `insert into quotes
-        (org_id, opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes)
-       values ($1,$2,$3,$4,$5,$6,$7)
+        (org_id, opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes,source_communication_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
        on conflict (opportunity_id, subcontractor_id, (coalesce(trade,''))) do nothing
        returning id`,
       [orgId, opportunityId, subcontractorId, proposal.trade,
-        proposal.baseQuote, proposal.paymentTerms, input.notes],
+        proposal.baseQuote, proposal.paymentTerms, input.notes,input.sourceCommunicationId ?? null],
     );
     if (!quote.rows.length) return "kept_existing";
 

@@ -3,6 +3,13 @@ import { join } from 'node:path';
 
 /** Local records only. Provider-facing submissions are intercepted and fail. */
 export async function auditExtendedWorkflows({ page, device, ids, base, out, check }) {
+  await check(`/outreach/${ids.evidenceMail}`, 'email-checkpoints-and-preserved-content', async () => {
+    await page.getByRole('heading',{name:'Recorded email changes',exact:true}).waitFor();
+    await page.getByText('synthetic-accepted',{exact:false}).first().waitFor();
+    await page.getByText('Original content and intent saved at this checkpoint',{exact:true}).click();
+    await page.getByText('Preserved synthetic original message.',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:/send/i}).count(),0);
+  });
   await check('/communications/unmatched', 'unmatched-complete-queue-search-pagination', async () => {
     await page.getByText('153 stored messages', {exact:true}).waitFor();
     await page.getByRole('link',{name:'Next 50 messages',exact:true}).click();

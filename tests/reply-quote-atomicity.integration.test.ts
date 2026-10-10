@@ -8,7 +8,7 @@ d("automatic reply quote transaction", () => {
   let query: typeof import("@/lib/db").query;
   let queryOne: typeof import("@/lib/db").queryOne;
   let persist: typeof import("@/lib/reply-quote").persistReplyQuote;
-  const org = randomUUID(), opp = randomUUID(), sub = randomUUID();
+  const org = randomUUID(), opp = randomUUID(), sub = randomUUID(), inbound = randomUUID();
   const probe = `audit_quote_${randomUUID().replaceAll("-", "")}`;
   const proposal: ProposedRow = {
     trade: "Electrical", scopeKey: "electrical", baseQuote: 42_000,
@@ -18,7 +18,7 @@ d("automatic reply quote transaction", () => {
     confidence: "firm", missing: [], notes: [],
   };
   const input = { orgId: org, opportunityId: opp, subcontractorId: sub,
-    proposal, notes: "Synthetic reply transaction test", receivedAt: new Date() };
+    proposal, notes: "Synthetic reply transaction test", receivedAt: new Date(), sourceCommunicationId: inbound };
 
   beforeAll(async () => {
     ({ query, queryOne } = await import("@/lib/db"));
@@ -31,6 +31,8 @@ d("automatic reply quote transaction", () => {
       values ($1,$2,'Synthetic Electric')`, [sub, org]);
     await query(`insert into opportunity_subs (opportunity_id,subcontractor_id,trade,outreach_state)
       values ($1,$2,'Electrical','sent')`, [opp, sub]);
+    await query(`insert into communications (id,org_id,opportunity_id,subcontractor_id,channel,direction,body)
+      values ($1,$2,$3,$4,'email','inbound','Synthetic quote source')`, [inbound,org,opp,sub]);
   });
 
   afterAll(async () => {
@@ -66,7 +68,8 @@ d("automatic reply quote transaction", () => {
   it("allows a clean retry and serializes concurrent duplicate prices", async () => {
     const results = await Promise.all([persist(input), persist(input)]);
     expect(results.sort()).toEqual(["kept_existing", "saved"]);
-    expect(await query(`select id from quotes where opportunity_id=$1`, [opp])).toHaveLength(1);
+    expect(await query(`select source_communication_id from quotes where opportunity_id=$1`, [opp]))
+      .toEqual([{ source_communication_id: inbound }]);
     expect(await query(`select base_quote from trade_pricing_rows where opportunity_id=$1`, [opp]))
       .toEqual([{ base_quote: 42_000 }]);
     expect(await queryOne(`select stage from opportunities where id=$1`, [opp])).toEqual({ stage: "quote_entry" });

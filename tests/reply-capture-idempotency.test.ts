@@ -78,6 +78,18 @@ function extracted(intent: ExtractedReply["intent"]): ExtractedReply {
 }
 
 describe("reply capture ownership and weak matching", () => {
+  it("keeps a quoted price for review when an imported message has no original date", async () => {
+    const mod=await load();
+    query.mockImplementation(async(sql:string)=>/select distinct trade/.test(sql)?[{trade:'Electrical'}]:[]);
+    queryOne.mockImplementation(async(sql:string)=>/select o.id from opportunities/.test(sql)?{id:'opp-1'}:/insert into communications/.test(sql)?{id:'in-old-quote'}:null);
+    const result=await mod.captureReply({orgId:'org-1',comm,strongMatch:true,fromEmail:comm.sub_email,
+      replyText:'Price $42000, valid for 30 days.',sourceDateUnknown:true,messageId:'imported-no-date',
+      extract:async()=>({...extracted('quote'),isQuote:true,quoteAmount:42000,quoteValidUntil:'30 days'})});
+    expect(result.quoteSaved).toBe(false);expect(result.decision.act).toBe(false);
+    expect(result.decision.reviewReason).toContain('original message date');
+    expect(persistReplyQuote).not.toHaveBeenCalled();expect(enqueue).not.toHaveBeenCalled();
+    expect(query.mock.calls.some(([sql])=>/set outreach_state='responsive'/.test(sql))).toBe(false);
+  });
 
   it("normalizes raw reply fields and new extractor output before persistence", async () => {
     const mod = await load();

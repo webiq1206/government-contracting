@@ -100,7 +100,9 @@ try {
   await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,subject,body,provider,gmail_message_id,provider_attempted_at,provider_accepted_at,delivery_state)
     values($1,$2,$3,'email','outbound','Synthetic acceptance receipt','Preserved synthetic original message.','gmail','synthetic-accepted',now()-interval '1 hour',now()-interval '1 hour','sent'),
       ($1,$2,$3,'email','inbound','Re: synthetic absence','I am currently out of the office, but I will return Wednesday.',null,'synthetic-absence',null,null,'sent')`,[org!.id,sub!.id,opp!.id]);
-  writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,research:research!.id,archived:archived!.id,sourceAudit:sourceAudit!.id,sourceDocs:sourceDocs.map(d=>d.id),sub:sub!.id,contract:contract!.id,call:call!.id,vendorToken:encodePortalToken({s:sub!.id,e:Math.floor(Date.now()/1000)+3600})}));
+  const evidenceMail=await queryOne<{id:string}>("select id from communications where org_id=$1 and gmail_message_id='synthetic-accepted'",[org!.id]);
+  await query("update communications set follow_up_at=now()+interval '1 day' where id=$1 and org_id=$2",[evidenceMail!.id,org!.id]);
+  writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,research:research!.id,archived:archived!.id,sourceAudit:sourceAudit!.id,sourceDocs:sourceDocs.map(d=>d.id),sub:sub!.id,contract:contract!.id,call:call!.id,evidenceMail:evidenceMail!.id,vendorToken:encodePortalToken({s:sub!.id,e:Math.floor(Date.now()/1000)+3600})}));
 } finally { await closePool(); }
 
 }

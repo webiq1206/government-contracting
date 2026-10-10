@@ -68,8 +68,8 @@ async function loadGmail(harness: Harness) {
     return [];
   }
   async function dbQueryOne(sql: string) {
-    if (/select data, connection_generation from integration_tokens/i.test(sql)) {
-      return { data: { refresh_token: "a-refresh-token" }, connection_generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+    if (/select data, connection_generation, email from integration_tokens/i.test(sql)) {
+      return { data: { refresh_token: "a-refresh-token" }, connection_generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", email: "hello@webiq.co" };
     }
     return null;
   }

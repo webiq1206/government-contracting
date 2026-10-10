@@ -66,15 +66,16 @@ export async function sendScheduledEmail(params: OutreachSendParams,
       if (!claim) return { provider: null, outcome: "unknown", retryable: false,
         communicationId: existing?.id, error: review };
     }
-    const result = await send({...params,scheduled:undefined,beforeProviderSend:async (from) => {
+    const result = await send({...params,scheduled:undefined,beforeProviderSend:async (from,identity) => {
       await assertReplyProcessingOwnership();
       const stamped = await queryOne<{id:string}>(`update communications set delivery_state='attempting',
-        sender_email=$4,provider_attempted_at=now(),delivery_updated_at=now()
+        sender_email=$4,provider_attempted_at=now(),delivery_updated_at=now(),
+        meta=coalesce(meta,'{}'::jsonb) || $5::jsonb
         where id=$1 and org_id=$2 and request_fingerprint=$3 and delivery_state='queued' returning id`,
-        [claim!.id,params.orgId,owner,from]);
+        [claim!.id,params.orgId,owner,from,JSON.stringify({provider_account_email:identity?.mailboxEmail ?? null,provider_connection_generation:identity?.connectionGeneration ?? null})]);
       if (!stamped) throw new Error("Scheduled send claim could not be confirmed.");
       attempted = true;
-      await params.beforeProviderSend?.(from);
+      await params.beforeProviderSend?.(from,identity);
     }});
     const accepted = !!result.messageId && !result.error && !result.disabled && !result.blocked;
     const state = accepted ? "sent" : !attempted || result.outcome === "not_attempted" ? "held"
