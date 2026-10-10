@@ -377,6 +377,23 @@ export async function endImpersonation(
 }
 
 export async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
+  try {
+    return await resolveSessionOnce(token);
+  } catch (error) {
+    // pg removes the failed client from the pool. Re-read once through the
+    // pool when connection establishment times out during a deployment or
+    // reconnect. Do not retry SQL/permission errors or reuse an old identity.
+    // The only write below is the best-effort last-seen touch, whose errors
+    // are already contained; session creation/revocation never use this path.
+    if (!(error instanceof Error) || error.message !== "Connection terminated due to connection timeout") {
+      throw error;
+    }
+    console.warn("[auth] session database connection timed out; retrying the lookup once");
+    return resolveSessionOnce(token);
+  }
+}
+
+async function resolveSessionOnce(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   if (token.startsWith("env-operator.")) {
     if (envOperatorAllowed() && config.auth.operatorEmail && verifyEnvOperator(token)) {
