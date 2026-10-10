@@ -507,7 +507,7 @@ export function ActivityLedger({initialData = null, initialQuery = ""}: {initial
       <details className="rounded-lg border border-border bg-surface px-4 py-2">
         <summary className="cursor-pointer text-sm font-medium">How to read this ledger</summary>
         <div className="pb-2 text-sm text-muted-foreground">
-          <p className="mt-2">Follow messages, bids, replies, documents and automation. Open a record to see what happened. Times use your device’s timezone; date filters use UTC.</p>
+          <p className="mt-2">Follow messages, bids, replies, documents and automation. Open a record to see what happened. Times and date filters use UTC.</p>
           <p className="mt-2">Historical snapshots show the latest saved state when this ledger was introduced. They do not reconstruct earlier changes. Sent means handed to the email provider; delivered requires delivery evidence.</p>
         </div>
       </details>
