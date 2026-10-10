@@ -50,6 +50,6 @@ export default async function CommunicationEvidence({params,searchParams}:{param
       </details>}
       {event.evidence.delivery_detail && <details><summary className="min-h-11 cursor-pointer text-sm">Recorded diagnostic</summary><p className="text-xs whitespace-pre-wrap">{event.evidence.delivery_detail}</p></details>}
     </section>)}
-    <nav className="flex justify-between gap-3 pb-6" aria-label="Email evidence pages">{before?<Link className="btn-ghost" href={`/outreach/${id}`}>Newest checkpoints</Link>:<span/>}{data.next&&<Link className="btn-ghost" href={`/outreach/${id}?before=${data.next}`}>Older checkpoints</Link>}</nav>
+    <nav className="flex justify-between gap-3 pb-6" aria-label="Email evidence pages">{before?<a className="btn-ghost" href={`/outreach/${id}`}>Newest checkpoints</a>:<span/>}{data.next&&<a className="btn-ghost" href={`/outreach/${id}?before=${data.next}`}>Older checkpoints</a>}</nav>
   </div></div>;
 }
