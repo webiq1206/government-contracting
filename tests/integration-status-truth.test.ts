@@ -68,7 +68,8 @@ describe("Ahrefs settings and provider outcomes", () => {
     const recordIntegrationUse = vi.fn(async () => undefined);
     vi.doMock("@/lib/integration-keys", () => ({ orgApiKey }));
     vi.doMock("@/lib/integration-settings", () => ({ recordIntegrationUse }));
-    vi.doMock("@/lib/integrations/http", () => ({
+    vi.doMock("@/lib/integrations/http", async (importOriginal) => ({
+      ...await importOriginal<typeof import("@/lib/integrations/http")>(),
       fetchJson,
       withRetry: async (fn: () => Promise<unknown>) => fn(),
     }));
@@ -122,6 +123,19 @@ describe("Ahrefs settings and provider outcomes", () => {
         error: expect.stringContaining("quota exhausted"),
       })
     );
+  });
+
+  it("retains a real HTTP refusal through the Ahrefs wrapper", async () => {
+    const { HttpError } = await import("@/lib/integrations/http");
+    const { ahrefs, fetchJson, recordIntegrationUse } = await loadAhrefs({
+      provider: async () => { throw new HttpError(403, "403 Forbidden"); },
+    });
+    await expect(ahrefs.referringDomains("example.com")).rejects.toMatchObject({
+      name: "AhrefsProviderError", status: 403, retryable: false,
+    });
+    expect(fetchJson).toHaveBeenCalledOnce();
+    expect(recordIntegrationUse).toHaveBeenCalledWith("AHREFS_API_KEY",
+      expect.objectContaining({ ok: false, error: expect.stringContaining("403 Forbidden") }));
   });
 });
 
