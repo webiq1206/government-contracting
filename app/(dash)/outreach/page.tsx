@@ -51,45 +51,48 @@ export default async function OutreachPage({ searchParams }: {
           <Link className="text-accent" href="/communications/history">All communication history</Link>
           <Link className="text-accent" href="/communications/unmatched">Review unmatched mail</Link>
           {project && <Link className="text-accent" href={`/opportunity/${project.id}`}>Solicitation and next steps</Link>}
-          {project && <Link className="text-accent" href={href({project:undefined,before:undefined})}>All account solicitations</Link>}
+          {project && <a className="text-accent" href={href({project:undefined,before:undefined})}>All account solicitations</a>}
         </div>
       </header>
 
       <form action="/outreach" className="card flex flex-wrap items-end gap-3">
         {opts.project && <input type="hidden" name="project" value={opts.project} />}
         <input type="hidden" name="asOf" value={data.asOf} />
-        <label className="min-w-0 w-full text-sm sm:w-auto sm:flex-1">Search outreach
-          <input className="input mt-1 w-full" type="search" name="q" defaultValue={opts.q} maxLength={300} placeholder="Supplier, saved address, solicitation or message" />
-        </label>
-        <label className="text-sm">Recorded period
-          <select className="input mt-1 block" name="days" defaultValue={data.days}>
+        <div className="w-full text-sm sm:min-w-64 sm:flex-1">
+          <label htmlFor="outreach-search">Search outreach</label>
+          <input id="outreach-search" className="input mt-1 w-full" type="search" name="q" defaultValue={opts.q} maxLength={300} placeholder="Supplier, saved address, solicitation or message" />
+        </div>
+        <div className="text-sm">
+          <label htmlFor="outreach-period">Recorded period</label>
+          <select id="outreach-period" className="input mt-1 block" name="days" defaultValue={data.days}>
             <option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all">All stored history</option>
           </select>
-        </label>
-        <label className="text-sm">Outcome
-          <select className="input mt-1 block" name="status" defaultValue={data.status}>
+        </div>
+        <div className="max-w-full text-sm">
+          <label htmlFor="outreach-outcome">Outcome</label>
+          <select id="outreach-outcome" className="input mt-1 block max-w-full" name="status" defaultValue={data.status}>
             {Object.entries(OUTREACH_OUTCOMES).map(([k,v])=><option key={k} value={k}>{v}</option>)}
           </select>
-        </label>
+        </div>
         <button type="submit" className="btn-primary">Apply filters</button>
-        <Link className="btn-ghost" href={href({q:undefined,status:undefined,before:undefined})}>Clear filters</Link>
+        <a className="btn-ghost" href={href({q:undefined,status:undefined,before:undefined})}>Clear filters</a>
       </form>
 
       <section className="space-y-3" aria-label="Recorded outreach totals">
         <p className="text-xs text-muted-foreground">The date range selects when records were created. Outcomes show their current saved state; this is not a historical status snapshot.</p>
         <p className="text-sm"><strong>{data.total} stored email records</strong> match this cohort. {data.since ? `After ${time(data.since)} through ${time(data.asOf)}.` : `All stored dates through ${time(data.asOf)}.`} Counts include unsent and received records; they are not a send or response rate.</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          {Object.entries(data.counts).map(([k,n])=><Link key={k} className="card min-w-0 p-3" href={href({status:k,before:undefined})}>
+          {Object.entries(data.counts).map(([k,n])=><a key={k} className="card min-w-0 p-3" href={href({status:k,before:undefined})}>
             <span className="block text-xs text-muted-foreground">{OUTREACH_OUTCOMES[k as keyof typeof OUTREACH_OUTCOMES]}</span>
             <strong className="num text-xl">{n}</strong>
-          </Link>)}
+          </a>)}
         </div>
         <p className="text-xs text-muted-foreground">Delivery confirmation is unavailable unless a trustworthy recipient-server event is preserved. Historical “delivered” labels and tracking activity alone do not supply that event. Automatic-response classification can require human review.</p>
         {!project && projects.size>0 && <details className="card">
           <summary className="min-h-11 cursor-pointer text-sm font-medium">Reconcile records by solicitation ({projects.size} groups)</summary>
           <p className="mb-3 text-xs text-muted-foreground">These groups use the same dates and filters as the totals above. Unlinked records stay separate.</p>
           <ul className="space-y-2 text-sm">{[...projects].map(([id,n])=><li key={id} className="flex min-w-0 flex-wrap justify-between gap-2">
-            {id==="unlinked" ? <span>No solicitation recorded</span> : <Link className="break-words text-accent" href={href({project:id,before:undefined})}>{n.label}</Link>}
+            {id==="unlinked" ? <span>No solicitation recorded</span> : <a className="break-words text-accent" href={href({project:id,before:undefined})}>{n.label}</a>}
             <span>{n.count} records</span>
           </li>)}</ul>
         </details>}
@@ -98,7 +101,7 @@ export default async function OutreachPage({ searchParams }: {
       {data.rows.length===0 && <p className="card">No stored emails match this cohort. This does not establish that no mail arrived at the provider. Check sync health and unmatched mail.</p>}
       <div className="space-y-6">{data.rows.map(row=><section key={row.id} className="min-w-0 space-y-3" aria-label={`Email record ${row.id}`}>
         <div className="flex flex-wrap gap-3 text-sm">
-          {row.opportunity_id && <Link className="text-accent" href={href({project:row.opportunity_id,before:undefined})}>{row.opportunity_title ?? "Solicitation history"}{row.solicitation_number ? ` · ${row.solicitation_number}` : ""}</Link>}
+          {row.opportunity_id && <a className="text-accent" href={href({project:row.opportunity_id,before:undefined})}>{row.opportunity_title ?? "Solicitation history"}{row.solicitation_number ? ` · ${row.solicitation_number}` : ""}</a>}
           {row.subcontractor_id && <Link className="text-accent" href={`/subs/${row.subcontractor_id}`}>{row.company_name ?? "Supplier record"}</Link>}
           <Link className="text-accent" href={`/communications/history?thread=${encodeURIComponent(row.thread_key)}`}>Read full conversation history</Link>
         </div>
@@ -132,8 +135,8 @@ export default async function OutreachPage({ searchParams }: {
         </div>
       </section>)}</div>
       <nav className="flex justify-between gap-3 pb-6" aria-label="Outreach history pages">
-        {opts.before ? <Link className="btn-ghost" href={href({before:undefined})}>Newest in this cohort</Link> : <span />}
-        {data.next && <Link className="btn-ghost" href={href({before:data.next})}>Older records</Link>}
+        {opts.before ? <a className="btn-ghost" href={href({before:undefined})}>Newest in this cohort</a> : <span />}
+        {data.next && <a className="btn-ghost" href={href({before:data.next})}>Older records</a>}
       </nav>
     </div>
   </div>;

@@ -38,14 +38,14 @@ export default async function UnmatchedPage({searchParams}:{searchParams:Promise
       </label>
       <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="known" value="yes" defaultChecked={opts.known==="yes"} />Known suppliers only</label>
       <button className="btn-primary" type="submit">Apply filters</button>
-      <Link className="btn-ghost" href="/communications/unmatched">Clear filters</Link>
+      <a className="btn-ghost" href="/communications/unmatched">Clear filters</a>
     </form>
     <p className="text-sm"><strong>{data.total.toLocaleString("en-US")} stored messages</strong> match these filters. Showing {data.rows.length} on this page, oldest first. The queue can change as new mail is captured or reviewed.</p>
     <NeedsMatchingInbox messages={data.rows} opportunities={targets} canAct={can(ctx.user.orgRole,"outreach")} totalCount={data.total} expanded />
     <p className="text-xs text-muted-foreground">Manual filing offers the latest 100 eligible open solicitations. Missing mail may still be at the provider; this queue does not establish current mailbox-sync health. Automatic matching and dismissing are never performed by opening this page.</p>
     <nav className="flex justify-between gap-3 pb-6" aria-label="Unmatched mail pages">
-      {opts.after ? <Link href={href()} className="btn-ghost">Oldest matching records</Link> : <span />}
-      {data.next && <Link href={href(data.next)} className="btn-ghost">Next 50 messages</Link>}
+      {opts.after ? <a href={href()} className="btn-ghost">Oldest matching records</a> : <span />}
+      {data.next && <a href={href(data.next)} className="btn-ghost">Next 50 messages</a>}
     </nav>
   </div></div>;
 }
