@@ -134,7 +134,7 @@ d("building a recap from real rows (integration)", () => {
       expect(facts.mailTrouble.find((row) => row.orgId === mine.id)?.bounced).toBe(0);
       const { recap } = await build(mine.id);
       const sent = recap.sections.find((s) => s.key === "totals")!.totals.find((t) => t.label === "Outreach emails sent")!;
-      expect(sent.note).toBe("1 failed to deliver");
+      expect(sent.note).toContain("1 failed to deliver");
     } finally {
       await query(`delete from communications where org_id=$1 and subject='Held approach'`, [mine.id]);
     }

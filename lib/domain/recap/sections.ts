@@ -23,6 +23,7 @@
  * Pure.
  */
 import {
+  RECAP_QUIET_SUMMARY,
   RECAP_SECTION_BLURBS,
   RECAP_SECTION_KEYS,
   RECAP_SECTION_TITLES,
@@ -450,24 +451,33 @@ function buildSection(
           label: "Outreach emails sent",
           value: t.outreachSent,
           href: "/communications",
-          note:
+          note: [
+            "Communication history only; template test sends are excluded.",
             t.outreachFailed > 0
               ? `${plural(t.outreachFailed, "failed to deliver")}`
               : t.outreachDelivered > 0
                 ? `${t.outreachDelivered} confirmed delivered`
                 : undefined,
+          ].filter(Boolean).join(" "),
         },
         {
           label: "Replies received",
           value: t.repliesReceived,
           href: "/communications",
-          note:
+          note: [
+            "Communication history only; unmatched inbox messages are excluded.",
             t.repliesNeedingReview > 0
               ? `${t.repliesNeedingReview} flagged for review`
               : undefined,
+          ].filter(Boolean).join(" "),
         },
         { label: "Calls logged", value: t.callsLogged, href: "/call-queue" },
-        { label: "Quotes recorded", value: t.quotesRecorded, href: "/pipeline" },
+        {
+          label: "Quotes recorded",
+          value: t.quotesRecorded,
+          href: "/pipeline",
+          note: "Saved quote records only; amounts mentioned in messages are not counted as quotes.",
+        },
         { label: "Bids submitted", value: t.bidsSubmitted, href: "/pipeline" },
         { label: "Notes added", value: t.notesAdded, href: "/communications" },
         { label: "Subcontractors added", value: t.subsAdded, href: "/subs" },
@@ -576,7 +586,12 @@ function buildSection(
           severity: "normal",
         });
       }
-      return section(key, "normal", "No outreach went out and nobody wrote back.", items);
+      return section(
+        key,
+        "normal",
+        "No outreach sends or processed replies are listed for this day. Unmatched inbox messages and template test sends are excluded.",
+        items
+      );
     }
 
     case "completed": {
@@ -649,7 +664,7 @@ export function recapSubject(recap: Recap, orgName: string | null): string {
 /** The one-line summary under the heading, and the preview text in an inbox. */
 export function recapPreheader(recap: Recap): string {
   if (recap.quiet) {
-    return "Nothing needed you and nothing broke. This is the short version on purpose.";
+    return RECAP_QUIET_SUMMARY;
   }
   const bits: string[] = [];
   if (recap.urgentCount > 0) bits.push(`${plural(recap.urgentCount, "urgent item")}`);
@@ -659,5 +674,5 @@ export function recapPreheader(recap: Recap): string {
   const replies = totals?.totals.find((t) => t.label === "Replies received")?.value ?? 0;
   if (sent > 0) bits.push(`${plural(sent, "email")} out`);
   if (replies > 0) bits.push(`${plural(replies, "reply", "replies")} in`);
-  return bits.length > 0 ? bits.join(", ") : "A full record of the day is below.";
+  return bits.length > 0 ? bits.join(", ") : "The records covered by this recap are below.";
 }

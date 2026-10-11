@@ -125,12 +125,12 @@ describe("the recap email", () => {
 describe("the quiet variant", () => {
   const quiet = () => buildRecap(emptyFacts(), DEFAULT_RECAP_SETTINGS, ctx());
 
-  it("is short, says plainly that nothing happened, and still links to the page", () => {
+  it("is short, limits its claim to covered records, and still links to the page", () => {
     const recap = quiet();
     expect(recap.quiet).toBe(true);
     const out = renderRecapEmail(recap, { appUrl: APP, orgName: "Test Contracting" });
     expect(out.subject).toContain("a quiet day");
-    expect(out.html).toContain("Nothing needed you");
+    expect(out.html).toContain("records covered by this recap");
     expect(out.html).toContain(`${APP}/recap?date=2026-08-29`);
     // Materially shorter than the full version: no eight sections.
     expect(out.html.length).toBeLessThan(

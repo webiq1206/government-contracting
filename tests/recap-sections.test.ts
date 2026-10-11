@@ -248,11 +248,11 @@ describe("the shape of the recap", () => {
 });
 
 describe("a quiet day", () => {
-  it("is quiet when nothing needed a person and nothing happened", () => {
+  it("is quiet when the covered records contain no reportable activity", () => {
     const recap = buildRecap(emptyFacts(), settings, ctx());
     expect(recap.quiet).toBe(true);
     expect(recapSubject(recap, "Test Contracting")).toContain("a quiet day");
-    expect(recapPreheader(recap)).toContain("short version");
+    expect(recapPreheader(recap)).toContain("records covered by this recap");
   });
 
   it("is not quiet when something is still waiting, even with no new activity", () => {

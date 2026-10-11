@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Recap, RecapItem, RecapSection } from "@/lib/domain/recap/types";
+import { RECAP_QUIET_SUMMARY, type Recap, type RecapItem, type RecapSection } from "@/lib/domain/recap/types";
 import { ageNote } from "@/lib/domain/recap/sections";
 import { peekParam, peekTarget, type PeekTarget } from "@/lib/domain/search-results";
 
@@ -223,8 +223,7 @@ export function RecapView({
         <p className="eyebrow-gold">{recap.dayLabel}</p>
         <h2 className="font-display mt-1 text-lg font-semibold text-foreground">A quiet day</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Nothing needed a person and nothing broke. No urgent items, no system problems, and no
-          activity worth reporting. This is the short version on purpose.
+          {RECAP_QUIET_SUMMARY}
         </p>
       </div>
     );
