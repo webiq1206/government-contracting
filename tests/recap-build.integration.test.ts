@@ -91,6 +91,38 @@ d("building a recap from real rows (integration)", () => {
     });
   }
 
+  it.each([
+    ["connected", false],
+    ["ok", false],
+    ["error", true],
+    ["revoked", true],
+    ["expired", true],
+    ["unknown", true],
+  ])("reports the stored Gmail state %s without inventing a connection failure", async (status, broken) => {
+    await query(
+      `insert into integration_tokens (provider, org_id, data, status, last_error, updated_at)
+       values ('gmail', $1, '{}'::jsonb, $2, $3, $4),
+              ('gmail', $5, '{}'::jsonb, 'revoked', 'Other account private error', $4)`,
+      [mine.id, status, broken ? "Stored connection failure" : null, inside.toISOString(), theirs.id]
+    );
+    try {
+      const { recap, facts } = await build(mine.id);
+      const gmail = facts.problems.find(p => p.key === "integration:gmail");
+      const mail = renderRecapEmail(recap, { appUrl: "https://app.example.com" });
+      if (broken) {
+        expect(gmail).toMatchObject({ title: "gmail is not working", detail: "Stored connection failure", severity: "critical" });
+        expect(mail.text).toContain("gmail is not working");
+      } else {
+        expect(gmail).toBeUndefined();
+        expect(mail.text).not.toContain("gmail is not working");
+      }
+      expect(JSON.stringify(recap)).not.toContain("Other account private error");
+      expect(mail.text).not.toContain("Other account private error");
+    } finally {
+      await query("delete from integration_tokens where provider='gmail' and org_id = any($1::uuid[])", [[mine.id, theirs.id]]);
+    }
+  });
+
   it("reports totals that reconcile with the rows behind them", async () => {
     const { recap } = await build(mine.id);
     const totals = recap.sections.find((s) => s.key === "totals")!.totals;
