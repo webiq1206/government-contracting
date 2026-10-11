@@ -274,6 +274,9 @@ export const config = {
     routineProvider: parseProvider(str("AI_ROUTINE_PROVIDER"), "OpenAI"),
     complexProvider: parseProvider(str("AI_COMPLEX_PROVIDER"), "OpenAI"),
     fallback: bool("AI_FALLBACK", false),
+    // Founding-account rollout only; does not alter another tenant's routing.
+    // Enable only after an approved shared budget and receipt reconciliation.
+    brostcoFailover: bool("BROSTCO_AI_FAILOVER", false),
   },
 
   // Connected-app providers. Each is a one-time platform registration; a

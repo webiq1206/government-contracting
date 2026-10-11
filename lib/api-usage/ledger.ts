@@ -87,7 +87,7 @@ export async function beginUsage(
   provider: string,
   service: string,
   feature: string,
-  options: { complex?: boolean; dryRun?: boolean } = {},
+  options: { complex?: boolean; dryRun?: boolean; requirePrice?: boolean } = {},
 ): Promise<string> {
   const ctx = apiUsageContext();
   feature = ctx.feature ?? feature;
@@ -103,9 +103,19 @@ export async function beginUsage(
       [provider, service],
     );
     const reservation = price.rows[0]?.max_request_cost ?? null;
+    const rates = price.rows[0]?.rates;
+    if (options.requirePrice && (reservation == null || !Number.isFinite(Number(reservation)) || Number(reservation) <= 0 ||
+      !rates || !["input_tokens", "output_tokens"].every(key => Number.isFinite(Number(rates[key])) && Number(rates[key]) > 0) ||
+      Object.values(rates).some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0))) {
+      throw new ApiUsageBlockedError("API_BUDGET: AI failover requires a priced request reservation on the selected model. Request-count limits cannot replace its shared dollar budget.");
+    }
     const markup = identity.source === "platform" && identity.accepted ? "1.25" : "1";
     const budget = await client.query("select * from api_account_budgets where org_id=$1", [identity.orgId]);
     const account = budget.rows[0] ?? DEFAULT_ACCOUNT_BUDGET;
+    if (options.requirePrice && (!account ||
+      ![account.daily_limit, account.monthly_limit].some(cap => cap != null && Number.isFinite(Number(cap)) && Number(cap) > 0))) {
+      throw new ApiUsageBlockedError("API_BUDGET: AI failover requires a finite shared dollar limit across both providers.");
+    }
     if (account) {
       const blocked = (reason: string) => new ApiUsageBlockedError(
         `API_BUDGET: ${reason} New paid work has stopped to protect your budget. Open Settings, API Usage to review limits or resume work.`,
@@ -343,7 +353,7 @@ export async function metered<T>(
   feature: string,
   execute: () => Promise<T>,
   describe: (value: T) => UsageResult = () => ({ units: { requests: 1 } }),
-  options: { complex?: boolean } = {},
+  options: { complex?: boolean; requirePrice?: boolean } = {},
 ): Promise<T> {
   const id = await beginUsage(identity, provider, service, feature, options);
   let value: T;

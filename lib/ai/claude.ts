@@ -4,13 +4,10 @@
  *   - complete(): free-form text completion
  *   - completeJson(): forces a JSON object back, validated with an optional Zod schema
  *
- * Two providers sit behind it, Anthropic and OpenAI, chosen per call by
- * lib/ai/routing.ts: routine work goes to whichever provider the operator
- * prefers for volume (OpenAI by default, being cheaper), the bid-critical
- * path to whichever they prefer for accuracy (Claude by default), and an
- * organization holding one key uses it for everything. When the chosen
- * provider refuses a request for an account or service reason, the call is
- * made once more on the other provider, and both attempts show in the ledger.
+ * Provider routing is explicit and tenant-scoped. Cross-provider fallback is
+ * disabled by default and is allowed only for established refusals of execution,
+ * never authentication, safety, validation, or uncertain transport outcomes.
+ * Every executed attempt is metered against the same spending ledger.
  *
  * Degrades gracefully: if no provider key is set, calls throw a typed error
  * that agents catch and log as "skipped" so the pipeline keeps flowing.
@@ -28,6 +25,7 @@ import { getProfileSystemText } from "./companyProfile";
 import { noEmDash, deepNoEmDash } from "../sanitize";
 import {
   chooseRoute,
+  providerForModel,
   type AiProvider,
   type AiRoute,
   type RoutingConfig,
@@ -35,6 +33,8 @@ import {
 import { openAiResponse, describeOpenAiFailure } from "./openai";
 import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
 import { currentOrgId, runWithOrg } from "../tenant-context";
+import { LEGACY_ORG_ID } from "../tenant-context";
+import { eligibleForFailover } from "./failover-policy";
 
 export type { AiProvider, AiRoute } from "./routing";
 
@@ -82,7 +82,8 @@ export class AiUnavailableError extends Error {
   constructor(provider: AiProvider, reason: string, status: number | null, retryable: boolean) {
     super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
     this.name = "AiUnavailableError";
-    this.handoffUncertain = ![400,401,403,404,413,422,429].includes(status ?? 0);
+    this.handoffUncertain = ![400,401,403,404,413,422,429].includes(status ?? 0) &&
+      !eligibleForFailover(provider, status, reason);
     this.provider = provider;
     this.reason = reason;
     this.status = status;
@@ -168,7 +169,10 @@ export function describeClaudeFailure(
     };
   }
 
-  if (/credit balance|insufficient|billing|quota|payment/i.test(text)) {
+  if (/credit balance.*(?:too low|insufficient|exhausted)/i.test(text)) {
+    return { reason: "The Anthropic credit balance is too low. Review Billing and Usage at console.anthropic.com before retrying this provider.", status, retryable: false };
+  }
+  if (/insufficient|billing|quota|payment/i.test(text)) {
     return {
       reason: "The Anthropic credit balance is too low or billing allowance has been exhausted. Check Billing and Usage at console.anthropic.com before retrying. A new API key alone will not restore the account allowance.",
       status,
@@ -186,6 +190,9 @@ export function describeClaudeFailure(
     };
   }
 
+  if (status === 529 && body?.type === "overloaded_error") {
+    return { reason: "Anthropic temporarily refused this request because the API is overloaded.", status, retryable: true };
+  }
   if (status != null && status >= 500) {
     return {
       reason: `Anthropic returned a server error (HTTP ${status}). This is on their side and usually clears on its own.`,
@@ -206,14 +213,20 @@ export function describeClaudeFailure(
   return null;
 }
 
-function routingConfig(): RoutingConfig {
-  return {
+export function routingConfig(orgId?: string): RoutingConfig {
+  const cfg: RoutingConfig = {
     anthropic: { model: config.claude.model, modelSmart: config.claude.modelSmart },
     openai: { model: config.openai.model, modelSmart: config.openai.modelSmart },
     routineProvider: config.ai.routineProvider,
     complexProvider: config.ai.complexProvider,
     fallback: config.ai.fallback,
   };
+  if (config.ai.brostcoFailover && orgId === LEGACY_ORG_ID) {
+    return { ...cfg, routineProvider: "OpenAI", complexProvider: "OpenAI", fallback: true,
+      openai: { model: "gpt-4.1", modelSmart: "gpt-4.1" },
+      anthropic: { model: "claude-haiku-4-5-20251001", modelSmart: "claude-haiku-4-5-20251001" } };
+  }
+  return cfg;
 }
 
 /** Which providers the CURRENT (or named) organization holds a key for. */
@@ -231,8 +244,7 @@ export async function aiProviderAvailability(orgId?: string): Promise<Record<AiP
  * do, since either serves every tier on its own.
  */
 export async function claudeEnabled(): Promise<boolean> {
-  const a = await aiProviderAvailability();
-  return chooseRoute({ available: a, cfg: routingConfig() }) !== null;
+  return (await planRoute({})) !== null;
 }
 export const aiEnabled = claudeEnabled;
 
@@ -245,7 +257,19 @@ export async function planRoute(
   orgId?: string
 ): Promise<{ primary: AiRoute; fallback: AiRoute | null } | null> {
   const available = await aiProviderAvailability(orgId);
-  return chooseRoute({ complexity: opts.complexity, model: opts.model, fallback: opts.fallback, available, cfg: routingConfig() });
+  const org = orgId ?? await (await import("../tenant")).resolveTenantOrgId();
+  const cfg = routingConfig(org);
+  if (config.ai.brostcoFailover && org === LEGACY_ORG_ID && opts.model) {
+    const provider = providerForModel(opts.model);
+    const originalRoutine = provider === "OpenAI" ? config.openai.model : config.claude.model;
+    const tier = opts.complexity ?? (opts.model === originalRoutine ? "routine" : "complex");
+    // Legacy callers express a tier through their old model setting. This
+    // rollout only admits the two reviewed model versions, including those
+    // explicit callers; it does not enable arbitrary provider models.
+    return chooseRoute({ complexity: tier, model: provider === "OpenAI" ? cfg.openai.model : cfg.anthropic.model,
+      fallback: opts.fallback, available, cfg });
+  }
+  return chooseRoute({ complexity: opts.complexity, model: opts.model, fallback: opts.fallback, available, cfg });
 }
 
 export interface ClaudeUsage {
@@ -388,20 +412,49 @@ export interface Completion {
 }
 
 function validateCompletion(result: Completion, opts: CompleteOptions): Completion {
-  if (!opts.json && result.stopReason && !["end_turn", "stop_sequence"].includes(result.stopReason)) {
+  if (!opts.json && (!["end_turn", "stop_sequence"].includes(result.stopReason ?? "") || !result.text.trim())) {
     throw new Error(`AI output was not complete (${result.stopReason}); no partial result was accepted`);
   }
   return result;
+}
+function uncertainCompletion(result: Completion): boolean {
+  return !["end_turn", "stop_sequence", "refusal", "content_filter", "max_tokens", "tool_use"].includes(result.stopReason ?? "") ||
+    (["end_turn", "stop_sequence"].includes(result.stopReason ?? "") && !result.text.trim());
+}
+
+const LOCAL_SCHEMA_VALIDATION = Symbol("completeJson local validation");
+function validateFailoverOptions(opts: CompleteOptions, hasFallback: boolean): void {
+  if (!hasFallback) return;
+  if (!Number.isInteger(opts.maxTokens ?? 2048) || (opts.maxTokens ?? 2048) < 1 || (opts.maxTokens ?? 2048) > JSON_RETRY_TOKEN_HARD_CAP)
+    throw new Error("AI failover requires an output limit between 1 and 32768 tokens.");
+  // completeJson supplies the local validator; provider-native JSON schema
+  // alone cannot guarantee the same contract on both transports.
+  if (opts.responseSchema && (!(opts as CompleteOptions & { [LOCAL_SCHEMA_VALIDATION]?: boolean })[LOCAL_SCHEMA_VALIDATION] ||
+    !((opts as CompleteOptions & { schema?: unknown }).schema instanceof z.ZodType)))
+    throw new Error("AI failover requires local schema validation for structured output.");
 }
 
 export async function complete(prompt: string, opts: CompleteOptions = {}): Promise<Completion> {
   const system = await buildSystem(opts);
   const plan = await planRoute(opts);
   if (!plan) throw new ClaudeNotConfiguredError();
+  validateFailoverOptions(opts, Boolean(plan.fallback));
   const { apiUsageContext } = await import("../api-usage/context");
-  if (!apiUsageContext().workKey) return completeUnfenced(prompt,opts,system,plan);
+  if (!apiUsageContext().workKey) return validateCompletion(await completeUnfenced(prompt,opts,system,plan), opts);
   const { withAiWorkReceipt } = await import("./work-receipts");
-  return withAiWorkReceipt([prompt,opts,system,plan],()=>completeUnfenced(prompt,opts,system,plan));
+  const org = currentOrgId() ?? await (await import("../tenant")).resolveTenantOrgId();
+  if (org === LEGACY_ORG_ID) {
+    // Provider/model and transport policy cannot change the logical operation.
+    const { model: _model, fallback: _fallback, timeoutMs: _timeout, maxRetries: _transportRetries,
+      schema: _validator, retries: _correctionRetries, ...logical } = opts as CompleteOptions & { schema?: unknown; retries?: number };
+    // A Zod instance mutates its parsing cache. Retain the immutable wire
+    // responseSchema, not that runtime object. completeJson validates cached
+    // text with the caller's current local schema before accepting it.
+    const result = await withAiWorkReceipt([prompt, opts, system, plan], () => completeUnfenced(prompt, opts, system, plan),
+      { logicalInput: [prompt, logical, system], enableProviderIndependent: config.ai.brostcoFailover });
+    return validateCompletion(result, opts);
+  }
+  return validateCompletion(await withAiWorkReceipt([prompt,opts,system,plan],()=>completeUnfenced(prompt,opts,system,plan)), opts);
 }
 
 /** Fresh, bounded operator check of the named provider. A saved refusal may
@@ -415,7 +468,7 @@ export async function probeProviderRecovery(provider: AiProvider, orgId: string)
   return runWithOrg(orgId, async () => {
     const route: AiRoute = {
       provider,
-      model: provider === "OpenAI" ? config.openai.modelSmart : config.claude.modelSmart,
+      model: provider === "OpenAI" ? routingConfig(orgId).openai.modelSmart : routingConfig(orgId).anthropic.modelSmart,
       envKey: provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY",
       complex: true,
     };
@@ -431,7 +484,7 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions, system: S
 
   let primaryFailure: AiUnavailableError;
   try {
-    return validateCompletion(await runRoute(plan.primary, system, prompt, opts), opts);
+    return await runRoute(plan.primary, system, prompt, opts);
   } catch (err) {
     // A local spending hold never reached a provider; it is not the
     // provider's fault and the other provider would be held just the same.
@@ -442,15 +495,15 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions, system: S
     primaryFailure = err instanceof AiUnavailableError ? err : unavailable(err.provider, err.reason, err.status, err.retryable);
   }
 
-  if (!plan.fallback) throw primaryFailure;
-  if (primaryFailure.handoffUncertain && (await import("../api-usage/context")).apiUsageContext().workKey) throw primaryFailure;
+  if (!plan.fallback || primaryFailure.handoffUncertain ||
+    !eligibleForFailover(primaryFailure.provider, primaryFailure.status, primaryFailure.reason)) throw primaryFailure;
 
   console.warn(
     `[ai] ${plan.primary.provider} (${plan.primary.model}) refused: ${primaryFailure.reason.slice(0, 160)} ` +
       `Retrying once on ${plan.fallback.provider} (${plan.fallback.model}).`
   );
   try {
-    const res = validateCompletion(await runRoute(plan.fallback, system, prompt, opts), opts);
+    const res = await runRoute(plan.fallback, system, prompt, opts);
     return { ...res, usage: { ...res.usage, fallback_from: plan.primary.provider } };
   } catch (err) {
     if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
@@ -489,16 +542,21 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
     : await orgApiKey("OPENAI_API_KEY");
   if (!apiKey) throw new ClaudeNotConfiguredError();
   const identity = await requestIdentity(route.envKey, apiKey);
+  const requirePrice = routingConfig(identity.orgId).fallback && !recoveryTest;
   const feature = opts.feature ?? "AI assistance";
 
   return withProviderFacts(identity, route.provider, async () => {
     const result = await (route.provider === "Anthropic"
-      ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
-      : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature));
+      ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature, requirePrice)
+      : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature, requirePrice));
     // Validate before recording success: an empty/truncated probe must not
     // clear a durable refusal while its caller reports failed recovery.
     if (recoveryTest && (!result.text.trim() || !["end_turn", "stop_sequence"].includes(result.stopReason ?? ""))) {
-      throw new Error("The provider recovery check returned no complete answer; the saved hold remains in place.");
+      throw Object.assign(new Error("The provider recovery check returned no complete answer; the saved hold remains in place."),
+        { handoffUncertain: uncertainCompletion(result) });
+    }
+    if (uncertainCompletion(result)) {
+      throw Object.assign(new Error("AI provider returned an unknown or empty completion; reconcile before retrying."), { handoffUncertain: true });
     }
     return result;
   }, recoveryTest);
@@ -513,7 +571,10 @@ async function providerRequest<T>(provider: AiProvider, execute: () => Promise<T
     if (cause) throw Object.assign(unavailable(provider, cause.reason, cause.status, cause.retryable), { diagnostics });
     // SDK error messages/bodies may echo prompt or credential data. Never
     // propagate them into agent logs, even for malformed requests.
-    throw Object.assign(new Error(`${provider} request failed. Review saved provider diagnostics.`), { status: diagnostics.httpStatus, diagnostics });
+    throw Object.assign(new Error(`${provider} request failed. Review saved provider diagnostics.`), {
+      status: diagnostics.httpStatus, diagnostics,
+      handoffUncertain: ![400,401,403,404,413,422,429].includes(diagnostics.httpStatus ?? 0),
+    });
   }
 }
 
@@ -528,7 +589,8 @@ async function runAnthropic(
   prompt: string,
   opts: CompleteOptions,
   metered: Metered,
-  feature: string
+  feature: string,
+  requirePrice = false
 ): Promise<Completion> {
   const model = route.model;
   // No retained credentials and no hidden SDK retries. Every execution is metered.
@@ -576,12 +638,20 @@ async function runAnthropic(
   }
 
   const res: Anthropic.Messages.Message = await metered(identity, "Anthropic", model, feature,
-    () => providerRequest("Anthropic", () => anthropic.messages.create(
+    () => providerRequest("Anthropic", async () => {
+      const response = await anthropic.messages.create(
       body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
       { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
         maxRetries: 0 }
-    ), apiKey),
-    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
+      );
+      if (!Array.isArray(response?.content) || !response.usage ||
+        ![response.usage.input_tokens, response.usage.output_tokens].every(value => Number.isFinite(value) && value >= 0) ||
+        response.content.some(block => !block || (block.type === "text" && typeof block.text !== "string"))) {
+        throw Object.assign(new Error("Malformed provider response"), { status: 200 });
+      }
+      return response;
+    }, apiKey),
+    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex, requirePrice });
 
   const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -618,7 +688,8 @@ async function runOpenAi(
   prompt: string,
   opts: CompleteOptions,
   metered: Metered,
-  feature: string
+  feature: string,
+  requirePrice = false
 ): Promise<Completion> {
   const model = route.model;
   // The same system prompt Claude sees, as one instructions string. The
@@ -641,7 +712,7 @@ async function runOpenAi(
       timeoutMs: opts.timeoutMs,
       cacheKey: `brostco:${identity.orgId}`,
     }), apiKey),
-    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex });
+    value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex, requirePrice });
 
   return {
     text: noEmDash(res.text),
@@ -690,13 +761,17 @@ export async function completeJson<T = unknown>(
   let maxTokens = opts.maxTokens ?? 2048;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const { text, usage, stopReason } = await complete(prompt + jsonInstruction + extra, {
+    const completionOptions = {
       ...opts,
       maxTokens,
       json: true,
-    });
+      [LOCAL_SCHEMA_VALIDATION]: true,
+    };
+    const { text, usage, stopReason } = await complete(prompt + jsonInstruction + extra, completionOptions);
     totalIn += usage.input_tokens;
     totalOut += usage.output_tokens;
+    if (!["end_turn", "stop_sequence", "max_tokens"].includes(stopReason ?? ""))
+      throw new Error("AI provider declined or did not complete this request; no correction retry was attempted.");
     try {
       if (stopReason && stopReason !== "end_turn" && stopReason !== "stop_sequence") {
         throw new Error(`AI response was not complete (${stopReason}); no partial result was accepted`);

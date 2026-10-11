@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, beforeEach, describe, it, expect, vi } from "vitest";
+import { beforeAll, afterAll, afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
@@ -49,6 +49,8 @@ import { currentProviderFacts, providerProblem, providerEnqueueHold, providerSco
 import { recentAiTrouble, lastProviderSuccess, troubleSummary } from "../lib/integration-health";
 import { integrationState } from "../lib/domain/integration-state";
 import { VALIDATORS } from "../lib/integration-validators";
+const advanceCooldown = () => vi.spyOn(Date, "now").mockReturnValue(Date.now() + 601000);
+afterEach(() => vi.restoreAllMocks());
 const call = () => complete("synthetic prompt", { injectProfile: false });
 const quota = () => ({ status: 429, code: "insufficient_quota", message: "Insufficient quota" });
 const ok = { id: "fake", text: "synthetic", usage: { input_tokens: 1, output_tokens: 1 }, stopReason: "end_turn" };
@@ -65,7 +67,7 @@ beforeEach(async () => {
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
   state.anthropic.mockReset().mockResolvedValue({ content: [{ type: "text", text: "synthetic" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
-  config.ai.routineProvider = "OpenAI"; config.ai.complexProvider = "OpenAI"; config.ai.fallback = false;
+  config.ai.routineProvider = "OpenAI"; config.ai.complexProvider = "OpenAI"; config.ai.fallback = false; config.ai.brostcoFailover = false;
 });
 
 describe("durable provider/account/current-credential evidence", () => {
@@ -84,10 +86,13 @@ describe("durable provider/account/current-credential evidence", () => {
     expect(results.every(r => r.status === "rejected")).toBe(true);
     expect(state.attempts).toBe(1);
   });
-  it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }, { status: 503, message: "unavailable" }, { message: "network timeout" }])("preserves transient backoff for %j", async err => {
+  it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }])("preserves transient backoff for %j", async err => {
     state.openai.mockRejectedValueOnce(err);
     await expect(call()).rejects.toMatchObject({ retryable: true });
-    expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
+    expect(await providerEnqueueHold(state.org, "routine")).toContain("Next automatic attempt");
+    await expect(call()).rejects.toMatchObject({ retryable: true });
+    expect(state.attempts).toBe(1);
+    advanceCooldown();
     expect((await recentAiTrouble(state.org, "OpenAI")).count).toBe(1);
     await expect(call()).resolves.toMatchObject({ text: "synthetic" });
     expect((await recentAiTrouble(state.org, "OpenAI")).count).toBe(0);
@@ -135,10 +140,12 @@ describe("durable provider/account/current-credential evidence", () => {
   });
   it("requires a successful explicit recovery test, and a budget hold or transient test cannot clear a refusal", async () => {
     state.openai.mockRejectedValueOnce(quota()); await expect(call()).rejects.toThrow();
-    const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { message: "overloaded" } }), { status: 503 }));
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { type: "rate_limit_error", message: "rate limited" } }), { status: 429 }));
     vi.stubGlobal("fetch", fetch);
     await VALIDATORS.openai(state.keys);
     expect(await providerEnqueueHold(state.org, "routine")).not.toBeNull();
+    await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("Next automatic attempt");
+    advanceCooldown();
     state.budgetHeld = true;
     await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("API_BUDGET");
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -262,8 +269,9 @@ it("persists Anthropic account allowance refusals independently", async () => {
 
 describe("short durable provider claims", () => {
   it("releases its transaction before provider I/O and makes pending health and admission non-green", async () => {
-    state.openai.mockRejectedValueOnce({ status: 503, message: "unavailable" });
+    state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", message: "rate limited" });
     await expect(call()).rejects.toThrow();
+    advanceCooldown();
     await call();
     let started!: () => void; let release!: () => void;
     const entered = new Promise<void>(resolve => { started = resolve; });
@@ -330,7 +338,7 @@ it("does not request replay when completion committed but its acknowledgement wa
 
 it("preserves non-retryable uncertain fallback completion after a transient primary failure", async () => {
   config.ai.fallback = true;
-  state.openai.mockRejectedValueOnce({ status: 503, message: "unavailable" });
+  state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", message: "rate limited" });
   state.failSettlementAck = true; state.failSettlementProvider = "Anthropic";
   await expect(call()).rejects.toMatchObject({ retryable: false, provider: "Anthropic" });
   expect(state.attempts).toBe(2);
@@ -364,6 +372,9 @@ describe("pending primary admission",()=>{
   const work=()=>withApiUsageContext({workKey:"classify:record",relatedId:"record"},call);
   state.openai.mockRejectedValueOnce({status:429,type:"rate_limit_error",message:"rate limit"});
   await expect(work()).rejects.toMatchObject({retryable:true});
+  await expect(work()).rejects.toMatchObject({retryable:true});
+  expect(state.attempts).toBe(1);
+  advanceCooldown();
   await expect(work()).resolves.toMatchObject({text:"synthetic"});
   config.ai.fallback=true;state.openai.mockRejectedValue({status:429,type:"rate_limit_error",message:"rate limit"});state.anthropic.mockRejectedValue(new Error("socket timed out"));
   const other=()=>withApiUsageContext({workKey:"classify:other",relatedId:"other"},call);
@@ -388,3 +399,80 @@ describe("pending primary admission",()=>{
   state.profile="Profile D";config.ai.routineProvider="OpenAI";await expect(run()).rejects.toMatchObject({retryable:false});
   expect(state.openai).toHaveBeenCalledTimes(2);
  });
+
+it.each([{ status: 503, message: "unavailable" }, { message: "network timeout" }])("retains an ambiguous provider attempt across time and recovery: %j", async err => {
+  config.ai.fallback = true;
+  state.openai.mockRejectedValueOnce(err);
+  await expect(call()).rejects.toThrow();
+  advanceCooldown();
+  await expect(call()).rejects.toThrow("unresolved outcome");
+  await expect(probeProviderRecovery("OpenAI", state.org)).rejects.toThrow("unresolved outcome");
+  expect(await providerEnqueueHold(state.org, "routine")).toContain("unresolved outcome");
+  expect(state.openai).toHaveBeenCalledOnce();
+  expect(state.anthropic).not.toHaveBeenCalled();
+});
+it.each(["604801", "99999999999999", "unparseable"])('does not shorten an unrepresentable Retry-After %s', async delay => {
+  state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", headers: { "retry-after": delay } });
+  await expect(call()).rejects.toThrow();
+  advanceCooldown();
+  await expect(call()).rejects.toThrow("manual review");
+  await expect(probeProviderRecovery("OpenAI", state.org)).rejects.toThrow("manual review");
+  expect(state.openai).toHaveBeenCalledOnce();
+});
+it.each([{ maxTokens: 32769 }, { maxTokens: 0 }, { responseSchema: {}, schema: {} }])("rejects local invalid failover options before creating any receipt: %j", async opts => {
+  config.ai.fallback = true;
+  await expect(withApiUsageContext({ workKey: "invalid-input" }, () => complete("synthetic", { ...opts, injectProfile: false } as never))).rejects.toThrow("AI failover requires");
+  expect((await state.db.query("select * from ai_work_receipts")).rows).toHaveLength(0);
+  expect(state.attempts).toBe(0);
+});
+
+it.each([{ status:200, message:"malformed provider response" }, new Error("ECONNRESET")])("holds unclassified provider output/transport failures without a work key: %j",async error=>{
+ state.openai.mockRejectedValueOnce(error);
+ await expect(call()).rejects.toThrow();
+ advanceCooldown();
+ await expect(call()).rejects.toThrow("unresolved outcome");
+ expect(state.openai).toHaveBeenCalledOnce();
+});
+it.each([{content:null,usage:{input_tokens:1,output_tokens:1}}, {content:[{type:"text",text:4}],usage:{input_tokens:1,output_tokens:1}}, {content:[],usage:null}])("holds malformed Anthropic success data without a work key: %j",async response=>{
+ config.ai.routineProvider="Anthropic";
+ state.anthropic.mockResolvedValueOnce(response);
+ await expect(call()).rejects.toThrow();
+ await expect(call()).rejects.toThrow("unresolved outcome");
+ expect(state.anthropic).toHaveBeenCalledOnce();
+});
+
+
+it("reuses completeJson receipt after real Zod parsing populates its runtime cache",async()=>{
+ const {z}=await import("zod");const {completeJson}=await import("../lib/ai/claude");
+ const {LEGACY_ORG_ID}=await import("../lib/tenant-context");
+ const {strictJsonSchema}=await import("../lib/ai/strict-schema");
+ state.org=LEGACY_ORG_ID;config.ai.brostcoFailover=true;
+ const schema=z.object({ok:z.boolean()});const responseSchema=strictJsonSchema(schema);
+ state.openai.mockResolvedValue({...ok,text:'{"ok":true}'});
+ const work=(model?:string)=>withApiUsageContext({workKey:"json:logical"},()=>completeJson("synthetic JSON",{schema,responseSchema,injectProfile:false,model}));
+ const before=JSON.stringify(schema);
+ expect((await work()).data).toEqual({ok:true});
+ expect(JSON.stringify(schema)).not.toBe(before);
+ expect((await work("claude-haiku-4-5")).data).toEqual({ok:true});
+ expect(state.openai).toHaveBeenCalledOnce();expect(state.anthropic).not.toHaveBeenCalled();
+});
+
+it.each(["refusal","content_filter","max_tokens"])("does not poison the account after known terminal %s output",async stopReason=>{
+ state.openai.mockResolvedValueOnce({...ok,text:"",stopReason});
+ await expect(call()).rejects.toThrow("not complete");
+ expect((await currentProviderFacts("OpenAI"))?.pending_attempt).toBeNull();
+ await expect(complete("unrelated synthetic work",{injectProfile:false})).resolves.toMatchObject({text:"synthetic"});
+ expect(state.openai).toHaveBeenCalledTimes(2);
+});
+
+it.each(["refusal","content_filter","max_tokens"])("caches known %s completion without replay or a tenant-wide pending hold",async stopReason=>{
+ const {LEGACY_ORG_ID}=await import("../lib/tenant-context");state.org=LEGACY_ORG_ID;config.ai.brostcoFailover=true;
+ state.openai.mockResolvedValueOnce({...ok,text:"",stopReason});
+ const work=()=>withApiUsageContext({workKey:"terminal:logical"},call);
+ await expect(work()).rejects.toThrow("not complete");
+ await expect(work()).rejects.toThrow("not complete");
+ expect(state.openai).toHaveBeenCalledOnce();
+ expect((await state.db.query("select state from ai_work_receipts")).rows).toEqual([{state:"complete"}]);
+ await expect(withApiUsageContext({workKey:"unrelated"},call)).resolves.toMatchObject({text:"synthetic"});
+ expect(state.openai).toHaveBeenCalledTimes(2);
+});
