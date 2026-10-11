@@ -21,4 +21,3 @@
 - [Release schema ordering](release-schema-ordering.md) — publishing does not migrate; the boot gate then 500s the whole site, and a bare migrate run hits the dev DB.
 - [Migration ledger baseline](migration-ledger-baseline.md) — a ledger row whose file was deleted blocks the NOT NULL hardening, so the release never applies; runtime ignores it.
 - [Secret fallback splits ciphertext](secret-fallback-split.md) — a key resolved via fallback encrypts rows under two secrets; decrypt under all held, rekey onto the primary.
-- [Reviewed source releases](reviewed-source-releases.md) — import only the exact reviewed GitHub merge after independently verified recovery; keep publication separate.
