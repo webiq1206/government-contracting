@@ -74,17 +74,21 @@ const AUTOMATION_DEFAULT: AutomationState = { paused: false, changed_at: null, c
  */
 const STATE_CACHE_MS = 2_000;
 const stateCache = new Map<string, { at: number; state: AutomationState }>();
+type AutomationReadOptions = { fresh?: boolean; client?: PoolClient };
 
 /** Current automation state. A missing setting means running; a failed read throws. */
-export async function getAutomationState(): Promise<AutomationState> {
+export async function getAutomationState(options: AutomationReadOptions = {}): Promise<AutomationState> {
   const cacheKey = await scopedKey(AUTOMATION_KEY);
   const hit = stateCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < STATE_CACHE_MS) {
+  if (!options.fresh && !options.client && hit && Date.now() - hit.at < STATE_CACHE_MS) {
     return hit.state;
   }
   // The key already resolved the tenant. Do not resolve the entire session a
   // second time for this same setting, especially on uncached API requests.
-  const row = await queryOne<{ value_json: Partial<AutomationState> }>(
+  const sql = `select value_json from app_settings where key = $1`;
+  const row = options.client
+    ? (await options.client.query<{ value_json: Partial<AutomationState> }>(sql, [cacheKey])).rows[0]
+    : await queryOne<{ value_json: Partial<AutomationState> }>(
     `select value_json from app_settings where key = $1`,
     [cacheKey]
   );
@@ -94,7 +98,7 @@ export async function getAutomationState(): Promise<AutomationState> {
     changed_at: v.changed_at ?? null,
     changed_by: v.changed_by ?? null,
   };
-  stateCache.set(cacheKey, { at: Date.now(), state });
+  if (!options.client) stateCache.set(cacheKey, { at: Date.now(), state });
   return state;
 }
 
@@ -123,11 +127,14 @@ export async function isAutomationPaused(): Promise<boolean> {
  */
 const PLATFORM_AUTOMATION_KEY = "platform_automation";
 
-export async function getPlatformAutomationState(): Promise<AutomationState> {
+export async function getPlatformAutomationState(options: AutomationReadOptions = {}): Promise<AutomationState> {
   const hit = stateCache.get(PLATFORM_AUTOMATION_KEY);
-  if (hit && Date.now() - hit.at < STATE_CACHE_MS) return hit.state;
+  if (!options.fresh && !options.client && hit && Date.now() - hit.at < STATE_CACHE_MS) return hit.state;
   // Read the key directly rather than through getSetting, which would scope it.
-  const row = await queryOne<{ value_json: Partial<AutomationState> }>(
+  const sql = `select value_json from app_settings where key = $1`;
+  const row = options.client
+    ? (await options.client.query<{ value_json: Partial<AutomationState> }>(sql, [PLATFORM_AUTOMATION_KEY])).rows[0]
+    : await queryOne<{ value_json: Partial<AutomationState> }>(
     `select value_json from app_settings where key = $1`,
     [PLATFORM_AUTOMATION_KEY]
   );
@@ -137,7 +144,7 @@ export async function getPlatformAutomationState(): Promise<AutomationState> {
     changed_at: v.changed_at ?? null,
     changed_by: v.changed_by ?? null,
   };
-  stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
+  if (!options.client) stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
   return state;
 }
 
@@ -159,9 +166,9 @@ export async function isPlatformAutomationPaused(): Promise<boolean> {
  * its summary can say which one stopped the job, which is the difference
  * between "we are down" and "you turned this off".
  */
-export async function isAutomationStopped(): Promise<boolean> {
-  if (await isPlatformAutomationPaused()) return true;
-  return isAutomationPaused();
+export async function isAutomationStopped(options: AutomationReadOptions = {}): Promise<boolean> {
+  if ((await getPlatformAutomationState(options)).paused) return true;
+  return (await getAutomationState(options)).paused;
 }
 
 export async function setPlatformAutomationPaused(
