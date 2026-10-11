@@ -674,5 +674,5 @@ export function recapPreheader(recap: Recap): string {
   const replies = totals?.totals.find((t) => t.label === "Replies received")?.value ?? 0;
   if (sent > 0) bits.push(`${plural(sent, "email")} out`);
   if (replies > 0) bits.push(`${plural(replies, "reply", "replies")} in`);
-  return bits.length > 0 ? bits.join(", ") : "A full record of the day is below.";
+  return bits.length > 0 ? bits.join(", ") : "The records covered by this recap are below.";
 }
