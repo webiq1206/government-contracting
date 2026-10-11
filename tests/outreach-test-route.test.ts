@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
 
-const m = vi.hoisted(() => ({ auth: vi.fn(), build: vi.fn(), send: vi.fn(), log: vi.fn(), limit: vi.fn() }));
+const m = vi.hoisted(() => ({ auth: vi.fn(), build: vi.fn(), send: vi.fn(), log: vi.fn(), limit: vi.fn(), query: vi.fn(), queryOne: vi.fn() }));
+vi.mock("@/lib/db", () => ({ query: m.query, queryOne: m.queryOne }));
 vi.mock("@/lib/org-guard", () => ({ requireOrgContext: m.auth }));
 vi.mock("@/lib/outreach-test", () => ({ buildOutreachTest: m.build }));
 vi.mock("@/lib/integrations/email-transport", () => ({ sendOutreachEmail: m.send }));
@@ -29,6 +30,18 @@ beforeEach(() => {
 });
 
 describe("controlled production outreach test", () => {
+  it("keeps a sample receipt in the audit without creating business communication or quote rows", async () => {
+    m.build.mockResolvedValue({ ...packet, mode: "sample" });
+    const res = await send({ recipient: "recipient@example.invalid" });
+    expect(res.status).toBe(200);
+    expect(m.send).toHaveBeenCalledOnce(); // Mocked provider; no message leaves the test.
+    expect(m.log).toHaveBeenCalledWith(expect.objectContaining({
+      action: "template-test-send",
+      output: expect.objectContaining({ mode: "sample", messageId: "gmail-receipt" }),
+    }));
+    expect(m.query).not.toHaveBeenCalled();
+    expect(m.queryOne).not.toHaveBeenCalled();
+  });
   it("sends exactly once to the explicit recipient and reports acceptance, not delivery", async () => {
     const res = await send({ recipient: "brostjared@gmail.com", pair });
     expect(res.status).toBe(200);
