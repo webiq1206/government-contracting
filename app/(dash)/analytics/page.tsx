@@ -14,6 +14,7 @@ import {
   AnalyticsMobileNav,
   AnalyticsSection,
   AnalyticsFilterSheet,
+  AnalyticsFilterLink,
 } from "@/components/analytics-mobile";
 import {
   deadlineMetrics,
@@ -417,6 +418,15 @@ export default async function AnalyticsPage(
         }
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
+        <AnalyticsMobileNav
+          initialSection={typeof searchParams?.view === "string" ? searchParams.view : undefined}
+          sections={[
+            { id: "overview", label: "Overview" },
+            { id: "pipeline", label: "Pipeline" },
+            { id: "win-performance", label: "Win performance" },
+            { id: "revenue", label: "Revenue" },
+          ]}
+          filters={<>
         {/*
           * The date range. Everything cohort-based below it moves together, and
           * the selected range is in the URL so the view can be sent to somebody.
@@ -433,7 +443,7 @@ export default async function AnalyticsPage(
           </span>
           <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="range-label">
             {RANGE_OPTIONS.map((o) => (
-              <Link
+              <AnalyticsFilterLink
                 key={o.key}
                 href={hrefWith("range", o.key)}
                 aria-current={o.key === range ? "true" : undefined}
@@ -444,25 +454,14 @@ export default async function AnalyticsPage(
                 }`}
               >
                 {o.label}
-              </Link>
+              </AnalyticsFilterLink>
             ))}
           </div>
           {comparison && (
             <span className="text-xs text-slate-500">compared with {comparison}</span>
           )}
         </div>
-
-        {/*
-          * Focused views on every screen size. Each figure keeps its original
-          * counting rule, date window, warning, and drill-down.
-          */}
-        <AnalyticsMobileNav
-          sections={[
-            { id: "overview", label: "Overview" },
-            { id: "pipeline", label: "Pipeline" },
-            { id: "win-performance", label: "Win performance" },
-            { id: "revenue", label: "Revenue" },
-          ]}
+          </>}
         >
         {/*
           Shared freshness and counting caveats stay available in every view.
@@ -923,7 +922,7 @@ export default async function AnalyticsPage(
             </div>
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Break down by">
               {BREAKDOWN_OPTIONS.map((o) => (
-                <Link
+                <AnalyticsFilterLink
                   key={o.key}
                   href={hrefWith("by", o.key)}
                   aria-current={o.key === by ? "true" : undefined}
@@ -934,7 +933,7 @@ export default async function AnalyticsPage(
                   }`}
                 >
                   {o.label}
-                </Link>
+                </AnalyticsFilterLink>
               ))}
             </div>
           </div>

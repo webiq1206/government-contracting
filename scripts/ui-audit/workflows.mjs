@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { auditExtendedWorkflows } from './extended-workflows.mjs';
+import { auditReportsAndProviderCopy } from './reports-and-provider-workflows.mjs';
 import { join } from 'node:path';
 
 /** Tests against disposable records only. No worker or provider credentials. */
@@ -22,6 +23,7 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
     checkpoint();
     console.log(JSON.stringify({ device, route, task, status: record.status, error: record.error }));
   };
+  await auditReportsAndProviderCopy({ page, device, ids, check });
   await check('/analytics', 'focused-report-views', async () => {
     const views=page.getByRole('group',{name:'Report view',exact:true});
     await views.waitFor();

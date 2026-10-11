@@ -44,13 +44,13 @@ export const LENDABLE_KEYS: {
   {
     key: "ANTHROPIC_API_KEY",
     label: "Anthropic (Claude)",
-    powers: "Opportunity scoring, solicitation analysis, bid briefs, reply reading.",
+    powers: "Can support opportunity scoring, solicitation analysis, bid briefs and reply reading. Routing and spending controls still apply; lending a key does not enable automatic fallback.",
   },
   {
     key: "OPENAI_API_KEY",
     label: "OpenAI",
     powers:
-      "Routine scoring, outreach drafts and reply reading at lower cost, and cover for Anthropic when it refuses a request.",
+      "Can support scoring, outreach drafts and reply reading. Routing and spending controls still apply; lending a key does not enable automatic fallback.",
   },
   {
     key: "GOOGLE_MAPS_API_KEY",
