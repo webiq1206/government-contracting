@@ -4,6 +4,7 @@ import { DEFAULT_RULES } from "@/lib/domain/intake";
 
 const m = vi.hoisted(() => ({ query: vi.fn(), one: vi.fn(), profile: vi.fn(), ai: vi.fn(), rules: vi.fn() }));
 vi.mock("@/lib/db", () => ({ query: m.query, queryOne: m.one }));
+vi.mock("@/lib/tenant", () => ({ resolveTenantOrgId: async () => "11111111-1111-4111-8111-111111111111" }));
 vi.mock("@/lib/ai/companyProfile", () => ({ getProfileJson: m.profile }));
 vi.mock("@/lib/ai/claude", () => ({ completeJson: m.ai, ClaudeNotConfiguredError: class extends Error {} }));
 vi.mock("@/lib/logger", () => ({ logAgent: vi.fn() }));
@@ -54,7 +55,7 @@ describe("paid analysis admission", () => {
     expect(result.enqueued?.[0].agent).toBe("solicitation-analyst");
   });
   it("does not buy another Sources Sought draft when one already exists", async () => {
-    m.one.mockImplementation(async (sql: string) => sql.includes("select * from opportunities") ? opp : { id: "saved-draft" });
+    m.one.mockImplementation(async (sql: string) => sql.includes("from opportunities") ? opp : { id: "saved-draft" });
     const result = await sourcesSoughtResponder.handler(ctx);
     expect(result.summary).toContain("without another paid draft");
     expect(m.ai).not.toHaveBeenCalled();

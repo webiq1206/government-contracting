@@ -10,7 +10,13 @@
  * (but do NOT send) the outbound email in communications → flag for human review.
  */
 import { z } from "zod";
-import { query, queryOne } from "../db";
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
+import { queryOne, transaction } from "../db";
+import { resolveTenantOrgId } from "../tenant";
+import { isAutomationStopped } from "../app-settings";
+import { expectedPursuitVersion } from "../pursuit-job-context";
+import { followUpMaySend } from "../domain/closed-work";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
@@ -26,6 +32,24 @@ const ResponseSchema = z.object({
   differentiators: z.array(z.string()).default([]),
   capability_summary: z.string(),
 });
+
+type ResponseNotice = Opportunity & { org_id: string; response_expired: boolean };
+const noticeQuery = `select *, (deadline is not null and deadline <= clock_timestamp()) as response_expired
+  from opportunities where id=$1 and org_id=$2`;
+
+/** Local to market-research responses; postsubmission bid work has different rules. */
+function responseHold(opp: ResponseNotice | null, version: number | null): string | null {
+  if (!opp) return "the notice is no longer available for this account";
+  if (!opp.is_sources_sought) return "the notice is no longer Sources Sought market research";
+  if (!followUpMaySend({ status: opp.status, stage: opp.stage, pursuitState: opp.pursuit_state }))
+    return "the notice is closed or its pursuit is stopped";
+  if (!Number.isInteger(opp.pursuit_version) || Number(opp.pursuit_version) < 1 ||
+      (version != null && opp.pursuit_version !== version))
+    return "the pursuit version changed or could not be verified";
+  // A missing deadline is not evidence of expiry; preserve the review workflow.
+  if (opp.response_expired) return "the response deadline has passed";
+  return null;
+}
 
 function buildPrompt(opp: Opportunity, reusable?: string | null): string {
   return [
@@ -59,10 +83,8 @@ export const sourcesSoughtResponder: AgentDefinition = {
     const opportunityId = ctx.payload.opportunityId as string;
     if (!opportunityId) return { ok: false, summary: "no opportunityId in payload" };
 
-    const opp = await queryOne<Opportunity & { org_id: string | null }>(
-      `select * from opportunities where id = $1`,
-      [opportunityId]
-    );
+    const orgId = await resolveTenantOrgId();
+    const opp = await queryOne<ResponseNotice>(noticeQuery, [opportunityId, orgId]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
     // A redelivered job must not purchase another draft or overwrite the PDF
@@ -71,9 +93,42 @@ export const sourcesSoughtResponder: AgentDefinition = {
       `select id from communications where opportunity_id=$1 and org_id=$2
         and channel='email' and direction='outbound'
         and meta->>'kind'='sources_sought_response' limit 1`,
-      [opportunityId, opp.org_id]);
+      [opportunityId, orgId]);
     if (existing) return { ok: true,
       summary: "A Sources Sought response already exists for this notice. Kept it without another paid draft." };
+
+    const version = expectedPursuitVersion(opportunityId) ?? opp.pursuit_version ?? null;
+    const held = async (reason: string): Promise<AgentResult> => {
+      const summary = `Sources Sought response held: ${reason}. No response was published or sent.`;
+      await logAgent({ agent: "sources-sought-responder", action: "response-held", opportunityId,
+        level: "warn", status: "skipped", message: summary });
+      return { ok: true, summary };
+    };
+    const currentHold = async () => {
+      if (await isAutomationStopped({ fresh: true })) return "automation is paused";
+      return responseHold(await queryOne<ResponseNotice>(noticeQuery, [opportunityId, orgId]), version);
+    };
+    const initialHold = responseHold(opp, version);
+    if (initialHold) return held(initialHold);
+
+    // Lock only for canonical writes, never across AI, PDF generation or upload.
+    const writeIfCurrent = async (write: (client: PoolClient) => Promise<void>) => {
+      if (await isAutomationStopped({ fresh: true })) return "automation is paused";
+      return transaction(async client => {
+        // Expressions in a locking SELECT may be evaluated before the lock
+        // wait. Read the clock and pause switches after acquiring the row.
+        await client.query(`select id from opportunities where id=$1 and org_id=$2 for update`, [opportunityId, orgId]);
+        if (await isAutomationStopped({ fresh: true, client })) return "automation is paused";
+        const current = (await client.query<ResponseNotice>(noticeQuery, [opportunityId, orgId])).rows[0] ?? null;
+        const reason = responseHold(current, version);
+        if (reason) return reason;
+        const duplicate = await client.query(`select id from communications where opportunity_id=$1 and org_id=$2
+          and channel='email' and direction='outbound' and meta->>'kind'='sources_sought_response' limit 1`, [opportunityId, orgId]);
+        if (duplicate.rows.length) return "a response was already saved by another run";
+        await write(client);
+        return null;
+      });
+    };
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
@@ -94,6 +149,8 @@ export const sourcesSoughtResponder: AgentDefinition = {
     let differentiators: string[];
     let capabilitySummary: string;
     try {
+      const beforeDraft = await currentHold();
+      if (beforeDraft) return held(beforeDraft);
       const { data, usage } = await completeJson(buildPrompt(opp, reusable), {
         schema: ResponseSchema,
         maxTokens: 2000,
@@ -112,6 +169,11 @@ export const sourcesSoughtResponder: AgentDefinition = {
       });
     } catch (err) {
       if (err instanceof ClaudeNotConfiguredError) {
+        const reason = await writeIfCurrent(async client => {
+          await client.query(`update opportunities set human_action_required = true, stage = 'outreach' where id=$1 and org_id=$2`,
+            [opportunityId, orgId]);
+        });
+        if (reason) return held(reason);
         await logAgent({
           agent: "sources-sought-responder",
           action: "draft",
@@ -120,10 +182,6 @@ export const sourcesSoughtResponder: AgentDefinition = {
           status: "skipped",
           message: "Claude not configured, Sources Sought response not drafted; flagged for human.",
         });
-        await query(
-          `update opportunities set human_action_required = true, stage = 'outreach' where id = $1`,
-          [opportunityId]
-        );
         return {
           ok: true,
           summary: "Sources Sought response not drafted (Claude disabled), flagged for human review.",
@@ -132,6 +190,9 @@ export const sourcesSoughtResponder: AgentDefinition = {
       }
       throw err;
     }
+
+    const afterDraft = await currentHold();
+    if (afterDraft) return held(afterDraft);
 
     // 2) Build the capability statement PDF.
     const pdf = await documents.buildCapabilityStatementPdf({
@@ -147,53 +208,60 @@ export const sourcesSoughtResponder: AgentDefinition = {
     });
 
     // 3) Upload to storage.
-    const key = `capability-statements/${opportunityId}.pdf`;
+    const beforeUpload = await currentHold();
+    if (beforeUpload) return held(beforeUpload);
+    // A concurrent or superseded run must never overwrite the reviewed PDF.
+    const key = `capability-statements/${opportunityId}/${randomUUID()}.pdf`;
     const uploaded = await storage.upload(key, pdf, "application/pdf");
 
-    // 4) Record a documents row.
-    await query(
-      `insert into documents
-         (opportunity_id, kind, name, storage_path, storage_backend, mime)
-       values ($1, 'capability_statement', $2, $3, $4, 'application/pdf')`,
-      [
-        opportunityId,
-        `Capability Statement, ${opp.title ?? opportunityId}`,
-        uploaded.path,
-        uploaded.backend,
-      ]
-    );
+    // 4-6) Publish the document, unsent draft and review state atomically.
+    const reason = await writeIfCurrent(async client => {
+      await client.query(
+        `insert into documents
+           (org_id, opportunity_id, kind, name, storage_path, storage_backend, mime)
+         values ($5, $1, 'capability_statement', $2, $3, $4, 'application/pdf')`,
+        [
+          opportunityId,
+          `Capability Statement, ${opp.title ?? opportunityId}`,
+          uploaded.path,
+          uploaded.backend,
+          orgId,
+        ]
+      );
 
-    // 5) Draft (do NOT send) the outbound email; a human reviews then sends.
-    //
-    // Recorded as a draft, in so many words. This row used to take the
-    // column's default and read as `sent`: 140 responses nobody had sent
-    // showed on the conversation log as sent, and the recap counted them as
-    // outreach that went out. The organization is written too, so the row
-    // belongs to the customer whose notice this is rather than to nobody.
-    const noteBody = `${body}\n\n---\n[Attachment: capability statement, ${uploaded.path}]\n[ACTION REQUIRED: review and send within 24 hours of the notice.]`;
-    await query(
-      `insert into communications
-         (org_id, opportunity_id, channel, direction, subject, body, meta, delivery_state)
-       values ($5, $1, 'email', 'outbound', $2, $3, $4, 'draft')`,
-      [
-        opportunityId,
-        subject,
-        noteBody,
-        JSON.stringify({
-          kind: "sources_sought_response",
-          status: "draft",
-          must_send_within_hours: 24,
-          capability_statement_path: uploaded.path,
-        }),
-        opp.org_id ?? null,
-      ]
-    );
+      // 5) Draft (do NOT send) the outbound email; a human reviews then sends.
+      //
+      // Recorded as a draft, in so many words. This row used to take the
+      // column's default and read as `sent`: 140 responses nobody had sent
+      // showed on the conversation log as sent, and the recap counted them as
+      // outreach that went out. The organization is written too, so the row
+      // belongs to the customer whose notice this is rather than to nobody.
+      const noteBody = `${body}\n\n---\n[Attachment: capability statement, ${uploaded.path}]\n[ACTION REQUIRED: review and send within 24 hours of the notice.]`;
+      await client.query(
+        `insert into communications
+           (org_id, opportunity_id, channel, direction, subject, body, meta, delivery_state)
+         values ($5, $1, 'email', 'outbound', $2, $3, $4, 'draft')`,
+        [
+          opportunityId,
+          subject,
+          noteBody,
+          JSON.stringify({
+            kind: "sources_sought_response",
+            status: "draft",
+            must_send_within_hours: 24,
+            capability_statement_path: uploaded.path,
+          }),
+          orgId,
+        ]
+      );
 
-    // 6) Flag for human review; move to outreach stage.
-    await query(
-      `update opportunities set human_action_required = true, stage = 'outreach' where id = $1`,
-      [opportunityId]
-    );
+      // 6) Flag for human review; move to outreach stage.
+      await client.query(
+        `update opportunities set human_action_required = true, stage = 'outreach' where id=$1 and org_id=$2`,
+        [opportunityId, orgId]
+      );
+    });
+    if (reason) return held(reason);
 
     await logAgent({
       agent: "sources-sought-responder",
