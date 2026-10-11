@@ -1,8 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import {
   RANGE_OPTIONS,
   BREAKDOWN_OPTIONS,
@@ -23,9 +22,8 @@ import {
  * separate views. No metric or filter definition changes. The two filters
  * still sit behind a sheet on phones rather than consuming the viewport.
  *
- * State is local rather than in the URL on purpose. Which section a phone is
- * looking at is not worth a navigation, and putting it in the URL would make
- * the back button walk through sections instead of leaving the page.
+ * Switching views is local. Applying a server filter carries the selected
+ * view in the URL so document navigation, reload and Back keep it visible.
  */
 
 const SectionCtx = createContext<string>("");
@@ -37,14 +35,21 @@ export interface AnalyticsSectionDef {
 
 export function AnalyticsMobileNav({
   sections,
+  initialSection,
+  filters,
   children,
 }: {
   sections: AnalyticsSectionDef[];
+  initialSection?: string;
+  filters?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [selected, setSelected] = useState(sections[0]?.id ?? "");
+  const [selected, setSelected] = useState(
+    sections.find(section => section.id === initialSection)?.id ?? sections[0]?.id ?? ""
+  );
   return (
     <SectionCtx.Provider value={selected}>
+      {filters}
       <div
         className="flex flex-wrap gap-2 border-b border-border pb-3"
         role="group"
@@ -69,6 +74,18 @@ export function AnalyticsMobileNav({
       {children}
     </SectionCtx.Provider>
   );
+}
+
+/**
+ * Reports query transitions can receive an RSC response without committing the
+ * new page. Use document navigation for these server-backed filters. The href
+ * itself carries the view, including for keyboard, new-tab and history use.
+ */
+export function AnalyticsFilterLink({ href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  const selected = useContext(SectionCtx);
+  const url = new URL(href, "https://workspace.invalid");
+  if (selected) url.searchParams.set("view", selected);
+  return <a {...props} href={url.pathname + url.search + url.hash} />;
 }
 
 /**
@@ -162,8 +179,8 @@ export function AnalyticsFilterSheet({
   /*
    * A real anchor rather than a scripted navigation, so middle-click,
    * long-press and the back button all behave, and the sheet cannot end up
-   * out of step with the page it filtered. These two are the whole of this
-   * page's state, so the URL can be written out rather than merged.
+   * out of step with the page it filtered. AnalyticsFilterLink also carries
+   * the current report view through the document navigation.
    */
   const applyHref = `/analytics?range=${nextRange}&by=${nextBy}`;
 
@@ -246,13 +263,12 @@ export function AnalyticsFilterSheet({
           </div>
         </fieldset>
       </div>
-      <Link
+      <AnalyticsFilterLink
         href={applyHref}
         className="btn-primary mt-4 block text-center"
-        onClick={() => setOpen(false)}
       >
         Show these
-      </Link>
+      </AnalyticsFilterLink>
     </dialog>,
     body
   )}</>;
