@@ -159,7 +159,7 @@ describe("fallback", () => {
     const err = await call("Analyze", { complexity: "complex" }).catch((e) => e);
     expect(err).toBeInstanceOf(ClaudeUnavailableError);
     expect(err.message).toMatch(/AI_UNAVAILABLE:/);
-    expect(err.reason).toMatch(/Anthropic returned a server error/);
+    expect(err.reason).toMatch(/Anthropic temporarily refused/);
     expect(err.reason).toMatch(/OpenAI fallback also failed/);
   });
 
@@ -195,5 +195,56 @@ describe("incomplete outputs", () => {
   it("does not persist a refused free-form answer as a completion", async () => {
     openAi.mockResolvedValueOnce({ ...openAiOk, text: "", stopReason: "refusal" });
     await expect(call("Draft a bid")).rejects.toThrow("not complete");
+  });
+});
+
+describe("automatic failover safety", () => {
+  it.each([401, 403, 404, 422, 500, 503, 504])("does not route around status %i", async status => {
+    openAi.mockRejectedValueOnce({ status, message: "synthetic service failure" });
+    await expect(call("Synthetic prompt")).rejects.toThrow();
+    expect(openAi).toHaveBeenCalledOnce();
+    expect(anthropicCreate).not.toHaveBeenCalled();
+  });
+  it.each(["refusal", "content_filter", "tool_use", "unknown", null])("does not correct or switch a non-completed JSON response: %s", async stopReason => {
+    const { completeJson } = await import("../lib/ai/claude");
+    openAi.mockResolvedValueOnce({ ...openAiOk, text: '{"ok":true}', stopReason });
+    await expect(runWithOrg(TEST_ORG, () => completeJson("JSON"))).rejects.toThrow(/no correction retry|reconcile before retrying/);
+    expect(openAi).toHaveBeenCalledOnce();
+    expect(anthropicCreate).not.toHaveBeenCalled();
+  });
+  it("preserves local JSON validation and the PDF input on Haiku fallback", async () => {
+    const { completeJson } = await import("../lib/ai/claude");
+    const { z } = await import("zod");
+    openAi.mockRejectedValueOnce({ status: 429, code: "credit_balance_exhausted" });
+    anthropicCreate.mockResolvedValueOnce({ ...anthropicOk, content: [{ type: "text", text: '{"ok":true}' }] });
+    const out = await runWithOrg(TEST_ORG, () => completeJson("JSON", {
+      schema: z.object({ ok: z.boolean() }), responseSchema: { type: "object" }, maxTokens: 16,
+      documents: [{ base64: "c3ludGhldGlj" }], retries: 0,
+    }));
+    expect(out.data).toEqual({ ok: true });
+    expect(anthropicCreate.mock.calls[0][0]).toMatchObject({ max_tokens: 16, temperature: .2,
+      messages: [{ role: "user", content: [{ type: "document", source: { media_type: "application/pdf", data: "c3ludGhldGlj" } }, { type: "text" }] }] });
+    expect(anthropicCreate.mock.calls[0][1]).toMatchObject({ maxRetries: 0 });
+    expect(state.metered).toHaveLength(2);
+  });
+  it("limits invalid JSON correction to one additional completion", async () => {
+    const { completeJson } = await import("../lib/ai/claude");
+    openAi.mockResolvedValue({ ...openAiOk, text: 'not json' });
+    await expect(runWithOrg(TEST_ORG, () => completeJson("JSON", { retries: 99 }))).rejects.toThrow("after 2 attempts");
+    expect(openAi).toHaveBeenCalledTimes(2);
+  });
+  it("scopes the pinned models and failover flag to BrostCo", async () => {
+    const { planRoute, routingConfig } = await import("../lib/ai/claude");
+    const { LEGACY_ORG_ID } = await import("../lib/tenant-context");
+    config.ai.fallback = false;
+    config.ai.brostcoFailover = true;
+    try {
+      expect(routingConfig(TEST_ORG).fallback).toBe(false);
+      expect(routingConfig(LEGACY_ORG_ID)).toMatchObject({ fallback: true,
+        anthropic: { model: "claude-haiku-4-5-20251001", modelSmart: "claude-haiku-4-5-20251001" },
+        openai: { model: "gpt-4.1", modelSmart: "gpt-4.1" } });
+      const route = await planRoute({ model: "claude-sonnet-5" }, LEGACY_ORG_ID);
+      expect(route?.primary).toMatchObject({ provider: "Anthropic", model: "claude-haiku-4-5-20251001", complex: true });
+    } finally { config.ai.brostcoFailover = false; }
   });
 });

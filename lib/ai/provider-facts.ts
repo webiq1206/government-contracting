@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { queryOne, transaction } from "../db";
 import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
+import { eligibleForFailover, requiresRetryReview, retryTime, withRetryTime } from "./failover-policy";
 
 export interface ProviderFacts {
   pending_attempt?: string | null;
@@ -21,8 +22,8 @@ export function providerScope(identity: RequestIdentity, provider: AiProvider): 
 }
 
 export class ProviderRefusalError extends Error {
-  readonly retryable = false;
-  constructor(readonly provider: AiProvider, readonly reason: string, readonly status: number | null) {
+  constructor(readonly provider: AiProvider, readonly reason: string, readonly status: number | null,
+    readonly retryable = false) {
     super(`AI_UNAVAILABLE: ${reason}`);
     this.name = "ProviderRefusalError";
   }
@@ -61,15 +62,19 @@ export async function providerRouteRefusal(orgId: string, tier: AiTier, includeP
   const plan = await planRoute({ complexity: tier }, orgId);
   if (!plan) return null;
   const primary = await currentProviderFacts(plan.primary.provider, orgId);
-  const held = (facts: ProviderFacts | null) => facts?.refusal_reason || (includePending && facts?.pending_attempt ? providerProblem(facts) : null);
+  const held = (facts: ProviderFacts | null) => facts?.refusal_reason ||
+    (facts?.failure_reason && (retryTime(facts.failure_reason) ?? 0) > Date.now() ? facts.failure_reason : null) ||
+    (includePending && facts?.pending_attempt ? providerProblem(facts) : null);
   const reason = held(primary);
   // Runtime cannot route around an unresolved primary request. Admission must
   // preserve that hold even when a healthy fallback exists.
   if (includePending && primary?.pending_attempt)
     return new ProviderRefusalError(plan.primary.provider, providerProblem(primary)!, null);
   if (!reason) return null;
-  if (plan.fallback && !held(await currentProviderFacts(plan.fallback.provider, orgId))) return null;
-  return new ProviderRefusalError(plan.primary.provider, reason, primary?.refusal_status ?? null);
+  const status = primary?.refusal_reason ? primary.refusal_status : primary?.failure_status ?? null;
+  if (plan.fallback && eligibleForFailover(plan.primary.provider, status, reason) &&
+    !held(await currentProviderFacts(plan.fallback.provider, orgId))) return null;
+  return new ProviderRefusalError(plan.primary.provider, reason, status);
 }
 
 export async function providerEnqueueHold(orgId: string, tier: AiTier): Promise<string | null> {
@@ -94,8 +99,15 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts
       where account_scope=$1 and provider=$2 and credential_hash=$3`, scope)).rows[0];
     if (row?.pending_attempt) throw busy();
+    if (requiresRetryReview(row?.failure_reason ?? null)) {
+      throw new ProviderRefusalError(provider, row!.failure_reason!, row!.failure_status);
+    }
     if (row?.refusal_reason && !recoveryTest) {
       throw new ProviderRefusalError(provider, row.refusal_reason, row.refusal_status);
+    }
+    if (row?.failure_reason && (retryTime(row.failure_reason) ?? 0) > Date.now()) {
+      // Explicit recovery also respects a provider's Retry-After window.
+      throw new ProviderRefusalError(provider, row.failure_reason, row.failure_status, true);
     }
     await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
       values($1,$2,$3,$4,clock_timestamp()) on conflict(account_scope,provider,credential_hash) do update
@@ -108,11 +120,17 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   try { outcome = { value: await execute() }; }
   catch (error) { outcome = { error }; }
   const success = "value" in outcome;
-  const e = "error" in outcome ? outcome.error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null } : null;
+  const e = "error" in outcome ? outcome.error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null; handoffUncertain?: boolean;
+    diagnostics?: { retryAfterSeconds?: number | null; omittedFields?: string[] } } : null;
   const observed = e?.provider === provider && typeof e.retryable === "boolean" && Boolean(e.reason);
-  const reason = observed ? e!.reason! : null;
+  const reason = observed ? (e!.retryable
+    ? withRetryTime(e!.reason!, e!.diagnostics?.omittedFields?.includes("retryAfterSeconds") ? Infinity : e!.diagnostics?.retryAfterSeconds) : e!.reason!) : null;
   const status = observed ? e!.status ?? null : null;
-  const permanent = observed && e!.retryable === false;
+  const permanent = observed && (e!.retryable === false || requiresRetryReview(reason));
+  // A timeout/ambiguous server failure can follow execution. Keep its token
+  // even for interactive calls without a work receipt; elapsed time is not
+  // evidence that replay is safe.
+  const uncertain = e?.handoffUncertain === true;
   const completionError = (cause?: unknown) => Object.assign(
     new Error("Provider completion needs reconciliation; do not replay this work.", { cause }),
     { provider, retryable: false });
@@ -123,9 +141,10 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     failure_status=case when $6::text is not null then $7::integer else failure_status end,
     refusal_reason=case when $5 then null when $8 then $6 else refusal_reason end,
     refusal_status=case when $5 then null when $8 then $7::integer else refusal_status end,
-    pending_attempt=null,pending_started_at=null
+    pending_attempt=case when $9 then pending_attempt else null end,
+    pending_started_at=case when $9 then pending_started_at else null end
     where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
-    returning true as saved`, [...scope, attempt, success, reason, status, permanent]).catch(error => { throw completionError(error); });
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain]).catch(error => { throw completionError(error); });
   if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
   if ("error" in outcome) throw outcome.error;
   return outcome.value;

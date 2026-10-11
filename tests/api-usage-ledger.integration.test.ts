@@ -710,3 +710,21 @@ describe("durable provider claims with real metering", () => {
     await expect(withProviderFacts(identity, "Anthropic", async () => "must not run", true)).rejects.toThrow("unresolved outcome");
   });
 });
+
+it("shares a failover dollar ceiling between OpenAI and Anthropic", async()=>{
+ await seedHaiku();
+ await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('OpenAI','gpt-4.1',$1,3,'fixture')",[JSON.stringify({input_tokens:"2",output_tokens:"8"})]);
+ await saveBudget(org,"owner",{...unlimitedBudget,dailyLimit:"4"});
+ await beginUsage({...identity,source:"tenant"},"OpenAI","gpt-4.1","Synthetic",{requirePrice:true});
+ await expect(beginUsage({...identity,source:"tenant"},"Anthropic","claude-haiku-4-5","Synthetic",{requirePrice:true})).rejects.toThrow("daily");
+ expect((await state.db.query("select * from api_usage_events")).rows).toHaveLength(1);
+});
+it.each([{}, {requests:"1"}, {input_tokens:"1",output_tokens:"NaN"}, {input_tokens:"-1",output_tokens:"5"}])("requires a complete finite token price before automatic failover: %j",async rates=>{
+ await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('Anthropic','test',$1,2,'fixture')",[JSON.stringify(rates)]);
+ await expect(beginUsage(identity,"Anthropic","test","Synthetic",{requirePrice:true})).rejects.toThrow("priced request reservation");
+ expect((await state.db.query("select * from api_usage_events")).rows).toHaveLength(0);
+});
+it("does not treat a request count as the shared failover dollar envelope",async()=>{
+ await seedHaiku(); await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:2});
+ await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Synthetic",{requirePrice:true})).rejects.toThrow("finite shared dollar limit");
+});

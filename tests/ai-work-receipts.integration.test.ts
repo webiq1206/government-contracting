@@ -62,3 +62,56 @@ it("normalizes UUID spellings before unresolved-work scope lookup",async()=>{
  await expect(invoke(`{${id}}`)).rejects.toThrow();await expect(invoke(id.replace(/-/g,""))).rejects.toThrow();
  expect(execute).toHaveBeenCalledTimes(1);
 });
+
+describe("provider-independent receipt rollout",()=>{
+ const independent=(input:unknown,fn:()=>Promise<unknown>)=>withApiUsageContext({workKey:"reply-poll"},()=>withAiWorkReceipt(input,fn,{logicalInput:input,enableProviderIndependent:true}));
+ it("holds all mailbox input after an ambiguous attempt rather than reopening it under another route",async()=>{
+  const first=vi.fn(async()=>{throw Error("provider timeout");});
+  await expect(independent({prompt:"message-a"},first)).rejects.toThrow("unresolved");
+  const second=vi.fn(async()=>"new answer");
+  await expect(independent({prompt:"message-a",maxTokens:200},second)).rejects.toThrow("unresolved");
+  await expect(independent({prompt:"message-b"},second)).rejects.toThrow("unresolved");
+  expect(first).toHaveBeenCalledOnce();expect(second).not.toHaveBeenCalled();
+ });
+ it("reuses the committed logical output while independent messages remain separate",async()=>{
+  const execute=vi.fn(async()=>"saved answer");
+  await independent({prompt:"message-a"},execute);
+  expect(await independent({prompt:"message-a"},execute)).toBe("saved answer");
+  await independent({prompt:"message-b"},execute);expect(execute).toHaveBeenCalledTimes(2);
+ });
+ it("keeps the logical receipt after the provider flag is disabled",async()=>{
+  const execute=vi.fn(async()=>"saved answer");
+  await independent({prompt:"message-a"},execute);
+  const result=await withApiUsageContext({workKey:"reply-poll"},()=>withAiWorkReceipt(
+    {prompt:"message-a",route:"OpenAI"},execute,{logicalInput:{prompt:"message-a"},enableProviderIndependent:false}));
+  expect(result).toBe("saved answer");expect(execute).toHaveBeenCalledOnce();
+ });
+ it.each(["pending","complete"])("holds opaque legacy %s receipts without changing them",async status=>{
+  await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
+   values($1,'old-key','old-scope','old-input',$2,$3)`,[state.org,randomUUID(),status]);
+  const execute=vi.fn(async()=>"new");
+  await expect(independent("prompt",execute)).rejects.toThrow("earlier work receipts require reconciliation");
+  expect(execute).not.toHaveBeenCalled();
+  expect((await state.db!.query<{state:string}>("select state from ai_work_receipts where org_id=$1",[state.org])).rows[0].state).toBe(status);
+ });
+ it("permits a known nonexecuted legacy refusal while retaining its history",async()=>{
+  await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
+   values($1,'old-key','old-scope','old-input',$2,'retryable')`,[state.org,randomUUID()]);
+  expect(await independent("prompt",async()=>"new")).toBe("new");
+  expect((await state.db!.query("select state from ai_work_receipts where org_id=$1",[state.org])).rows).toHaveLength(2);
+ });
+});
+
+it("holds ambiguous v2 work across cron/manual/recovery queue payloads", async () => {
+ const execute=vi.fn(async()=>{throw Error("ambiguous");});
+ const work=(key:string)=>withApiUsageContext({workKey:key},()=>withAiWorkReceipt("legacy",execute,{logicalInput:"same logical work",enableProviderIndependent:true}));
+ await expect(work('reply-poll:cron')).rejects.toThrow("unresolved");
+ await expect(work('reply-poll:manual')).rejects.toThrow("unresolved");
+ await expect(work('reply-poll:recovery')).rejects.toThrow("unresolved");
+ expect(execute).toHaveBeenCalledOnce();
+});
+it.each([[402,"OpenAI","OpenAI reported an exhausted credit balance."],[529,"Anthropic","Anthropic temporarily refused this request because the API is overloaded."]])("retains a safe retryable receipt for known nonexecuted %s",async(status,provider,reason)=>{
+ const execute=vi.fn().mockRejectedValueOnce(Object.assign(Error(reason as string),{name:"AiUnavailableError",status,provider,reason,handoffUncertain:false})).mockResolvedValue("result");
+ await expect(run("known-refusal","input",execute)).rejects.toThrow(reason as string);
+ expect(await run("known-refusal","input",execute)).toBe("result");
+});
