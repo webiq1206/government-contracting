@@ -385,10 +385,12 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
 
     // An integration that is telling us it is broken. Read straight from the
     // stored connection state, which is what the integrations page shows.
+    // Gmail writes `connected` on a saved or refreshed grant; that is not a
+    // failure. Keep the legacy `ok` state excluded as well.
     query<Record<string, unknown>>(
       `select provider, status, last_error, updated_at
          from integration_tokens
-        where org_id = $1 and status is not null and status <> 'ok'
+        where org_id = $1 and status is not null and status not in ('ok', 'connected')
         order by updated_at desc limit 10`,
       [orgId]
     ),
