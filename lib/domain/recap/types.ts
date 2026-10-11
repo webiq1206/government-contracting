@@ -49,7 +49,7 @@ export const RECAP_SECTION_BLURBS: Record<RecapSectionKey, string> = {
   totals: "What the day added up to. Every figure links to the records behind it.",
   bids: "Solicitations that arrived, decisions made, and bids that went out.",
   outreach: "Recorded outreach and processed replies. Unmatched inbox messages are excluded.",
-  completed: "Work that finished yesterday, so it is off your list.",
+  completed: "Work that finished on this day, so it is off your list.",
   upcoming: "What is coming, in the order it lands.",
 };
 
