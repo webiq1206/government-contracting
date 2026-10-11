@@ -25,7 +25,7 @@ import {
   emailText,
 } from "../email-shell";
 import { ageNote, recapPreheader, recapSubject } from "./sections";
-import type { Recap, RecapItem, RecapSection } from "./types";
+import { RECAP_QUIET_SUMMARY, type Recap, type RecapItem, type RecapSection } from "./types";
 
 export interface RenderRecapOptions {
   /** Root of the app, e.g. https://app.example.com. Links are absolute from it. */
@@ -143,10 +143,10 @@ export function renderRecapEmail(recap: Recap, opts: RenderRecapOptions): Render
      * cannot tell which. Three lines and a link says the first one plainly.
      * An account that would rather have the silence can turn that on.
      */
-    body.push(emailText(`${greeting} Nothing needed you yesterday.`));
+    body.push(emailText(`${greeting} Here is ${recap.dayLabel} for ${orgName ?? "your account"}.`));
     body.push(
       emailText(
-        `No urgent items, no system problems, and no activity worth reporting for ${recap.dayLabel}. ` +
+        `${RECAP_QUIET_SUMMARY} ` +
           `The full page is there if you want to check for yourself.`
       )
     );
@@ -210,7 +210,7 @@ export function renderRecapText(recap: Recap, opts: RenderRecapOptions): string 
   if (recap.quiet) {
     lines.push(
       "",
-      "Nothing needed you yesterday: no urgent items, no system problems, no activity worth reporting.",
+      RECAP_QUIET_SUMMARY,
       "",
       absoluteUrl(opts.appUrl, `/recap?date=${recap.localDate}`) ?? opts.appUrl
     );

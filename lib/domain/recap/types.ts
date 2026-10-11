@@ -48,10 +48,14 @@ export const RECAP_SECTION_BLURBS: Record<RecapSectionKey, string> = {
   review: "Decisions and queues waiting on a person.",
   totals: "What the day added up to. Every figure links to the records behind it.",
   bids: "Solicitations that arrived, decisions made, and bids that went out.",
-  outreach: "Who was contacted, who wrote back, and what they said.",
+  outreach: "Recorded outreach and processed replies. Unmatched inbox messages are excluded.",
   completed: "Work that finished yesterday, so it is off your list.",
   upcoming: "What is coming, in the order it lands.",
 };
+
+/** The recap does not inspect every mailbox message or the unmatched inbox. */
+export const RECAP_QUIET_SUMMARY =
+  "No urgent items, system problems or reportable activity were found in the records covered by this recap. Unmatched inbox messages and template test sends are excluded.";
 
 /**
  * A single thing worth naming, always with a way to reach it.
