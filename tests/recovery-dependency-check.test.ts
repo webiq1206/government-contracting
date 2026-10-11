@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ complete: vi.fn(), gmail: vi.fn(), heartbeat: vi.fn(), healthy: vi.fn(), query: vi.fn() }));
-vi.mock("@/lib/ai/claude", () => ({ complete: mocks.complete, describeClaudeFailure: () => null }));
+vi.mock("@/lib/ai/claude", () => ({ probeProviderRecovery: mocks.complete, describeClaudeFailure: () => null }));
 vi.mock("@/lib/integrations/gmail", () => ({ gmail: { canAuthenticate: mocks.gmail } }));
 vi.mock("@/lib/worker-heartbeat", () => ({ readWorkerHeartbeat: mocks.heartbeat }));
 vi.mock("@/lib/queue", () => ({ enqueue: vi.fn(), getQueue: async () => ({ healthy: mocks.healthy }) }));
@@ -45,9 +45,9 @@ describe("recovery checks the failed dependency", () => {
     expect((await testIncidentDependency("queue_unreachable", "org-a")).passed).toBe(false);
     expect(mocks.complete).not.toHaveBeenCalled();
   });
-  it("uses a small, bounded AI test without including the company profile", async () => {
+  it("requests the dedicated recovery probe for the named provider and organization", async () => {
     expect((await testIncidentDependency("provider_credit", "org-a", "openai")).passed).toBe(true);
-    expect(mocks.complete).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ model: expect.stringMatching(/^gpt-/), injectProfile: false, maxTokens: 16, timeoutMs: 15000, maxRetries: 0 }));
+    expect(mocks.complete).toHaveBeenCalledWith("OpenAI", "org-a");
   });
   it("fails closed when a provider incident has no trustworthy service identity", async () => {
     expect((await testIncidentDependency("provider_auth", "org-a", null)).passed).toBe(false);

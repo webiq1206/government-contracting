@@ -34,6 +34,7 @@ import {
 } from "./routing";
 import { openAiResponse, describeOpenAiFailure } from "./openai";
 import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
+import { currentOrgId, runWithOrg } from "../tenant-context";
 
 export type { AiProvider, AiRoute } from "./routing";
 
@@ -402,6 +403,29 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
   const { withAiWorkReceipt } = await import("./work-receipts");
   return withAiWorkReceipt([prompt,opts,system,plan],()=>completeUnfenced(prompt,opts,system,plan));
 }
+
+/** Fresh, bounded operator check of the named provider. A saved refusal may
+ * be retested, but pending attempts and spending controls still apply. Keep
+ * this separate from ordinary completions so jobs cannot opt out of a hold.
+ * Never use a cached work receipt or another provider as recovery evidence. */
+export async function probeProviderRecovery(provider: AiProvider, orgId: string): Promise<Completion> {
+  if (!orgId || (currentOrgId() && currentOrgId() !== orgId)) {
+    throw new Error("Recovery tenant does not match the active organization.");
+  }
+  return runWithOrg(orgId, async () => {
+    const route: AiRoute = {
+      provider,
+      model: provider === "OpenAI" ? config.openai.modelSmart : config.claude.modelSmart,
+      envKey: provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY",
+      complex: true,
+    };
+    const opts: CompleteOptions = {
+      maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0,
+      complexity: "complex", fallback: false, feature: "API recovery check",
+    };
+    return runRoute(route, [], "Reply with the single word: ready. Nothing else.", opts, true);
+  });
+}
 async function completeUnfenced(prompt: string, opts: CompleteOptions, system: SystemBlock[],
   plan: NonNullable<Awaited<ReturnType<typeof planRoute>>>): Promise<Completion> {
 
@@ -454,7 +478,8 @@ async function completeUnfenced(prompt: string, opts: CompleteOptions, system: S
  * provider refused us" leaves here as an AiUnavailableError, in words an
  * owner can act on, instead of a raw SDK string in thirty agent logs.
  */
-async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, opts: CompleteOptions): Promise<Completion> {
+async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, opts: CompleteOptions,
+  recoveryTest = false): Promise<Completion> {
   const { orgApiKey } = await import("../integration-keys");
   const { requestIdentity, metered } = await import("../api-usage/ledger");
   // Both spelled out: a source scan pins the literal Anthropic lookup so the
@@ -466,9 +491,17 @@ async function runRoute(route: AiRoute, system: SystemBlock[], prompt: string, o
   const identity = await requestIdentity(route.envKey, apiKey);
   const feature = opts.feature ?? "AI assistance";
 
-  return withProviderFacts(identity, route.provider, () => route.provider === "Anthropic"
-    ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
-    : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature));
+  return withProviderFacts(identity, route.provider, async () => {
+    const result = await (route.provider === "Anthropic"
+      ? runAnthropic(apiKey, identity, route, system, prompt, opts, metered, feature)
+      : runOpenAi(apiKey, identity, route, system, prompt, opts, metered, feature));
+    // Validate before recording success: an empty/truncated probe must not
+    // clear a durable refusal while its caller reports failed recovery.
+    if (recoveryTest && (!result.text.trim() || !["end_turn", "stop_sequence"].includes(result.stopReason ?? ""))) {
+      throw new Error("The provider recovery check returned no complete answer; the saved hold remains in place.");
+    }
+    return result;
+  }, recoveryTest);
 }
 
 /** Normalize only transport errors, never ledger/database preparation failures. */

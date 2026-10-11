@@ -18,7 +18,7 @@
  * go away is not a recovery; it is a quieter screen.
  */
 import { query, queryOne } from "./db";
-import { complete, describeClaudeFailure } from "./ai/claude";
+import { probeProviderRecovery, describeClaudeFailure } from "./ai/claude";
 import { config } from "./config";
 import { enqueue, getQueue } from "./queue";
 import { currentOrgId, runWithOrg } from "./tenant-context";
@@ -56,7 +56,7 @@ export interface ProviderTest {
  * still fails the test, because something is wrong, but it says so honestly
  * instead of sending somebody to top up an account that was never the problem.
  */
-export async function testProvider(provider?: string | null): Promise<ProviderTest> {
+export async function testProvider(orgId: string, provider?: string | null): Promise<ProviderTest> {
   // The complex tier is what a bid depends on, so that is what gets tested,
   // on whichever provider the router would give it. No fallback: a test that
   // quietly succeeded on the other provider would hide the very fault it
@@ -69,10 +69,8 @@ export async function testProvider(provider?: string | null): Promise<ProviderTe
         ? config.openai.modelSmart
         : config.claude.modelSmart;
   try {
-    const { text, usage } = await complete(
-      "Reply with the single word: ready. Nothing else.",
-      { model, complexity: "complex", fallback: false, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
-    );
+    const selected = provider === "openai" ? "OpenAI" : provider === "anthropic" ? "Anthropic" : config.ai.complexProvider;
+    const { text, usage } = await probeProviderRecovery(selected, orgId);
     model = usage?.model ?? model;
     const got = text.trim().toLowerCase();
     if (!got) {
@@ -127,7 +125,7 @@ export async function testIncidentDependency(cause: string, orgId: string, provi
     }
   }
   if (cause.startsWith("provider_")) {
-    if (provider === "openai" || provider === "anthropic") return testProvider(provider);
+    if (provider === "openai" || provider === "anthropic") return testProvider(orgId, provider);
     if (provider === "ahrefs") {
       try {
         const [{ orgApiKey }, { VALIDATORS }] = await Promise.all([
@@ -147,7 +145,7 @@ export async function testIncidentDependency(cause: string, orgId: string, provi
     return { passed: false, model: provider ?? "unknown", technical: null,
       detail: "The affected provider could not be identified safely. Review the named failure before running recovery." };
   }
-  if (cause === "model_output") return testProvider(provider);
+  if (cause === "model_output") return testProvider(orgId, provider);
   try {
     if (cause === "mailbox_content") {
       return { passed: false, model: "gmail", technical: null,

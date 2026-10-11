@@ -19,7 +19,7 @@ const d = LIVE ? describe : describe.skip;
 let PROVIDER: { ok: boolean; error?: unknown } = { ok: true };
 vi.mock("../lib/ai/claude", async (orig) => ({
   ...(await orig<typeof import("../lib/ai/claude")>()),
-  complete: async () => {
+  probeProviderRecovery: async () => {
     if (!PROVIDER.ok) throw PROVIDER.error;
     return { text: "ready", usage: { input_tokens: 4, output_tokens: 1 }, stopReason: "end_turn" };
   },

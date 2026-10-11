@@ -41,7 +41,8 @@ vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: (...
 vi.mock("../lib/ai/openai", async original => ({ ...(await original<typeof import("../lib/ai/openai")>()),
   openAiResponse: (...args: unknown[]) => state.openai(...args) }));
 import { agentWorkIdentity } from "../lib/ai/work-identity";
-import { complete } from "../lib/ai/claude";
+import { complete, probeProviderRecovery } from "../lib/ai/claude";
+import { currentOrgId, runWithOrg } from "../lib/tenant-context";
 import { withApiUsageContext } from "../lib/api-usage/context";
 import { config } from "../lib/config";
 import { currentProviderFacts, providerProblem, providerEnqueueHold, providerScope } from "../lib/ai/provider-facts";
@@ -158,6 +159,80 @@ describe("durable provider/account/current-credential evidence", () => {
     await call(); expect(state.openai).toHaveBeenCalledTimes(1); expect(state.anthropic).toHaveBeenCalledTimes(2);
     config.ai.fallback = false;
     expect(await providerEnqueueHold(state.org, "routine")).not.toBeNull();
+  });
+});
+
+describe("explicit operator recovery probe", () => {
+  async function holdOpenAi() {
+    state.openai.mockRejectedValueOnce(quota());
+    await expect(call()).rejects.toThrow();
+  }
+  it("retests the refused provider once, then permits ordinary work after a valid answer", async () => {
+    await holdOpenAi();
+    await expect(call()).rejects.toThrow();
+    state.openai.mockImplementationOnce(async () => {
+      expect(currentOrgId()).toBe("tenant-a");
+      return ok;
+    });
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).resolves.toMatchObject({ text: "synthetic" });
+    expect(state.openai).toHaveBeenCalledTimes(2);
+    expect(state.openai.mock.calls[1][0]).toMatchObject({ model: config.openai.modelSmart, maxTokens: 16, timeoutMs: 15_000 });
+    expect(state.openai.mock.calls[1][0].instructions ?? "").not.toContain(state.profile);
+    expect(await providerEnqueueHold(state.org, "complex")).toBeNull();
+    await call();
+    expect(state.openai).toHaveBeenCalledTimes(3);
+    expect(state.anthropic).not.toHaveBeenCalled();
+  });
+  it("does not clear a refusal or reach the provider when spending is held", async () => {
+    await holdOpenAi(); state.budgetHeld = true;
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).rejects.toThrow("API_BUDGET");
+    expect(state.openai).toHaveBeenCalledTimes(1);
+    expect(await providerEnqueueHold(state.org, "complex")).not.toBeNull();
+  });
+  it("keeps the refusal after a transient failure and never tries a configured fallback", async () => {
+    await holdOpenAi(); config.ai.fallback = true;
+    state.openai.mockRejectedValueOnce({ status: 503, message: "unavailable" });
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).rejects.toThrow();
+    expect(state.openai).toHaveBeenCalledTimes(2);
+    expect(state.anthropic).not.toHaveBeenCalled();
+    expect((await currentProviderFacts("OpenAI"))?.refusal_reason).toContain("billing quota or account allowance");
+  });
+  it.each([
+    { text: "", stopReason: "end_turn" },
+    { text: "partial", stopReason: "max_tokens" },
+    { text: "ready", stopReason: null },
+  ])("keeps the refusal when recovery output is not usable: %j", async output => {
+    await holdOpenAi(); state.openai.mockResolvedValueOnce({ ...ok, ...output });
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).rejects.toThrow();
+    expect((await currentProviderFacts("OpenAI"))?.refusal_reason).toContain("billing quota or account allowance");
+    await expect(call()).rejects.toThrow();
+    expect(state.openai).toHaveBeenCalledTimes(2);
+  });
+  it("does not replace an unresolved attempt, even if its timestamp is old", async () => {
+    await holdOpenAi();
+    await state.db.exec("update ai_provider_facts set pending_attempt='00000000-0000-4000-8000-000000000001',pending_started_at=now()-interval '30 days'");
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).rejects.toThrow("unresolved outcome");
+    expect(state.openai).toHaveBeenCalledTimes(1);
+  });
+  it("rejects tenant mismatch before metering or transport", async () => {
+    await expect(runWithOrg("tenant-b", () => probeProviderRecovery("OpenAI", "tenant-a"))).rejects.toThrow("organization");
+    expect(state.attempts).toBe(0);
+  });
+  it("requires the named provider's key even when another provider is connected", async () => {
+    delete state.keys.OPENAI_API_KEY;
+    await expect(probeProviderRecovery("OpenAI", "tenant-a")).rejects.toThrow("not connected");
+    expect(state.attempts).toBe(0);
+    expect(state.anthropic).not.toHaveBeenCalled();
+  });
+  it("retests Anthropic independently and preserves an OpenAI refusal", async () => {
+    await holdOpenAi(); config.ai.routineProvider = "Anthropic";
+    state.anthropic.mockRejectedValueOnce({ status: 400, message: "specified API usage limits" });
+    await expect(call()).rejects.toThrow();
+    await expect(probeProviderRecovery("Anthropic", "tenant-a")).resolves.toMatchObject({ text: "synthetic" });
+    expect((await currentProviderFacts("Anthropic"))?.refusal_reason).toBeNull();
+    expect((await currentProviderFacts("OpenAI"))?.refusal_reason).not.toBeNull();
+    expect(state.anthropic.mock.calls[1][0]).toMatchObject({ model: config.claude.modelSmart, max_tokens: 16, system: [] });
+    expect(state.anthropic.mock.calls[1][1]).toMatchObject({ timeout: 15_000, maxRetries: 0 });
   });
 });
 
