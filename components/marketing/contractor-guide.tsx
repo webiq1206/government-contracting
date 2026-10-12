@@ -5,6 +5,7 @@ import { MarketingShell, TrialCTA } from "./site-shell";
 
 export function ContractorGuidePage({ slug }: { slug: string }) {
   const guide = contractorGuide(slug);
+  const updatedOn = guide.updatedOn ?? GUIDES_UPDATED_ON;
   const site = siteUrl();
   const url = `${site}/resources/${slug}`;
   const schema = jsonLdGraph([
@@ -19,7 +20,7 @@ export function ContractorGuidePage({ slug }: { slug: string }) {
       inLanguage: "en-US",
       isAccessibleForFree: true,
       datePublished: GUIDES_PUBLISHED_ON,
-      dateModified: GUIDES_UPDATED_ON,
+      dateModified: updatedOn,
       image: siteImage(site),
       author: organizationRef(site),
       publisher: organizationRef(site),
@@ -38,7 +39,7 @@ export function ContractorGuidePage({ slug }: { slug: string }) {
       <p className="bco-kicker">{guide.category}</p>
       <h1>{guide.title}</h1>
       <p className="bco-lead">{guide.intro}</p>
-      <p className="bco-caption">By BrostCo · Published {longDate(GUIDES_PUBLISHED_ON)} · Source links checked {longDate(GUIDES_UPDATED_ON)}. Verify current instructions with the buying agency.</p>
+      <p className="bco-caption">By BrostCo · Published {longDate(GUIDES_PUBLISHED_ON)} · Updated {longDate(updatedOn)} · Source links checked {longDate(GUIDES_UPDATED_ON)}. Verify current instructions with the buying agency.</p>
       <nav className="bco-guide-toc" aria-label="In this guide"><h2>In this guide</h2><ol>{guide.sections.map((section, i) => <li key={section.heading}><a href={`#section-${i + 1}`}>{section.heading}</a></li>)}</ol></nav>
       {guide.sections.map((section, i) => <section key={section.heading} id={`section-${i + 1}`}>
         <h2>{section.heading}</h2>
