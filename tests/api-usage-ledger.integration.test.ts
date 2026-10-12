@@ -638,17 +638,26 @@ describe("unpriced services and stuck allowances", () => {
     );
   });
 
-  it("releases the ceiling of a request the provider refused with an HTTP status", async () => {
-    // Two 529s of a $10-ceiling model used to consume a $25 daily allowance
-    // for the rest of the day. An error response is not billed.
+  it.each([408, 500, 502, 503, 504, 529])("retains the budget hold after ambiguous HTTP %s", async (status) => {
     await seedHaiku();
-    const rejected = vi.fn().mockRejectedValue(Object.assign(new Error("overloaded"), { status: 529 }));
-    await expect(metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", rejected)).rejects.toThrow("overloaded");
+    const rejected = vi.fn().mockRejectedValue(Object.assign(new Error("synthetic failure"), { status }));
+    await expect(metered(identity, "Anthropic", "claude-haiku-4-5", "Summary", rejected)).rejects.toThrow("synthetic failure");
     const row = (await state.db.query("select budget_cost,reserved_cost,error_code,outcome from api_usage_events")).rows[0];
     expect(row.outcome).toBe("failed");
-    expect(row.error_code).toBe("HTTP 529");
+    expect(row.error_code).toBe(`HTTP ${status}`);
+    expect(row.budget_cost).toBeNull();
+    expect(Number(row.reserved_cost)).toBe(2);
+    expect(Number((await readBudget(org))?.day_spend)).toBe(2.5);
+  });
+
+  it.each([400, 401, 402, 403, 404, 413, 422, 429])("releases the budget ceiling after explicit refusal HTTP %s", async status => {
+    await seedHaiku();
+    const id = await beginUsage(identity, "Anthropic", "claude-haiku-4-5", "Summary");
+    await finishUsage(id, { failed: true, errorCode: `HTTP ${status}` });
+    const row = (await state.db.query("select budget_cost,provider_cost from api_usage_events where id=$1", [id])).rows[0];
     expect(Number(row.budget_cost)).toBe(0);
-    expect(Number((await readBudget(org))?.day_spend)).toBe(0);
+    // A refusal is not an authoritative provider cost receipt.
+    expect(row.provider_cost).toBeNull();
   });
 
   it("keeps the ceiling of a failure with no status, because the provider may have billed it", async () => {

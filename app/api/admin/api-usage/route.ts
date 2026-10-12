@@ -104,21 +104,6 @@ const schema = z.discriminatedUnion("action", [
     provider: z.enum(["Anthropic", "Twilio"]),
   }),
   z.object({
-    action: z.literal("receipts"),
-    receipts: z
-      .array(
-        z.object({
-          id: z.string().uuid(),
-          provider: z.string().min(1).max(100),
-          requestId: z.string().min(1).max(200),
-          cost: z.string(),
-          evidence: z.string().min(5).max(1000),
-        }),
-      )
-      .min(1)
-      .max(500),
-  }),
-  z.object({
     action: z.literal("automatic"),
     orgId: z.string().uuid(),
     enabled: z.boolean(),
@@ -159,12 +144,6 @@ const schema = z.discriminatedUnion("action", [
     dailyRequests: z.number().int().min(0).max(1000000).nullable().optional(),
   }),
   z.object({
-    action: z.literal("reconcile"),
-    id: z.string().uuid(),
-    cost: z.string(),
-    evidence: z.string().min(5).max(1000),
-  }),
-  z.object({
     action: z.literal("status"),
     id: z.string().uuid(),
     status: z.enum(["billed", "paid", "credited", "refunded"]),
@@ -184,6 +163,13 @@ export async function POST(req: Request) {
   if (auth instanceof Response) return auth;
   try {
     const input = await req.json();
+    // Text, account labels and caller-supplied "proof" cannot verify historical
+    // execution or cost. Do not let these former write APIs settle a hold.
+    if (input?.action === "reconcile" || input?.action === "receipts")
+      return NextResponse.json(
+        { error: "Manual cost reconciliation is unavailable. Unverified costs remain held. Only the verified Twilio adapter can reconcile existing usage; account totals and evidence text cannot confirm a request cost." },
+        { status: 409 },
+      );
     if (input.action === "budget") {
       const orgId = z
         .string()
@@ -226,15 +212,6 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         count: await syncProviderCosts(body.provider),
-      });
-    }
-    if (body.action === "receipts") {
-      const { reconcileReceipts } = await import(
-        "@/lib/api-usage/reconciliation"
-      );
-      return NextResponse.json({
-        ok: true,
-        count: await reconcileReceipts(body.receipts, auth.email),
       });
     }
     if (
@@ -292,7 +269,7 @@ export async function POST(req: Request) {
       throw new Error("Unsupported action.");
     if (body.action === "limit" && body.amount !== null)
       validateCost(body.amount);
-    if (body.action === "reconcile" || body.action === "report")
+    if (body.action === "report")
       validateCost(body.cost);
     if (body.action === "rate") {
       Object.values(body.rates).forEach(validateCost);
@@ -352,50 +329,26 @@ export async function POST(req: Request) {
           throw new Error(
             "This usage belongs to an invoice batch. Manage its invoice in Stripe.",
           );
-        if (body.action === "reconcile") {
-          if (
-            !["review", "unbilled", "not_billable"].includes(row.billing_status)
-          )
-            throw new Error(
-              "This record is already on a bill. Record a credit through billing before correcting it.",
-            );
-          if (row.provider_request_id) {
-            const duplicate = await client.query(
-              "select id from api_usage_events where provider=$1 and provider_request_id=$2 and id<>$3",
-              [row.provider, row.provider_request_id, row.id],
-            );
-            if (duplicate.rows.length)
-              throw new Error(
-                "Duplicate provider request. Investigate before approving a charge.",
-              );
-          }
-          await client.query(
-            `update api_usage_events set provider_cost=$2,evidence=$3,
-            billing_status=case when credential_source='tenant' then 'not_billable' when billing_accepted then 'unbilled' else 'review' end where id=$1`,
-            [body.id, body.cost, body.evidence],
+        const allowed: Record<string, string[]> = {
+          unbilled: ["billed"],
+          billed: ["paid", "credited"],
+          paid: ["refunded"],
+          credited: [],
+          refunded: [],
+        };
+        if (
+          !allowed[row.billing_status]?.includes(body.status) ||
+          !row.billing_accepted ||
+          row.provider_cost == null ||
+          row.credential_source !== "platform"
+        )
+          throw new Error(
+            "This billing change is not allowed. Confirm the cost and billing acceptance first.",
           );
-        } else {
-          const allowed: Record<string, string[]> = {
-            unbilled: ["billed"],
-            billed: ["paid", "credited"],
-            paid: ["refunded"],
-            credited: [],
-            refunded: [],
-          };
-          if (
-            !allowed[row.billing_status]?.includes(body.status) ||
-            !row.billing_accepted ||
-            row.provider_cost == null ||
-            row.credential_source !== "platform"
-          )
-            throw new Error(
-              "This billing change is not allowed. Confirm the cost and billing acceptance first.",
-            );
-          await client.query(
-            "update api_usage_events set billing_status=$2,invoice_reference=$3 where id=$1",
-            [body.id, body.status, body.reference],
-          );
-        }
+        await client.query(
+          "update api_usage_events set billing_status=$2,invoice_reference=$3 where id=$1",
+          [body.id, body.status, body.reference],
+        );
       }
       await client.query(
         "insert into api_usage_audit(org_id,actor,action,details) values($1,$2,$3,$4)",

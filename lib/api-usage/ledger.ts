@@ -152,7 +152,7 @@ export async function beginUsage(
         const label = period === "day" ? "daily" : "monthly";
         const unknown = Number(totals.rows[0].unknown);
         if (unknown > 0)
-          throw blocked(`${unknown} earlier request${unknown === 1 ? " is" : "s are"} still awaiting confirmation of ${unknown === 1 ? "its" : "their"} cost, so your ${label} allowance cannot admit more paid work until ${unknown === 1 ? "it is" : "they are"} confirmed or written off in API Usage.`);
+          throw blocked(`${unknown} earlier request${unknown === 1 ? " is" : "s are"} still awaiting confirmation of ${unknown === 1 ? "its" : "their"} cost, so your ${label} allowance cannot admit more paid work while the evidence remains unresolved. Review API Usage; unverified costs remain held.`);
         const spent = Number(totals.rows[0].spent);
         const ceiling = Number(reservation) * Number(markup);
         if (spent + ceiling > Number(cap))
@@ -212,7 +212,7 @@ export async function beginUsage(
         const unknown = Number(totals.rows[0].unknown);
         if (unknown > 0)
           throw new ApiUsageBlockedError(
-            `API_BUDGET: ${unknown} platform request${unknown === 1 ? " is" : "s are"} still awaiting confirmation of ${unknown === 1 ? "its" : "their"} cost, so the platform's monthly limit cannot admit more paid work. Confirm or write ${unknown === 1 ? "it" : "them"} off in Admin, API Usage, increase the limit, or use your own API account.`,
+            `API_BUDGET: ${unknown} platform request${unknown === 1 ? " is" : "s are"} still awaiting confirmation of ${unknown === 1 ? "its" : "their"} cost, so the platform's monthly limit cannot admit more paid work. Review the unresolved evidence in Admin, API Usage. Unverified costs remain held; use your own API account if available.`,
           );
         const spent = Number(totals.rows[0].spent);
         if (spent + Number(reservation) > Number(limit.monthly_limit))
@@ -277,17 +277,12 @@ export async function finishUsage(
   );
   if (result.actualCost != null)
     (await import("./money")).validateCost(result.actualCost);
-  /*
-   * A request the provider refused with an HTTP error status was never
-   * processed and is not billed: Anthropic and OpenAI charge only for a
-   * completed response, and a 401, 429 or 529 returns none. Holding such a
-   * request at its full price ceiling for the rest of the day was how two
-   * overloaded-provider refusals of a $10-ceiling model consumed a $25 daily
-   * allowance and stopped every analysis until midnight. A failure with no
-   * status (a timeout, a dropped connection) keeps its reservation, because
-   * the provider may well have finished and billed the work.
-   */
-  const providerRejected = Boolean(result.failed) && /^HTTP [45]\d\d$/.test(result.errorCode ?? "");
+  // Only explicit validation/authentication/allowance refusals release the
+  // budget ceiling. Server errors (including bare 529), HTTP 408 and transport
+  // failures can follow completed provider work and must retain uncertainty.
+  // This changes future completion only; it does not adjudicate historical rows.
+  const providerRejected = Boolean(result.failed) &&
+    /^HTTP (400|401|402|403|404|413|422|429)$/.test(result.errorCode ?? "");
   await query(
     `update api_usage_events e set finished_at=now(), outcome=$2, provider_request_id=$3,
     usage=$4::jsonb,provider_cost=$5::numeric,evidence=$6,error_code=$7,
@@ -330,7 +325,7 @@ export async function finishUsage(
  * price ceiling held against every later admission. Two hours is far past
  * any single provider call's timeout. The reservation is kept (the provider
  * may have completed and billed the work) but the row is now a finished
- * failure that an administrator can reconcile, and it ages out of the daily
+ * failure awaiting verified cost evidence, and it ages out of the daily
  * and monthly windows like every other charge.
  */
 export async function settleAbandonedUsage(olderThanMinutes = 120): Promise<number> {

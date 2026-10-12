@@ -1,63 +1,92 @@
 import { query, transaction } from "../db";
-import { validateCost } from "./money";
+import { decimalUnits, validateCost } from "./money";
 import { platformApiValue } from "./credentials";
 import { BILLABLE_PROVIDERS } from "./providers";
 import { createHash } from "node:crypto";
-/** Import exact request receipts, regardless of provider. Never split an account total across tenants. */
-export async function reconcileReceipts(
-  receipts: {
-    id: string;
-    provider: string;
-    requestId: string;
-    cost: string;
-    evidence: string;
-  }[],
-  actor: string,
-) {
-  if (!receipts.length || receipts.length > 500)
-    throw new Error("Import between 1 and 500 receipts.");
+type TwilioSnapshot = {
+  id: string;
+  org_id: string;
+  provider: string;
+  credential_source: string;
+  credential_fingerprint: string;
+  provider_request_id: string;
+  provider_cost: string | null;
+  budget_cost: string | null;
+  reserved_cost: string | null;
+  billing_accepted: boolean;
+  billing_status: string;
+  batch_id: string | null;
+  invoice_reference: string | null;
+  outcome: string;
+  evidence: string | null;
+};
+const snapshotFields = [
+  "id", "org_id", "provider", "credential_source", "credential_fingerprint",
+  "provider_request_id", "provider_cost", "budget_cost", "reserved_cost",
+  "billing_accepted", "billing_status", "batch_id", "invoice_reference",
+  "outcome", "evidence",
+] as const;
+const snapshotColumns = snapshotFields.join(",");
+const snapshotDigest = (row: TwilioSnapshot) => createHash("sha256")
+  .update(JSON.stringify(snapshotFields.map(key => row[key]))).digest("hex");
+
+/** Private to the adapter: request JSON cannot supply a verified receipt.
+ * The snapshot detects changed state; account verification happens at lookup.
+ * Cost and its audit commit together. No work receipt or executor is changed. */
+async function commitTwilioReceipt(expected: TwilioSnapshot, accountSid: string, cost: string) {
+  const receiptId = createHash("sha256").update(JSON.stringify([
+    "twilio-receipt-v1", expected.id, expected.org_id,
+    expected.credential_source, expected.credential_fingerprint,
+    accountSid, expected.provider_request_id, "USD", decimalUnits(cost).toString(),
+  ])).digest("hex");
+  const evidence = `Automatic: Twilio message ${expected.provider_request_id}`;
   return transaction(async (c) => {
-    for (const r of receipts) {
-      validateCost(r.cost);
-      const rows = (
-        await c.query("select * from api_usage_events where id=$1 for update", [
-          r.id,
-        ])
-      ).rows;
-      const row = rows[0];
-      if (
-        !row ||
-        row.provider !== r.provider ||
-        row.provider_request_id !== r.requestId
-      )
-        throw new Error(
-          "A receipt does not match its recorded provider request.",
-        );
-      const dup = (
-        await c.query(
-          "select id from api_usage_events where provider=$1 and provider_request_id=$2 and id<>$3",
-          [r.provider, r.requestId, r.id],
-        )
-      ).rows;
-      if (dup.length)
-        throw new Error("Duplicate provider request needs investigation.");
-      if (
-        row.batch_id ||
-        !["unbilled", "review", "not_billable"].includes(row.billing_status)
-      )
-        throw new Error(
-          "An invoiced receipt cannot be changed. Issue an adjustment instead.",
-        );
-      await c.query(
-        `update api_usage_events set provider_cost=$2,evidence=$3,billing_status=case when credential_source='tenant' then 'not_billable' when billing_accepted then 'unbilled' else 'review' end where id=$1`,
-        [r.id, r.cost, r.evidence],
-      );
-      await c.query(
-        "insert into api_usage_audit(org_id,actor,action,details) values($1,$2,'provider_receipt',$3)",
-        [row.org_id, actor, JSON.stringify(r)],
-      );
+    await c.query("select pg_advisory_xact_lock(hashtext('api-usage-admission'))");
+    const row: TwilioSnapshot | undefined = (await c.query(
+      `select ${snapshotColumns} from api_usage_events where id=$1 for update`, [expected.id],
+    )).rows[0];
+    if (!row || !row.org_id || row.org_id !== expected.org_id || row.provider !== "Twilio" ||
+        row.credential_source !== "platform" ||
+        row.credential_fingerprint !== expected.credential_fingerprint ||
+        row.provider_request_id !== expected.provider_request_id)
+      throw new Error("Twilio receipt identity changed during lookup. Review the usage record.");
+    const duplicates = (await c.query(
+      "select id from api_usage_events where provider=$1 and provider_request_id=$2 and id<>$3",
+      ["Twilio", row.provider_request_id, row.id],
+    )).rows;
+    if (duplicates.length) throw new Error("Duplicate provider request needs investigation.");
+    if (row.provider_cost != null) {
+      if (decimalUnits(row.provider_cost) !== decimalUnits(cost))
+        throw new Error("A confirmed provider cost cannot be overwritten. Review the conflicting receipt.");
+      const committed = (await c.query(
+        "select 1 from api_usage_audit where org_id=$1 and action='provider_receipt' and details->>'receiptId'=$2 limit 1",
+        [row.org_id, receiptId],
+      )).rows.length > 0;
+      // A retry can arrive after invoicing. It may acknowledge the identical
+      // committed receipt, but never rewrite cost, evidence or billing state.
+      if (committed && row.evidence === evidence) return false;
+      throw new Error("This cost has different evidence. Review the usage record.");
     }
-    return receipts.length;
+    if (snapshotDigest(row) !== snapshotDigest(expected))
+      throw new Error("Usage state changed during receipt lookup. Review before retrying.");
+    if (row.batch_id || row.invoice_reference || row.outcome === "pending" ||
+        !["unbilled", "review", "not_billable"].includes(row.billing_status))
+      throw new Error("This usage is not eligible for cost reconciliation.");
+    const billingStatus = row.billing_accepted ? "unbilled" : "review";
+    await c.query(
+      "update api_usage_events set provider_cost=$2,evidence=$3,billing_status=$4 where id=$1",
+      [row.id, cost, evidence, billingStatus],
+    );
+    await c.query(
+      "insert into api_usage_audit(org_id,actor,action,details) values($1,'provider reconciliation','provider_receipt',$2)",
+      [row.org_id, JSON.stringify({
+        receiptId, id: row.id, provider: "Twilio", accountSid,
+        requestId: row.provider_request_id, currency: "USD", cost, evidence,
+        before: { providerCost: row.provider_cost, billingStatus: row.billing_status },
+        after: { providerCost: cost, billingStatus },
+      })],
+    );
+    return true;
   });
 }
 export async function syncAnthropicCosts() {
@@ -131,8 +160,8 @@ export async function syncTwilioCosts() {
   if (!sid || !token)
     throw new Error("Connect platform Twilio credentials first.");
   const fingerprint = createHash("sha256").update(token).digest("hex");
-  const rows = await query<{ id: string; provider_request_id: string }>(
-    "select id,provider_request_id from api_usage_events where provider='Twilio' and credential_source='platform' and provider_cost is null and batch_id is null and credential_fingerprint=$1 and provider_request_id is not null order by last_reconciled_at nulls first,started_at limit 100",
+  const rows = await query<TwilioSnapshot>(
+    `select ${snapshotColumns} from api_usage_events where provider='Twilio' and org_id is not null and credential_source='platform' and provider_cost is null and batch_id is null and invoice_reference is null and outcome<>'pending' and billing_status in ('unbilled','review','not_billable') and credential_fingerprint=$1 and provider_request_id is not null order by last_reconciled_at nulls first,started_at limit 100`,
     [fingerprint],
   );
   let count = 0;
@@ -161,19 +190,7 @@ export async function syncTwilioCosts() {
       continue;
     const cost = String(body.price).replace(/^-/, "");
     validateCost(cost);
-    await reconcileReceipts(
-      [
-        {
-          id: row.id,
-          provider: "Twilio",
-          requestId: row.provider_request_id,
-          cost,
-          evidence: `Automatic: Twilio message ${row.provider_request_id}`,
-        },
-      ],
-      "provider reconciliation",
-    );
-    count++;
+    if (await commitTwilioReceipt(row, sid, cost)) count++;
   }
   return count;
 }
@@ -185,7 +202,7 @@ export async function syncProviderCosts(provider: string) {
         : provider === "Twilio"
           ? await syncTwilioCosts()
           : (() => {
-              throw new Error("Use receipt import for this provider.");
+              throw new Error("No verified request-cost adapter is available for this provider.");
             })();
     await query(
       "insert into api_usage_sync_runs(provider,status,detail) values($1,'complete',$2)",
@@ -233,7 +250,7 @@ export async function importExternalUsage(
       ).rows;
       if (existing.length)
         throw new Error(
-          "This receipt already exists. Reconcile its recorded entry instead.",
+          "This receipt already exists. Review its recorded entry; importing new usage cannot settle it.",
         );
       const acceptance =
         (

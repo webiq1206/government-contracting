@@ -83,7 +83,6 @@ import {
   syncUsageAdjustment,
 } from "../lib/api-usage/billing";
 import {
-  reconcileReceipts,
   syncAnthropicCosts,
 } from "../lib/api-usage/reconciliation";
 const org = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -169,47 +168,6 @@ describe("billing completion", () => {
       ),
     ).rejects.toThrow("finalized");
     expect(state.notes).toHaveLength(0);
-  });
-  it("reconciles exact receipts atomically and applies the markup in SQL", async () => {
-    const id = "11111111-1111-4111-8111-111111111111";
-    await state.db.query(
-      "insert into api_usage_events(id,org_id,provider,service,feature,credential_source,credential_fingerprint,billing_accepted,provider_request_id) values($1,$2,'Hunter','search','Find contact','platform','hash',true,'req_1')",
-      [id, org],
-    );
-    await expect(
-      reconcileReceipts(
-        [
-          {
-            id,
-            provider: "Hunter",
-            requestId: "wrong",
-            cost: "1",
-            evidence: "Provider invoice",
-          },
-        ],
-        "owner",
-      ),
-    ).rejects.toThrow("match");
-    await reconcileReceipts(
-      [
-        {
-          id,
-          provider: "Hunter",
-          requestId: "req_1",
-          cost: "0.0000008",
-          evidence: "Provider invoice",
-        },
-      ],
-      "owner",
-    );
-    const row = (
-      await state.db.query(
-        "select tenant_charge::text,billing_status from api_usage_events where id=$1",
-        [id],
-      )
-    ).rows[0];
-    expect(row.tenant_charge).toBe("0.000001000000");
-    expect(row.billing_status).toBe("unbilled");
   });
   it("converts Anthropic cents exactly without attributing shared totals to tenants", async () => {
     process.env.ANTHROPIC_ADMIN_API_KEY = "test";

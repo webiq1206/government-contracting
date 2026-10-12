@@ -35,11 +35,12 @@ Only allowlisted business fields enter the ledger. Credentials, raw integration 
 - Anthropic reporting uses `ANTHROPIC_ADMIN_API_KEY`, distinct from the ordinary inference credential. The hourly production job fetches the previous seven complete UTC days with pagination. Decimal cents convert to dollars in PostgreSQL. Repeated reports update the same period rather than duplicate it.
 - Anthropic reports cover the entire provider account, including usage outside BrostCo. Its aggregate reports are compared with ledger totals but do not prove individual request or tenant costs. They therefore do not automatically authorize per-tenant charges.
 - Twilio retrieves prices for recorded message SIDs using the matching platform credential fingerprint. Account/SID and currency must match. Old credentials, missing provider IDs and unsupported currencies remain for review. Lookups rotate so a permanently unpriced message does not starve newer receipts.
-- The exact-receipt importer supports every recorded provider. It requires the ledger ID, matching provider request ID, USD cost and evidence. Duplicate or already invoiced records stop the atomic import.
+- Manual cost confirmation and exact-receipt uploads are disabled. Their former admin POST actions (`reconcile`, `receipts`) return 409 after authorization, before database access or provider calls. Evidence text or caller-supplied account/proof labels cannot verify historical execution or cost. Unknown costs and pending work receipts remain held.
+- Only the private Twilio adapter can reconcile existing usage. It verifies the response account, recorded message SID and USD currency using the matching saved credential fingerprint. The tenant, credential, request, costs and billing state captured before lookup must still match under the settlement lock. A known cost cannot be overwritten; an identical committed receipt is acknowledged without another audit, even if invoicing completed meanwhile. Cost and audit commit atomically. Missing tenant, pending usage, duplicate requests and invoiced rows cannot acquire a new cost.
 - External usage import supports other attributable service receipts, including services without a built-in execution adapter. Every record requires an organization, service, feature, timestamp, unique request ID and evidence. It is not automatic instrumentation of unconnected providers. Shared flat infrastructure costs must not be arbitrarily attributed as customer requests.
 - Only a matching supported service preference accepted before execution can make imported platform usage billable. All other platform receipts are held for review. Own-account use stays nonbillable.
 
-Provider APIs do not all expose attributable request receipts. Connecting a provider's reporting key is an operational prerequisite, and evidence import is still required where that provider only supplies aggregate bills. No production provider credentials or billing reports were accessed during development.
+Provider APIs do not all expose attributable request receipts. Connecting a provider's reporting key is an operational prerequisite, and providers that only supply aggregate bills cannot reconcile individual requests through a manual upload. A future verified evidence workflow is required; account totals must not be apportioned by guess. No production provider credentials or billing reports were accessed during development.
 
 ## Billing periods and collection
 
@@ -69,3 +70,11 @@ References used for implementation:
 - https://www.twilio.com/docs/messaging/api/message-resource
 - https://docs.stripe.com/api/invoices/finalize
 - https://docs.stripe.com/api/credit_notes/create
+
+## Reconciliation safeguards (October 12, 2026)
+
+These guards apply prospectively. They do not reconstruct historical account bindings, settle historical reservations, adjudicate pending work receipts, or authorize re-execution. No data migration or backfill is included. External usage import creates a new economic event and cannot settle an old reservation.
+
+Future ledger completions retain the budget reservation after HTTP 408, all HTTP 5xx (including bare or classified 529), transport failures and other ambiguous outcomes. Explicit validation/authentication/allowance refusals (400, 401, 402, 403, 404, 413, 422, 429) retain the existing budget-release behavior without inventing a confirmed provider cost. A historical status label alone is not retrospective proof of the full attempt chain.
+
+`tests/usage-reconciliation.integration.test.ts` exercises the real adapter with synthetic provider responses and checks all columns of 38 held-event and three pending-receipt fixtures remain unchanged. It runs in disposable PGlite locally and a private schema in loopback PostgreSQL when database CI is enabled. Competing identical/conflicting commits, stale tenant/credential/billing state, account/request mismatch and audit rollback are covered. No real provider request is part of these tests.
