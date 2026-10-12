@@ -70,9 +70,9 @@ export function PlatformKeyGrants({
     <section className="space-y-2">
       <h2 className="text-sm font-semibold">Our API keys on this account</h2>
       <p className="text-sm text-muted-foreground">
-        Customers bring their own credentials. Lending ours puts {orgName}&rsquo;s usage on
-        our bill until somebody takes it back, so every grant is attributed and shows up in
-        this account&rsquo;s admin history.
+        Saved account keys and lending records for {orgName}. Integration status above
+        shows current availability. Billing preferences, routing and spending controls
+        still apply; a grant record alone does not show which credential is in use.
       </p>
 
       {note && (
@@ -108,18 +108,18 @@ export function PlatformKeyGrants({
 
               <p className="text-sm text-muted-foreground">
                 {s.hasOwnKey
-                  ? "They pay for this themselves. A grant would change nothing while their own key is set, because their key always wins."
+                  ? "A key is saved for this account. Its billing preference determines whether requests use that key or a platform key."
                   : active
-                    ? `On our key since ${date(s.grantedAt)}${
+                    ? `Grant recorded since ${date(s.grantedAt)}${
                         s.expiresAt ? `, until ${date(s.expiresAt)}` : ", with no expiry"
                       }${s.grantedByEmail ? `, granted by ${s.grantedByEmail}` : ""}.`
                     : s.expired
                       ? `The grant from ${date(s.grantedAt)} expired on ${date(
                           s.expiresAt
-                        )} and is doing nothing. Remove it to tidy up, or lend it again.`
+                        )} and no longer authorizes access. Another configured credential may still apply.`
                       : trialBorrowing
-                        ? `Borrowed automatically while the trial runs, up to ${s.trialBudget} calls. A grant would carry on past the trial.`
-                        : "Not set. This integration is switched off for them."}
+                        ? `This trial's policy allows up to ${s.trialBudget} calls on a platform key, subject to availability and remaining allowance. This does not establish the current credential or provider status.`
+                        : "No account key or grant is recorded here. A platform credential may still apply; check integration status above for current availability."}
               </p>
 
               {s.note && active && (
@@ -139,7 +139,8 @@ export function PlatformKeyGrants({
 
               {!s.platformHasKey && (
                 <p className="text-xs text-risk">
-                  We hold no {s.label} key ourselves, so there is nothing to lend.
+                  No {s.label} key is configured in the deployment environment for this
+                  grant control. A key saved in platform Settings may still apply.
                 </p>
               )}
 
@@ -154,7 +155,7 @@ export function PlatformKeyGrants({
                     ? "Working…"
                     : s.expired
                       ? "Remove the expired grant"
-                      : "Take our key back"}
+                      : "Remove grant"}
                 </button>
               ) : open === s.key ? (
                 <div className="space-y-2 rounded-md border border-border bg-surface/50 p-3">
@@ -253,14 +254,14 @@ function Status({
   trialBorrowing: boolean;
 }) {
   const [text, tone] = hasOwnKey
-    ? ["Their own key", "text-muted-foreground"]
+    ? ["Account key saved", "text-muted-foreground"]
     : active
-      ? ["On our key", "text-risk"]
+      ? ["Active grant", "text-risk"]
       : trialBorrowing
-        ? ["Trial allowance", "text-accent-strong"]
+        ? ["Trial policy", "text-accent-strong"]
         : expired
           ? ["Grant expired", "text-muted-foreground"]
-          : ["Not set", "text-muted-foreground"];
+          : ["No account key or grant", "text-muted-foreground"];
   return <span className={`text-xs uppercase tracking-wide ${tone}`}>{text}</span>;
 }
 

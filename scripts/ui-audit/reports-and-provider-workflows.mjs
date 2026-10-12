@@ -70,10 +70,11 @@ export async function auditReportsAndProviderCopy({ page, device, ids, check }) 
   await check(`/admin/accounts/${ids.org}`, 'lent-provider-copy-does-not-claim-active-fallback', async () => {
     await page.getByRole('tab',{name:'Integrations',exact:true}).click();
     const section=page.locator('section').filter({has:page.getByRole('heading',{name:'Our API keys on this account',exact:true})});
+    await section.getByText(/a grant record alone does not show which credential is in use/).waitFor();
     for(const name of ['OpenAI','Anthropic (Claude)']) {
       const row=section.getByRole('listitem').filter({has:page.getByText(name,{exact:true})});
       await row.getByText(/lending a key does not enable automatic fallback/).waitFor();
-      assert.doesNotMatch(await row.innerText(),/cover for Anthropic|at lower cost/i);
+      assert.doesNotMatch(await row.innerText(),/cover for Anthropic|at lower cost|switched off|key always wins|They pay for this themselves/i);
     }
     await section.getByRole('listitem').filter({has:page.getByText('OpenAI',{exact:true})}).scrollIntoViewIfNeeded();
   });
