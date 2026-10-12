@@ -824,43 +824,12 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             {admin && selected.outcome === "failed" && <ProviderDiagnosticDetails diagnostics={selected.provider_diagnostics} configuration={selected.configuration_reference} />}
             {admin && (
               <>
-                <form
-                  className="mt-5 space-y-3 border-t pt-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const f = new FormData(e.currentTarget);
-                    void save({
-                      action: "reconcile",
-                      id: selected.id,
-                      cost: f.get("cost"),
-                      evidence: f.get("evidence"),
-                    });
-                  }}
-                >
-                  <h3 className="font-semibold">Confirm provider cost</h3>
-                  <label className="block text-sm">
-                    Actual cost in USD
-                    <input
-                      name="cost"
-                      required
-                      inputMode="decimal"
-                      className={`${field} mt-1 w-full`}
-                      defaultValue={selected.provider_cost ?? ""}
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    Provider invoice or billing evidence
-                    <input
-                      name="evidence"
-                      minLength={5}
-                      required
-                      className={`${field} mt-1 w-full`}
-                    />
-                  </label>
-                  <button disabled={busy} className={field}>
-                    Save confirmed cost
-                  </button>
-                </form>
+                <p className="mt-5 border-t pt-4 text-sm">
+                  Manual cost reconciliation is unavailable. Unverified costs
+                  remain held until a supported adapter verifies the exact
+                  provider account, request and cost. Evidence text alone cannot
+                  release a reservation or resolve a pending task.
+                </p>
                 <form
                   className="mt-5 space-y-3 border-t pt-4"
                   onSubmit={(e) => {

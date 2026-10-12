@@ -37,7 +37,6 @@ export function UsageBillingControls() {
     [org, setOrg] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [receipt, setReceipt] = useState(""),
     [external, setExternal] = useState(""),
     [selected, setSelected] = useState<Batch | null>(null),
     [amount, setAmount] = useState(""),
@@ -110,37 +109,12 @@ export function UsageBillingControls() {
         prices for recorded message IDs. Both run hourly in the production
         worker.
       </p>
-      <details>
-        <summary className="cursor-pointer text-sm font-medium">
-          Import exact provider receipts
-        </summary>
-        <p className="my-2 text-xs text-muted-foreground">
-          Upload a JSON array with id (ledger entry), provider, requestId, cost
-          (USD decimal string), and evidence. All entries must match recorded
-          requests. The import is atomic.
-        </p>
-        <label className="text-sm">
-          Receipt JSON
-          <textarea
-            className="input mt-1 min-h-32 w-full"
-            value={receipt}
-            onChange={(e) => setReceipt(e.target.value)}
-          />
-        </label>
-        <button
-          className="btn-secondary mt-2"
-          disabled={busy}
-          onClick={() => {
-            try {
-              void act({ action: "receipts", receipts: JSON.parse(receipt) });
-            } catch {
-              setMessage("Enter a valid JSON array.");
-            }
-          }}
-        >
-          Validate and reconcile receipts
-        </button>
-      </details>
+      <p className="text-sm text-muted-foreground">
+        Manual cost reconciliation and receipt uploads are unavailable.
+        Unverified costs remain held. Only the Twilio adapter can reconcile
+        existing usage after verifying its account and recorded message receipt.
+        Importing new external usage does not settle an existing reservation.
+      </p>
       <details>
         <summary className="cursor-pointer text-sm font-medium">
           Import usage from another service
