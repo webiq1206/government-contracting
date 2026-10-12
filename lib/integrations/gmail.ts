@@ -296,6 +296,16 @@ async function gmailClient(orgId?: string) {
   return api;
 }
 
+type GmailSendResult = {
+  outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
+  disabled?: boolean;
+  messageId?: string;
+  threadId?: string;
+  /** The real RFC822 Message-ID header, for In-Reply-To on later sends. */
+  rfc822MessageId?: string;
+  error?: string;
+};
+
 export interface SendEmailParams {
   beforeProviderSend?: (from: string, identity?: MailboxSendEvidence) => Promise<void>;
   to: string;
@@ -835,15 +845,7 @@ export const gmail = {
 
   async send(
     params: SendEmailParams
-  ): Promise<{
-    outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
-    disabled?: boolean;
-    messageId?: string;
-    threadId?: string;
-    /** The real RFC822 Message-ID header, for In-Reply-To on later sends. */
-    rfc822MessageId?: string;
-    error?: string;
-  }> {
+  ): Promise<GmailSendResult> {
     // Nothing reaches a real inbox from a development process.
     //
     // This is the lowest point every sender passes through: tenant outreach,
@@ -862,7 +864,8 @@ export const gmail = {
           "Blocked: this is the development environment, which does not send real email. Set ALLOW_REAL_EMAIL_FROM_DEV to test delivery deliberately.",
       };
     }
-
+    const { withProspectiveDispatch, ProspectiveBlockedError } = await import('../prospective-boundary');
+    return withProspectiveDispatch<GmailSendResult>('mail', async () => {
     const org = await resolveOrg(params.orgId);
     const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
     const stopped = org
@@ -954,6 +957,10 @@ export const gmail = {
       if (org) await markConnectionError(org, message, clientGenerations.get(client) ?? null);
       return { error: message, outcome: gmailFailureOutcome(err, providerAttempted) };
     }
+    }, result => result.outcome !== 'unknown').catch(error => {
+      if (error instanceof ProspectiveBlockedError) return {disabled:true,outcome:'not_attempted' as const,error:error.message};
+      throw error;
+    });
   },
 
   /**

@@ -6,6 +6,7 @@ import { platformApiValue } from "./credentials";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { decryptSecret } from "../integration-settings";
 import { providerDiagnostics, configurationReference, type ProviderDiagnostics, type ConfigurationReference } from "./diagnostics";
+import { reserveProspectiveUsage } from "../prospective-boundary";
 
 export type RequestIdentity = {
   orgId: string;
@@ -225,7 +226,10 @@ export async function beginUsage(
       throw new ApiUsageBlockedError(
         "The API account could not be identified. Reconnect the service before retrying.",
       );
-    if (options.dryRun) return;
+    if (options.dryRun) {
+      await reserveProspectiveUsage(client, identity, provider, service, reservation, id, true);
+      return;
+    }
     await client.query(
       `insert into api_usage_events
       (id,org_id,user_id,provider,service,feature,workflow,related_id,credential_source,credential_fingerprint,billing_accepted,billing_status,reserved_cost,price_snapshot)
@@ -247,6 +251,7 @@ export async function beginUsage(
         price.rows[0]?.rates ? JSON.stringify(price.rows[0].rates) : null,
       ],
     );
+    await reserveProspectiveUsage(client, identity, provider, service, reservation, id);
     if (identity.source === "platform")
       await client.query(
         `insert into platform_key_usage(org_id,env_key,calls) values($1,$2,1)
@@ -314,6 +319,11 @@ export async function finishUsage(
       result.configurationReference ? JSON.stringify(configurationReference(result.configurationReference)) : null,
     ],
   );
+  // Only observed completion, never the time-based abandoned-usage sweep,
+  // can close the separate dispatch marker introduced by the preview gate.
+  // An ambiguous error retains it even if this ledger labels the row failed.
+  if (!result.failed || providerRejected) await query(
+    "update prospective_dispatch_claims set finished_at=now() where id=$1 and kind='api' and finished_at is null",[id]);
 }
 
 /**

@@ -89,6 +89,8 @@ const identity = {
 };
 beforeAll(async () => {
   state.db = new PGlite();
+  await state.db.exec('create table prospective_fence(preview_id uuid,released_at timestamptz)');
+  await state.db.exec('create table prospective_dispatch_claims(id uuid primary key,kind text,finished_at timestamptz)');
   await state.db
     .exec(`create table organizations(id uuid primary key,name text,stripe_customer_id text);
  create table integration_settings(org_id uuid,env_key text,value_enc text);
@@ -115,7 +117,7 @@ beforeEach(async () => {
   state.failItem = false;
   state.stripeCalls = [];
   await state.db.exec(
-    "truncate ai_provider_facts,api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
+    "truncate prospective_dispatch_claims,ai_provider_facts,api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
   );
   await state.db.query("insert into api_account_budgets(org_id) values($1),($2)",[org,other]);
 });

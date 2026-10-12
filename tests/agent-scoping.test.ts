@@ -75,6 +75,10 @@ function serverFiles(dir: string, out: string[] = []): string[] {
  * inherit the exemption, and each says why below.
  */
 const DELIBERATELY_GLOBAL = [
+  // Activation of a platform-wide hold must refuse ANY active dispatch,
+  // including a job using the shared platform credential for another tenant.
+  // Only existence is returned, never job/customer contents.
+  "exists(select 1 from job_runs where status='running') as busy",
   // maintenance: before deleting a file blob, check whether ANY document still
   // references that path. Blob paths are content-addressed and shared between
   // organizations, so scoping this to one org would delete bytes another

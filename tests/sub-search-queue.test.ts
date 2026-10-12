@@ -1,4 +1,5 @@
 import {beforeEach,it,expect,vi} from "vitest";
+vi.mock('../lib/prospective-boundary',()=>({withProspectiveDispatch:async(_kind:string,fn:()=>Promise<unknown>)=>fn()}));
 const m=vi.hoisted(()=>({send:vi.fn(),claim:vi.fn(),queued:vi.fn(),release:vi.fn(),paused:false}));
 vi.mock("../lib/queue/pgboss",()=>({createPgBossQueue:async()=>({start:async()=>{},stop:async()=>{},enqueue:m.send})}));
 vi.mock("../lib/app-settings",()=>({isPlatformAutomationPaused:async()=>m.paused,isAutomationPaused:async()=>false}));

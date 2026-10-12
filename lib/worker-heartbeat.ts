@@ -15,6 +15,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { query, queryOne } from "./db";
+import { BOUNDARY_VERSION,databaseIdentity,runtimeBuild,workerSourceRevision,workerArtifact,workerArtifactSha256 } from './runtime-evidence';
 
 /** The single row's key. Liveness is platform-wide, not per tenant. */
 const ROW_ID = "worker";
@@ -50,17 +51,20 @@ export interface WorkerHeartbeat {
 }
 
 export async function recordHeartbeat(phase: string, detail?: string | null): Promise<void> {
+  const evidence={build:runtimeBuild,workerSourceRevision,workerArtifact,workerArtifactSha256,
+    boundaryVersion:BOUNDARY_VERSION,database:await databaseIdentity()};
   await query(
-    `insert into worker_heartbeat (id, instance_id, phase, detail, booted_at, updated_at)
-     values ($1, $2, $3, $4, now(), now())
+    `insert into worker_heartbeat (id, instance_id, phase, detail, booted_at, updated_at, runtime_evidence)
+     values ($1, $2, $3, $4, now(), now(), $5)
      on conflict (id) do update
        set instance_id = excluded.instance_id,
            phase       = excluded.phase,
            detail      = excluded.detail,
            booted_at   = case when worker_heartbeat.instance_id = excluded.instance_id
                               then worker_heartbeat.booted_at else excluded.booted_at end,
-           updated_at  = now()`,
-    [ROW_ID, INSTANCE_ID, phase, detail ?? null]
+           updated_at  = now(),
+           runtime_evidence = excluded.runtime_evidence`,
+    [ROW_ID, INSTANCE_ID, phase, detail ?? null,JSON.stringify(evidence)]
   );
 }
 

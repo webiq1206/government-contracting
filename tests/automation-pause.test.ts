@@ -2,6 +2,9 @@
  * Master pause switch: when paused, enqueue and outreach sends must no-op.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+// This unit fixture isolates the existing pause behavior. The durable preview
+// boundary and the real dispatch hooks have their own database/denial suites.
+vi.mock('../lib/prospective-boundary',()=>({withProspectiveDispatch:async(_kind:string,fn:()=>Promise<unknown>)=>fn()}));
 
 const accountPaused = vi.fn(async () => false);
 const platformPaused = vi.fn(async () => false);
