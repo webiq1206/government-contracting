@@ -26,7 +26,12 @@ const snapshotFields = [
   "billing_accepted", "billing_status", "batch_id", "invoice_reference",
   "outcome", "evidence",
 ] as const;
-const snapshotColumns = snapshotFields.join(",");
+// lib/db parses NUMERIC as Number globally. Opt out here so receipt equality
+// and snapshot identity keep all 12 decimal places and remain string-valued.
+const snapshotColumns = snapshotFields.map(key =>
+  ["provider_cost", "budget_cost", "reserved_cost"].includes(key)
+    ? `${key}::text as ${key}` : key,
+).join(",");
 const snapshotDigest = (row: TwilioSnapshot) => createHash("sha256")
   .update(JSON.stringify(snapshotFields.map(key => row[key]))).digest("hex");
 

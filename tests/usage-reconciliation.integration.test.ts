@@ -71,7 +71,11 @@ beforeAll(async () => {
       host, port: Number(process.env.PGPORT ?? 5432), database: process.env.PGDATABASE,
       user: process.env.PGUSER, password: process.env.PGPASSWORD,
     } : { connectionString: url!.href };
-    const { Pool } = await import("pg");
+    const { Pool, types } = await import("pg");
+    // Match production lib/db.ts. Monetary comparisons must opt into SQL text,
+    // not rely on pg's default numeric parser or stringify a rounded Number.
+    const originalNumericParser = types.getTypeParser(1700);
+    types.setTypeParser(1700, value => Number(value));
     const schema = "receipt_test_" + randomUUID().replaceAll("-", "");
     const admin = new Pool(connection);
     await admin.query(`create schema ${schema}`);
@@ -87,9 +91,9 @@ beforeAll(async () => {
         finally { c.release(); }
       },
     };
-    cleanup = async () => { await pool.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end(); };
+    cleanup = async () => { await pool.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end(); types.setTypeParser(1700, originalNumericParser); };
   } else {
-    state.db = new PGlite();
+    state.db = new PGlite({ parsers: { 1700: value => Number(value) } });
     cleanup = () => state.db.close();
   }
   await state.db.exec("create table organizations(id uuid primary key); create function capture_activity() returns trigger language plpgsql as $$ begin return NEW; end $$");
@@ -155,6 +159,10 @@ describe("manual reconciliation fails closed", () => {
 });
 
 describe("verified Twilio receipts", () => {
+  it("matches production numeric parsing while preserving explicit SQL text", async () => {
+    const row = (await state.db.query("select 1.25::numeric as parsed, 1.25::numeric::text as exact")).rows[0];
+    expect(row).toEqual({ parsed: 1.25, exact: "1.25" });
+  });
   it("commits exact cost and one audit atomically with decimal markup", async () => {
     fetchMock.mockResolvedValue(receipt("0.0000008"));
     expect(await syncTwilioCosts()).toBe(1);
@@ -234,21 +242,21 @@ describe("verified Twilio receipts", () => {
     else expect(settled[1].status).toBe("rejected");
     expect((await stored()).provider_cost).toBe("1.000000000000"); expect(await audits()).toHaveLength(1);
   });
-  it.each(["1.00", "2"])("locks competing commits released together with cost %s", async secondCost => {
+  it.each([["1", "1.00"], ["1", "2"], ["12345678901.123456789012", "12345678901.123456789013"], ["12345678901.123456789012", "12345678901.123456789012"]])("locks competing commits released together with costs %s / %s", async (firstCost, secondCost) => {
     const responses: ((r: Response) => void)[] = [];
     fetchMock.mockImplementation(() => new Promise<Response>(resolve => responses.push(resolve)));
     const results = Promise.allSettled([syncTwilioCosts(), syncTwilioCosts()]);
     await vi.waitFor(() => expect(responses).toHaveLength(2));
-    responses[0](receipt("1")); responses[1](receipt(secondCost));
+    responses[0](receipt(firstCost)); responses[1](receipt(secondCost));
     const settled = await results;
     expect(await audits()).toHaveLength(1);
-    if (secondCost === "1.00") {
+    if (secondCost === "1.00" || firstCost === secondCost) {
       expect(settled.filter(r => r.status === "fulfilled").map(r => r.value).sort()).toEqual([0, 1]);
-      expect((await stored()).provider_cost).toBe("1.000000000000");
+      expect((await stored()).provider_cost).toBe(firstCost === "1" ? "1.000000000000" : firstCost);
     } else {
       expect(settled.filter(r => r.status === "fulfilled")).toHaveLength(1);
       expect(settled.filter(r => r.status === "rejected")).toHaveLength(1);
-      expect(["1.000000000000", "2.000000000000"]).toContain((await stored()).provider_cost);
+      expect(firstCost === "1" ? ["1.000000000000", "2.000000000000"] : [firstCost, secondCost]).toContain((await stored()).provider_cost);
     }
   });
   it("an identical in-flight retry after invoicing acknowledges without changing the bill", async () => {
