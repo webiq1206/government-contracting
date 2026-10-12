@@ -4,7 +4,8 @@ vi.mock('../lib/config', () => ({ config: {
   gmail: { configured: true, clientId: 'test', clientSecret: 'test', sender: null },
   database: { isIsolatedDev: false }, email: {}, appUrl: 'https://brostco.com',
 } }));
-vi.mock('../lib/db', () => ({ query: vi.fn(async () => []), queryOne: vi.fn(async () => ({ data: { refresh_token: 'test-only' } })) }));
+vi.mock('../lib/db', () => ({ query: vi.fn(async () => []), queryOne: vi.fn(async () => ({ data: { refresh_token: 'test-only' } })),
+  transaction: async (fn:any) => fn({query:async()=>({rows:[]})}) }));
 vi.mock('../lib/integration-settings', () => ({ encryptSecret: (v: string) => v, decryptSecret: (v: string) => v }));
 vi.mock('../lib/app-settings', () => ({ isAutomationStopped: async () => mocks.paused, AUTOMATION_PAUSED_ERROR: 'Paused' }));
 vi.mock('../lib/integrations/gmail-quota', () => ({ reserveGmailQuota: async () => {} }));

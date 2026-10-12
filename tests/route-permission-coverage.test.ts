@@ -46,6 +46,7 @@ const EXEMPT: Record<string, string> = {
   "admin/invitations/[id]/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/key-grants/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/automation/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
+  "admin/opportunity-preview/route.ts": "Platform-wide dispatch hold and preview execution, guarded by requirePlatformAdmin and disabled rollout activation gate.",
   "analytics/route.ts": "Records a product-analytics event for the signed-in user's own session.",
   "track/marketing/route.ts": "Anonymous public events only: same-origin, bounded body, throttled, strict event/path allowlists and no user or tenant identity.",
   /*

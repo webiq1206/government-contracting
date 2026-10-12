@@ -335,6 +335,15 @@ export async function runAgent(
   trigger: "cron" | "queue" | "manual",
   payload: Record<string, unknown> = {}
 ): Promise<AgentResult> {
+  const { withProspectiveDispatch } = await import('../prospective-boundary');
+  return withProspectiveDispatch('agent', () => runAdmittedAgent(def, trigger, payload));
+}
+
+async function runAdmittedAgent(
+  def: AgentDefinition,
+  trigger: "cron" | "queue" | "manual",
+  payload: Record<string, unknown> = {}
+): Promise<AgentResult> {
   const finish = async (result: AgentResult, handlerRan = false): Promise<AgentResult> => {
     await settleRecoveryRequeue(
       payload,

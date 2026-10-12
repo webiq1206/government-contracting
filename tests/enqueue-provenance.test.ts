@@ -16,6 +16,10 @@
  */
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "crypto";
+// Keep the real durable boundary in the disposable database run; the five
+// database-free queue identity fixtures have no persistence adapter.
+vi.mock('../lib/prospective-boundary',async original=>process.env.DATABASE_URL
+  ? original() : {withProspectiveDispatch:async(_kind:string,fn:()=>Promise<unknown>)=>fn()});
 
 const sent: { name: string; payload: Record<string, unknown> }[] = [];
 let sessionUser: { id: string; organizationId: string | null } = {

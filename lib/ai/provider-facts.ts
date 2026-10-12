@@ -3,6 +3,7 @@ import { queryOne, transaction } from "../db";
 import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
 import { eligibleForFailover, requiresRetryReview, retryTime, withRetryTime } from "./failover-policy";
+import { guardProspectiveProvider, lockProspectiveAdmission } from "../prospective-boundary";
 
 export interface ProviderFacts {
   pending_attempt?: string | null;
@@ -94,6 +95,8 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const busy = () => Object.assign(new Error(`AI_UNAVAILABLE: ${provider} has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.`),
     { name: "ProviderAttemptBusyError", provider, retryable: true });
   await transaction(async client => {
+    await lockProspectiveAdmission(client);
+    await guardProspectiveProvider(client, identity, provider, recoveryTest);
     const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired", [JSON.stringify(scope)]);
     if (!lock.rows[0]?.acquired) throw busy();
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts

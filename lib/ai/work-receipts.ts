@@ -63,7 +63,7 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
   let result:T;
   try { result=await execute(); } catch(error) {
     const e=error as {name?:string;provider?:AiProvider;reason?:string;status?:number;retryable?:boolean;handoffUncertain?:boolean};
-    const local = ['ApiUsageBlockedError','ClaudeNotConfiguredError','ProviderAttemptBusyError','ProviderRefusalError'].includes(e.name ?? '');
+    const local = ['ApiUsageBlockedError','ProspectiveBlockedError','ClaudeNotConfiguredError','ProviderAttemptBusyError','ProviderRefusalError'].includes(e.name ?? '');
     const refusal = ['AiUnavailableError','ClaudeUnavailableError','OpenAiUnavailableError'].includes(e.name ?? '') && e.handoffUncertain !== true && !!e.reason &&
       ([400,401,403,404,413,422,429].includes(e.status ?? 0) ||
         (e.handoffUncertain === false && !!e.provider && eligibleForFailover(e.provider, e.status ?? null, e.reason)));

@@ -7,6 +7,7 @@
  * and simply enqueues jobs, so it is backend-agnostic.
  */
 import { config } from "../config";
+import { withProspectiveDispatch } from "../prospective-boundary";
 import { OUTREACH_JOBS } from "../domain/work-mode";
 import { researchNoticeJobProblem } from "../domain/research-notice";
 import { SUB_SEARCH_INTENT_KEY, claimSubSearchIntent, markSubSearchQueued, releaseUnqueuedSubSearch } from "../sub-search-intents";
@@ -135,6 +136,14 @@ export async function resetQueue(): Promise<void> {
 export async function enqueue(
   name: string,
   payload: JobPayload = {},
+  opts?: EnqueueOptions
+): Promise<string | null> {
+  return withProspectiveDispatch('enqueue', () => enqueueAdmitted(name, payload, opts));
+}
+
+async function enqueueAdmitted(
+  name: string,
+  payload: JobPayload,
   opts?: EnqueueOptions
 ): Promise<string | null> {
   const {

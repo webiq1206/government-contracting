@@ -461,17 +461,18 @@ export async function complete(prompt: string, opts: CompleteOptions = {}): Prom
  * be retested, but pending attempts and spending controls still apply. Keep
  * this separate from ordinary completions so jobs cannot opt out of a hold.
  * Never use a cached work receipt or another provider as recovery evidence. */
-export async function probeProviderRecovery(provider: AiProvider, orgId: string): Promise<Completion> {
+export async function probeProviderRecovery(provider: AiProvider, orgId: string, exactModel?: string): Promise<Completion> {
   if (!orgId || (currentOrgId() && currentOrgId() !== orgId)) {
     throw new Error("Recovery tenant does not match the active organization.");
   }
   return runWithOrg(orgId, async () => {
     const route: AiRoute = {
       provider,
-      model: provider === "OpenAI" ? routingConfig(orgId).openai.modelSmart : routingConfig(orgId).anthropic.modelSmart,
+      model: exactModel ?? (provider === "OpenAI" ? routingConfig(orgId).openai.modelSmart : routingConfig(orgId).anthropic.modelSmart),
       envKey: provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY",
       complex: true,
     };
+    if (providerForModel(route.model) !== provider) throw new Error("Recovery model does not match the selected provider.");
     const opts: CompleteOptions = {
       maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0,
       complexity: "complex", fallback: false, feature: "API recovery check",

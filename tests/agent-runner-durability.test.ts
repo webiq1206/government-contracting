@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/config", () => ({ config: { worker: { disabledAgents: [] } } }));
 vi.mock("@/lib/ai/claude", () => ({ claudeEnabled: vi.fn(async () => true) }));
-vi.mock("@/lib/db", () => ({ query: mocks.query, queryOne: mocks.queryOne }));
+vi.mock("@/lib/db", () => ({ query: mocks.query, queryOne: mocks.queryOne,
+  transaction: async (fn:any) => fn({query:async()=>({rows:[]})}) }));
 vi.mock("@/lib/logger", () => ({ logAgent: mocks.logAgent }));
 vi.mock("@/lib/app-settings", () => ({
   isPlatformAutomationPaused: vi.fn(async () => false),

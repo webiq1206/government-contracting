@@ -10,10 +10,10 @@
     "dev": "node scripts/dev.mjs",
     "dev:web": "BROSTCO_PROCESS_ROLE=web NODE_ENV=development next dev",
     "dev:worker": "tsx watch worker/index.ts",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "concurrently -n web,worker -c cyan,magenta --kill-others-on-fail=false --restart-tries -1 --restart-after 5000 \"npm:start:web\" \"npm:start:worker\"",
     "start:web": "tsx scripts/verify-schema.ts && BROSTCO_PROCESS_ROLE=web next start -p ${PORT:-3000}",
-    "start:worker": "tsx worker/index.ts",
+    "start:worker": "node scripts/start-built-worker.mjs",
     "worker": "tsx worker/index.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:rekey-secrets": "tsx scripts/rekey-integration-secrets.ts",
@@ -77,6 +77,7 @@
     "playwright": "^1.48.2"
   },
   "devDependencies": {
+    "esbuild": "0.28.1",
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-socket": "^0.2.11",
     "eslint": "^8.57.1",

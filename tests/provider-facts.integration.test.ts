@@ -16,7 +16,8 @@ vi.mock("../lib/db", () => ({
     state.transactions++;
     try {
       const value = await state.db.transaction((tx: any) => fn({ query: async (sql: string, params: unknown[]) =>
-        sql.includes("pg_try_advisory_xact_lock") ? { rows: [{ acquired: !state.busy }] } : tx.query(sql, params) }));
+        sql.includes("pg_try_advisory_xact_lock") ? { rows: [{ acquired: !state.busy }] } :
+          sql.includes("pg_advisory_xact_lock") ? { rows: [] } : tx.query(sql, params) }));
       if (state.failClaimAck) throw new Error("synthetic lost claim commit acknowledgement");
       return value;
     } finally { state.transactions--; }
@@ -56,13 +57,14 @@ const quota = () => ({ status: 429, code: "insufficient_quota", message: "Insuff
 const ok = { id: "fake", text: "synthetic", usage: { input_tokens: 1, output_tokens: 1 }, stopReason: "end_turn" };
 beforeAll(async () => {
   state.db = new PGlite();
+  await state.db.exec('create table prospective_fence(preview_id uuid,released_at timestamptz)');
   await state.db.exec(`create table ai_work_receipts(org_id text,work_key text,scope_key text,input_hash text,owner uuid,state text,result jsonb,started_at timestamptz,completed_at timestamptz,primary key(org_id,work_key))`);
   await state.db.exec(readFileSync("db/migrations/125_ai_provider_facts.sql", "utf8"));
   await state.db.exec(readFileSync("db/migrations/126_ai_provider_attempts.sql", "utf8"));
 }, 60_000);
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
-  await state.db.exec("truncate ai_provider_facts,ai_work_receipts");
+  await state.db.exec("truncate ai_provider_facts,ai_work_receipts,prospective_fence");
   state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.failSettlementProvider = null; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
   state.openai.mockReset().mockResolvedValue(ok);
@@ -475,4 +477,19 @@ it.each(["refusal","content_filter","max_tokens"])("caches known %s completion w
  expect((await state.db.query("select state from ai_work_receipts")).rows).toEqual([{state:"complete"}]);
  await expect(withApiUsageContext({workKey:"unrelated"},call)).resolves.toMatchObject({text:"synthetic"});
  expect(state.openai).toHaveBeenCalledTimes(2);
+});
+
+it('a preview hold refuses real completion admission without poisoning the unrelated work receipt',async()=>{
+ await state.db.query("insert into prospective_fence values('11111111-1111-4111-8111-111111111111',null)");
+ const work=()=>withApiUsageContext({workKey:'unrelated-held-job',relatedId:'unrelated-record'},call);
+ await expect(work()).rejects.toMatchObject({name:'ProspectiveBlockedError'});
+ await expect(work()).rejects.toMatchObject({name:'ProspectiveBlockedError'});
+ expect(state.openai).not.toHaveBeenCalled();
+ expect(state.anthropic).not.toHaveBeenCalled();
+ expect((await state.db.query('select state from ai_work_receipts')).rows).toEqual([{state:'retryable'}]);
+ expect((await state.db.query('select * from ai_provider_facts')).rows).toEqual([]);
+ // Synthetic fixture release; production release uses its explicit admin gate.
+ await state.db.exec('delete from prospective_fence');
+ await expect(work()).resolves.toMatchObject({text:'synthetic'});
+ expect(state.openai).toHaveBeenCalledOnce();
 });

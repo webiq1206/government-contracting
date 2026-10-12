@@ -1,11 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  generateBuildId: async () => {
+    try { return JSON.parse(process.env.BROSTCO_COMPILED_BUILD||"").buildId; }
+    catch { return null; }
+  },
   reactStrictMode: true,
   distDir: process.env.BROSTCO_BUILD_DIR || ".next",
   // Cloud Run / Replit builds have flaky webpack WASM (xxhash64) init. Prefer
   // Node's sha256 hasher, and keep the build on the main thread so a worker
   // crash cannot surface as Hash.update(undefined).
-  webpack: (config) => {
+  webpack: (config, { webpack }) => {
+    config.plugins.push(new webpack.DefinePlugin({
+      __BROSTCO_COMPILED_BUILD__:JSON.stringify(process.env.BROSTCO_COMPILED_BUILD||""),
+      __BROSTCO_WORKER_SOURCE_REVISION__:JSON.stringify(""),
+      __BROSTCO_WORKER_ARTIFACT__:JSON.stringify(""),
+    }));
     // Optional for disk-constrained verification environments. Default builds
     // retain their cache; this changes no application behavior or type checks.
     if (process.env.BROSTCO_BUILD_NO_CACHE === "1") config.cache = false;
