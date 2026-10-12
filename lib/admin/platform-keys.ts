@@ -262,8 +262,8 @@ export async function grantKeyToAccount(input: {
   return {
     ok: true,
     message: expires
-      ? `${org.name} is using our ${entry.label} key until ${new Date(expires).toLocaleDateString("en-US")}.`
-      : `${org.name} is using our ${entry.label} key, with no expiry.`,
+      ? `${entry.label} grant saved for ${org.name} until ${new Date(expires).toLocaleDateString("en-US")}. Routing, billing preferences and spending controls still apply.`
+      : `${entry.label} grant saved for ${org.name}, with no expiry. Routing, billing preferences and spending controls still apply.`,
   };
 }
 
@@ -311,6 +311,6 @@ export async function revokeKeyFromAccount(input: {
 
   return {
     ok: true,
-    message: `${org.name} no longer uses our ${entry.label} key.`,
+    message: `${entry.label} grant removed for ${org.name}. Another configured credential may still apply.`,
   };
 }
