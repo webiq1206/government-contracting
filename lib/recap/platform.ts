@@ -475,7 +475,7 @@ export function buildPlatformRecap(
 
   const sections: RecapSection[] = [
     section("urgent", "urgent", urgent, [], "No urgent account problems were recorded in this recap."),
-    section("problems", "problem", problems, [], "No integration failures were recorded. Connections that have not been used or tested are still unverified."),
+    section("problems", "problem", problems, [], "No disconnected integrations appear in connection-status records. See Urgent attention for agent-run failures. This does not verify current provider access."),
     section("review", "normal", review, [], "No account has gone quiet."),
     section("totals", "normal", [], totals, "Nothing was recorded."),
   ];
