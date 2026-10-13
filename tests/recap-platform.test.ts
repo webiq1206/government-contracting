@@ -79,6 +79,37 @@ describe("the platform recap", () => {
     expect(many.sections.find((s) => s.key === "urgent")!.items[0]!.severity).toBe("critical");
   });
 
+  it("keeps agent failures visible when connection-status records have no disconnected integrations", () => {
+    const recap = buildPlatformRecap(facts({
+      failingAgents: [
+        { agent: "sources-sought-responder", errors: 6, orgs: 1, sample: "AI_UNAVAILABLE: synthetic saved refusal" },
+        { agent: "backlink-scout", errors: 1, orgs: 1, sample: "Synthetic Ahrefs HTTP 403 refusal" },
+      ],
+      jobRuns: 1500,
+      jobFailures: 7,
+    }), ctx);
+    const urgent = recap.sections.find((s) => s.key === "urgent")!;
+    const problems = recap.sections.find((s) => s.key === "problems")!;
+    expect(problems.items).toHaveLength(0);
+    expect(urgent.items).toMatchObject([
+      { title: "sources-sought-responder failed 6 times across 1 account", severity: "critical", href: "/admin/health" },
+      { title: "backlink-scout failed 1 time across 1 account", severity: "warning", href: "/admin/health" },
+    ]);
+    expect(recap.sections.find((s) => s.key === "totals")!.totals)
+      .toContainEqual(expect.objectContaining({ label: "Jobs run", value: 1500, note: "7 failed" }));
+
+    const rendered = renderRecapEmail(recap, { appUrl: "https://app.example.com" });
+    for (const body of [rendered.html, rendered.text]) {
+      expect(body).toContain("No disconnected integrations appear in connection-status records.");
+      expect(body).toContain("See Urgent attention for agent-run failures.");
+      expect(body).toContain("This does not verify current provider access.");
+      expect(body).not.toContain("No integration failures were recorded");
+      expect(body).toContain("AI_UNAVAILABLE: synthetic saved refusal");
+      expect(body).toContain("Synthetic Ahrefs HTTP 403 refusal");
+      expect(body).toContain("https://app.example.com/admin/health");
+    }
+  });
+
   it("names an account that has gone quiet, without calling it urgent", () => {
     const recap = buildPlatformRecap(
       facts({
