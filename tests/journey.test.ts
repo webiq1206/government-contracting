@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   journeySteps,
   deriveStep,
+  hasActiveSubcontractors,
   stepHasAction,
   JOURNEY_STAGES,
   isStalled,
@@ -76,6 +77,60 @@ describe("isStalled", () => {
 });
 
 describe("deriveStep", () => {
+  it.each([true, false])("keeps missing analysis ahead of a fresh notice timestamp (human flag %s)", (humanActionRequired) => {
+    const step = deriveStep(input({ humanActionRequired, hoursSinceUpdate: 0,
+      riskFlags: ["incomplete_solicitation", "missing_attachments", "awaiting_document_analysis"] }));
+    expect(step.waitingOn).toBe("you");
+    expect(step.title).toBe("Review the analysis blockers");
+    expect(step.anchor).toBe("#attachments");
+    expect(JSON.stringify(step)).not.toMatch(/No action required|is reading|starts automatically|then emails/i);
+  });
+
+  it("respects a human analysis hold even when no reason flag survived", () => {
+    expect(deriveStep(input({ humanActionRequired: true })).title).toBe("Review the analysis blockers");
+  });
+
+  it("does not turn an unrelated nonblocking risk into an analysis hold", () => {
+    expect(deriveStep(input({ riskFlags: ["possible_high_value_contract"] })).waitingOn).toBe("system");
+  });
+
+  it.each([true, false])("does not offer calls or claim emails exist when no active subs remain (calls %s)", (callsEnabled) => {
+    const step = deriveStep(input({ stage: "call_queue", callsEnabled,
+      hasActiveSubs: false, pendingCallCount: 1, requiredTradeCount: 2 }));
+    expect(step.title).toBe("Find subcontractors before requesting prices");
+    expect(step.anchor).toBe("#coverage");
+    expect(step.href).toBeUndefined();
+    expect(step.waitingOn).toBe("you");
+    expect(JSON.stringify(step)).not.toMatch(/ready to be called|emailed prices|waiting on subcontractor replies/i);
+  });
+
+  it.each([undefined, 0])("requires positive pending-call evidence instead of inferring it from stage (%s)", (pendingCallCount) => {
+    const step = deriveStep(input({ stage: "call_queue", hasActiveSubs: true, pendingCallCount }));
+    expect(step.anchor).toBe("#coverage");
+    expect(step.href).toBeUndefined();
+    expect(step.why).not.toContain("Subs are ready");
+  });
+
+  it("routes recorded calls to this opportunity's queue without asserting contact verification", () => {
+    const step = deriveStep(input({ stage: "call_queue", hasActiveSubs: true,
+      pendingCallCount: 2, opportunityId: "synthetic-opportunity" }));
+    expect(step.href).toBe("/call-queue?opportunity=synthetic-opportunity");
+    expect(step.title).toBe("Review the pending calls");
+    expect(step.why).not.toContain("Subs are ready");
+  });
+
+  it.each(["archived", "closed"])("keeps %s history above current analysis or contact warnings", (status) => {
+    const step = deriveStep(input({ status, humanActionRequired: true,
+      riskFlags: ["incomplete_solicitation"], hasActiveSubs: false }));
+    expect(step.closedLabel).toBeTruthy();
+    expect(step.anchor).toBeUndefined();
+  });
+
+  it("keeps existing complete quotes ahead of unnecessary subcontractor sourcing", () => {
+    const step = deriveStep(input({ stage: "call_queue", hasActiveSubs: false,
+      hasQuotes: true, requiredTradeCount: 2, tradeCoverageUncovered: 0 }));
+    expect(step.anchor).toBe("#submission");
+  });
   it("puts the borderline triage decision above everything else", () => {
     const step = deriveStep(input({ tier: "review", humanActionRequired: true }))!;
     expect(step.decision).toBe("triage");
@@ -98,8 +153,8 @@ describe("deriveStep", () => {
   });
 
   it("does not show the paused warning on human-owned stages", () => {
-    const step = deriveStep(input({ stage: "call_queue", automationPaused: true }))!;
-    expect(step.title).toMatch(/call the subcontractors/i);
+    const step = deriveStep(input({ stage: "call_queue", automationPaused: true, hasActiveSubs: true, pendingCallCount: 1 }))!;
+    expect(step.title).toMatch(/review the pending calls/i);
   });
 
   it("flags a stalled auto stage and deep-links to the responsible agent's log", () => {
@@ -210,6 +265,26 @@ describe("deriveStep", () => {
 
   it("includes what happens next on won", () => {
     expect(deriveStep(input({ stage: "won" })).after).toBeTruthy();
+  });
+});
+
+describe("current subcontractor pairings", () => {
+  it("does not count empty, removed, declined or unavailable history as active", () => {
+    expect(hasActiveSubcontractors([])).toBe(false);
+    expect(hasActiveSubcontractors([
+      { removed_at: "2026-10-01", outreach_state: "pending" },
+      { removed_at: null, outreach_state: "declined" },
+      { removed_at: null, outreach_state: "not_a_fit" },
+      { removed_at: null, outreach_state: "unavailable" },
+    ])).toBe(false);
+  });
+  it("recognizes a current pairing without claiming it is callable or verified", () => {
+    expect(hasActiveSubcontractors([{ removed_at: null, outreach_state: "pending" }])).toBe(true);
+  });
+  it("leaves absence unknown when historical pairings fill the bounded read", () => {
+    const history = Array.from({ length: 300 }, () => ({ removed_at: "2026-10-01", outreach_state: "pending" }));
+    expect(hasActiveSubcontractors(history)).toBeUndefined();
+    expect(hasActiveSubcontractors([...history, { removed_at: null, outreach_state: "pending" }])).toBe(true);
   });
 });
 

@@ -224,6 +224,10 @@ export interface StepInput {
    * site keeps its current copy.
    */
   callsEnabled?: boolean;
+  /** Current pairings only; removed or declined choices are not active work. */
+  hasActiveSubs?: boolean;
+  /** Count from the scoped, workable call queue. Missing means not checked. */
+  pendingCallCount?: number;
   /**
    * When known, call-queue links narrow to this opportunity's calls. Sending
    * an operator who asked to price one bid into the entire queue makes them
@@ -231,6 +235,17 @@ export interface StepInput {
    * to remove.
    */
   opportunityId?: string;
+}
+
+export function hasActiveSubcontractors(subs: readonly {
+  removed_at?: unknown;
+  outreach_state?: string | null;
+}[]): boolean | undefined {
+  if (subs.some((sub) => sub.removed_at == null &&
+    !["declined", "not_a_fit", "unavailable"].includes(sub.outreach_state ?? ""))) return true;
+  // The detail and preview reads stop at 300 rows. Historical rows can fill
+  // that window, so absence there cannot establish an empty current roster.
+  return subs.length < 300 ? false : undefined;
 }
 
 /** The Call Queue, scoped to one bid when we know which bid asked. */
@@ -349,6 +364,23 @@ export function deriveStep(s: StepInput): NextStep {
       decision: "triage",
       waitingOn: "you",
     };
+
+  // A fresh notice refresh is not evidence that its held analysis is running.
+  // Keep the recorded human/completeness gate ahead of stage-based progress copy.
+  if (s.stage === "analysis" && (s.humanActionRequired ||
+    (s.riskFlags ?? []).some((flag) => [
+      "awaiting_document_analysis", "incomplete_solicitation", "missing_attachments",
+    ].includes(flag)))) {
+    return {
+      title: "Review the analysis blockers",
+      why: "This record has an unresolved review flag or incomplete analysis. Check the missing information and source documents; the saved stage does not confirm that an analyst is running.",
+      after: "Resolve the recorded gaps, then check the latest analysis status before continuing to subcontractor research.",
+      cta: "Review source documents",
+      anchor: "#attachments",
+      tone: "warn",
+      waitingOn: "you",
+    };
+  }
 
   const step = deriveStageStep(s);
 
@@ -525,6 +557,17 @@ function deriveStageStep(s: StepInput): NextStep {
           waitingOn: "you",
         };
       }
+      if (s.hasActiveSubs === false) {
+        return {
+          title: "Find subcontractors before requesting prices",
+          why: "No active subcontractors are linked to this opportunity. Review the required trades and research blockers before starting outreach or calls.",
+          after: "Confirm suitable subcontractors and their contact details before requesting a quote.",
+          cta: "Review trade coverage",
+          anchor: "#coverage",
+          tone: "warn",
+          waitingOn: "you",
+        };
+      }
       if (s.callsEnabled === false) {
         // Left over from before calling was turned off. Never ask for the call.
         return {
@@ -537,13 +580,26 @@ function deriveStageStep(s: StepInput): NextStep {
           waitingOn: "subs",
         };
       }
+      if (typeof s.pendingCallCount === "number" && s.pendingCallCount > 0) {
+        return {
+          title: "Review the pending calls",
+          why: "This opportunity has pending call cards. Check each contact and the current scope in the call workspace before calling.",
+          after: "Record the subcontractor's actual answers and quote in the call workspace.",
+          cta: "Review pending calls",
+          href: callQueueHref(s),
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
       return {
-        title: "Call the subcontractors",
-        why: "Subs are ready to be called. Each call card opens a guided workspace that captures their price and answers in one pass.",
-        after: "Saving a call's quote immediately re-prices the bid, no separate data entry.",
-        cta: "Start calling",
-        href: callQueueHref(s),
-        tone: "action",
+        title: "Review subcontractor calls and contact details",
+        why: s.pendingCallCount === 0
+          ? "No workable call cards are recorded for this opportunity. Review trade coverage and contact details before preparing calls."
+          : "Call readiness has not been established here. Review the current subcontractors and their contact details before preparing calls.",
+        after: "A saved call stage alone does not establish that a subcontractor is ready to call.",
+        cta: "Review trade coverage",
+        anchor: "#coverage",
+        tone: "warn",
         waitingOn: "you",
       };
     case "quote_entry": {
