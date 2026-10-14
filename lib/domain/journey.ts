@@ -240,9 +240,12 @@ export interface StepInput {
 export function hasActiveSubcontractors(subs: readonly {
   removed_at?: unknown;
   outreach_state?: string | null;
-}[]): boolean {
-  return subs.some((sub) => sub.removed_at == null &&
-    !["declined", "not_a_fit", "unavailable"].includes(sub.outreach_state ?? ""));
+}[]): boolean | undefined {
+  if (subs.some((sub) => sub.removed_at == null &&
+    !["declined", "not_a_fit", "unavailable"].includes(sub.outreach_state ?? ""))) return true;
+  // The detail and preview reads stop at 300 rows. Historical rows can fill
+  // that window, so absence there cannot establish an empty current roster.
+  return subs.length < 300 ? false : undefined;
 }
 
 /** The Call Queue, scoped to one bid when we know which bid asked. */

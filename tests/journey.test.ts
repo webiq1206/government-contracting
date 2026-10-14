@@ -281,6 +281,11 @@ describe("current subcontractor pairings", () => {
   it("recognizes a current pairing without claiming it is callable or verified", () => {
     expect(hasActiveSubcontractors([{ removed_at: null, outreach_state: "pending" }])).toBe(true);
   });
+  it("leaves absence unknown when historical pairings fill the bounded read", () => {
+    const history = Array.from({ length: 300 }, () => ({ removed_at: "2026-10-01", outreach_state: "pending" }));
+    expect(hasActiveSubcontractors(history)).toBeUndefined();
+    expect(hasActiveSubcontractors([...history, { removed_at: null, outreach_state: "pending" }])).toBe(true);
+  });
 });
 
 describe("closed record presentation", () => {

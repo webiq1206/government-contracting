@@ -1,15 +1,15 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
-const mocks=vi.hoisted(()=>({auth:vi.fn(),one:vi.fn(),many:vi.fn()}));
+const mocks=vi.hoisted(()=>({auth:vi.fn(),one:vi.fn(),many:vi.fn(),calls:vi.fn()}));
 vi.mock("@/lib/org-guard",()=>({requireOrgContext:mocks.auth}));
 vi.mock("@/lib/db",()=>({queryOne:mocks.one,query:mocks.many}));
 vi.mock("@/lib/work-mode",()=>({opportunityWorkMode:async()=>null}));
-vi.mock("@/lib/app-settings",()=>({areCallsEnabled:async()=>false}));
+vi.mock("@/lib/app-settings",()=>({areCallsEnabled:mocks.calls}));
 import { GET } from "@/app/api/opportunities/[id]/preview/route";
 const stale='75 points, AUTO-PURSUE and weeks remaining';
 let opportunity:Record<string,unknown>|null;
 beforeEach(()=>{
- vi.resetAllMocks();mocks.auth.mockResolvedValue({orgId:'synthetic-owner'});mocks.many.mockResolvedValue([]);
+ vi.resetAllMocks();mocks.auth.mockResolvedValue({orgId:'synthetic-owner'});mocks.many.mockResolvedValue([]);mocks.calls.mockResolvedValue(false);
  opportunity={id:'synthetic',title:'Synthetic opportunity',stage:'scoring',status:'open',score:62,tier:'review',risk_flags:[],human_action_required:true,
   score_breakdown:{total:62,summary:stale},solicitation_analysis:{pursue_recommendation:stale,required_trades:[]}};
  mocks.one.mockImplementation(async(sql:string)=>sql.includes('from opportunities')?opportunity:null);
@@ -59,4 +59,13 @@ it('treats removed and declined pairings as history in the preview',async()=>{
   {trade:'painting',removed_at:null,outreach_state:'declined'},
  ]:[]);
  expect((await(await call()).json()).nextStep.title).toBe('Find subcontractors before requesting prices');
+});
+it('does not claim the current roster is empty when the historical pairing read is capped',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});
+ mocks.calls.mockResolvedValue(true);
+ mocks.many.mockImplementation(async(sql:string)=>sql.includes('from opportunity_subs')?
+  Array.from({length:300},()=>({trade:'painting',removed_at:'2026-10-01',outreach_state:'pending'})):[]);
+ const step=(await(await call()).json()).nextStep;
+ expect(step.title).toBe('Review subcontractor calls and contact details');
+ expect(step.why).toContain('has not been established');
 });
