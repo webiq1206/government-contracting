@@ -24,7 +24,7 @@ import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { RecordActionBar } from "@/components/record-action-bar";
-import { deriveStep } from "@/lib/domain/journey";
+import { deriveStep, hasActiveSubcontractors } from "@/lib/domain/journey";
 import { OpportunityJourney } from "@/components/opportunity-journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
@@ -506,6 +506,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     outreachDraftOnly,
     riskFlags: opp.risk_flags,
     callsEnabled: rules.calls_enabled,
+    hasActiveSubs: hasActiveSubcontractors(subs),
+    pendingCallCount: pendingCalls,
   };
   const step = deriveStep({ ...stepInput, opportunityId: opp.id });
 

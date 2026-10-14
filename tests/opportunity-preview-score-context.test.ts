@@ -37,3 +37,26 @@ it('keeps authentication and missing/foreign record failures unchanged',async()=
  mocks.auth.mockResolvedValue({orgId:'synthetic-owner'});opportunity=null;
  expect((await call()).status).toBe(404);expect(mocks.many).not.toHaveBeenCalled();
 });
+it('reports a held analysis rather than claiming automatic work is running',async()=>{
+ Object.assign(opportunity!,{stage:'analysis',tier:'pursue',human_action_required:true,
+  risk_flags:['incomplete_solicitation','awaiting_document_analysis'],updated_at:new Date().toISOString()});
+ const body=await(await call()).json();
+ expect(body.nextStep.title).toBe('Review the analysis blockers');
+ expect(body.nextStep.waitingOn).toBe('you');
+ expect(JSON.stringify(body.nextStep)).not.toMatch(/No action required|is reading|starts automatically/);
+});
+it('does not claim calls or sent mail exist for an empty current subcontractor roster',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue',human_action_required:true});
+ const body=await(await call()).json();
+ expect(body.nextStep.title).toBe('Find subcontractors before requesting prices');
+ expect(body.nextStep.waitingOn).toBe('you');
+ expect(mocks.many).toHaveBeenCalledWith(expect.stringContaining('s.org_id=$2'),['synthetic','synthetic-owner']);
+});
+it('treats removed and declined pairings as history in the preview',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});
+ mocks.many.mockImplementation(async(sql:string)=>sql.includes('from opportunity_subs')?[
+  {trade:'painting',removed_at:'2026-10-01',outreach_state:'pending'},
+  {trade:'painting',removed_at:null,outreach_state:'declined'},
+ ]:[]);
+ expect((await(await call()).json()).nextStep.title).toBe('Find subcontractors before requesting prices');
+});
