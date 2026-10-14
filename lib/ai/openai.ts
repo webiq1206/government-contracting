@@ -9,7 +9,8 @@
  * talks to the network on its own behalf.
  *
  * What this module knows about the models it talks to:
- *   - gpt-5.x and o-series are reasoning models. They refuse a temperature
+ *   - GPT-6 candidates have a separate fixed-none contract. gpt-5.x and
+ *     o-series use the existing reasoning configuration. We omit temperature
  *     and take a reasoning effort instead. Reasoning tokens are billed as
  *     output and count against max_output_tokens, so a caller's token budget
  *     gets headroom whenever reasoning is actually enabled.
@@ -18,12 +19,14 @@
  *     operator setting works across the family.
  *   - PDFs travel inline as data URLs (input_file). Vision models read the
  *     page images, which is what makes a scanned solicitation legible.
- *   - Prompt caching is automatic on prefixes of 1024+ tokens. The Company
+ *   - Legacy prompt caching is automatic on eligible prefixes. The Company
  *     Profile leads the instructions, so it is the cached prefix; a per-org
- *     prompt_cache_key steers repeat calls to the same cache.
+ *     prompt_cache_key steers repeat calls to the same cache. GPT-6 candidate
+ *     requests use explicit mode without breakpoints, avoiding cache writes.
  */
 
 import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
+import { gpt6TokenEnvelope, isBoundedGpt6 } from "./model-contracts";
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 /** Default output-token headroom when reasoning is on. Tuned, not measured. */
@@ -122,15 +125,20 @@ export function describeOpenAiFailure(
   return null;
 }
 
-/** gpt-5.x and the o-series reason; they refuse sampling parameters. */
+/** Reasoning-capable families; the candidate contract only admits exact IDs. */
 export function openAiIsReasoningModel(model: string): boolean {
-  return /^(gpt-5|o\d)/i.test(model.trim());
+  return /^(gpt-[56]|o\d)/i.test(model.trim());
 }
 
 /** The first gpt-5 generation spells "no reasoning" as minimal; later ones as none. */
 export function normalizeReasoningEffort(model: string, effort: string | undefined): string | null {
   if (!openAiIsReasoningModel(model)) return null;
   const e = (effort ?? "").trim().toLowerCase();
+  if (/^gpt-6/i.test(model.trim())) {
+    if (!isBoundedGpt6(model) || (e && e !== "none"))
+      throw new Error("This GPT-6 model or reasoning effort has no reviewed bounded transport contract.");
+    return "none";
+  }
   if (!e) return null;
   const firstGen = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i.test(model.trim());
   if (e === "none" && firstGen) return "minimal";
@@ -163,6 +171,7 @@ export interface OpenAiRequest {
 
 /** The request body, kept pure so the shape can be pinned by tests. */
 export function buildOpenAiBody(req: OpenAiRequest): Record<string, unknown> {
+  gpt6TokenEnvelope(req);
   const effort = normalizeReasoningEffort(req.model, req.effort);
   const reasoningOn = effort != null && effort !== "none" && effort !== "minimal";
   const content: Record<string, unknown>[] = [
@@ -177,8 +186,8 @@ export function buildOpenAiBody(req: OpenAiRequest): Record<string, unknown> {
     model: req.model,
     input: [{ role: "user", content }],
     max_output_tokens: req.maxTokens + (reasoningOn ? (req.reasoningHeadroom ?? DEFAULT_REASONING_HEADROOM) : 0),
-    // Never retain prompts or outputs on the provider's side. Solicitation
-    // documents and subcontractor replies are the customer's, not training data.
+    // Disable stored Responses. This is not a claim about the provider's
+    // separate abuse-monitoring retention or the account's data policy.
     store: false,
   };
   if (req.instructions) body.instructions = req.instructions;
@@ -187,16 +196,24 @@ export function buildOpenAiBody(req: OpenAiRequest): Record<string, unknown> {
   if (req.json) body.text = { format: { type: "json_object" } };
   if (req.responseSchema) body.text = { format: { type: "json_schema", name: "brostco_response", strict: true, schema: req.responseSchema } };
   if (req.cacheKey) body.prompt_cache_key = req.cacheKey;
+  if (isBoundedGpt6(req.model)) {
+    // Explicit caching without breakpoints performs neither reads nor writes.
+    // Keep the caller's output limit; old medium/+4096 knobs never apply.
+    body.prompt_cache_options = { mode: "explicit" };
+    body.service_tier = "default";
+    body.truncation = "disabled";
+  }
   return body;
 }
 
 export interface OpenAiUsage {
   /** Input tokens NOT served from cache. Kept apart so a rate per bucket adds up. */
-  input_tokens: number;
-  cached_input_tokens: number;
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
   /** All output, reasoning included, which is how OpenAI bills it. */
-  output_tokens: number;
-  reasoning_tokens: number;
+  output_tokens?: number;
+  reasoning_tokens?: number;
 }
 
 export interface OpenAiResult {
@@ -209,20 +226,21 @@ export interface OpenAiResult {
 
 type ResponsesBody = {
   id?: string;
+  service_tier?: string;
   status?: string;
   incomplete_details?: { reason?: string } | null;
   output?: { type?: string; content?: { type?: string; text?: string; refusal?: string }[] }[];
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
-    input_tokens_details?: { cached_tokens?: number };
+    input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
     output_tokens_details?: { reasoning_tokens?: number };
   };
   error?: { message?: string; type?: string; code?: string | null } | null;
 };
 
 /** Read the assistant text out of a Responses payload. Pure. */
-export function parseOpenAiResponse(body: ResponsesBody): OpenAiResult {
+export function parseOpenAiResponse(body: ResponsesBody, model?: string): OpenAiResult {
   const parts: string[] = [];
   let refused = false;
   for (const item of body.output ?? []) {
@@ -232,8 +250,18 @@ export function parseOpenAiResponse(body: ResponsesBody): OpenAiResult {
       else if (c?.type === "refusal") refused = true;
     }
   }
-  const input = body.usage?.input_tokens ?? 0;
+  const tokenCount = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+  const input = body.usage?.input_tokens;
+  const output = body.usage?.output_tokens;
   const cached = body.usage?.input_tokens_details?.cached_tokens ?? 0;
+  const written = body.usage?.input_tokens_details?.cache_write_tokens ?? 0;
+  const reasoning = body.usage?.output_tokens_details?.reasoning_tokens ?? 0;
+  // Missing/contradictory usage keeps the entire reservation. It must not
+  // become a zero-cost success or trigger a duplicate completion attempt.
+  const known = tokenCount(input) && tokenCount(output) && tokenCount(cached) && tokenCount(written) &&
+    tokenCount(reasoning) && cached + written <= input && reasoning <= output && written === 0 &&
+    (!model || !isBoundedGpt6(model) || (input <= 272000 && cached === 0 &&
+      body.service_tier === "default" && reasoning === 0));
   const stopReason =
     refused ? "refusal" : body.status === "incomplete"
       ? body.incomplete_details?.reason === "max_output_tokens"
@@ -243,12 +271,12 @@ export function parseOpenAiResponse(body: ResponsesBody): OpenAiResult {
   return {
     id: body.id ?? "",
     text: parts.join(""),
-    usage: {
-      input_tokens: Math.max(0, input - cached),
+    usage: known ? {
+      input_tokens: input - cached - written,
       cached_input_tokens: cached,
-      output_tokens: body.usage?.output_tokens ?? 0,
-      reasoning_tokens: body.usage?.output_tokens_details?.reasoning_tokens ?? 0,
-    },
+      output_tokens: output,
+      reasoning_tokens: reasoning,
+    } : {},
     stopReason,
   };
 }
@@ -304,7 +332,7 @@ export async function openAiResponse(
         diagnostics
       );
     }
-    return parseOpenAiResponse(body);
+    return parseOpenAiResponse(body, req.model);
   } finally {
     clearTimeout(timer);
   }

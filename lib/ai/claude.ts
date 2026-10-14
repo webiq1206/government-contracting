@@ -30,11 +30,12 @@ import {
   type AiRoute,
   type RoutingConfig,
 } from "./routing";
-import { openAiResponse, describeOpenAiFailure } from "./openai";
+import { openAiResponse, describeOpenAiFailure, buildOpenAiBody, type OpenAiRequest } from "./openai";
 import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
 import { currentOrgId, runWithOrg } from "../tenant-context";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { eligibleForFailover } from "./failover-policy";
+import { isBoundedGpt6 } from "./model-contracts";
 
 export type { AiProvider, AiRoute } from "./routing";
 
@@ -223,7 +224,7 @@ export function routingConfig(orgId?: string): RoutingConfig {
   };
   if (config.ai.brostcoFailover && orgId === LEGACY_ORG_ID) {
     return { ...cfg, routineProvider: "OpenAI", complexProvider: "OpenAI", fallback: true,
-      openai: { model: "gpt-4.1", modelSmart: "gpt-4.1" },
+      openai: config.openai.gpt6Candidates ? cfg.openai : { model: "gpt-4.1", modelSmart: "gpt-4.1" },
       anthropic: { model: "claude-haiku-4-5-20251001", modelSmart: "claude-haiku-4-5-20251001" } };
   }
   return cfg;
@@ -266,15 +267,16 @@ export async function planRoute(
     // Legacy callers express a tier through their old model setting. This
     // rollout only admits the two reviewed model versions, including those
     // explicit callers; it does not enable arbitrary provider models.
-    return chooseRoute({ complexity: tier, model: provider === "OpenAI" ? cfg.openai.model : cfg.anthropic.model,
+    const models = provider === "OpenAI" ? cfg.openai : cfg.anthropic;
+    return chooseRoute({ complexity: tier, model: tier === "complex" ? models.modelSmart : models.model,
       fallback: opts.fallback, available, cfg });
   }
   return chooseRoute({ complexity: opts.complexity, model: opts.model, fallback: opts.fallback, available, cfg });
 }
 
 export interface ClaudeUsage {
-  input_tokens: number;
-  output_tokens: number;
+  input_tokens?: number;
+  output_tokens?: number;
   model: string;
   /**
    * Tokens written to and read from the prompt cache.
@@ -697,8 +699,7 @@ async function runOpenAi(
   // stable profile still leads, which is the prefix OpenAI's automatic
   // prompt cache matches on.
   const instructions = system.map((b) => b.text).join("\n\n") || null;
-  const res = await metered(identity, "OpenAI", model, feature,
-    () => providerRequest("OpenAI", () => openAiResponse({
+  const request: OpenAiRequest = {
       apiKey,
       model,
       instructions,
@@ -707,12 +708,21 @@ async function runOpenAi(
       maxTokens: opts.maxTokens ?? 2048,
       json: opts.json,
       responseSchema: opts.responseSchema,
-      effort: route.complex ? config.openai.reasoningComplex : config.openai.reasoningRoutine,
+      effort: isBoundedGpt6(model) ? "none" : route.complex ? config.openai.reasoningComplex : config.openai.reasoningRoutine,
       reasoningHeadroom: config.openai.reasoningHeadroom,
       temperature: opts.temperature ?? 0.2,
       timeoutMs: opts.timeoutMs,
       cacheKey: `brostco:${identity.orgId}`,
-    }), apiKey),
+    };
+  // Validate the bounded contract before admission/transport, so a local hold
+  // cannot be confused with an uncertain provider attempt or replayed work.
+  try { buildOpenAiBody(request); }
+  catch (error) {
+    const { ApiUsageBlockedError } = await import("../api-usage/ledger");
+    throw new ApiUsageBlockedError(error instanceof Error ? error.message : "AI request contract could not be verified.");
+  }
+  const res = await metered(identity, "OpenAI", model, feature,
+    () => providerRequest("OpenAI", () => openAiResponse(request), apiKey),
     value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex: route.complex, requirePrice });
 
   return {
@@ -724,6 +734,7 @@ async function runOpenAi(
       model,
       provider: "OpenAI",
       cache_read_input_tokens: res.usage.cached_input_tokens,
+      cache_creation_input_tokens: res.usage.cache_write_input_tokens,
       reasoning_tokens: res.usage.reasoning_tokens,
     },
     stopReason: res.stopReason,
@@ -757,8 +768,8 @@ export async function completeJson<T = unknown>(
     "\n\nRespond with ONLY a single valid JSON object. No markdown, no code fences, no commentary before or after.";
   let lastErr: unknown;
   let extra = "";
-  let totalIn = 0;
-  let totalOut = 0;
+  let totalIn: number | undefined = 0;
+  let totalOut: number | undefined = 0;
   let maxTokens = opts.maxTokens ?? 2048;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -769,8 +780,8 @@ export async function completeJson<T = unknown>(
       [LOCAL_SCHEMA_VALIDATION]: true,
     };
     const { text, usage, stopReason } = await complete(prompt + jsonInstruction + extra, completionOptions);
-    totalIn += usage.input_tokens;
-    totalOut += usage.output_tokens;
+    totalIn = totalIn != null && usage.input_tokens != null ? totalIn + usage.input_tokens : undefined;
+    totalOut = totalOut != null && usage.output_tokens != null ? totalOut + usage.output_tokens : undefined;
     if (!["end_turn", "stop_sequence", "max_tokens"].includes(stopReason ?? ""))
       throw new Error("AI provider declined or did not complete this request; no correction retry was attempted.");
     try {
