@@ -9,6 +9,12 @@ on:
         options: [inspect, apply]
         default: inspect
         required: true
+      inspection:
+        description: Read-only evidence scope; migration134 returns fingerprints, never raw production rows.
+        type: choice
+        options: [ledger, migration134]
+        default: ledger
+        required: true
 
 permissions:
   contents: read
@@ -44,3 +50,4 @@ jobs:
           EXPECTED_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
           EXPECTED_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
           RELEASE_ACTION: ${{ inputs.action }}
+          RELEASE_INSPECTION: ${{ inputs.inspection }}
