@@ -1,4 +1,5 @@
 import { DEFAULT_ACCOUNT_BUDGET, DEFAULT_PLATFORM_REQUESTS } from "./defaults";
+import { isBoundedGpt6, gpt6ReservationCovered } from "../ai/model-contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { query, queryOne, transaction } from "../db";
 import { apiUsageContext } from "./context";
@@ -91,6 +92,8 @@ export async function beginUsage(
   options: { complex?: boolean; dryRun?: boolean; requirePrice?: boolean } = {},
 ): Promise<string> {
   const ctx = apiUsageContext();
+  const candidate = provider === "OpenAI" && isBoundedGpt6(service);
+  const requirePrice = options.requirePrice || candidate;
   feature = ctx.feature ?? feature;
   const id = randomUUID();
   await transaction(async (client) => {
@@ -105,17 +108,19 @@ export async function beginUsage(
     );
     const reservation = price.rows[0]?.max_request_cost ?? null;
     const rates = price.rows[0]?.rates;
-    if (options.requirePrice && (reservation == null || !Number.isFinite(Number(reservation)) || Number(reservation) <= 0 ||
+    if (requirePrice && (reservation == null || !Number.isFinite(Number(reservation)) || Number(reservation) <= 0 ||
       !rates || !["input_tokens", "output_tokens"].every(key => Number.isFinite(Number(rates[key])) && Number(rates[key]) > 0) ||
       Object.values(rates).some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0))) {
-      throw new ApiUsageBlockedError("API_BUDGET: AI failover requires a priced request reservation on the selected model. Request-count limits cannot replace its shared dollar budget.");
+      throw new ApiUsageBlockedError("API_BUDGET: AI failover or candidate models require a priced request reservation on the selected model. Request-count limits cannot replace its shared dollar budget.");
     }
+    if (candidate && isBoundedGpt6(service) && !gpt6ReservationCovered(service, rates, reservation))
+      throw new ApiUsageBlockedError("API_BUDGET: Candidate model pricing or its existing reservation does not cover the full reviewed input/output envelope. No limit was raised or evidence shortened.");
     const markup = identity.source === "platform" && identity.accepted ? "1.25" : "1";
     const budget = await client.query("select * from api_account_budgets where org_id=$1", [identity.orgId]);
     const account = budget.rows[0] ?? DEFAULT_ACCOUNT_BUDGET;
-    if (options.requirePrice && (!account ||
+    if (requirePrice && (!account ||
       ![account.daily_limit, account.monthly_limit].some(cap => cap != null && Number.isFinite(Number(cap)) && Number(cap) > 0))) {
-      throw new ApiUsageBlockedError("API_BUDGET: AI failover requires a finite shared dollar limit across both providers.");
+      throw new ApiUsageBlockedError("API_BUDGET: AI failover or candidate models require a finite shared dollar limit across providers.");
     }
     if (account) {
       const blocked = (reason: string) => new ApiUsageBlockedError(
@@ -263,7 +268,7 @@ export async function beginUsage(
 }
 export type UsageResult = {
   requestId?: string;
-  units?: Record<string, number>;
+  units?: Record<string, number | undefined>;
   actualCost?: string;
   evidence?: string;
   errorCode?: string;
@@ -277,7 +282,7 @@ export async function finishUsage(
 ): Promise<void> {
   const units = Object.fromEntries(
     Object.entries(result.units ?? {}).filter(
-      ([, v]) => Number.isFinite(v) && v >= 0,
+      ([, v]) => typeof v === "number" && Number.isFinite(v) && v >= 0,
     ),
   );
   if (result.actualCost != null)

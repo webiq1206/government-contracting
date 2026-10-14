@@ -6,7 +6,8 @@
  */
 
 import { config } from "./config";
-import { buildOpenAiBody } from "./ai/openai";
+import { buildOpenAiBody, parseOpenAiResponse } from "./ai/openai";
+import { isBoundedGpt6 } from "./ai/model-contracts";
 import { providerDiagnostics } from "./api-usage/diagnostics";
 
 export interface ValidationResult {
@@ -41,8 +42,9 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     const identity = await requestIdentity(keyInfo.envKey,keyInfo.value);
     // Validators explicitly receive draft tenant keys, which are not saved yet.
     if (identity.source === 'unknown') identity.source = 'tenant';
+    const candidateModel = keyInfo.provider === 'OpenAI' && isBoundedGpt6(config.openai.model) ? config.openai.model : null;
     let transportStarted = false;
-    const execute = () => metered(identity,keyInfo.provider,'Connection test','API connection check',async()=>{
+    const execute = () => metered(identity,keyInfo.provider,candidateModel ?? 'Connection test','API connection check',async()=>{
       transportStarted = true;
       const res = await fetch(url,{...init,signal:ctl.signal});
       const body = await res.clone().json().catch(()=>null);
@@ -50,7 +52,7 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
     },({res,body})=>{
       const diagnostics = providerDiagnostics({status:res.status,body,headers:res.headers},[keyInfo.value]);
       return {requestId:res.ok?body?.id:diagnostics.requestId ?? undefined,
-        units:res.ok ? body?.usage ?? {requests:1} : {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`,
+        units:res.ok ? candidateModel ? {...parseOpenAiResponse(body ?? {},candidateModel).usage,requests:1} : body?.usage ?? {requests:1} : {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`,
         ...(!res.ok ? {diagnostics} : {})};
     });
     if (keyInfo.provider !== "Anthropic" && keyInfo.provider !== "OpenAI") return (await execute()).res;

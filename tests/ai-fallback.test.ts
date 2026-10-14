@@ -40,6 +40,7 @@ vi.mock("../lib/integration-keys", () => ({
   clearIntegrationKeyCache: () => {},
 }));
 vi.mock("../lib/api-usage/ledger", () => ({
+  ApiUsageBlockedError: class extends Error { name = "ApiUsageBlockedError"; },
   requestIdentity: async (envKey: string) => ({ orgId: TEST_ORG, envKey }),
   metered: async (_i: unknown, provider: string, model: string, _f: string, execute: () => Promise<unknown>, _d: unknown, options: { complex?: boolean }) => {
     if (state.blocked) {
@@ -74,6 +75,38 @@ beforeEach(() => {
 });
 
 describe("routing through complete()", () => {
+  it("uses the candidate complex tier with none even when legacy knobs say medium/+4096", async () => {
+    const previous = {...config.openai};
+    config.openai.model = "gpt-6-luna"; config.openai.modelSmart = "gpt-6-sol";
+    config.openai.gpt6Candidates = true; config.openai.reasoningComplex = "medium";
+    config.ai.complexProvider = "OpenAI";
+    try {
+      const {routingConfig,planRoute} = await import("../lib/ai/claude");
+      const {LEGACY_ORG_ID} = await import("../lib/tenant-context");
+      config.ai.brostcoFailover = true;
+      expect(routingConfig(LEGACY_ORG_ID).openai).toEqual({model:"gpt-6-luna",modelSmart:"gpt-6-sol"});
+      expect((await planRoute({model:"gpt-4.1",complexity:"complex"},LEGACY_ORG_ID))?.primary.model).toBe("gpt-6-sol");
+      config.ai.brostcoFailover = false;
+      await call("Review the supplied source",{complexity:"complex",maxTokens:16384});
+      expect(openAi.mock.calls[0][0]).toMatchObject({model:"gpt-6-sol",effort:"none",maxTokens:16384});
+      expect(state.metered[0]).toMatchObject({model:"gpt-6-sol",complex:true});
+      state.metered=[]; openAi.mockClear();
+      await expect(call("Read PDF",{complexity:"complex",documents:[{base64:"synthetic"}]})).rejects.toThrow("verified token-cost bound");
+      expect(state.metered).toHaveLength(0); expect(openAi).not.toHaveBeenCalled(); expect(anthropicCreate).not.toHaveBeenCalled();
+    } finally {
+      config.openai.model=previous.model; config.openai.modelSmart=previous.modelSmart;
+      config.openai.gpt6Candidates=previous.gpt6Candidates; config.openai.reasoningComplex=previous.reasoningComplex;
+      config.ai.brostcoFailover=false;
+    }
+  });
+  it("keeps unknown usage unknown across a JSON correction without replaying completed work for accounting", async () => {
+    const {completeJson} = await import("../lib/ai/claude");
+    openAi.mockResolvedValueOnce({...openAiOk,text:"not JSON",usage:{}}).mockResolvedValueOnce({...openAiOk,text:'{"ok":true}'});
+    const result = await runWithOrg(TEST_ORG,()=>completeJson("Return JSON"));
+    expect(result.data).toEqual({ok:true});
+    expect(result.usage.input_tokens).toBeUndefined(); expect(result.usage.output_tokens).toBeUndefined();
+    expect(openAi).toHaveBeenCalledTimes(2);
+  });
   it("runs routine work on OpenAI's routine model and complex work on Claude's strong model", async () => {
     const { config } = await import("../lib/config");
     const routine = await call("Summarize a note");

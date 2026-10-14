@@ -93,6 +93,17 @@ async function syntheticAttempt(recovery: boolean) {
   return result;
 }
 
+it.each(['gpt-6-luna','gpt-6-sol'])('prepares bounded %s preview authority without authorizing ordinary work', async model => {
+  await fixture.db.exec(readFileSync('db/migrations/134_gpt6_candidate_rates.sql','utf8'));
+  const plan = await dryRunPreview(input({model}));
+  expect(plan).toMatchObject({model,maxOutputTokens:512,sends:0,mode:'preview-only'});
+  const value = await prepared({model});
+  await activatePreview(value.id,'fixture-admin',rollout);
+  expect(await heldFence()).toHaveLength(1);
+  expect(fixture.transport).not.toHaveBeenCalled();
+  expect(await historical()).toEqual(oldRows);
+});
+
 beforeAll(async () => {
   if (process.env.ALLOW_TESTS_AGAINST_DATABASE_URL === '1') {
     const dev = process.env.USE_REPLIT_DEV_DB === 'true';

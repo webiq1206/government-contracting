@@ -3,7 +3,7 @@ const state = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), evidence: vi.fn
 vi.mock("../lib/platform-admin", () => ({ requirePlatformAdmin: state.auth }));
 vi.mock("../lib/db", () => ({ query: state.query }));
 vi.mock("../lib/ai/provider-facts", () => ({ currentProviderEvidence: state.evidence }));
-vi.mock("../lib/ai/claude", () => ({ planRoute: state.route, routingConfig: () => ({ fallback: false }) }));
+vi.mock("../lib/ai/claude", () => ({ planRoute: state.route, routingConfig: () => ({ fallback: false, openai:{model:"gpt-6-luna",modelSmart:"gpt-6-sol"}, anthropic:{model:"claude-haiku-4-5-20251001",modelSmart:"claude-haiku-4-5-20251001"} }) }));
 vi.mock("../lib/api-usage/budgets", () => ({ readBudget: state.budget }));
 import { GET } from "../app/api/admin/ai-readiness/route";
 import { LEGACY_ORG_ID } from "../lib/tenant-context";
@@ -29,6 +29,8 @@ it("reads only BrostCo evidence without exposing receipt handles or implying spe
  for(const call of state.evidence.mock.calls)expect(call[1]).toBe(LEGACY_ORG_ID);
  for(const call of state.query.mock.calls)expect(call[0].trim()).toMatch(/^select /i);
  expect(state.query.mock.calls[0][1]).toEqual([LEGACY_ORG_ID]);
+ expect(state.query.mock.calls[1][1][0]).toEqual(["gpt-6-luna","gpt-6-sol"]);
+ expect(body.candidateContract.liveQualityVerified).toBe(false);
 });
 it("fails closed without returning partial readiness when one source fails",async()=>{
  state.query.mockRejectedValue(new Error("private database details"));

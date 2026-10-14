@@ -74,9 +74,10 @@ import {
 import { readUsage } from "../lib/api-usage/read";
 import { readBudget, saveBudget } from "../lib/api-usage/budgets";
 import { invoiceCents } from "../lib/api-usage/money";
-import { openAiResponse } from "../lib/ai/openai";
+import { openAiResponse, parseOpenAiResponse } from "../lib/ai/openai";
 import { fetchJson, withRetry } from "../lib/integrations/http";
 import { VALIDATORS } from "../lib/integration-validators";
+import { config } from "../lib/config";
 import { runWithOrg } from "../lib/tenant-context";
 const org = "00000000-0000-4000-8000-000000000002";
 const other = "00000000-0000-4000-8000-000000000003";
@@ -120,6 +121,33 @@ beforeEach(async () => {
     "truncate prospective_dispatch_claims,ai_provider_facts,api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
   );
   await state.db.query("insert into api_account_budgets(org_id) values($1),($2)",[org,other]);
+});
+it("blocks candidate requests without complete prices even when fallback is off", async () => {
+  const execute = vi.fn(async () => "must not run");
+  await expect(metered(identity,"OpenAI","gpt-6-sol","Synthetic candidate",execute)).rejects.toThrow("priced request reservation");
+  await state.db.exec(readFileSync("db/migrations/134_gpt6_candidate_rates.sql","utf8"));
+  await state.db.exec("update api_usage_rates set rates=jsonb_set(rates,'{output_tokens}','\"8\"') where service='gpt-6-sol'");
+  await expect(metered(identity,"OpenAI","gpt-6-sol","Synthetic candidate",execute)).rejects.toThrow("full reviewed");
+  expect(execute).not.toHaveBeenCalled();
+  expect((await state.db.query("select count(*)::int as count from api_usage_events")).rows[0].count).toBe(0);
+});
+it("keeps missing candidate usage reserved after a completed answer and admits no extra paid work", async () => {
+  await state.db.exec(readFileSync("db/migrations/134_gpt6_candidate_rates.sql","utf8"));
+  await state.db.query("update api_account_budgets set daily_limit=3.75 where org_id=$1",[org]);
+  const response = parseOpenAiResponse({id:"synthetic-completed",status:"completed",service_tier:"default",output:[{type:"message",content:[{type:"output_text",text:"Completed answer"}]}]},"gpt-6-sol");
+  const execute = vi.fn(async () => response);
+  expect(await metered(identity,"OpenAI","gpt-6-sol","Synthetic candidate",execute,v=>({requestId:v.id,units:{...v.usage,requests:1}}))).toEqual(response);
+  const saved = (await state.db.query("select outcome,provider_cost,budget_cost,reserved_cost::text,usage from api_usage_events")).rows[0];
+  expect(saved).toMatchObject({outcome:"success",provider_cost:null,budget_cost:null,usage:{requests:1}});
+  expect(Number(saved.reserved_cost)).toBe(3);
+  await expect(metered(identity,"OpenAI","gpt-6-sol","Synthetic candidate",execute)).rejects.toThrow("allowance");
+  expect(execute).toHaveBeenCalledOnce();
+});
+it("requires a shared dollar cap for candidate models without changing the operator's limits", async () => {
+  await state.db.exec(readFileSync("db/migrations/134_gpt6_candidate_rates.sql","utf8"));
+  await state.db.query("update api_account_budgets set daily_limit=null,monthly_limit=null where org_id=$1",[org]);
+  await expect(beginUsage(identity,"OpenAI","gpt-6-luna","Synthetic candidate")).rejects.toThrow("finite shared dollar limit");
+  expect((await state.db.query("select daily_limit,monthly_limit from api_account_budgets where org_id=$1",[org])).rows[0]).toEqual({daily_limit:null,monthly_limit:null});
 });
 it("records exact costs and 1.25x charges without rounding each tiny request", async () => {
   for (let i = 0; i < 20; i++) {
@@ -218,6 +246,26 @@ it.each([
       expect(JSON.stringify(evidence)).not.toContain(privateText);
     }
   } finally {vi.unstubAllGlobals();}
+});
+it("prices a candidate connection check by its exact model before allowing a synthetic transport", async () => {
+  const previous = config.openai.model;
+  config.openai.model = "gpt-6-luna";
+  const secret = "synthetic-connection-key";
+  await state.db.query("insert into integration_settings values($1,'OPENAI_API_KEY',$2)",[org,secret]);
+  await state.db.query("update api_account_budgets set daily_limit=3 where org_id=$1",[org]);
+  const fakeFetch = vi.fn(async()=>new Response(JSON.stringify({id:"synthetic-test",status:"completed",service_tier:"default",
+    output:[{type:"message",content:[{type:"output_text",text:"hi"}]}],usage:{input_tokens:10,output_tokens:1}}),{status:200}));
+  vi.stubGlobal("fetch",fakeFetch);
+  try {
+    await expect(runWithOrg(org,()=>VALIDATORS.openai({OPENAI_API_KEY:secret}))).rejects.toThrow("priced request reservation");
+    expect(fakeFetch).not.toHaveBeenCalled();
+    await state.db.exec(readFileSync("db/migrations/134_gpt6_candidate_rates.sql","utf8"));
+    expect(await runWithOrg(org,()=>VALIDATORS.openai({OPENAI_API_KEY:secret}))).toMatchObject({ok:true});
+    expect(fakeFetch).toHaveBeenCalledOnce();
+    const row = (await state.db.query("select service,provider_cost,estimated_cost from api_usage_events")).rows[0];
+    expect(row.service).toBe("gpt-6-luna");expect(row.provider_cost).toBeNull();
+    expect(Number(row.estimated_cost)).toBeCloseTo(0.0000015,12);
+  } finally { config.openai.model=previous;vi.unstubAllGlobals(); }
 });
 it("keeps HTTP 200 provider failure costs unresolved while preserving the observed status", async () => {
   const fakeFetch = vi.fn(async()=>new Response(JSON.stringify({status:"failed",error:{code:"server_error"}}),
