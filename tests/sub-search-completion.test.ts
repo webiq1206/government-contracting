@@ -1,6 +1,6 @@
 import {beforeEach,it,expect,vi} from "vitest";
 const m=vi.hoisted(()=>({search:vi.fn(),query:vi.fn(async()=>[])}));
-vi.mock("../lib/db",()=>({query:m.query,queryOne:async()=>({id:"opp",org_id:"org",location_state:"CA",location_text:"Sacramento",solicitation_analysis:{required_trades:["HVAC"]}})}));
+vi.mock("../lib/db",()=>({query:m.query,queryOne:async()=>({id:"opp",org_id:"org",location_state:"CA",location_text:"Sacramento",analysis_input_hash:"current-source",solicitation_analysis:{required_trades:["HVAC"],completeness:{ok:true,missing:[]}}})}));
 vi.mock("../lib/app-settings",()=>({getWorkExecution:async()=>"subcontract"}));
 vi.mock("../lib/ai/companyProfile",()=>({getProfileJson:async()=>({primary_trades:["HVAC"]})}));
 vi.mock("../lib/logger",()=>({logAgent:async()=>undefined}));
