@@ -16,6 +16,8 @@ export interface ContractorGuide {
   slug: string;
   title: string;
   description: string;
+  /** ISO date of the latest editorial change to this guide. */
+  updatedOn?: string;
   category: "Idaho contracting" | "Bid preparation";
   intro: string;
   sections: { heading: string; paragraphs?: string[]; checklist?: string[] }[];
@@ -93,10 +95,11 @@ export const CONTRACTOR_GUIDES: ContractorGuide[] = [
     ], sources: [sam, apex], related: ["proposal-compliance-matrix", "sam-gov-opportunity-search"], productHref: "/platform", productLabel: "Explore the bid workflow",
   },
   {
-    slug: "proposal-compliance-matrix", title: "How to build a government proposal compliance matrix",
-    description: "Turn solicitation requirements into a practical proposal compliance matrix with source references, owners, evidence, review status and amendment checks.",
+    slug: "proposal-compliance-matrix", title: "Proposal compliance matrix: 8 core columns",
+    description: "Build a proposal compliance matrix with 8 core columns for source tracking, ownership, evidence, review status and amendment checks.",
+    updatedOn: "2026-10-12",
     category: "Bid preparation",
-    intro: "A proposal compliance matrix connects each requirement to the place it is answered and the person checking it. It helps prevent a polished proposal from missing a mandatory form, attachment or instruction.",
+    intro: "A proposal compliance matrix uses 8 core columns to connect each requirement to its source, response location, owner, evidence and review status. Track the requirement ID, source, requirement text, response location, owner, supporting evidence, status and reviewer.",
     sections: [
       { heading: "Use one row for each checkable requirement", paragraphs: ["Start with the solicitation and attachments, including available amendments. Separate a submission instruction from a technical requirement and an evaluation criterion. They may appear in different sections and require different evidence.", "Suggested columns: requirement ID, source document and section, requirement, response location, owner, supporting evidence, status and reviewer. Add the document revision or amendment identifier so the source remains traceable."] },
       { heading: "Example rows for your working sheet", checklist: ["Submission deadline | notice section | date, time and zone | submission owner | calendar and source checked | pending.", "Technical approach | solicitation section | required explanation | proposal section | author | evidence attached | in review.", "Required attachment | instructions | named form | package filename | document owner | completed form | reviewer approved.", "Amendment change | amendment identifier | revised requirement | affected response section | owner | revision checked | pending."] },

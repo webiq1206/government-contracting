@@ -82,7 +82,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   },
   ...CONTRACTOR_GUIDES.map((guide): PublicRoute => ({
     path: `/resources/${guide.slug}`, label: guide.title, summary: guide.description,
-    changeFrequency: "monthly", priority: 0.7, group: "Reference", lastModified: GUIDES_UPDATED_ON,
+    changeFrequency: "monthly", priority: 0.7, group: "Reference", lastModified: guide.updatedOn ?? GUIDES_UPDATED_ON,
   })),
   { path: "/platform", label: "Platform overview", summary: "How BrostCo connects opportunity discovery, requirement analysis, subcontractor coordination, and bid preparation.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
   { path: "/ai", label: "How AI works", summary: "What AI reads and prepares, what depends on connected services and rules, and where your team reviews the work.", changeFrequency: "monthly", priority: 0.8, group: "Product" },
