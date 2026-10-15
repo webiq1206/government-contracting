@@ -7,6 +7,8 @@ import { transaction, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 import { closeOutDeclinedSub } from "@/lib/domain/decline-closeout";
+import { lockOwnedCallCard } from "@/lib/call-card-access";
+import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -145,12 +147,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   try {
     const result = await transaction(async (c) => {
       // 1) Look up the card + related ids.
-      const card = (
-        await c.query<{ opportunity_id: string; subcontractor_id: string; status: string }>(
-          `select opportunity_id, subcontractor_id, status from call_cards where id=$1 and org_id=$2`,
-          [params.id, orgId]
-        )
-      ).rows[0];
+      const card = await lockOwnedCallCard(c, params.id, orgId);
       if (!card) throw new Error("Call card not found.");
       const { opportunity_id, subcontractor_id } = card;
 
@@ -442,11 +439,10 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
              from call_cards cc
              join subcontractors s on s.id = cc.subcontractor_id
              join opportunities o on o.id = cc.opportunity_id
-            where cc.status='pending' and cc.id <> $1
-              and (cc.snoozed_until is null or cc.snoozed_until <= now())
+            where cc.id <> $1 and o.org_id=$2 and ${WORKABLE_CALL_CARD_SQL}
             order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
             limit 1`,
-          [params.id]
+          [params.id, orgId]
         )) ?? null;
     }
 

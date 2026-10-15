@@ -12,6 +12,7 @@
  */
 import { query, queryOne } from "./db";
 import { unavailableSubcontractorLinks } from "./opportunity-sub-scope";
+import { FOLLOW_UP_ELIGIBLE_SQL, OWNED_ACTIVE_PAIR_SQL, OWNED_CALL_CARD_SQL, RECORDED_CONTACT_SQL } from "./sub-action-eligibility";
 import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "./domain/opportunity-kind";
 import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
@@ -59,11 +60,12 @@ export async function currentOrg(): Promise<string> {
  * won or lost, so without this the queue keeps asking for calls about work
  * that finished months ago, and the badge counts them forever.
  *
- * Deliberately does NOT carry the org filter. That stays written out at each
+ * The authenticated organization's filter stays written out at each
  * call site, where a reader can see it, and where the scoping guards in
  * tests/data-scoping.test.ts and tests/agent-scoping.test.ts can see it too:
  * neither can look inside an interpolation, and an org filter they cannot
- * check is one nobody is checking.
+ * check is one nobody is checking. This predicate additionally requires the
+ * card and subcontractor to belong to that same opportunity organization.
  *
  * Expects the aliases cc (call_cards), o (opportunities) and s (subcontractors).
  */
@@ -76,6 +78,7 @@ export const ACTIVE_PURSUIT_SQL = `coalesce(o.pursuit_state, 'active') <> 'abort
 
 export const WORKABLE_CALL_CARD_SQL = `
   cc.status = 'pending'
+  and ${OWNED_CALL_CARD_SQL}
   and ${BID_OPPORTUNITY_O_SQL}
   and o.status = 'open'
   and ${ACTIVE_PURSUIT_SQL}
@@ -610,7 +613,7 @@ export async function callCardById(id: string): Promise<CallCardRow | null> {
        from call_cards cc
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
-      where cc.id=$1 and cc.org_id=$2`,
+      where cc.id=$1 and cc.org_id=$2 and o.org_id=$2 and s.org_id=$2`,
     [id, orgId]
   );
 }
@@ -2952,6 +2955,8 @@ export interface ActionOppRow {
 
 export interface ActionCallRow {
   id: string;
+  opportunity_id: string;
+  subcontractor_id: string;
   company_name: string;
   phone: string | null;
   opportunity_title: string | null;
@@ -3185,7 +3190,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
         description: string | null;
       }
     >(
-      `select cc.id, s.company_name, s.phone, o.title as opportunity_title,
+      `select cc.id, cc.opportunity_id, cc.subcontractor_id, s.company_name, s.phone, o.title as opportunity_title,
               o.deadline, cc.source, o.solicitation_analysis, o.description,
               (select trade from opportunity_subs os
                 where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
@@ -3228,39 +3233,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
               o.solicitation_analysis, o.description,
               coalesce((
                 select count(*)::int from communications c
-                 where c.opportunity_id = os.opportunity_id
-                   and c.subcontractor_id = os.subcontractor_id
-                   and c.channel = 'email' and c.direction = 'outbound'
+                 where ${RECORDED_CONTACT_SQL} and c.channel = 'email'
               ), 0) as emails_sent,
               coalesce((
                 select count(*)::int from communications c
-                 where c.opportunity_id = os.opportunity_id
-                   and c.subcontractor_id = os.subcontractor_id
-                   and c.channel = 'call'
+                 where ${RECORDED_CONTACT_SQL} and c.channel = 'call'
               ), 0) as calls_logged
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
-        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}'
-          and o.status = 'open'
-          and ${ACTIVE_PURSUIT_SQL}
-          and o.stage in ('outreach','call_queue','quote_entry','sub_research')
-          and (o.snoozed_until is null or o.snoozed_until <= now())
-          and os.outreach_state in ('followed_up','unresponsive')
-          and not exists (
-                select 1 from quotes q
-                 where q.opportunity_id = os.opportunity_id
-                   and q.subcontractor_id = os.subcontractor_id
-                   and q.quote_amount > 0
-              )
-          and not exists (
-                select 1 from call_cards cc
-                 where cc.opportunity_id = os.opportunity_id
-                   and cc.subcontractor_id = os.subcontractor_id
-                   and cc.status = 'pending'
-              )
+        where ${BID_OPPORTUNITY_O_SQL} and o.org_id = $1
+          and ${FOLLOW_UP_ELIGIBLE_SQL}
         order by (o.deadline is null), o.deadline asc, s.company_name asc
-        limit 12`
+        limit 12`,
+      [orgId]
     ),
     // Scoped like every other row on this screen. Unscoped it listed other
     // customers' opportunity titles, subcontractor names, and quote amounts on
@@ -3376,9 +3362,9 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.flagged}) as flagged,
          (select count(*)::int from opportunity_subs os
             join opportunities o on o.id = os.opportunity_id
-           where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}' and o.status='open'
-             and ${ACTIVE_PURSUIT_SQL}
-             and os.outreach_state in ('followed_up','unresponsive')) as sub_follow_ups,
+            join subcontractors s on s.id = os.subcontractor_id
+           where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}'
+             and ${FOLLOW_UP_ELIGIBLE_SQL}) as sub_follow_ups,
          (select count(*)::int from quotes q
             join opportunities o on o.id = q.opportunity_id
            where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}' and o.status='open' and ${ACTIVE_PURSUIT_SQL} and q.is_out_of_range) as quote_reviews,
@@ -3870,15 +3856,15 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       `select os.id, s.company_name, os.trade,
               o.id as opp_id, o.title as opp_title, o.deadline, o.assigned_to,
               (select max(c.created_at) from communications c
-                where c.opportunity_id = os.opportunity_id
-                  and c.subcontractor_id = os.subcontractor_id
-                  and c.direction = 'outbound') as sent_at
+                where ${RECORDED_CONTACT_SQL} and c.direction = 'outbound') as sent_at
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
         where ${BID_OPPORTUNITY_O_SQL} and o.org_id =$1 and o.status='open'
           and ${ACTIVE_PURSUIT_SQL}
           and os.outreach_state = 'sent'
+          and ${OWNED_ACTIVE_PAIR_SQL}
+          and exists (select 1 from communications c where ${RECORDED_CONTACT_SQL})
         order by os.created_at asc
         limit 25`,
       [orgId]

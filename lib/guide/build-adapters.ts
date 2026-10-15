@@ -37,10 +37,6 @@ export function buildGuideAdapters(opts: {
     guide.steps.map((s) => s.adapter).filter((a): a is NonNullable<typeof a> => Boolean(a))
   );
   if (guide.steps.some((s) => s.kind === "enter-quote")) needs.add("quote");
-  if (guide.steps.some((s) => s.kind === "open-call")) {
-    needs.add("call");
-    needs.add("followUp");
-  }
   if (guide.steps.some((s) => s.kind === "edit-sub-contact")) needs.add("subContact");
   if (guide.steps.some((s) => s.kind === "compliance-update")) needs.add("compliance");
   if (guide.steps.some((s) => s.kind === "approve-weights")) needs.add("weights");
@@ -62,16 +58,19 @@ export function buildGuideAdapters(opts: {
   }
 
   if (needs.has("call") || needs.has("followUp")) {
-    const card = actions?.calls.rows[0];
-    if (card) {
+    const eligibleOnPage = (row: { opportunity_id: string; subcontractor_id: string }) =>
+      !opportunity || (row.opportunity_id === opportunity.id &&
+        Boolean(opportunitySubs?.some(s => s.subcontractor_id === row.subcontractor_id)));
+    const card = actions?.calls.rows.find(eligibleOnPage);
+    if (needs.has("call") && card) {
       adapters.call = {
         cardId: card.id,
         companyName: card.company_name,
         opportunityTitle: card.opportunity_title,
       };
     }
-    const fu = actions?.subFollowUps[0];
-    if (fu) {
+    const fu = actions?.subFollowUps.find(eligibleOnPage);
+    if (needs.has("followUp") && fu) {
       adapters.followUp = {
         opportunityId: fu.opportunity_id,
         subcontractorId: fu.subcontractor_id,

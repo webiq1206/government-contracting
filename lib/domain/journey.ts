@@ -216,6 +216,8 @@ export interface StepInput {
   hasQuotes?: boolean;
   /** Outreach exists only as draft/failed sends (no real contact yet). */
   outreachDraftOnly?: boolean;
+  /** Scoped contact receipts, when checked by the caller. A saved status is not proof. */
+  recordedContactCount?: number;
   /** Opportunity risk_flags (for stalled_* and similar). */
   riskFlags?: string[] | null;
   /**
@@ -243,11 +245,14 @@ export function hasActiveSubcontractors(subs: readonly {
   removed_at?: unknown;
   outreach_state?: string | null;
 }[]): boolean | undefined {
-  if (subs.some((sub) => sub.removed_at == null &&
-    !["declined", "not_a_fit", "unavailable"].includes(sub.outreach_state ?? ""))) return true;
+  if (subs.some(isActiveSubcontractor)) return true;
   // The detail and preview reads stop at 300 rows. Historical rows can fill
   // that window, so absence there cannot establish an empty current roster.
   return subs.length < 300 ? false : undefined;
+}
+
+export function isActiveSubcontractor(sub: { removed_at?: unknown; outreach_state?: string | null }): boolean {
+  return sub.removed_at == null && !["declined", "not_a_fit", "unavailable"].includes(sub.outreach_state ?? "");
 }
 
 /** The Call Queue, scoped to one bid when we know which bid asked. */
@@ -259,6 +264,8 @@ function callQueueHref(s: { opportunityId?: string }): string {
 
 export interface NextStep {
   title: string;
+  /** Review existing evidence; the saved stage must not turn this into an action form. */
+  navigationOnly?: boolean;
   /** A closed record is saved history, not work waiting on automation. */
   closedLabel?: string;
   why: string;
@@ -389,12 +396,23 @@ export function deriveStep(s: StepInput): NextStep {
     ["sub_research", "outreach", "call_queue", "quote_entry"].includes(s.stage)) {
     return {
       title: "Review historical subcontractor links",
+      navigationOnly: true,
       why: `${s.unavailableSubLinks} saved link${s.unavailableSubLinks === 1 ? " is" : "s are"} unavailable to this organization. No available subcontractor roster is confirmed for outreach or calls.`,
       after: "An administrator must review record ownership before these links can be used. Source and qualification checks still apply.",
       cta: "Review subcontractor links",
       anchor: "#subs",
       tone: "warn",
       waitingOn: "you",
+    };
+  }
+  if (s.stage === "outreach" && s.recordedContactCount === 0 &&
+    !s.hasQuotes && s.quoteCount === 0 && !s.hasBid && !(s.pendingCallCount && s.pendingCallCount > 0)) {
+    return {
+      title: "Review outreach before waiting for replies",
+      why: "No contact receipt is recorded for the available subcontractors. The saved outreach stage does not confirm that messages were sent or received.",
+      after: "Check source and qualification requirements, contact details, and recorded communications before continuing outreach.",
+      cta: "Review trade coverage", anchor: "#coverage", navigationOnly: true,
+      tone: "warn", waitingOn: "you",
     };
   }
   const step = deriveStageStep(s);

@@ -8,11 +8,25 @@ declare const __BROSTCO_WORKER_ARTIFACT__:string|undefined;
 export function parseBuildEvidence(raw:string|undefined) {
   try {
     const item=JSON.parse(raw??'');
-    if (item.schema!==1 || item.verified!==true || !/^[0-9a-f]{40}$/.test(item.sourceCommit) ||
-      !/^[0-9a-f]{40}$/.test(item.sourceTree) || !/^[0-9a-f-]{36}$/.test(item.buildId) ||
-      !Number.isFinite(Date.parse(item.builtAt))) return null;
-    return { sourceCommit:item.sourceCommit as string,sourceTree:item.sourceTree as string,
+    if (!item || ![1,2].includes(item.schema) || typeof item.buildId!=='string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(item.buildId) ||
+      typeof item.builtAt!=='string' || !Number.isFinite(Date.parse(item.builtAt))) return null;
+    const validGit = item.verified===true && /^[0-9a-f]{40}$/.test(item.sourceCommit) && /^[0-9a-f]{40}$/.test(item.sourceTree);
+    if (item.schema===1 && !validGit) return null;
+    if (item.schema===2 && (
+      !['verified','dirty','unavailable'].includes(item.gitEvidence) ||
+      (item.gitEvidence==='verified' ? !validGit : item.verified!==false || item.sourceCommit!==null || item.sourceTree!==null) ||
+      item.sourceInputScope!=='brostco-source-inputs-v1' || !/^[0-9a-f]{64}$/.test(item.sourceInputSha256) ||
+      !Number.isSafeInteger(item.sourceInputFiles) || item.sourceInputFiles < 1 ||
+      !/^[0-9a-f]{64}$/.test(item.dependencyLockSha256)
+    )) return null;
+    return { schema:item.schema as 1|2, verified:validGit,
+      gitEvidence:(validGit?'verified':item.gitEvidence) as 'verified'|'dirty'|'unavailable',
+      sourceCommit:validGit?item.sourceCommit as string:null,sourceTree:validGit?item.sourceTree as string:null,
       buildId:item.buildId as string,builtAt:item.builtAt as string,
+      sourceInputScope:item.schema===2?'brostco-source-inputs-v1':null,
+      sourceInputSha256:item.schema===2?item.sourceInputSha256 as string:null,
+      sourceInputFiles:item.schema===2?item.sourceInputFiles as number:null,
       dependencyLockSha256:/^[0-9a-f]{64}$/.test(item.dependencyLockSha256??'')?item.dependencyLockSha256 as string:null };
   } catch { return null; }
 }
@@ -30,10 +44,14 @@ export function safeWorkerEvidence(row:Record<string,any>|null) {
   if (!row) return null;
   const evidence=row.runtime_evidence??{};
   const build=evidence.build;
+  // Older workers stored a normalized schema-1 stamp without its discriminator.
+  // Never promote a new unverified/dirty stamp into verified Git provenance.
+  const storedBuild=build && build.schema===undefined && build.verified===undefined && build.gitEvidence===undefined
+    ? {...build,schema:1,verified:true} : build;
   return { instanceId:typeof row.instance_id==='string'?row.instance_id.slice(0,80):null,
     phase:typeof row.phase==='string'?row.phase.slice(0,80):null,
     bootedAt:row.booted_at,updatedAt:row.updated_at,
-    build:build ? parseBuildEvidence(JSON.stringify({...build,schema:1,verified:true})) : null,
+    build:storedBuild ? parseBuildEvidence(JSON.stringify(storedBuild)) : null,
     workerSourceRevision:/^[0-9a-f]{40}$/.test(evidence.workerSourceRevision??'')?evidence.workerSourceRevision:null,
     workerArtifact:/^worker-[0-9a-f-]{36}\.mjs$/.test(evidence.workerArtifact??'')?evidence.workerArtifact:null,
     workerArtifactSha256:/^[0-9a-f]{64}$/.test(evidence.workerArtifactSha256??'')?evidence.workerArtifactSha256:null,

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
+import { sourceInputEvidence, assertUnchangedSourceInputs } from './build-source-evidence.mjs';
 
 function source() {
   try {
@@ -12,14 +13,17 @@ function source() {
 }
 const before=source();
 const verified=Boolean(before && !before.status);
-const stamp={ schema:1,sourceCommit:verified?before.commit:null,sourceTree:verified?before.tree:null,
+const inputs=sourceInputEvidence();
+const stamp={ schema:2,sourceCommit:verified?before.commit:null,sourceTree:verified?before.tree:null,
   buildId:randomUUID(),builtAt:new Date().toISOString(),verified,
+  gitEvidence:verified?'verified':before?'dirty':'unavailable', ...inputs,
   dependencyLockSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex') };
 const result=spawnSync(process.execPath,['node_modules/next/dist/bin/next','build'],{
   stdio:'inherit',env:{...process.env,BROSTCO_COMPILED_BUILD:JSON.stringify(stamp)},
 });
 if (result.status!==0) process.exit(result.status??1);
 const after=source();
+assertUnchangedSourceInputs(inputs);
 if (verified && (!after || before.commit!==after.commit || before.tree!==after.tree || after.status)) {
   console.error('Source changed during the build; no verified runtime manifest was published.'); process.exit(1);
 }
@@ -39,6 +43,7 @@ await build({entryPoints:['worker/index.ts'],bundle:true,platform:'node',format:
     __BROSTCO_WORKER_ARTIFACT__:JSON.stringify(workerFile)},
 });
 const finalSource=source();
+assertUnchangedSourceInputs(inputs);
 if (verified && (!finalSource || before.commit!==finalSource.commit || before.tree!==finalSource.tree || finalSource.status)) {
   console.error('Source changed during worker compilation; runtime publication refused.'); process.exit(1);
 }
