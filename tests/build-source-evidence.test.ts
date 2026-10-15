@@ -47,6 +47,8 @@ it('excludes nested installed dependencies, including pnpm-style symlinks, witho
   symlinkSync(join(root,'lib','node_modules'),join(root,'scripts','node_modules'));
   expect(sourceInputEvidence(root)).toEqual(before);
   writeFileSync(join(root,'lib','node_modules','installed.js'),'updated installation');
+  writeFileSync(join(root,'lib','tsconfig.tsbuildinfo'),'generated incremental compiler cache');
+  writeFileSync(join(root,'scripts','tsconfig.tsbuildinfo'),'environment-specific compiler cache');
   expect(sourceInputEvidence(root)).toEqual(before);
   writeFileSync(join(root,'lib','fixture.txt'),'changed source');
   expect(()=>assertUnchangedSourceInputs(before,root)).toThrow('changed');

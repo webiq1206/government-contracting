@@ -21,9 +21,10 @@ export function sourceInputEvidence(root = process.cwd()) {
     if (stat.isDirectory()) {
       // Workspace package managers install nested dependency trees under lib/
       // and scripts/. Installed dependency bytes are outside this source scope,
-      // including their package-manager symlinks; never follow or remove them.
+      // including their package-manager symlinks. TypeScript incremental caches
+      // are generated build outputs. Never follow or remove either category.
       for (const name of readdirSync(path).sort()) {
-        if (name !== 'node_modules') visit(`${relative}/${name}`);
+        if (name !== 'node_modules' && !name.endsWith('.tsbuildinfo')) visit(`${relative}/${name}`);
       }
     } else if (stat.isFile()) {
       entries.push([relative, createHash('sha256').update(readFileSync(path)).digest('hex')]);
