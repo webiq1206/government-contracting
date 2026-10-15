@@ -1,87 +1,87 @@
 {
-  "checkedAt": "2026-10-14T12:53:29.104Z",
+  "checkedAt": "2026-10-15T12:39:46.847Z",
   "site": "https://brostco.com",
   "results": [
     {
       "path": "/",
       "url": "https://brostco.com/",
       "why": "home page",
-      "status": 500,
-      "ms": 245,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 252,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/robots.txt",
       "url": "https://brostco.com/robots.txt",
       "why": "crawl rules; a 5xx here reads as 'do not crawl' to Google",
-      "status": 500,
-      "ms": 311,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 128,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/sitemap.xml",
       "url": "https://brostco.com/sitemap.xml",
       "why": "the URL list given to crawlers",
-      "status": 500,
-      "ms": 214,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 68,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/llms.txt",
       "url": "https://brostco.com/llms.txt",
       "why": "what answer engines are told about the business",
-      "status": 500,
-      "ms": 249,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 85,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/resources",
       "url": "https://brostco.com/resources",
       "why": "the resource index",
-      "status": 500,
-      "ms": 714,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 236,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/resources/idaho-procurement-sources",
       "url": "https://brostco.com/resources/idaho-procurement-sources",
       "why": "the citable register, the link-earning asset",
-      "status": 500,
-      "ms": 282,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 106,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/resources/idaho-procurement-sources/data.json",
       "url": "https://brostco.com/resources/idaho-procurement-sources/data.json",
       "why": "the register's machine-readable distribution",
-      "status": 500,
-      "ms": 206,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 34,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/resources/idaho-procurement-sources/data.csv",
       "url": "https://brostco.com/resources/idaho-procurement-sources/data.csv",
       "why": "the register's spreadsheet distribution",
-      "status": 500,
-      "ms": 347,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 73,
+      "attempts": 1,
+      "ok": true
     },
     {
       "path": "/indexnow-key.txt",
       "url": "https://brostco.com/indexnow-key.txt",
       "why": "IndexNow ownership proof; a 5xx here silently breaks index submission",
-      "status": 500,
-      "ms": 247,
-      "attempts": 2,
-      "ok": false
+      "status": 200,
+      "ms": 32,
+      "attempts": 1,
+      "ok": true
     }
   ]
 }
