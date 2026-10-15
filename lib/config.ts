@@ -8,6 +8,7 @@
  */
 import "./env";
 import { parseProvider } from "./ai/routing";
+import { GPT6_MODELS } from "./ai/model-contracts";
 
 function str(key: string, fallback = ""): string {
   const v = process.env[key];
@@ -253,9 +254,11 @@ export const config = {
   // lib/ai/routing.ts can serve either tier from either provider.
   openai: {
     get apiKey() { return str("OPENAI_API_KEY"); },
-    // Both workloads use GPT-4.1; complexity still controls spending and validation.
-    model: str("OPENAI_MODEL", "gpt-4.1"),
-    modelSmart: str("OPENAI_MODEL_SMART", "gpt-4.1"),
+    // Candidate rollout stays off until labeled live evaluations, pricing and
+    // PDF cost bounds are approved. Explicit operator model settings win.
+    gpt6Candidates: bool("OPENAI_GPT6_CANDIDATES", false),
+    model: str("OPENAI_MODEL", bool("OPENAI_GPT6_CANDIDATES", false) ? GPT6_MODELS.routine : "gpt-4.1"),
+    modelSmart: str("OPENAI_MODEL_SMART", bool("OPENAI_GPT6_CANDIDATES", false) ? GPT6_MODELS.complex : "gpt-4.1"),
     // Reasoning effort per tier. "none" keeps routine calls fast and cheap;
     // reasoning tokens are billed as output, so "medium" on the complex tier
     // is a deliberate spend on the bid-critical path.

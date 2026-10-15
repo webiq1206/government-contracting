@@ -16,6 +16,7 @@ export async function GET() {
   if (auth instanceof Response) return auth;
   try {
     const org = LEGACY_ORG_ID;
+    const configured = routingConfig(org);
     const [receipts, budget, providers, routine, complex, rates] = await Promise.all([
       query(`select case when scope_key like 'v2:%' then 'provider_independent' else 'legacy' end as identity,
         state,count(*)::int as count from ai_work_receipts where org_id=$1 group by 1,state`, [org]),
@@ -29,11 +30,15 @@ export async function GET() {
       planRoute({ complexity: "routine" }, org),
       planRoute({ complexity: "complex" }, org),
       query(`select provider,service,rates,max_request_cost::text from api_usage_rates
-        where (provider='OpenAI' and service='gpt-4.1') or
-          (provider='Anthropic' and service='claude-haiku-4-5-20251001')`),
+        where (provider='OpenAI' and service=any($1::text[])) or
+          (provider='Anthropic' and service=any($2::text[]))`,
+        [[configured.openai.model, configured.openai.modelSmart], [configured.anthropic.model, configured.anthropic.modelSmart]]),
     ]);
     return NextResponse.json({ observedAt: new Date().toISOString(), organizationId: org,
       failoverEnabled: config.ai.brostcoFailover, configuration: routingConfig(org), routine, complex,
+      gpt6CandidateOptIn: config.openai.gpt6Candidates,
+      candidateContract: { reasoning: "none", cache: "explicit-without-breakpoints", liveQualityVerified: false,
+        limitation: "Candidate configuration is not a quality approval. PDF cost bounds and labeled live evaluation remain release gates." },
       providers, receipts, budget, rates,
       spendingAuthorization: "Configuration values are not evidence of user spending approval." });
   } catch {
