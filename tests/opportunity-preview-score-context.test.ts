@@ -67,6 +67,15 @@ it('does not turn a failed historical-link read into an empty roster',async()=>{
  mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?null:sql.includes('from opportunities')?opportunity:null);
  await expect(call()).rejects.toThrow('link availability could not be established');
 });
+it('does not hide recorded pricing behind an unavailable historical roster',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});
+ mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?{count:19}:sql.includes('from opportunities')?opportunity:null);
+ mocks.many.mockImplementation(async(sql:string)=>sql.includes('from quotes')?[{trade:'Electrical',quote_amount:1500}]:[]);
+ const body=await(await call()).json();
+ expect(body.unavailableSubLinks).toBe(19);
+ expect(body.nextStep.title).not.toBe('Review historical subcontractor links');
+ expect(body.nextStep.title).toMatch(/quote|pricing|package/i);
+});
 it('treats removed and declined pairings as history in the preview',async()=>{
  Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});
  mocks.many.mockImplementation(async(sql:string)=>sql.includes('from opportunity_subs')?[

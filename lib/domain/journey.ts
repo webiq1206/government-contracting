@@ -385,6 +385,7 @@ export function deriveStep(s: StepInput): NextStep {
   }
 
   if (s.hasActiveSubs === false && (s.unavailableSubLinks ?? 0) > 0 &&
+    !s.hasQuotes && s.quoteCount === 0 && !s.hasBid &&
     ["sub_research", "outreach", "call_queue", "quote_entry"].includes(s.stage)) {
     return {
       title: "Review historical subcontractor links",
