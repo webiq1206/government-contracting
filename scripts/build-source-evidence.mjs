@@ -19,7 +19,13 @@ export function sourceInputEvidence(root = process.cwd()) {
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) throw new Error('Source input symlinks are not supported');
     if (stat.isDirectory()) {
-      for (const name of readdirSync(path).sort()) visit(`${relative}/${name}`);
+      // Workspace package managers install nested dependency trees under lib/
+      // and scripts/. Installed dependency bytes are outside this source scope,
+      // including their package-manager symlinks. TypeScript incremental caches
+      // are generated build outputs. Never follow or remove either category.
+      for (const name of readdirSync(path).sort()) {
+        if (name !== 'node_modules' && !name.endsWith('.tsbuildinfo')) visit(`${relative}/${name}`);
+      }
     } else if (stat.isFile()) {
       entries.push([relative, createHash('sha256').update(readFileSync(path)).digest('hex')]);
     } else throw new Error('Unsupported source input type');

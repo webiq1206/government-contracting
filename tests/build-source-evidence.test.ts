@@ -39,3 +39,17 @@ it('rejects symlink inputs instead of attesting mutable files outside the input 
   symlinkSync(join(root,'package.json'),join(root,'lib','linked.json'));
   expect(()=>sourceInputEvidence(root)).toThrow('symlinks');
 });
+it('excludes nested installed dependencies, including pnpm-style symlinks, without hiding source changes',()=>{
+  const before=sourceInputEvidence(root);
+  mkdirSync(join(root,'lib','node_modules'));
+  symlinkSync(join(root,'package.json'),join(root,'lib','node_modules','package-link'));
+  writeFileSync(join(root,'lib','node_modules','installed.js'),'installed dependency');
+  symlinkSync(join(root,'lib','node_modules'),join(root,'scripts','node_modules'));
+  expect(sourceInputEvidence(root)).toEqual(before);
+  writeFileSync(join(root,'lib','node_modules','installed.js'),'updated installation');
+  writeFileSync(join(root,'lib','tsconfig.tsbuildinfo'),'generated incremental compiler cache');
+  writeFileSync(join(root,'scripts','tsconfig.tsbuildinfo'),'environment-specific compiler cache');
+  expect(sourceInputEvidence(root)).toEqual(before);
+  writeFileSync(join(root,'lib','fixture.txt'),'changed source');
+  expect(()=>assertUnchangedSourceInputs(before,root)).toThrow('changed');
+});
