@@ -14,6 +14,15 @@ const row: OppSubCommRow = {
 };
 
 describe("opportunity communication evidence", () => {
+  it("distinguishes unavailable historical links from a never-linked record", () => {
+    const html = renderToStaticMarkup(<OpportunitySubsPanel subs={[]} communications={[]} unavailableSubLinks={19} />);
+    expect(html).toContain("Historical subcontractor links need review");
+    expect(html).toContain("19 saved links are");
+    expect(html).toContain("unavailable to this organization");
+    expect(html).toContain("No subcontractors with confirmed organization ownership are available");
+    expect(html).not.toContain("No subcontractors have been linked");
+    expect(html).not.toContain("Send email");
+  });
   it("retains research scope and message evidence without bid-work recommendations", () => {
     const sub = { id: "pair-1", subcontractor_id: "sub-1", company_name: "Saved firm", trade: "Electrical", outreach_state: "responsive", emails_sent: 0, calls_logged: 0, touches: 1 } as OppSubRow;
     const html = renderToStaticMarkup(<OpportunitySubsPanel researchOnly subs={[sub]} communications={[row]} description="Saved full scope description" />);

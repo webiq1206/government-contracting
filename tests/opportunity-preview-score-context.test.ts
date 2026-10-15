@@ -12,7 +12,7 @@ beforeEach(()=>{
  vi.resetAllMocks();mocks.auth.mockResolvedValue({orgId:'synthetic-owner'});mocks.many.mockResolvedValue([]);mocks.calls.mockResolvedValue(false);
  opportunity={id:'synthetic',title:'Synthetic opportunity',stage:'scoring',status:'open',score:62,tier:'review',risk_flags:[],human_action_required:true,
   score_breakdown:{total:62,summary:stale},solicitation_analysis:{pursue_recommendation:stale,required_trades:[]}};
- mocks.one.mockImplementation(async(sql:string)=>sql.includes('from opportunities')?opportunity:null);
+ mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?{count:0}:sql.includes('from opportunities')?opportunity:null);
 });
 const call=()=>GET(new Request('https://brostco.test/api/opportunities/synthetic/preview'),{params:Promise.resolve({id:'synthetic'})});
 it('keeps equal-total stale prose out of the preview and scopes the record query',async()=>{
@@ -51,6 +51,30 @@ it('does not claim calls or sent mail exist for an empty current subcontractor r
  expect(body.nextStep.title).toBe('Find subcontractors before requesting prices');
  expect(body.nextStep.waitingOn).toBe('you');
  expect(mocks.many).toHaveBeenCalledWith(expect.stringContaining('s.org_id=$2'),['synthetic','synthetic-owner']);
+});
+it('explains excluded historical links without exposing or admitting their subcontractors',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue',human_action_required:true});
+ mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?{count:19}:sql.includes('from opportunities')?opportunity:null);
+ const body=await(await call()).json();
+ expect(body.unavailableSubLinks).toBe(19);
+ expect(body.nextStep.title).toBe('Review historical subcontractor links');
+ expect(body.nextStep.why).toContain('19 saved links are unavailable to this organization');
+ expect(body.nextStep.waitingOn).toBe('you');
+ expect(mocks.many).toHaveBeenCalledWith(expect.stringContaining('s.org_id=$2'),['synthetic','synthetic-owner']);
+ expect(mocks.one).toHaveBeenCalledWith(expect.stringContaining('o.id=$1 and o.org_id=$2'),['synthetic','synthetic-owner']);
+});
+it('does not turn a failed historical-link read into an empty roster',async()=>{
+ mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?null:sql.includes('from opportunities')?opportunity:null);
+ await expect(call()).rejects.toThrow('link availability could not be established');
+});
+it('does not hide recorded pricing behind an unavailable historical roster',async()=>{
+ Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});
+ mocks.one.mockImplementation(async(sql:string)=>sql.includes('count(os.id)')?{count:19}:sql.includes('from opportunities')?opportunity:null);
+ mocks.many.mockImplementation(async(sql:string)=>sql.includes('from quotes')?[{trade:'Electrical',quote_amount:1500}]:[]);
+ const body=await(await call()).json();
+ expect(body.unavailableSubLinks).toBe(19);
+ expect(body.nextStep.title).not.toBe('Review historical subcontractor links');
+ expect(body.nextStep.title).toMatch(/quote|pricing|package/i);
 });
 it('treats removed and declined pairings as history in the preview',async()=>{
  Object.assign(opportunity!,{stage:'call_queue',tier:'pursue'});

@@ -164,6 +164,7 @@ describe("guided plan", () => {
       stage: "bid_building",
       score: 90,
       hasAnalysis: true,
+      sourceEvidence: { analysisInputHash: "synthetic-source-hash", completeness: { ok: true, missing: [] } },
       coverage: { trades: [trade("HVAC", { found: 2, contacted: 2, quotes: 1 })] },
       quotesEntered: 1,
       hasBid: true,
@@ -194,7 +195,8 @@ describe("guided plan", () => {
 
   it("marks every step done on a won record", () => {
     const plan = buildGuidedPlan(
-      input({ stage: "won", score: 90, hasAnalysis: true, hasBid: true, bidSubmitted: true, outcome: "won" })
+      input({ stage: "won", score: 90, hasAnalysis: true, hasBid: true, bidSubmitted: true, outcome: "won",
+        sourceEvidence: { analysisInputHash: "synthetic-source-hash", completeness: { ok: true, missing: [] } } })
     );
     expect(plan.done).toBe(13);
     expect(plan.active).toBeUndefined();

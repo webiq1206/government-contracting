@@ -7,6 +7,7 @@ import { deriveStep, hasActiveSubcontractors, stageLabel } from "@/lib/domain/jo
 import { areCallsEnabled } from "@/lib/app-settings";
 import type { Bid, Opportunity, SolicitationAnalysis } from "@/lib/types";
 import { currentScoreLine } from "@/lib/domain/guide-score-context";
+import { unavailableSubcontractorLinks } from "@/lib/opportunity-sub-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const [subs, quotes, bid, callsEnabled] = await Promise.all([
+  const [subs, quotes, bid, callsEnabled, unavailableSubLinks] = await Promise.all([
     query<{ trade: string | null; outreach_state: string | null; responded_at: string | null; removed_at: string | null }>(
       `select os.trade, os.outreach_state, os.responded_at, os.removed_at
          from opportunity_subs os
@@ -50,6 +51,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
       [params.id]
     ),
     areCallsEnabled(),
+    unavailableSubcontractorLinks(params.id, orgId),
   ]);
 
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
@@ -87,6 +89,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     riskFlags: opp.risk_flags,
     callsEnabled,
     hasActiveSubs: hasActiveSubcontractors(subs),
+    unavailableSubLinks,
   });
 
   return NextResponse.json({
@@ -110,6 +113,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     })),
     tradesPriced: required.filter((t) => t.quotes > 0).length,
     tradeCount: required.length,
+    unavailableSubLinks,
     nextStep: { title: step.title, why: step.why, waitingOn: step.waitingOn },
   });
 }

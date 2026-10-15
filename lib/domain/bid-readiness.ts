@@ -5,6 +5,7 @@
  */
 
 import { flagLabel } from "@/lib/flag-labels";
+import { assessSavedSolicitationCompleteness, type SavedSolicitationEvidence } from "./saved-solicitation-completeness";
 
 export type AttentionAction = {
   label: string;
@@ -76,7 +77,7 @@ export function computeBidReadiness(input: {
   humanActionRequired?: boolean;
   tier?: string | null;
   pastPerfBlocked?: boolean;
-  completenessMissing?: CompletenessMissing[] | null;
+  sourceEvidence?: SavedSolicitationEvidence;
   packageBlockers?: string[] | null;
 }): BidReadiness {
   const quotesEntered = input.quotes.filter((q) => Number(q.quote_amount) > 0).length;
@@ -104,8 +105,12 @@ export function computeBidReadiness(input: {
   // Checklist for percent: completeness criticals + each required trade + package.
   type Check = { key: string; done: boolean };
   const checks: Check[] = [];
+  const sourceEvidence = { ...input.sourceEvidence,
+    riskFlags: [...new Set([...input.riskFlags, ...(input.sourceEvidence?.riskFlags ?? [])])] };
+  const sourceCheck = assessSavedSolicitationCompleteness(sourceEvidence);
+  const missing = Array.isArray(sourceEvidence.completeness?.missing) ? sourceEvidence.completeness.missing : [];
 
-  for (const m of input.completenessMissing ?? []) {
+  for (const m of missing) {
     if (!m.critical) continue;
     checks.push({ key: `c-${m.key}`, done: false });
     const who =
@@ -126,14 +131,27 @@ export function computeBidReadiness(input: {
       bucket: "actionRequired",
     });
   }
-  if ((input.completenessMissing ?? []).filter((m) => m.critical).length === 0) {
+  if (sourceCheck.complete) {
     checks.push({ key: "solicitation_complete", done: true });
     complete.push({
       key: "solicitation_complete",
       label: "Solicitation information complete",
-      why: "Required notice fields and attachments are present for sourcing.",
+      why: sourceCheck.reason,
       severity: "info",
       bucket: "complete",
+    });
+  } else if (!missing.some(item => item.critical)) {
+    checks.push({ key: "solicitation_complete", done: false });
+    actionRequired.push({
+      key: "solicitation_review",
+      label: "Solicitation completeness needs review",
+      why: sourceCheck.reason,
+      who: "either",
+      how: "Review the current notice and source documents, resolve warnings, then re-run analysis.",
+      href: "#requirements",
+      action: { label: "Review source completeness", href: "#requirements", modal: "review-missing" },
+      severity: "action",
+      bucket: "actionRequired",
     });
   }
 
@@ -317,7 +335,7 @@ export function computeBidReadiness(input: {
       ].includes(flag)
     ) {
       // Already represented via completeness / trade items when possible.
-      if ((input.completenessMissing ?? []).length > 0) continue;
+      if (missing.some(item => item.critical)) continue;
     }
     if (flag.startsWith("stalled_")) continue; // surfaced via Next step stall copy
     if (flag.startsWith("auto_retried_")) continue;

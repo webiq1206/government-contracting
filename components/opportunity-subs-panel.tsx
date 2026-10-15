@@ -66,6 +66,7 @@ export function OpportunitySubsPanel({
   canDecide = false,
   callsEnabled = true,
   researchOnly = false,
+  unavailableSubLinks = 0,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
@@ -78,6 +79,7 @@ export function OpportunitySubsPanel({
   /** Calling can be turned off for the account, and the row must say so. */
   callsEnabled?: boolean;
   researchOnly?: boolean;
+  unavailableSubLinks?: number;
   /** Solicitation analysis — used for per-trade "what we need them to do". */
   analysis?: Record<string, unknown> | null;
   description?: string | null;
@@ -103,8 +105,14 @@ export function OpportunitySubsPanel({
 
   return (
     <div id="subs" className="scroll-mt-editorial">
+      {unavailableSubLinks > 0 && <div role="status" className="mb-3 rounded-md border border-border p-3 text-sm">
+        <p className="font-medium">Historical subcontractor links need review</p>
+        <p className="mt-1">{unavailableSubLinks} saved link{unavailableSubLinks === 1 ? " is" : "s are"} unavailable to this organization.
+          An administrator must review the subcontractor records and their ownership before these links can be used.
+          They are not included in the available roster or evidence of outreach readiness.</p>
+      </div>}
       <p className="mb-3 text-sm text-slate-700">
-        {foundCount} subcontractors found; {contactedCount} with a sent email or logged call;
+        {foundCount} {unavailableSubLinks > 0 ? "available subcontractors" : "subcontractors found"}; {contactedCount} with a sent email or logged call;
         {" "}{repliedCount} with an incoming message recorded.
       </p>
       {subs.length >= 300 && <p className="mb-3 text-sm text-attention">Showing the first 300 subcontractor pairings. The totals above describe this loaded list.</p>}
@@ -116,7 +124,8 @@ export function OpportunitySubsPanel({
       >
         {subs.length === 0 ? (
           <p className="text-sm leading-relaxed text-slate-500">
-            {researchOnly ? "No subcontractors are saved for this notice." : "No subcontractors have been linked to this opportunity. Review the required trades and research settings before starting a search."}
+            {unavailableSubLinks > 0 ? "No subcontractors with confirmed organization ownership are available on this opportunity. Review the historical links above."
+              : researchOnly ? "No subcontractors are saved for this notice." : "No subcontractors have been linked to this opportunity. Review the required trades and research settings before starting a search."}
           </p>
         ) : (
           <div className="space-y-5">
