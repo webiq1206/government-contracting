@@ -53,6 +53,15 @@ const CONTACTED = new Set([
   "declined",
 ]);
 
+export function hasRecordedContact(sub: TradeCoverageInputSub): boolean {
+  // When the loader supplied receipt counts, they override historical status.
+  // Older summary-only callers can still describe their recorded status.
+  if (sub.emails_sent !== undefined || sub.calls_logged !== undefined) {
+    return (sub.emails_sent ?? 0) > 0 || (sub.calls_logged ?? 0) > 0;
+  }
+  return CONTACTED.has(sub.outreach_state ?? "");
+}
+
 /**
  * Human follow-up due: automation already sent the initial email (and usually
  * the 48h follow-up). Fresh "sent" is still owned by the auto follow-up sweep.
@@ -99,10 +108,10 @@ export function summarizeTradeCoverage(input: {
       (q) => normalizeTrade(q.trade) === trade && Number(q.quote_amount) > 0
     );
     const found = subs.length;
-    const contacted = subs.filter((s) => CONTACTED.has(s.outreach_state ?? "")).length;
+    const contacted = subs.filter(hasRecordedContact).length;
     const responded = subs.filter((s) => s.outreach_state === "responsive" || s.responded_at).length;
     const declined = subs.filter((s) => s.outreach_state === "declined").length;
-    const followUpDue = subs.filter((s) => FOLLOW_UP_DUE.has(s.outreach_state ?? "")).length;
+    const followUpDue = subs.filter((s) => hasRecordedContact(s) && FOLLOW_UP_DUE.has(s.outreach_state ?? "")).length;
     const quoteCount = quotes.length;
 
     let status: TradeCoverageRow["status"];

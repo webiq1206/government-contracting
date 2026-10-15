@@ -180,6 +180,8 @@ export interface OpportunityGuideFacts {
   score: number | null;
   deadline: string | null;
   stepInput: StepInput;
+  /** Checked against scoped records, never inferred from a later pipeline stage. */
+  progress?: { analysisComplete: boolean; subsFound: boolean; subsContacted: boolean; callsRecorded: boolean };
   readiness?: Pick<
     BidReadiness,
     "percent" | "summary" | "attention" | "complete" | "actionRequired" | "blocked"
@@ -531,7 +533,8 @@ function stepFromNext(
   const target = ns.anchor?.replace(/^#/, "") || undefined;
   let kind: GuideActionKind = "none";
   let adapter: GuideStep["adapter"];
-  if (ns.decision === "triage") kind = "triage";
+  if (ns.navigationOnly) kind = ns.href ? "link" : target ? "highlight" : "none";
+  else if (ns.decision === "triage") kind = "triage";
   else if (ns.decision === "outcome") kind = "outcome";
   else if (ns.cta === "Resume automation" || ns.href === "/agents") {
     kind = "resume-automation";
@@ -591,7 +594,9 @@ function stepFromAttention(item: AttentionItem, opportunityId: string): GuideSte
   let kind: GuideActionKind =
     owner === "brost" ? "none" : isPageLocal ? "highlight" : "link";
   let adapter: GuideStep["adapter"];
-  if (owner === "you" && (modal === "enter-quote" || modal === "contact-trade")) {
+  if (owner === "you" && modal === "contact-trade") {
+    kind = "highlight";
+  } else if (owner === "you" && modal === "enter-quote") {
     kind = "enter-quote";
     adapter = "quote";
   } else if (owner === "you" && (modal === "upload" || modal === "review-missing")) {
@@ -876,7 +881,15 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
   const journey = journeySteps(opp.stage, {
     callsEnabled: opp.stepInput.callsEnabled !== false,
   });
-  const completed = journey.filter((j) => j.status === "done").map((j) => j.label);
+  const completed = ["Found"];
+  if (opp.score != null && Number.isFinite(opp.score)) completed.push("Scored");
+  if (opp.progress?.analysisComplete) completed.push("Analyzed");
+  if (opp.progress?.subsFound) completed.push("Subs found");
+  if (opp.progress?.subsContacted) completed.push("Subs contacted");
+  if (opp.progress?.callsRecorded) completed.push("Calls recorded");
+  if (opp.stepInput.quoteCount > 0) completed.push("Quotes in");
+  if (opp.stepInput.hasBid) completed.push("Bid built");
+  if (opp.bidSubmitted) completed.push("Submitted");
   const current = journey.find((j) => j.status === "current");
 
   const needsAttention: string[] = [];

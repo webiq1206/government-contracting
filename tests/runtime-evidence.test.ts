@@ -23,3 +23,24 @@ it('omits raw worker detail and arbitrary stored metadata',()=>{
   expect(result?.build?.sourceTree).toBe('b'.repeat(40));expect(JSON.stringify(result)).not.toContain('synthetic-private');
   expect(safeWorkerEvidence(null)).toBeNull();
 });
+
+it.each(['dirty','unavailable'])('retains source-input evidence when Git is %s without inventing provenance',gitEvidence=>{
+  const unverified={...stamp,schema:2,verified:false,gitEvidence,sourceCommit:null,sourceTree:null,
+    sourceInputScope:'brostco-source-inputs-v1',sourceInputSha256:'d'.repeat(64),sourceInputFiles:123,
+    dependencyLockSha256:'e'.repeat(64),privateEnvironment:'synthetic-private'};
+  const parsed=parseBuildEvidence(JSON.stringify(unverified));
+  expect(parsed).toMatchObject({schema:2,verified:false,gitEvidence,sourceCommit:null,sourceTree:null,sourceInputSha256:'d'.repeat(64)});
+  expect(JSON.stringify(parsed)).not.toContain('synthetic-private');
+  expect(safeWorkerEvidence({runtime_evidence:{build:parsed}})?.build).toEqual(parsed);
+  expect(parseBuildEvidence(JSON.stringify({...unverified,sourceCommit:'a'.repeat(40)}))).toBeNull();
+  expect(parseBuildEvidence(JSON.stringify({...unverified,gitEvidence:'verified'}))).toBeNull();
+  expect(parseBuildEvidence(JSON.stringify({...unverified,sourceInputSha256:null}))).toBeNull();
+  expect(parseBuildEvidence(JSON.stringify({...unverified,sourceInputScope:'unknown'}))).toBeNull();
+});
+it('preserves verified Git evidence and supports old normalized heartbeat stamps without promoting an explicit rejection',()=>{
+  const v2={...stamp,schema:2,gitEvidence:'verified',sourceInputScope:'brostco-source-inputs-v1',sourceInputSha256:'d'.repeat(64),sourceInputFiles:123,dependencyLockSha256:'e'.repeat(64)};
+  expect(parseBuildEvidence(JSON.stringify(v2))).toMatchObject({verified:true,sourceCommit:stamp.sourceCommit});
+  const {schema,verified,...legacy}=stamp;
+  expect(safeWorkerEvidence({runtime_evidence:{build:legacy}})?.build?.sourceTree).toBe(stamp.sourceTree);
+  expect(safeWorkerEvidence({runtime_evidence:{build:{...stamp,verified:false}}})?.build).toBeNull();
+});

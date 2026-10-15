@@ -7,7 +7,9 @@ import { accountSetup, type SetupUser } from "@/lib/setup-facts";
 import { areCallsEnabled, getAutomationState } from "@/lib/app-settings";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
-import { hasActiveSubcontractors } from "@/lib/domain/journey";
+import { hasActiveSubcontractors, isActiveSubcontractor } from "@/lib/domain/journey";
+import { verifiedGuideProgress } from "@/lib/domain/guide-progress";
+import { OWNED_ACTIVE_PAIR_SQL } from "@/lib/sub-action-eligibility";
 import {
   buildPageGuide,
   opportunityIdFromPath,
@@ -175,7 +177,8 @@ export async function loadGuideBundle(
       const bid = detail.bid as Bid | null;
       const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
       const breakdown = opp.score_breakdown as ScoreBreakdown | null;
-      opportunitySubs = subs.map((s) => ({
+      const activeSubs = subs.filter(isActiveSubcontractor);
+      opportunitySubs = activeSubs.map((s) => ({
         subcontractor_id: s.subcontractor_id,
         company_name: s.company_name,
         trade: s.trade,
@@ -188,7 +191,7 @@ export async function loadGuideBundle(
       const guideWorkMode = await opportunityWorkMode(opp.id).catch(() => null);
       const coverage = summarizeTradeCoverage({
         requiredTrades: analysis?.required_trades ?? [],
-        subs: subs.map((s) => ({
+        subs: activeSubs.map((s) => ({
           trade: s.trade,
           outreach_state: s.outreach_state,
           emails_sent: s.emails_sent,
@@ -216,7 +219,7 @@ export async function loadGuideBundle(
           contacted: t.contacted,
           found: t.found,
         })),
-        subsFound: subs.length,
+        subsFound: activeSubs.length,
         outreachEnabled: guideWorkMode?.outreachAllowed ?? true,
         hasBid: Boolean(bid),
         packageReady: bid?.package_ready ?? null,
@@ -255,6 +258,13 @@ export async function loadGuideBundle(
         stage: opp.stage,
         score: opp.score,
         deadline: opp.deadline,
+        progress: verifiedGuideProgress({
+          sourceEvidence: {
+            analysisInputHash: opp.analysis_input_hash, completeness: analysis?.completeness,
+            verificationIssues: analysis?.verification_issues, riskFlags: opp.risk_flags,
+          },
+          subs: activeSubs, coverage,
+        }),
         stepInput: {
           stage: opp.stage,
           status: opp.status,
@@ -273,6 +283,8 @@ export async function loadGuideBundle(
           hasActiveSubs: hasActiveSubcontractors(subs),
           unavailableSubLinks: detail.unavailableSubLinks,
           pendingCallCount: detail.pendingCalls,
+          recordedContactCount: coverage.totals.contacted,
+          hasQuotes: quoteRows.some(q => Number(q.quote_amount) > 0),
           riskFlags: opp.risk_flags,
           hoursSinceUpdate,
           expired:
@@ -338,10 +350,8 @@ export async function loadGuideBundle(
   });
 
   // Load quote subs for bid-work adapters when not already on that opportunity.
-  const quoteOppId =
-    guide.steps.find((s) => s.kind === "enter-quote")?.opportunityId ||
-    actionsRaw?.bidWork[0]?.id;
-  if (quoteOppId && opportunitySubs.length === 0) {
+  const quoteOppId = guide.steps.find((s) => s.kind === "enter-quote")?.opportunityId;
+  if (quoteOppId && !opportunity) {
     const rows = await query<{
       subcontractor_id: string;
       company_name: string;
@@ -354,6 +364,7 @@ export async function loadGuideBundle(
          join subcontractors s on s.id = os.subcontractor_id
          join opportunities o on o.id = os.opportunity_id
         where os.opportunity_id = $1 and o.org_id = $2
+          and ${OWNED_ACTIVE_PAIR_SQL}
         order by os.trade nulls last, s.company_name
         limit 100`,
       [quoteOppId, orgId]
