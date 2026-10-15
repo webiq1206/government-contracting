@@ -75,9 +75,9 @@ d("sub finder keeps organizations apart (integration)", () => {
     );
 
     const opp = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, stage, status, location_state)
-       values ($1, 'test', $2, 'sub_research', 'open', $3) returning id`,
-      [o.id, `${o.name} opportunity`, STATE]
+      `insert into opportunities (org_id, source, title, stage, status, location_state, analysis_input_hash, solicitation_analysis)
+       values ($1, 'test', $2, 'sub_research', 'open', $3, 'synthetic-current-source', $4::jsonb) returning id`,
+      [o.id, `${o.name} opportunity`, STATE, JSON.stringify({ required_trades: [TRADE], completeness: { ok: true, missing: [] } })]
     );
     o.oppId = opp!.id;
 
