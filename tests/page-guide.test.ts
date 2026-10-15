@@ -116,6 +116,38 @@ describe("summarizeActions", () => {
 });
 
 describe("buildPageGuide", () => {
+  function opportunityGuide(overrides: Partial<StepInput>) {
+    const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const facts = stepInput(overrides);
+    return buildPageGuide(base({ pathname: `/opportunity/${id}`, opportunity: {
+      id, title: "Synthetic held opportunity", stage: facts.stage,
+      score: 74, deadline: null, stepInput: facts,
+    } }));
+  }
+
+  it("keeps held analysis out of idle Guide Me progress claims", () => {
+    const guide = opportunityGuide({ stage: "analysis", humanActionRequired: true,
+      riskFlags: ["awaiting_document_analysis"] });
+    expect(guide.idle).toBe(false);
+    expect(guide.brostHandling).toEqual([]);
+    expect(guide.steps[0]).toMatchObject({ title: "Review the analysis blockers",
+      kind: "highlight", target: "attachments", owner: "you" });
+  });
+
+  it.each([false, undefined])("reviews coverage instead of opening quote entry when call prerequisites are unestablished (%s)", (hasActiveSubs) => {
+    const guide = opportunityGuide({ hasActiveSubs, pendingCallCount: 0 });
+    expect(guide.steps[0]).toMatchObject({ kind: "highlight", target: "coverage",
+      cta: "Review trade coverage", owner: "you" });
+    expect(guide.steps[0].adapter).toBeUndefined();
+    expect(guide.steps.some(step => step.kind === "open-call" || step.kind === "enter-quote")).toBe(false);
+  });
+
+  it("keeps recorded pending-call evidence scoped to this opportunity in Guide Me", () => {
+    const guide = opportunityGuide({ hasActiveSubs: true, pendingCallCount: 1 });
+    expect(guide.steps[0]).toMatchObject({ title: "Review the pending calls", kind: "open-call",
+      href: "/call-queue?opportunity=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" });
+  });
+
   it("surfaces incomplete setup before other work", () => {
     const g = buildPageGuide(
       base({

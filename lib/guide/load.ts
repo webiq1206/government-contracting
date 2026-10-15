@@ -7,6 +7,7 @@ import { accountSetup, type SetupUser } from "@/lib/setup-facts";
 import { areCallsEnabled, getAutomationState } from "@/lib/app-settings";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+import { hasActiveSubcontractors } from "@/lib/domain/journey";
 import {
   buildPageGuide,
   opportunityIdFromPath,
@@ -264,6 +265,9 @@ export async function loadGuideBundle(
           pastPerfBlocked: opp.past_perf_classification === "prime_only",
           automationPaused: automation.paused,
           callsEnabled,
+          hasActiveSubs: hasActiveSubcontractors(subs),
+          pendingCallCount: detail.pendingCalls,
+          riskFlags: opp.risk_flags,
           hoursSinceUpdate,
           expired:
             opp.status === "archived" && (opp.risk_flags ?? []).includes("expired"),

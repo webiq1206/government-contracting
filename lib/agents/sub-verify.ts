@@ -3,13 +3,12 @@
  * Enriches and vets a single subcontractor: finds + verifies a contact email
  * (Hunter), fills in a missing phone (Google Place Details), records license
  * status (no state-license API exists yet, kept 'unknown' with a note that the
- * state scraper still owes this), checks SAM exclusions, and summarizes Google
- * reviews with Claude. Findings are written back to the subcontractors row and
+ * state scraper still owes this), checks SAM exclusions, and records the saved
+ * Google rating/review-count signal. Findings are written back to the subcontractors row and
  * the opportunity_subs verification record. Subs that clear our standards are
  * handed to Outreach.
  */
 import { query, queryOne } from "../db";
-import { complete, ClaudeNotConfiguredError } from "../ai/claude";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { googleMaps } from "../integrations/googleMaps";
@@ -56,8 +55,8 @@ export const subVerify: AgentDefinition = {
   name: "sub-verify",
   label: "Sub Verify",
   description:
-    "Enriches + vets a candidate sub: verifies email, fills phone, checks SAM exclusions, summarizes reviews, then routes qualifying subs to Outreach.",
-  worksWithoutClaude: true, // review summary is optional; enrichment is rule-based
+    "Enriches + vets a candidate sub: verifies email, fills phone, checks SAM exclusions, records Google signals, then routes qualifying subs to Outreach.",
+  worksWithoutClaude: true, // enrichment and verification do not require an LLM
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
     const subcontractorId = ctx.payload.subcontractorId as string;
@@ -87,7 +86,7 @@ export const subVerify: AgentDefinition = {
       `select org_id, location_state, work_mode from opportunities where id=$1 and org_id=$2`,
       [opportunityId, orgId]
     );
-    const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null; archived_at?: string | null }>(
+    const sub = await queryOne<Subcontractor & { service_area_states?: string[] | null }>(
       `select * from subcontractors where id = $1 and org_id = $2`,
       [subcontractorId, orgId]
     );
@@ -125,14 +124,15 @@ export const subVerify: AgentDefinition = {
     const unresolvedFailures: string[] = [];
 
     // --- Geography gate, before any enrichment spends an API call ---
-    // A firm recorded in a different state than the work cannot mobilize for
-    // it, and emailing them anyway burns the org's credibility and the quote
-    // window. Pairings created before Sub Finder verified addresses can still
-    // carry wrong-area firms; this is where they stop. Unknown sub state
-    // passes through: absence of data is not evidence of distance.
+    // Preserve Sub Finder's explicit service-area evidence: a firm based in
+    // another state can have recorded that it works here. An out-of-state
+    // address alone still does not establish coverage. Unknown sub state
+    // passes through as before: absence of data is not evidence of distance.
     const workState = (owner.location_state ?? "").trim().toUpperCase();
     const subState = (sub.state ?? "").trim().toUpperCase();
-    if (workState && subState && workState !== subState) {
+    const servesWorkState = Array.isArray(sub.service_area_states) &&
+      sub.service_area_states.some(state => typeof state === "string" && state.trim().toUpperCase() === workState);
+    if (workState && subState && workState !== subState && !servesWorkState) {
       await query(
         `update opportunity_subs
             set verified = false,
@@ -394,19 +394,15 @@ export const subVerify: AgentDefinition = {
     verification.sam_excluded = samExcluded;
     verification.sam_confirmed = samConfirmed;
 
-    // --- Reviews summary via Claude (best effort) ---
-    let reviewsSummary: string | null = sub.reviews_summary ?? null;
+    // --- Recorded Google signal; no optional LLM dependency ---
+    // Rewording two stored numbers used to make an AI refusal abort the run
+    // before any contact/SAM findings were saved, despite worksWithoutClaude.
+    // Keep existing prose unchanged and record only the facts available here;
+    // individual review contents have not been read or independently verified.
+    const reviewsSummary: string | null = sub.reviews_summary ?? null;
     if ((sub.review_count ?? 0) > 0 && sub.google_rating != null) {
-      try {
-        const { text } = await complete(
-          `Summarize the reputation of the subcontractor "${sub.company_name}" in 1-2 sentences for a bid team, based only on this Google signal: ${sub.google_rating} stars across ${sub.review_count} reviews. Be factual and concise; do not invent specifics.`,
-          { maxTokens: 120, injectProfile: false }
-        );
-        reviewsSummary = text.trim();
-      } catch (err) {
-        if (!(err instanceof ClaudeNotConfiguredError)) throw err;
-        notes.push("Claude not configured, reviews summary skipped.");
-      }
+      verification.google_signal = { rating: sub.google_rating, review_count: sub.review_count };
+      notes.push("Google rating and review count are recorded signals; individual reviews were not read. Existing review summary preserved.");
     }
 
     // --- BBB: no API ---

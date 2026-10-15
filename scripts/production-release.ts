@@ -1,6 +1,7 @@
 import { Client } from "pg";
 import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { assert134Ledger, inspectMigration134, validateInspectionScope } from "./lib/migration134-inspection";
 
 async function main() {
   const connectionString = process.env.MIGRATION_DATABASE_URL?.trim();
@@ -17,6 +18,7 @@ async function main() {
   }
   const action = process.env.RELEASE_ACTION;
   if (action !== "inspect" && action !== "apply") throw new Error("Choose inspect or apply explicitly.");
+  const inspection = validateInspectionScope(action, process.env.RELEASE_INSPECTION);
   if (process.env.USE_REPLIT_DEV_DB !== "false") throw new Error("This is an owner-only production release job.");
 
   // Set the verifier target before importing application configuration.
@@ -24,7 +26,10 @@ async function main() {
   const client = new Client({ connectionString, connectionTimeoutMillis: 10_000, query_timeout: 15_000 });
   await client.connect();
   try {
-    await client.query("begin read only");
+    await client.query("begin isolation level repeatable read read only");
+    await client.query("set local statement_timeout = '15s'");
+    await client.query("set local lock_timeout = '1s'");
+    await client.query("set local timezone = 'UTC'");
     const identity = await client.query("select current_database() as database, current_user as role");
     if (identity.rows[0].database !== expectedName) throw new Error("Connected database does not match the expected target.");
     const ledger = await client.query<{ name: string; checksum: string | null }>("select name, checksum from _migrations order by name");
@@ -35,6 +40,11 @@ async function main() {
       && applied.get(f) !== createHash("sha256").update(readFileSync(`db/migrations/${f}`)).digest("hex"));
     console.log(JSON.stringify({ commit: process.env.GITHUB_SHA, database: identity.rows[0].database,
       role: identity.rows[0].role, applied: applied.size, pending, mismatched }, null, 2));
+    if (inspection === "migration134") {
+      assert134Ledger(pending, mismatched, ledger.rows.map(row => row.checksum));
+      const evidence = await inspectMigration134(client, readFileSync("db/migrations/134_gpt6_candidate_rates.sql"));
+      console.log(`MIGRATION134_EVIDENCE ${JSON.stringify({ commit: process.env.GITHUB_SHA, ...evidence })}`);
+    }
     await client.query("rollback");
     if (mismatched.length) throw new Error("Migration checksums require owner review; no changes were applied.");
   } finally {

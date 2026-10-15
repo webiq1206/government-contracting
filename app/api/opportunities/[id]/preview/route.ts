@@ -3,7 +3,7 @@ import { opportunityWorkMode } from "@/lib/work-mode";
 import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
-import { deriveStep, stageLabel } from "@/lib/domain/journey";
+import { deriveStep, hasActiveSubcontractors, stageLabel } from "@/lib/domain/journey";
 import { areCallsEnabled } from "@/lib/app-settings";
 import type { Bid, Opportunity, SolicitationAnalysis } from "@/lib/types";
 import { currentScoreLine } from "@/lib/domain/guide-score-context";
@@ -34,10 +34,12 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const [subs, quotes, bid, callsEnabled] = await Promise.all([
-    query<{ trade: string | null; outreach_state: string | null; responded_at: string | null }>(
-      `select trade, outreach_state, responded_at from opportunity_subs
-        where opportunity_id=$1 limit 300`,
-      [params.id]
+    query<{ trade: string | null; outreach_state: string | null; responded_at: string | null; removed_at: string | null }>(
+      `select os.trade, os.outreach_state, os.responded_at, os.removed_at
+         from opportunity_subs os
+         join subcontractors s on s.id=os.subcontractor_id and s.org_id=$2
+        where os.opportunity_id=$1 limit 300`,
+      [params.id, orgId]
     ),
     query<{ trade: string | null; quote_amount: number | null }>(
       `select trade, quote_amount from quotes where opportunity_id=$1 limit 200`,
@@ -84,6 +86,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     hasQuotes: quotes.length > 0,
     riskFlags: opp.risk_flags,
     callsEnabled,
+    hasActiveSubs: hasActiveSubcontractors(subs),
   });
 
   return NextResponse.json({

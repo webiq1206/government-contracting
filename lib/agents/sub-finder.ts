@@ -1,7 +1,6 @@
 /**
  * SUB FINDER, triggered when an opportunity advances to sub_research.
- * For each required trade (from the Solicitation Analyst, falling back to the
- * profile's primary trades) it:
+ * For each required trade from a complete, current Solicitation Analyst brief it:
  *   1. Reuses known subcontractors already on the roster that have a contact
  *      pathway (email, phone, or website) — empty shells are never reused.
  *   2. Searches Google Places, enriches top results with Place Details
@@ -102,6 +101,42 @@ async function sourceSubs(
   if (!profile) return { ok: false, summary: "no active Company Profile" };
 
   const analysis = opp.solicitation_analysis;
+  const allTrades = Array.isArray(analysis?.required_trades)
+    ? analysis.required_trades.filter((trade) => typeof trade === "string" && trade.trim()).map((trade) => trade.trim())
+    : [];
+  const requestedTrade = onlyTrade
+    ? allTrades.find((trade) => trade.toLowerCase() === onlyTrade.toLowerCase())
+    : undefined;
+  // Admission and scoring happened earlier. A retry, amendment, or old queue
+  // entry must not turn an incomplete brief into paid sourcing. Profile-wide
+  // trades describe the company, not this solicitation's scope.
+  let readinessProblem: string | null = null;
+  if (!analysis || !opp.analysis_input_hash || analysis.completeness?.ok !== true) {
+    readinessProblem = "A complete, current solicitation analysis is required. Resolve missing source documents and re-run analysis before sourcing.";
+  } else if (
+    (Array.isArray(analysis.verification_issues) && analysis.verification_issues.length > 0) ||
+    analysis.completeness.missing?.some((item) => item.critical)
+  ) {
+    readinessProblem = "The solicitation still has unresolved source-verification requirements. Resolve them and re-run analysis before sourcing.";
+  } else if (analysis.past_perf_classification === "prime_only" && profile.decision_thresholds?.block_prime_only === true) {
+    readinessProblem = "The current analysis requires prime-only past performance, which the company rules block. Review qualification before sourcing.";
+  } else if (allTrades.length === 0) {
+    readinessProblem = "The analyzed solicitation has no required trades. Confirm the actual scope before sourcing; company-wide trades cannot substitute for it.";
+  } else if (onlyTrade && !requestedTrade) {
+    readinessProblem = "The requested trade is absent from the current analyzed scope. Review that scope before sourcing an additional trade.";
+  }
+  if (readinessProblem) {
+    await query(
+      `update opportunities set human_action_required=true
+        where id=$1 and org_id=$2 and status='open' and coalesce(pursuit_state,'active')='active'`,
+      [opportunityId, orgId]
+    );
+    const summary = `Subcontractor discovery held. ${readinessProblem} No search ran and no candidate was paired.`;
+    await logAgent({ agent: "sub-finder", action: "readiness-held", opportunityId,
+      level: "warn", status: "skipped", message: summary });
+    return { ok: true, summary, humanActionRequired: true, enqueued: [],
+      data: { searchCompleted: false, readinessHeld: true, candidates: 0, verifyEnqueued: 0 } };
+  }
   /*
    * One trade, when the caller asked for one.
    *
@@ -112,11 +147,7 @@ async function sourceSubs(
    * refuses to email anyone twice, but it spends Places quota to learn what we
    * already knew.
    */
-  const allTrades =
-    analysis?.required_trades?.length
-      ? analysis.required_trades
-      : profile.primary_trades ?? [];
-  const trades = onlyTrade ? [onlyTrade] : allTrades;
+  const trades = requestedTrade ? [requestedTrade] : allTrades;
   // Where the work is, as specifically as we know it. City + state beats a
   // bare state code in a Places query ("mowing contractor in Yigo, GU" finds
   // local firms; "in GU" finds whoever ranks island-wide).
@@ -130,18 +161,6 @@ async function sourceSubs(
   const targetState =
     (opp.location_state ?? "").trim().toUpperCase() ||
     stateCodeFromText(analysis?.geographic_area ?? null);
-
-  if (!trades.length) {
-    await query(
-      `update opportunities set stage='sub_research', human_action_required=true where id=$1`,
-      [opportunityId]
-    );
-    return {
-      ok: true,
-      summary: "No trades identified for this opportunity; flagged for human review.",
-      humanActionRequired: true,
-    };
-  }
 
   const std = profile.sub_standards;
   const perTrade = std?.candidates_per_trade ?? 12;

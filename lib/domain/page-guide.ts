@@ -535,6 +535,10 @@ function stepFromNext(
   else if (ns.decision === "outcome") kind = "outcome";
   else if (ns.cta === "Resume automation" || ns.href === "/agents") {
     kind = "resume-automation";
+  } else if (target === "coverage" && ns.cta === "Review trade coverage") {
+    // Missing subcontractors or unknown call readiness require inspecting the
+    // existing coverage, not opening a quote form for an unestablished contact.
+    kind = "highlight";
   } else if (
     target === "submission" ||
     /submit|submission package/i.test(ns.title)
@@ -839,7 +843,7 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
   "pageKey" | "pathname" | "experience" | "pageExplain" | "terms" | "automationPaused"
 > {
   const opp = input.opportunity!;
-  const ns = deriveStep(opp.stepInput);
+  const ns = deriveStep({ ...opp.stepInput, opportunityId: opp.id });
   const scoreLine = currentScoreLine(opp.score, opp.stepInput.tier, Boolean(ns.closedLabel));
   const deadlineLine = recordedDeadlineLine(opp.deadline);
   const scoreExplain = opp.scoreExplain ? { ...opp.scoreExplain,
