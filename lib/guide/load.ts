@@ -222,7 +222,12 @@ export async function loadGuideBundle(
         packageReady: bid?.package_ready ?? null,
         humanFlags: (bid?.human_flags as string[] | null) ?? null,
         humanActionRequired: opp.human_action_required,
-        completenessMissing: analysis?.completeness?.missing ?? null,
+        sourceEvidence: {
+          analysisInputHash: opp.analysis_input_hash,
+          completeness: analysis?.completeness,
+          verificationIssues: analysis?.verification_issues,
+          riskFlags: opp.risk_flags,
+        },
         packageBlockers: (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? null,
       });
 
@@ -266,6 +271,7 @@ export async function loadGuideBundle(
           automationPaused: automation.paused,
           callsEnabled,
           hasActiveSubs: hasActiveSubcontractors(subs),
+          unavailableSubLinks: detail.unavailableSubLinks,
           pendingCallCount: detail.pendingCalls,
           riskFlags: opp.risk_flags,
           hoursSinceUpdate,

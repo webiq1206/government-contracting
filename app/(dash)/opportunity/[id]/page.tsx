@@ -435,6 +435,12 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
           ["draft", "send_failed", "email_unverified"].includes(st)
         )));
 
+  const sourceEvidence = {
+    analysisInputHash: opp.analysis_input_hash,
+    completeness: analysis?.completeness,
+    verificationIssues: analysis?.verification_issues,
+    riskFlags,
+  };
   const readiness = computeBidReadiness({
     stage: opp.stage,
     status: opp.status,
@@ -460,7 +466,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     humanActionRequired: opp.human_action_required,
     tier: opp.tier,
     pastPerfBlocked,
-    completenessMissing: analysis?.completeness?.missing ?? null,
+    sourceEvidence,
     packageBlockers: (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? null,
   });
   const activity = buildActivityTimeline({
@@ -507,6 +513,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     riskFlags: opp.risk_flags,
     callsEnabled: rules.calls_enabled,
     hasActiveSubs: hasActiveSubcontractors(subs),
+    unavailableSubLinks: detail.unavailableSubLinks,
     pendingCallCount: pendingCalls,
   };
   const step = deriveStep({ ...stepInput, opportunityId: opp.id });
@@ -521,6 +528,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     expired,
     score: opp.score,
     hasAnalysis: Boolean(analysis),
+    sourceEvidence,
     missingInfo: (analysis?.completeness?.missing ?? [])
       .filter((m) => m.critical)
       .map((m) => ({ what: m.what, how: m.resolution })),
@@ -1013,6 +1021,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
               />}
               <div id="subs" data-guide-target="subs">
                 <OpportunitySubsPanel
+                  unavailableSubLinks={detail.unavailableSubLinks}
                   researchOnly={opp.is_sources_sought === true}
                   subs={subs}
                   communications={subComms}

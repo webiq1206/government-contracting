@@ -18,6 +18,7 @@
  */
 
 import { recordIsClosed } from "./closed-work";
+import { assessSavedSolicitationCompleteness, type SavedSolicitationEvidence } from "./saved-solicitation-completeness";
 import type { TradeCoverageSummary } from "./trade-coverage";
 import type {
   PlanBlocker,
@@ -48,6 +49,7 @@ export interface GuidedPlanInput {
   hasAnalysis: boolean;
   /** Critical missing items from solicitation completeness. */
   missingInfo: { what: string; how?: string }[];
+  sourceEvidence?: SavedSolicitationEvidence;
   /** Per-trade coverage; only required trades matter for step completion. */
   coverage: Pick<TradeCoverageSummary, "trades">;
   /** Quotes on file (any trade), for jobs with no formal trade list. */
@@ -190,6 +192,7 @@ function anchorKey(s: GuidedPlanInput): string {
 }
 
 export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
+  const sourceCheck = assessSavedSolicitationCompleteness(input.sourceEvidence);
   const requiredTrades = input.coverage.trades;
   const n = requiredTrades.length;
   const tradesWithSubs = requiredTrades.filter((t) => t.found > 0).length;
@@ -217,7 +220,7 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
       !input.pastPerfBlocked &&
       !["monitoring", "scoring"].includes(input.stage),
     brief: input.hasAnalysis,
-    missing: input.hasAnalysis && input.missingInfo.length === 0,
+    missing: input.hasAnalysis && sourceCheck.complete && input.missingInfo.length === 0,
     subs: input.hasAnalysis && (n === 0 || tradesWithSubs === n),
     contact:
       input.hasAnalysis && !input.outreachDraftOnly && (n === 0 || tradesContacted === n),
@@ -250,6 +253,12 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
       how: m.how ?? "Review the missing item and supply it or accept the gap.",
       href: "#attention",
     }));
+  } else if (input.hasAnalysis && !sourceCheck.complete) {
+    blockersByKey.missing = [{
+      what: sourceCheck.reason,
+      how: "Review the current notice and source documents, resolve warnings, then re-run analysis.",
+      href: "#requirements",
+    }];
   }
 
   const emptyTrades = requiredTrades.filter((t) => t.found === 0);
@@ -327,9 +336,11 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
           : undefined;
       case "missing":
         if (!input.hasAnalysis) return undefined;
-        return input.missingInfo.length === 0
-          ? "Nothing critical is missing"
-          : `${input.missingInfo.length} item${input.missingInfo.length === 1 ? "" : "s"} missing`;
+        return donePredicates.missing
+          ? "Saved completeness check passed"
+          : input.missingInfo.length > 0
+            ? `${input.missingInfo.length} item${input.missingInfo.length === 1 ? "" : "s"} missing`
+            : "Completeness needs review";
       case "subs":
         return n > 0 ? `${tradesWithSubs} of ${n} trades have subs` : undefined;
       case "contact":
@@ -404,7 +415,8 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
   const steps: PlanStep[] = STEP_DEFS.map((def, i) => {
     const blockers = blockersByKey[def.key];
     let status: PlanStatus;
-    if (allDone || donePredicates[def.key]) {
+    // A closed outcome is not evidence that a saved source check passed.
+    if ((allDone && def.key !== "missing") || donePredicates[def.key]) {
       status = "done";
     } else if (activeIdx >= 0 && i === activeIdx) {
       status = blockers?.length ? "blocked" : "current";

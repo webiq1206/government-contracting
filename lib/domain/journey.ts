@@ -226,6 +226,8 @@ export interface StepInput {
   callsEnabled?: boolean;
   /** Current pairings only; removed or declined choices are not active work. */
   hasActiveSubs?: boolean;
+  /** Active historical links excluded by the tenant-safe roster read. */
+  unavailableSubLinks?: number;
   /** Count from the scoped, workable call queue. Missing means not checked. */
   pendingCallCount?: number;
   /**
@@ -382,6 +384,18 @@ export function deriveStep(s: StepInput): NextStep {
     };
   }
 
+  if (s.hasActiveSubs === false && (s.unavailableSubLinks ?? 0) > 0 &&
+    ["sub_research", "outreach", "call_queue", "quote_entry"].includes(s.stage)) {
+    return {
+      title: "Review historical subcontractor links",
+      why: `${s.unavailableSubLinks} saved link${s.unavailableSubLinks === 1 ? " is" : "s are"} unavailable to this organization. No available subcontractor roster is confirmed for outreach or calls.`,
+      after: "An administrator must review record ownership before these links can be used. Source and qualification checks still apply.",
+      cta: "Review subcontractor links",
+      anchor: "#subs",
+      tone: "warn",
+      waitingOn: "you",
+    };
+  }
   const step = deriveStageStep(s);
 
   // Truth-in-advertising overrides: "Brost Co is working on it" copy is a

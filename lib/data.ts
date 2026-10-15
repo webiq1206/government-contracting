@@ -11,6 +11,7 @@
  * seeing "1 subcontractor" on an empty account.
  */
 import { query, queryOne } from "./db";
+import { unavailableSubcontractorLinks } from "./opportunity-sub-scope";
 import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "./domain/opportunity-kind";
 import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
@@ -2777,7 +2778,7 @@ export async function opportunityDetail(id: string) {
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
-  const [bid, quotes, subs, documents, logs, competitors, subComms, callRow, callEvents] = await Promise.all([
+  const [bid, quotes, subs, documents, logs, competitors, subComms, callRow, callEvents, unavailableSubLinks] = await Promise.all([
     queryOne(
       `select * from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
       [id, orgId]
@@ -2891,6 +2892,7 @@ export async function opportunityDetail(id: string) {
         order by cc.created_at desc limit 100`,
       [id, orgId]
     ),
+    unavailableSubcontractorLinks(id, orgId),
   ]);
   return {
     opp,
@@ -2903,6 +2905,7 @@ export async function opportunityDetail(id: string) {
     subComms,
     pendingCalls: callRow?.n ?? 0,
     callEvents,
+    unavailableSubLinks,
   };
 }
 
