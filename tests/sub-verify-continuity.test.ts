@@ -24,6 +24,9 @@ vi.mock("../lib/app-settings", () => ({ getWorkExecution: async () => "sub", are
 vi.mock("../lib/tenant-context", () => ({ currentOrgId: () => "org-synthetic" }));
 vi.mock("../lib/public-contact-backfill", () => ({ backfillPublicContact: vi.fn() }));
 
+import { verifiedGuideProgress } from '../lib/domain/guide-progress';
+import { summarizeTradeCoverage } from '../lib/domain/trade-coverage';
+import { guideStandards, guideSub } from './helpers/guide-evidence';
 import { subVerify } from "../lib/agents/sub-verify";
 
 const context = { runId: "synthetic-run", trigger: "queue" as const,
@@ -100,6 +103,14 @@ describe("subcontractor verification continuity", () => {
     mocks.sam.mockResolvedValue({ excluded });
     const result = await subVerify.handler(context);
     expect(result).toMatchObject({ ok: true, enqueued: [], data: { passes: false, route: "held (failed standards)" } });
+    const saved = verificationWrite()!;
+    expect(saved.params[5]).toBe(true); // Lookup completed, but the firm failed standards.
+    const subs = [guideSub({ verified: saved.params[5], verification_json: saved.evidence,
+      google_rating: rating, sam_excluded: excluded, has_trade_contact: true })];
+    expect(verifiedGuideProgress({ standards: guideStandards, subs,
+      sourceEvidence: { analysisInputHash: 'synthetic', completeness: { ok: true, missing: [] } },
+      coverage: summarizeTradeCoverage({ requiredTrades: ['Roofing'], subs, quotes: [] })
+    })).toMatchObject({ subsFound: false, subsContacted: false });
     expect(mocks.complete).not.toHaveBeenCalled();
   });
 

@@ -263,7 +263,7 @@ export async function loadGuideBundle(
             analysisInputHash: opp.analysis_input_hash, completeness: analysis?.completeness,
             verificationIssues: analysis?.verification_issues, riskFlags: opp.risk_flags,
           },
-          subs: activeSubs, coverage,
+          subs: activeSubs, coverage, standards: profile?.profile_json.sub_standards,
         }),
         stepInput: {
           stage: opp.stage,

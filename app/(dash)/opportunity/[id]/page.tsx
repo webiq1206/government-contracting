@@ -484,7 +484,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
   });
   const journeyCompletion = verifiedJourneyCompletion({
     score: opp.score,
-    progress: verifiedGuideProgress({ sourceEvidence, subs: activeSubs, coverage }),
+    progress: verifiedGuideProgress({ sourceEvidence, subs: activeSubs, coverage,
+      standards: profileForPricing?.sub_standards }),
     quoteCount: readiness.tradesWithQuotes,
     hasBid,
     bidSubmitted,

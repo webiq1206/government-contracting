@@ -2708,6 +2708,15 @@ export async function opportunityCompetitors(id: string): Promise<CompetitorRow[
 /** Sub paired to an opportunity, with contactability + this-bid touch counts. */
 export interface OppSubRow {
   verification_json?: Record<string, unknown> | null;
+  archived_at?: string | null;
+  blacklisted?: boolean;
+  sam_excluded?: boolean;
+  license_status?: string | null;
+  review_count?: number | null;
+  reliability_score?: number | null;
+  /** Receipt for this pairing's known trade, not firm totals. Call history has
+   * no immutable trade snapshot; mutable call cards cannot establish this. */
+  has_trade_contact?: boolean;
   id: string;
   opportunity_id: string;
   subcontractor_id: string;
@@ -2797,7 +2806,19 @@ export async function opportunityDetail(id: string) {
               os.outreach_state, os.responded_at, os.verified, os.verification_json,
               os.role, os.removed_at, os.removed_reason,
               s.company_name, s.phone, s.email, s.email_verified, s.google_rating,
+              s.archived_at, s.blacklisted, s.sam_excluded, s.license_status,
+              s.review_count, s.reliability_score,
               s.contact_status, s.last_contacted,
+              (
+                exists (
+                  select 1 from communications tc
+                   where tc.org_id = $2 and tc.opportunity_id = os.opportunity_id
+                     and tc.subcontractor_id = os.subcontractor_id
+                     and nullif(btrim(tc.meta->>'trade'), '') = nullif(btrim(os.trade), '')
+                     and tc.channel = 'email' and tc.direction = 'outbound'
+                     and tc.provider is not null and tc.delivery_state in ('sent','delivered')
+                )
+              ) as has_trade_contact,
               coalesce(stats.emails_sent, 0)::int as emails_sent,
               coalesce(stats.calls_logged, 0)::int as calls_logged,
               coalesce(stats.notes_count, 0)::int as notes_count,
@@ -2831,7 +2852,7 @@ export async function opportunityDetail(id: string) {
              and c.opportunity_id = os.opportunity_id
              and c.org_id = $2
          ) stats on true
-        where os.opportunity_id = $1
+        where os.opportunity_id = $1 and os.org_id = $2
         order by os.trade nulls last,
                  /*
                   * Removed firms last, then the primary, then backups, then

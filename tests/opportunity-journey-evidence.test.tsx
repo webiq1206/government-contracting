@@ -6,12 +6,14 @@ import { journeySteps, JOURNEY_STAGES } from '@/lib/domain/journey';
 import { verifiedGuideProgress, verifiedJourneyCompletion } from '@/lib/domain/guide-progress';
 import { summarizeTradeCoverage } from '@/lib/domain/trade-coverage';
 
+import { guideStandards, guideSub } from './helpers/guide-evidence';
+
 const source = { analysisInputHash: 'synthetic-source-hash', completeness: { ok: true, missing: [] } };
-const qualified = { trade: 'Roofing', verified: true, outreach_state: 'sent', emails_sent: 1, calls_logged: 0 };
+const qualified = guideSub();
 function completion(subs: (typeof qualified & { removed_at?: string })[] = [], sourceEvidence = source, trades = ['Roofing']) {
   const active = subs.filter(s => !s.removed_at);
   return verifiedJourneyCompletion({ score: 67, quoteCount: 0, hasBid: false, bidSubmitted: false,
-    progress: verifiedGuideProgress({ sourceEvidence, subs,
+    progress: verifiedGuideProgress({ standards: guideStandards, sourceEvidence, subs,
       coverage: summarizeTradeCoverage({ requiredTrades: trades, subs: active, quotes: [] }) }) });
 }
 function completeLabels(stage: string, evidence: ReturnType<typeof completion>, callsEnabled = true) {
@@ -38,7 +40,7 @@ describe('opportunity workflow records evidence rather than ordinal stage', () =
 
   it.each([false, undefined, null])('requires positive qualification, not a candidate or unknown result (%s)', verified => {
     const subs = [{ ...qualified, verified }];
-    const progress = verifiedGuideProgress({ sourceEvidence: source, subs,
+    const progress = verifiedGuideProgress({ standards: guideStandards, sourceEvidence: source, subs,
       coverage: summarizeTradeCoverage({ requiredTrades: ['Roofing'], subs, quotes: [] }) });
     expect(progress.subsFound).toBe(false);
     expect(progress.subsContacted).toBe(false);
@@ -52,7 +54,7 @@ describe('opportunity workflow records evidence rather than ordinal stage', () =
   it('requires qualified coverage and receipts on each trade', () => {
     expect(completeLabels('call_queue', completion([qualified], source, ['Roofing', 'Electrical'])))
       .toEqual(['Found', 'Scored', 'Analyzed']);
-    const uncontacted = { ...qualified, trade: 'Electrical', emails_sent: 0 };
+    const uncontacted = { ...qualified, trade: 'Electrical', emails_sent: 0, has_trade_contact: false };
     expect(completeLabels('call_queue', completion([qualified, uncontacted], source, ['Roofing', 'Electrical'])))
       .toEqual(['Found', 'Scored', 'Analyzed', 'Subs found']);
   });
@@ -78,7 +80,7 @@ describe('opportunity workflow records evidence rather than ordinal stage', () =
   });
 
   it('preserves recorded calls without promising delivery and respects calling-off presentation', () => {
-    const evidence = completion([{ ...qualified, emails_sent: 0, calls_logged: 1 }]);
+    const evidence = completion([{ ...qualified, emails_sent: 0, calls_logged: 1, has_trade_contact: false }]);
     expect(completeLabels('quote_entry', evidence)).toContain('Calls recorded');
     expect(completeLabels('quote_entry', evidence, false)).not.toContain('Calls recorded');
     expect(JSON.stringify(evidence)).not.toContain('delivered');

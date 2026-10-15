@@ -4,6 +4,7 @@ import { buildGuideAdapters } from '@/lib/guide/build-adapters';
 import { verifiedGuideProgress, verifiedJourneyCompletion } from '@/lib/domain/guide-progress';
 import { journeySteps } from '@/lib/domain/journey';
 import { summarizeTradeCoverage } from '@/lib/domain/trade-coverage';
+import { guideStandards, guideSub } from './helpers/guide-evidence';
 import type { ActionCenterData } from '@/lib/data';
 
 const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -15,7 +16,7 @@ function facts(overrides:Partial<OpportunityGuideFacts>={}): OpportunityGuideFac
       quoteCount:0,requiredTradeCount:1,tradesWithQuotes:0,tradeCoverageUncovered:1,
       hasBid:false,bidSubmitted:false,outcome:null,pastPerfBlocked:false,automationPaused:false,
       hoursSinceUpdate:0,callsEnabled:true,hasActiveSubs:false,unavailableSubLinks:19,pendingCallCount:0},
-    progress:verifiedGuideProgress({sourceEvidence:{},subs:[],coverage:emptyCoverage()}),...overrides};
+    progress:verifiedGuideProgress({standards:guideStandards,sourceEvidence:{},subs:[],coverage:emptyCoverage()}),...overrides};
 }
 function guide(opportunity:OpportunityGuideFacts) {
   return buildPageGuide({pathname:`/opportunity/${id}`,setup:{items:[],done:0,total:0,complete:true},
@@ -31,8 +32,8 @@ const actions={calls:{rows:calls},subFollowUps:calls.map(c=>({...c,phone:'555-01
 
 describe('Guide Me uses scoped evidence, not historical stage progression',()=>{
   it.each([true,false])('keeps the strip and Guide Me completion aligned with calling enabled=%s',callsEnabled=>{
-    const subs=[{trade:'Roofing',verified:true,outreach_state:'followed_up',emails_sent:1,calls_logged:1}];
-    const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,
+    const subs=[guideSub({outreach_state:'followed_up',calls_logged:1})];
+    const progress=verifiedGuideProgress({standards:guideStandards,sourceEvidence:completeSource,subs,
       coverage:summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]})});
     const opportunity=facts({progress});
     opportunity.stepInput={...opportunity.stepInput,callsEnabled};
@@ -50,19 +51,19 @@ describe('Guide Me uses scoped evidence, not historical stage progression',()=>{
     expect(buildGuideAdapters({guide:g,opportunity,actions,opportunitySubs:[],sub:null})).toEqual({});
   });
   it.each(['sent','followed_up','unresponsive','responsive'])('does not treat historical %s without receipts as successful contact',outreach_state=>{
-    const subs=[{trade:'Roofing',verified:true,outreach_state,emails_sent:0,calls_logged:0}];
+    const subs=[guideSub({outreach_state,emails_sent:0,calls_logged:0,has_trade_contact:false})];
     const coverage=summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]});
-    const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,coverage});
+    const progress=verifiedGuideProgress({standards:guideStandards,sourceEvidence:completeSource,subs,coverage});
     expect(progress).toEqual({analysisComplete:true,subsFound:true,subsContacted:false,callsRecorded:false});
     expect(coverage.totals.contacted).toBe(0);expect(coverage.totals.followUpDue).toBe(0);
   });
   it('retains checked source and contact progress for a valid available roster',()=>{
-    const subs=[{trade:'Roofing',verified:true,outreach_state:'followed_up',emails_sent:1,calls_logged:1}];
-    const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,
+    const subs=[guideSub({outreach_state:'followed_up',calls_logged:1})];
+    const progress=verifiedGuideProgress({standards:guideStandards,sourceEvidence:completeSource,subs,
       coverage:summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]})});
     expect(progress).toEqual({analysisComplete:true,subsFound:true,subsContacted:true,callsRecorded:true});
     expect(guide(facts({progress})).completed).toContain('Subs contacted');
-    expect(verifiedGuideProgress({sourceEvidence:completeSource,subs:[],coverage:emptyCoverage()}).subsFound).toBe(false);
+    expect(verifiedGuideProgress({standards:guideStandards,sourceEvidence:completeSource,subs:[],coverage:emptyCoverage()}).subsFound).toBe(false);
   });
   it('does not describe unreceipted historical outreach as sent messages awaiting replies',()=>{
     const opportunity=facts();opportunity.stage='outreach';
