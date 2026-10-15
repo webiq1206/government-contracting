@@ -24,7 +24,8 @@ import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { RecordActionBar } from "@/components/record-action-bar";
-import { deriveStep, hasActiveSubcontractors } from "@/lib/domain/journey";
+import { deriveStep, hasActiveSubcontractors, isActiveSubcontractor } from "@/lib/domain/journey";
+import { verifiedGuideProgress, verifiedJourneyCompletion } from "@/lib/domain/guide-progress";
 import { OpportunityJourney } from "@/components/opportunity-journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
@@ -131,6 +132,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     );
   }
   const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
+  const activeSubs = subs.filter(isActiveSubcontractor);
   const hoursSinceUpdate = opp.updated_at
     ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
     : null;
@@ -401,7 +403,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
   const outreachOn = workMode?.outreachAllowed ?? true;
   const coverage = summarizeTradeCoverage({
     requiredTrades: analysis?.required_trades ?? [],
-    subs: subs.map((s) => ({
+    subs: activeSubs.map((s) => ({
       trade: s.trade,
       outreach_state: s.outreach_state,
       emails_sent: s.emails_sent,
@@ -437,8 +439,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
 
   const sourceEvidence = {
     analysisInputHash: opp.analysis_input_hash,
-    completeness: analysis?.completeness,
-    verificationIssues: analysis?.verification_issues,
+    completeness: storedAnalysis?.completeness,
+    verificationIssues: storedAnalysis?.verification_issues,
     riskFlags,
   };
   const readiness = computeBidReadiness({
@@ -458,7 +460,7 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
       contacted: t.contacted,
       found: t.found,
     })),
-    subsFound: subs.length,
+    subsFound: activeSubs.length,
     outreachEnabled: outreachOn,
     hasBid,
     packageReady: bid?.package_ready ?? null,
@@ -479,6 +481,13 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
     documents: documents as Record<string, unknown>[],
     calls: detail.callEvents,
     limit: 60,
+  });
+  const journeyCompletion = verifiedJourneyCompletion({
+    score: opp.score,
+    progress: verifiedGuideProgress({ sourceEvidence, subs: activeSubs, coverage }),
+    quoteCount: readiness.tradesWithQuotes,
+    hasBid,
+    bidSubmitted,
   });
 
   const complianceRows = bid?.compliance_matrix ?? [];
@@ -848,9 +857,9 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   title={plan.closed ? "Saved bid history" : "Where this bid stands"}
                   tip={termTip("workflow")}
                 >
-                  {plan.closed ? plan.closed.note : "Same tracker as the top banner. Use Next step for the action to take now."}
+                  {plan.closed ? plan.closed.note : "Checkmarks require recorded evidence. The highlight marks the saved stage, not permission to act. Use Next step for current holds and actions."}
                 </SectionHeading>
-                {!plan.closed && <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />}
+                {!plan.closed && <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} completion={journeyCompletion} />}
                 {/* Below xl there is no side panel, so the same live task list
                     lives here rather than only on wide screens. */}
                 <div className="pt-2 2xl:hidden">

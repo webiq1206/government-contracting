@@ -1,4 +1,5 @@
 import { currentScoreLine, recordedDeadlineLine, scoreHistoryNotice } from "./guide-score-context";
+import { verifiedJourneyCompletion } from "./guide-progress";
 /**
  * Context-aware page guidance. Pure: turns pathname + live account/workflow
  * facts into the same story the operator sees in the Guide Me panel.
@@ -880,17 +881,14 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
   // a call step the account has turned off.
   const journey = journeySteps(opp.stage, {
     callsEnabled: opp.stepInput.callsEnabled !== false,
+    completion: verifiedJourneyCompletion({
+      score: opp.score, progress: opp.progress,
+      quoteCount: opp.stepInput.quoteCount, hasBid: opp.stepInput.hasBid,
+      bidSubmitted: opp.bidSubmitted === true,
+    }),
   });
-  const completed = ["Found"];
-  if (opp.score != null && Number.isFinite(opp.score)) completed.push("Scored");
-  if (opp.progress?.analysisComplete) completed.push("Analyzed");
-  if (opp.progress?.subsFound) completed.push("Subs found");
-  if (opp.progress?.subsContacted) completed.push("Subs contacted");
-  if (opp.progress?.callsRecorded) completed.push("Calls recorded");
-  if (opp.stepInput.quoteCount > 0) completed.push("Quotes in");
-  if (opp.stepInput.hasBid) completed.push("Bid built");
-  if (opp.bidSubmitted) completed.push("Submitted");
-  const current = journey.find((j) => j.status === "current");
+  const completed = journey.filter(j => j.status === "done").map(j => j.label);
+  const current = journey.find(j => j.recordedStage);
 
   const needsAttention: string[] = [];
   const brostHandling: string[] = [];

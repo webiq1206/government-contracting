@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildPageGuide, type GuideContextInput, type OpportunityGuideFacts } from '@/lib/domain/page-guide';
 import { buildGuideAdapters } from '@/lib/guide/build-adapters';
-import { verifiedGuideProgress } from '@/lib/domain/guide-progress';
+import { verifiedGuideProgress, verifiedJourneyCompletion } from '@/lib/domain/guide-progress';
+import { journeySteps } from '@/lib/domain/journey';
 import { summarizeTradeCoverage } from '@/lib/domain/trade-coverage';
 import type { ActionCenterData } from '@/lib/data';
 
@@ -29,6 +30,17 @@ const calls=[
 const actions={calls:{rows:calls},subFollowUps:calls.map(c=>({...c,phone:'555-0100',trade:'Roofing'}))} as unknown as ActionCenterData;
 
 describe('Guide Me uses scoped evidence, not historical stage progression',()=>{
+  it.each([true,false])('keeps the strip and Guide Me completion aligned with calling enabled=%s',callsEnabled=>{
+    const subs=[{trade:'Roofing',verified:true,outreach_state:'followed_up',emails_sent:1,calls_logged:1}];
+    const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,
+      coverage:summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]})});
+    const opportunity=facts({progress});
+    opportunity.stepInput={...opportunity.stepInput,callsEnabled};
+    const completion=verifiedJourneyCompletion({score:opportunity.score,progress,
+      quoteCount:opportunity.stepInput.quoteCount,hasBid:opportunity.stepInput.hasBid,bidSubmitted:false});
+    expect(guide(opportunity).completed).toEqual(journeySteps(opportunity.stage,{callsEnabled,completion})
+      .filter(s=>s.status==='done').map(s=>s.label));
+  });
   it('reproduces the zero-roster call_queue case as review only with no adapters or invented completion',()=>{
     const opportunity=facts();const g=guide(opportunity);
     expect(g.steps[0]).toMatchObject({kind:'highlight',target:'subs'});
@@ -38,14 +50,14 @@ describe('Guide Me uses scoped evidence, not historical stage progression',()=>{
     expect(buildGuideAdapters({guide:g,opportunity,actions,opportunitySubs:[],sub:null})).toEqual({});
   });
   it.each(['sent','followed_up','unresponsive','responsive'])('does not treat historical %s without receipts as successful contact',outreach_state=>{
-    const subs=[{trade:'Roofing',outreach_state,emails_sent:0,calls_logged:0}];
+    const subs=[{trade:'Roofing',verified:true,outreach_state,emails_sent:0,calls_logged:0}];
     const coverage=summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]});
-    const progress=verifiedGuideProgress({sourceEvidence:{},subs,coverage});
-    expect(progress).toEqual({analysisComplete:false,subsFound:true,subsContacted:false,callsRecorded:false});
+    const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,coverage});
+    expect(progress).toEqual({analysisComplete:true,subsFound:true,subsContacted:false,callsRecorded:false});
     expect(coverage.totals.contacted).toBe(0);expect(coverage.totals.followUpDue).toBe(0);
   });
   it('retains checked source and contact progress for a valid available roster',()=>{
-    const subs=[{trade:'Roofing',outreach_state:'followed_up',emails_sent:1,calls_logged:1}];
+    const subs=[{trade:'Roofing',verified:true,outreach_state:'followed_up',emails_sent:1,calls_logged:1}];
     const progress=verifiedGuideProgress({sourceEvidence:completeSource,subs,
       coverage:summarizeTradeCoverage({requiredTrades:['Roofing'],subs,quotes:[]})});
     expect(progress).toEqual({analysisComplete:true,subsFound:true,subsContacted:true,callsRecorded:true});

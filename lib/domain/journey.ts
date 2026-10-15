@@ -37,28 +37,33 @@ export const JOURNEY_STAGES = [
   "submitted",
 ] as const;
 
+export type JourneyStage = (typeof JOURNEY_STAGES)[number];
+export type JourneyCompletion = Partial<Record<JourneyStage, boolean>>;
+
 export interface JourneyStep {
   stage: string;
   label: string;
   /** Who does the work while this step is active. */
   owner: Party;
-  status: "done" | "current" | "upcoming";
+  status: "done" | "current" | "unverified" | "upcoming";
+  /** Saved position only; neither a running job nor permission to act. */
+  recordedStage: boolean;
 }
 
 /** done = past tense for completed chips; current = present tense while active. */
 const STEP_META: Record<
   (typeof JOURNEY_STAGES)[number],
-  { done: string; current: string; owner: Party }
+  { done: string; current: string; pending: string; owner: Party }
 > = {
-  monitoring: { done: "Found", current: "Watching", owner: "system" },
-  scoring: { done: "Scored", current: "Scoring", owner: "system" },
-  analysis: { done: "Analyzed", current: "Analyzing", owner: "system" },
-  sub_research: { done: "Subs found", current: "Finding subs", owner: "system" },
-  outreach: { done: "Subs contacted", current: "Contacting subs", owner: "subs" },
-  call_queue: { done: "Calls made", current: "Calls to make", owner: "you" },
-  quote_entry: { done: "Quotes in", current: "Collecting quotes", owner: "you" },
-  bid_building: { done: "Bid built", current: "Building the bid", owner: "you" },
-  submitted: { done: "Submitted", current: "Awaiting award", owner: "agency" },
+  monitoring: { done: "Found", current: "Watching", pending: "Discovery", owner: "system" },
+  scoring: { done: "Scored", current: "Scoring", pending: "Scoring", owner: "system" },
+  analysis: { done: "Analyzed", current: "Analyzing", pending: "Analysis", owner: "system" },
+  sub_research: { done: "Subs found", current: "Finding subs", pending: "Subcontractor coverage", owner: "system" },
+  outreach: { done: "Subs contacted", current: "Contacting subs", pending: "Subcontractor contact", owner: "subs" },
+  call_queue: { done: "Calls recorded", current: "Calls to make", pending: "Calls", owner: "you" },
+  quote_entry: { done: "Quotes in", current: "Collecting quotes", pending: "Quotes", owner: "you" },
+  bid_building: { done: "Bid built", current: "Building the bid", pending: "Bid", owner: "you" },
+  submitted: { done: "Submitted", current: "Awaiting award", pending: "Submission", owner: "agency" },
 };
 
 /** Plain-English stage label for badges and lists (never raw snake_case). */
@@ -87,8 +92,8 @@ export function stageLabel(stage: string | null | undefined): string {
 }
 
 /**
- * The step-tracker model for one opportunity. Terminal stages (won/lost/
- * dismissed) return the full path marked done up to where the record exited.
+ * Saved stage locates the record; only explicit evidence completes a step.
+ * Terminal stages also need evidence and never imply the whole path ran.
  *
  * With calling turned off the call step is dropped from the path entirely: a
  * tracker that keeps showing "Calls to make" as a step promises work that will
@@ -96,33 +101,27 @@ export function stageLabel(stage: string | null | undefined): string {
  */
 export function journeySteps(
   stage: string,
-  opts: { callsEnabled?: boolean } = {}
+  opts: { callsEnabled?: boolean; completion?: JourneyCompletion } = {}
 ): JourneyStep[] {
   const callsEnabled = opts.callsEnabled !== false;
   const stages = withoutCallStage(JOURNEY_STAGES, callsEnabled);
   const stageIndex = new Map<string, number>(stages.map((s, i) => [s, i]));
-  // Terminal stages: won exits after submitted; lost too; dismissed can exit
-  // anywhere, without a recorded exit point we show the whole path as done
-  // only for won/lost (they necessarily passed through submission).
-  const isTerminal = stage === "won" || stage === "lost" || stage === "dismissed";
   // A record still sitting on the call stage after calling was turned off is
   // read as being at the step that replaced it, so it is never marked current
   // on a step the tracker no longer draws.
   const at = !callsEnabled && stage === CALL_STAGE ? STAGE_AFTER_CALLS : stage;
-  const idx = isTerminal
-    ? stage === "dismissed"
-      ? -1 // unknown exit point; show nothing as current
-      : stages.length // won/lost: every step completed
-    : (stageIndex.get(at) ?? 0);
+  const idx = stageIndex.get(at) ?? -1;
 
   return stages.map((s, i) => {
     const status: JourneyStep["status"] =
-      i < idx ? "done" : i === idx ? "current" : "upcoming";
+      opts.completion?.[s] === true ? "done" : i === idx ? "current" :
+        i < idx || idx < 0 ? "unverified" : "upcoming";
     return {
       stage: s,
-      label: status === "current" ? STEP_META[s].current : STEP_META[s].done,
+      label: status === "done" ? STEP_META[s].done : STEP_META[s].pending,
       owner: STEP_META[s].owner,
       status,
+      recordedStage: i === idx,
     };
   });
 }

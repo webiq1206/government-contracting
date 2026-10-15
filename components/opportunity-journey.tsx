@@ -1,20 +1,19 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { journeySteps, PARTY_LABEL } from "@/lib/domain/journey";
+import { journeySteps, type JourneyCompletion } from "@/lib/domain/journey";
 
 /**
- * Horizontal step tracker showing where one opportunity is on the happy path:
- * every step completed so far (✓), the active step (pulsing, with who owns
- * it), and everything still ahead. Renders directly under the header on the
- * opportunity page so the operator sees "how far along is this, and whose
- * turn is it" before reading anything else.
+ * Completion evidence and saved stage are separate. A later stage cannot
+ * turn missing source, qualification, or contact evidence into checkmarks.
  */
 export function OpportunityJourney({
   stage,
+  completion,
   callsEnabled = true,
 }: {
   stage: string;
+  completion: JourneyCompletion;
   /** False on an email-only account: the call step is not drawn at all. */
   callsEnabled?: boolean;
 }) {
@@ -38,7 +37,7 @@ export function OpportunityJourney({
         ? "auto"
         : "smooth",
     });
-  }, [stage]);
+  }, [stage, callsEnabled]);
 
   if (stage === "dismissed") {
     return (
@@ -47,7 +46,7 @@ export function OpportunityJourney({
       </p>
     );
   }
-  const steps = journeySteps(stage, { callsEnabled });
+  const steps = journeySteps(stage, { callsEnabled, completion });
   const outcome = stage === "won" ? "won" : stage === "lost" ? "lost" : null;
 
   return (
@@ -58,14 +57,15 @@ export function OpportunityJourney({
       {steps.map((step, i) => (
         <li
           key={step.stage}
-          data-current={step.status === "current"}
+          data-current={step.recordedStage}
+          aria-label={`${step.label}: ${step.status === "done" ? "complete" : "completion not verified"}${step.recordedStage ? "; recorded stage" : ""}`}
           className="flex shrink-0 items-center"
         >
           {i > 0 && (
             <span
               aria-hidden
               className={`mx-1.5 h-px w-4 sm:w-6 ${
-                step.status === "upcoming" ? "bg-border" : "bg-pursue/50"
+                step.status === "done" ? "bg-pursue/50" : "bg-border"
               }`}
             />
           )}
@@ -73,23 +73,23 @@ export function OpportunityJourney({
             className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
               step.status === "done"
                 ? "border-pursue/30 bg-pursue/10 text-pursue"
-                : step.status === "current"
+                : step.recordedStage
                   ? "border-pursue bg-pursue-soft font-semibold text-pursue-strong"
                   : "border-border bg-surface text-slate-500"
             }`}
           >
             {step.status === "done" ? (
               <span aria-hidden>✓</span>
-            ) : step.status === "current" ? (
+            ) : step.recordedStage ? (
               <span
                 aria-hidden
-                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-pursue"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-pursue"
               />
             ) : null}
             {step.label}
-            {step.status === "current" && (
+            {step.recordedStage && (
               <span className="font-normal text-slate-500">
-                · {PARTY_LABEL[step.owner]}
+                · recorded stage
               </span>
             )}
           </span>
