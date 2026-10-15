@@ -68,12 +68,12 @@ describe("journeySteps with calling off", () => {
     const steps = journeySteps(CALL_STAGE, { callsEnabled: false });
     const byStage = Object.fromEntries(steps.map((s) => [s.stage, s.status]));
     expect(byStage.quote_entry).toBe("current");
-    expect(byStage.outreach).toBe("done");
+    expect(byStage.outreach).toBe("unverified");
   });
 
-  it("still marks won as fully complete on the shorter path", () => {
+  it("does not infer completion from won on the shorter path", () => {
     const steps = journeySteps("won", { callsEnabled: false });
-    expect(steps.every((s) => s.status === "done")).toBe(true);
+    expect(steps.every((s) => s.status === "unverified")).toBe(true);
   });
 });
 

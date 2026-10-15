@@ -29,19 +29,19 @@ function input(overrides: Partial<StepInput> = {}): StepInput {
 }
 
 describe("journeySteps", () => {
-  it("marks steps done/current/upcoming around the active stage", () => {
+  it("does not infer completion before the saved stage", () => {
     const steps = journeySteps("call_queue");
     const byStage = Object.fromEntries(steps.map((s) => [s.stage, s.status]));
-    expect(byStage.monitoring).toBe("done");
-    expect(byStage.outreach).toBe("done");
+    expect(byStage.monitoring).toBe("unverified");
+    expect(byStage.outreach).toBe("unverified");
     expect(byStage.call_queue).toBe("current");
     expect(byStage.quote_entry).toBe("upcoming");
     expect(byStage.submitted).toBe("upcoming");
   });
 
-  it("marks every step done for won and lost", () => {
+  it("does not infer prior work from won and lost outcomes", () => {
     for (const terminal of ["won", "lost"]) {
-      expect(journeySteps(terminal).every((s) => s.status === "done")).toBe(true);
+      expect(journeySteps(terminal).every((s) => s.status === "unverified")).toBe(true);
     }
   });
 
@@ -234,7 +234,7 @@ describe("deriveStep", () => {
   it("uses present-tense labels for the current journey chip", () => {
     const current = journeySteps("scoring").find((s) => s.status === "current")!;
     expect(current.label).toBe("Scoring");
-    const done = journeySteps("analysis").find((s) => s.stage === "scoring")!;
+    const done = journeySteps("analysis", { completion: { scoring: true } }).find((s) => s.stage === "scoring")!;
     expect(done.label).toBe("Scored");
   });
 
