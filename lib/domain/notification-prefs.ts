@@ -164,7 +164,10 @@ export function categoryStatuses(facts: DeliveryFacts): CategoryStatus[] {
     } else if (def.key === "assignments" || def.key === "informational") {
       route = "not_sent";
     } else if (def.key === "automation_incidents") {
-      route = "in_app_only";
+      route =
+        facts.isOperationsOrg && facts.hasOperationsAddress && facts.mailEnabled
+          ? "operations_address"
+          : "in_app_only";
     } else {
       // Digests. Sent only for the operations organization, and only to the
       // deployment's own address.

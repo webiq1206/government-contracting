@@ -34,6 +34,9 @@ describe("GPT-4.1 production safeguards", () => {
   it("keeps cents and rejects computed, invented, shorthand or rounded amounts", () => {
     expect(groundedMoney(1234.56, "Our total is $1,234.56")).toBe(1234.56);
     expect(groundedMoney(1234.56, "Our total is $1,234.56.")).toBe(1234.56);
+    expect(groundedMoney(126400.5, "Total for the base period is $126,400.50, firm, tax included.")).toBe(126400.5);
+    expect(groundedMoney(88000, "We can do it for $88,000, net 30, firm for 30 days.")).toBe(88000);
+    expect(groundedMoney(1000, "Total $1,000,00")).toBeNull();
     expect(groundedMoney(1234.56, "Our total is $1,234.567")).toBeNull();
     expect(groundedMoney(1235, "Our total is $1,234.56")).toBeNull();
     expect(groundedMoney(10300, "80 units at $125 plus $300 delivery")).toBeNull();

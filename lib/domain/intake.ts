@@ -133,6 +133,11 @@ export interface AutomationRules {
    * with a place to record the requirements it must meet first.
    */
   final_nudge_enabled: boolean;
+  /**
+   * Business days of lead time a review item must still have, or it is passed
+   * and archived. Zero turns that pass off. Weekends do not count.
+   */
+  review_close_lead_business_days: number;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -158,6 +163,7 @@ export const DEFAULT_RULES: AutomationRules = {
   // Off. See the field comment: the message this gates cannot currently meet
   // the bar every other outbound message is held to.
   final_nudge_enabled: false,
+  review_close_lead_business_days: 5,
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
@@ -202,6 +208,12 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // behaviour is the thing being stopped. A stored config written before
     // this key existed has no opinion about it, and no opinion means off.
     final_nudge_enabled: v?.final_nudge_enabled === true,
+    review_close_lead_business_days: num(
+      v?.review_close_lead_business_days,
+      DEFAULT_RULES.review_close_lead_business_days,
+      0,
+      60
+    ),
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;

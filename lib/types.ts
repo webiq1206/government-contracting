@@ -248,6 +248,9 @@ export interface ScoreBreakdown {
     reasoning: string;
   }[];
   summary: string;
+  /** Pursue or pass chosen for a finished 50-69 score, when one was made. */
+  band_decision?: "pursue" | "pass";
+  band_decision_reasoning?: string;
 }
 
 export interface BidContact {
