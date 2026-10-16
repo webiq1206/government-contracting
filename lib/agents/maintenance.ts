@@ -21,6 +21,7 @@ import { logAgent } from "../logger";
 import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { listActiveOrganizations } from "../organizations";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
+import { archiveReviewInsideLeadTime } from "../review-lead-pass";
 
 /**
  * Active organization ids for a cron sweep that must run per tenant. Falls
@@ -1390,6 +1391,7 @@ export const reviewExpirySweep: AgentDefinition = {
     let warned = 0;
     let dismissed = 0;
     let heldForOperator = 0;
+    let passedForLead = 0;
     for (const orgId of orgs) {
       const rules = await runWithOrg(orgId, () => getAutomationRules());
 
@@ -1428,6 +1430,11 @@ export const reviewExpirySweep: AgentDefinition = {
         );
       }
       warned += warnable.length;
+
+      const closedForLead = await runWithOrg(orgId, () =>
+        archiveReviewInsideLeadTime(orgId, rules.review_close_lead_business_days)
+      );
+      passedForLead += closedForLead.length;
 
       if (!rules.auto_dismiss_review) {
         /*
@@ -1483,6 +1490,9 @@ export const reviewExpirySweep: AgentDefinition = {
     const parts = [`warned ${warned}`, `dismissed ${dismissed}`];
     if (heldForOperator > 0) {
       parts.push(`${heldForOperator} past their window and kept for a person to decide`);
+    }
+    if (passedForLead > 0) {
+      parts.push(`${passedForLead} passed because the response deadline is inside the minimum lead time`);
     }
     return { ok: true, summary: `Review expiry: ${parts.join(", ")}.` };
   },

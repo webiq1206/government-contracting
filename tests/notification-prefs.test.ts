@@ -59,6 +59,12 @@ describe("categoryStatuses", () => {
     expect(s.statement).toContain("No separate email alert. Check Compliance");
   });
 
+  it("emails an automation outage to the operations address when that channel is configured", () => {
+    const s = byKey(facts({ isOperationsOrg: true }), "automation_incidents");
+    expect(s.route).toBe("operations_address");
+    expect(s.reachesAccount).toBe(false);
+  });
+
   it("says where the operations digest actually goes", () => {
     const s = byKey(facts({ isOperationsOrg: true }), "compliance");
     expect(s.route).toBe("operations_address");

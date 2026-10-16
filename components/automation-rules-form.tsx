@@ -765,6 +765,19 @@ export function AutomationRulesForm({
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
+                    label="Minimum lead time before a review item is passed"
+                    hint="Business days. A response deadline inside this window, or already past, is archived. 0 turns that pass off. Default is 5."
+                  >
+                    <input
+                      type="number"
+                      min={0}
+                      max={60}
+                      className="input"
+                      value={form.review_close_lead_business_days}
+                      onChange={num("review_close_lead_business_days")}
+                    />
+                  </Field>
+                  <Field
                     label="Warn me this many hours before the window closes"
                     hint="The warning goes out whichever option you chose above."
                   >

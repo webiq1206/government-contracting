@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { queryOne, transaction } from "../db";
+import { query, queryOne, transaction } from "../db";
 import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
 import { eligibleForFailover, requiresRetryReview, retryTime, withRetryTime } from "./failover-policy";
@@ -14,6 +14,9 @@ export interface ProviderFacts {
   failure_status: number | null;
   refusal_reason: string | null;
   refusal_status: number | null;
+  probe_failure_count?: number | null;
+  last_probe_at?: Date | null;
+  next_probe_at?: Date | null;
 }
 
 /** Shared platform keys share an account hold. Tenant keys never share it. */
@@ -151,4 +154,41 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
   if ("error" in outcome) throw outcome.error;
   return outcome.value;
+}
+
+/**
+ * Record the health probe's schedule. A success here does not clear
+ * refusal_reason; probeProviderRecovery does that when the provider answers.
+ */
+export async function recordProviderProbe(
+  orgId: string,
+  provider: AiProvider,
+  outcome: { ok: true } | { ok: false; waitMs: number }
+): Promise<void> {
+  const { orgApiKey } = await import("../integration-keys");
+  const { requestIdentity } = await import("../api-usage/ledger");
+  const key = ENV_KEY_FOR[provider];
+  const value = await orgApiKey(key, orgId);
+  if (!value) return;
+  const identity = await requestIdentity(key, value, orgId);
+  const scope = providerScope(identity, provider);
+  if (outcome.ok) {
+    await query(
+      `update ai_provider_facts
+          set probe_failure_count = 0,
+              next_probe_at = null,
+              last_probe_at = clock_timestamp()
+        where account_scope = $1 and provider = $2 and credential_hash = $3`,
+      scope
+    );
+    return;
+  }
+  await query(
+    `update ai_provider_facts
+        set probe_failure_count = probe_failure_count + 1,
+            last_probe_at = clock_timestamp(),
+            next_probe_at = clock_timestamp() + ($4::bigint * interval '1 millisecond')
+      where account_scope = $1 and provider = $2 and credential_hash = $3`,
+    [...scope, outcome.waitMs]
+  );
 }
