@@ -55,7 +55,7 @@ export function CapabilityBuilder() {
   const [values, setValues] = useState<CapabilityInput>(EMPTY_CAPABILITY);
   const [ready, setReady] = useState(false);
   const completion = useToolCompletion();
-  return <div className="bco-tool-grid"><form onSubmit={e => { e.preventDefault(); setReady(true); completion.record(); }}>
+  return <div className="bco-tool-grid"><form data-clarity-mask="true" onSubmit={e => { e.preventDefault(); setReady(true); completion.record(); }}>
     {CAPABILITY_FIELDS.map(field => <label className="bco-tool-field" key={field.key} htmlFor={`cap-${field.key}`}>{field.label}{field.required ? " *" : ""}<textarea id={`cap-${field.key}`} required={field.required} rows={field.key === "company" ? 1 : 3} maxLength={2000} placeholder={field.placeholder} value={values[field.key]} onChange={e => { setReady(false); setValues(old => ({ ...old, [field.key]: e.target.value })); }} /></label>)}
     <button className="bco-button" type="submit">Prepare statement</button>
     <button className="bco-text-link" type="button" onClick={() => { setValues(EMPTY_CAPABILITY); setReady(false); completion.reset(); }}>Clear all fields</button>

@@ -187,6 +187,7 @@ function MessageRow({
       {open === "match" && opportunities.length === 0 && <p role="status" className="mt-2 text-sm">There are no open opportunities to match. Add the solicitation in Opportunities, then return here.</p>}
       {open === "match" && opportunities.length > 0 && (
         <form
+          data-clarity-mask="true"
           className="mt-2"
           onSubmit={(e) => {
             e.preventDefault();
@@ -228,6 +229,7 @@ function MessageRow({
 
       {open === "dismiss" && (
         <form
+          data-clarity-mask="true"
           className="mt-2"
           onSubmit={(e) => {
             e.preventDefault();

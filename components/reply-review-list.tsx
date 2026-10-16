@@ -250,6 +250,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
               </p>
             ) : (
               <form
+                data-clarity-mask="true"
                 className="mt-3 border-t border-border pt-3"
                 onSubmit={(event) => {
                   event.preventDefault();

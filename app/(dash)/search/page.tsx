@@ -144,7 +144,7 @@ export default async function SearchPage(
       <ShellDataWarning items={loadWarnings} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 space-y-5 overflow-y-auto p-5">
-        <form method="get" action="/search" className="search-row">
+        <form data-clarity-mask="true" method="get" action="/search" className="search-row">
           <input
             type="search"
             name="q"

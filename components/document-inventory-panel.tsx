@@ -446,6 +446,7 @@ function Actions({
       )}
       {asking === "replace" && (
         <form
+          data-clarity-mask="true"
           className="mt-2 w-full"
           onSubmit={(e) => {
             e.preventDefault();
@@ -511,6 +512,7 @@ function Actions({
       )}
       {(asking === "review" || asking === "exclude") && (
         <form
+          data-clarity-mask="true"
           className="mt-2 w-full"
           onSubmit={(e) => {
             e.preventDefault();

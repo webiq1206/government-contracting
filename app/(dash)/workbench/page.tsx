@@ -373,7 +373,7 @@ export default async function WorkbenchPage(
         )}
 
         <PageToolbar>
-          <form method="get" action="/workbench" className="search-row">
+          <form data-clarity-mask="true" method="get" action="/workbench" className="search-row">
             {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
             {kind && <input type="hidden" name="kind" value={kind} />}
             {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}

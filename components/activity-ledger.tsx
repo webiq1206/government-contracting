@@ -137,6 +137,7 @@ export function ActivityLedger({initialData = null, initialQuery = ""}: {initial
         ))}
       </div></details>
       <form
+        data-clarity-mask="true"
         className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
       >

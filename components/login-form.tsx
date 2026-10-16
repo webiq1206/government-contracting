@@ -30,7 +30,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} className="card space-y-4">
       <div>
         {/*
           * htmlFor, not just visible text. Both of these labels rendered on

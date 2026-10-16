@@ -55,7 +55,7 @@ export function ContextualQuestion({ path, subject = "opportunity" }: { path: st
           <button key={prompt} type="button" className="btn-secondary text-sm" disabled={busy} onClick={() => void ask(prompt)}>{prompt}</button>
         ))}
       </div>
-      <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={event => { event.preventDefault(); void ask(question); }}>
+      <form data-clarity-mask="true" className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={event => { event.preventDefault(); void ask(question); }}>
         <label className="sr-only" htmlFor={`${id}-question`}>Question about this {subject}</label>
         <input id={`${id}-question`} className="input min-w-0 flex-1" placeholder="Ask a question about this work" value={question} maxLength={500} onChange={event => setQuestion(event.target.value)} disabled={busy} />
         <button className="btn-primary" disabled={busy || !question.trim()}>{busy ? "Checking the record…" : "Ask BrostCo"}</button>

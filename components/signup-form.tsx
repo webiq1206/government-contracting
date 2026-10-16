@@ -70,7 +70,7 @@ export function SignupForm({
   }
 
   return (
-    <form onSubmit={onSubmit} onFocus={() => { if (!started.current) { started.current = true; marketingEvent("signup_started", { location: "form" }); } }} className="space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} onFocus={() => { if (!started.current) { started.current = true; marketingEvent("signup_started", { location: "form" }); } }} className="space-y-4">
       <div>
         <label className="label" htmlFor="name">
           Your name

@@ -896,6 +896,7 @@ function OverrideForm({
 
   return (
     <form
+      data-clarity-mask="true"
       className="rounded-md border border-review/40 bg-review/5 px-3 py-3"
       onSubmit={(e) => {
         e.preventDefault();

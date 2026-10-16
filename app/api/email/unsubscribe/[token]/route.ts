@@ -15,7 +15,7 @@ export async function GET(_request: Request, context: Context) {
   const { token } = await context.params;
   if (!readOptOutToken(token)) return page("This unsubscribe link is invalid. Reply to the sender to ask them to stop outreach.", 400);
   return page("Stop outreach from the sender of this email. Your account and essential service messages are unchanged.", 200,
-    '<form method="post"><input type="hidden" name="List-Unsubscribe" value="One-Click"><button type="submit">Stop outreach</button></form>');
+    '<form data-clarity-mask="true" method="post"><input type="hidden" name="List-Unsubscribe" value="One-Click"><button type="submit">Stop outreach</button></form>');
 }
 
 /** RFC 8058 POSTs need no sign-in, cookies, or redirect. */

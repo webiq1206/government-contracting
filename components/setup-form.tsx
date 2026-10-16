@@ -42,7 +42,7 @@ export function SetupForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} className="card space-y-4">
       <div>
         {/*
           * Every label here rendered on screen and was tied to nothing, so

@@ -106,7 +106,7 @@ export function InvitationForm() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-    <form onSubmit={submit} className="space-y-4 panel-inset p-4">
+    <form data-clarity-mask="true" onSubmit={submit} className="space-y-4 panel-inset p-4">
       <div>
         <h2 className="font-semibold">Invite somebody</h2>
         <p className="pt-1 text-sm text-muted-foreground">

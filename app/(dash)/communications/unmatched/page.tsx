@@ -32,7 +32,7 @@ export default async function UnmatchedPage({searchParams}:{searchParams:Promise
       <p className="text-sm text-muted-foreground">Stored messages waiting for attribution, including mail that may be unrelated to procurement. A known sender alone does not prove which solicitation a reply belongs to.</p>
       <Link href="/outreach" className="text-sm text-accent">Review outreach evidence</Link>
     </header>
-    <form action="/communications/unmatched" className="card flex flex-wrap items-end gap-3">
+    <form data-clarity-mask="true" action="/communications/unmatched" className="card flex flex-wrap items-end gap-3">
       <label className="min-w-0 w-full text-sm sm:flex-1">Search all unmatched mail
         <input className="input mt-1 w-full" name="q" type="search" defaultValue={opts.q} maxLength={300} placeholder="Supplier, sender, subject or message text" />
       </label>

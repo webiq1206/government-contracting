@@ -591,7 +591,7 @@ export function GuideWizard() {
                     ))}
                   </div>
                   {askError && <p className="text-xs text-risk">{askError}</p>}
-                  <form onSubmit={(e) => void askQuestion(e)} className="flex gap-2">
+                  <form data-clarity-mask="true" onSubmit={(e) => void askQuestion(e)} className="flex gap-2">
                     <input
                       className="input min-w-0 flex-1"
                       value={askInput}

@@ -620,7 +620,7 @@ export default async function PipelinePage(
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
-      {allOpps.length > 0 && <form action="/pipeline" className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3" role="search" aria-label="Search opportunities">
+      {allOpps.length > 0 && <form data-clarity-mask="true" action="/pipeline" className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3" role="search" aria-label="Search opportunities">
         <input type="hidden" name="view" value={view} />
         {rawFocus && <input type="hidden" name="focus" value={rawFocus} />}
         {rawStage && <input type="hidden" name="stage" value={rawStage} />}

@@ -84,14 +84,12 @@ export default function PrivacyPage() {
             See <a className="underline" href="https://policies.google.com/technologies/partner-sites">how Google uses information from sites that use its services</a>.
           </p>
           <p>
-            With your permission, we also use Microsoft Clarity for heatmaps and
-            masked session recordings to understand navigation and improve usability.
-            This optional service processes interaction, device, and page data and
-            uses analytics cookies. We mask page text and entered content and do not
-            send account identities through Clarity&apos;s identification API.
-            Advertising storage is disabled. Clarity is not loaded until you select
-            Allow analytics, and is disabled for Do Not Track or Global Privacy Control.
-            You can withdraw consent through Analytics preferences at any time.
+            Microsoft Clarity is included on every page for heatmaps and masked
+            session recordings, so we can understand navigation and improve usability.
+            It processes interaction, device, and page data and uses analytics cookies.
+            Page text and form contents are masked, and we do not send account
+            identities through Clarity&apos;s identification API. Advertising storage
+            is disabled. Analytics preferences can stop further Clarity collection.
             See the <a className="underline" href="https://www.microsoft.com/privacy/privacystatement">Microsoft Privacy Statement</a> for
             Microsoft&apos;s data handling practices.
           </p>
