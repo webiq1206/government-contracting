@@ -1,7 +1,11 @@
 /** A quote extractor may copy a stated amount, never silently calculate one. */
 export function sourceMoneyValues(text: string): number[] {
-  return [...text.matchAll(/(?:\$|\bUSD\s*)(\s*\d+(?:,\d{3})*(?:\.\d{1,2})?)(?![\d]|\.\d|\s*[kKmM]\b|,\s*\d)/gi)]
-    .map(m => Number(m[1].replace(/[\s,]/g, "")))
+  return [...text.matchAll(/(?:\$|\bUSD\s*)(\s*\d+(?:,\d{3})*(?:\.\d{1,2})?)(\s*[kK])?(?![\d]|\.\d|,\s*\d|\s*[mM]\b)/gi)]
+    .map((m) => {
+      const n = Number(m[1].replace(/[\s,]/g, ""));
+      if (!Number.isFinite(n)) return Number.NaN;
+      return m[2] ? Math.round(n * 1000 * 100) / 100 : n;
+    })
     .filter(Number.isFinite);
 }
 
@@ -13,6 +17,6 @@ export function groundedMoney(value: number | null, source: string): number | nu
 }
 
 export function quoteHasRange(source: string): boolean {
-  return /(?:\$|USD\s*)\s*[\d,.]+\s*(?:-|\u2013|to|through)\s*(?:\$|USD\s*)?\s*[\d,.]+/i.test(source)
-    || /between\s+(?:\$|USD\s*)\s*[\d,.]+\s+and\s+(?:\$|USD\s*)?\s*[\d,.]+/i.test(source);
+  return /(?:\$|USD\s*)\s*[\d,.]+\s*[kK]?\s*(?:-|\u2013|to|through)\s*(?:\$|USD\s*)?\s*[\d,.]+\s*[kK]?/i.test(source)
+    || /between\s+(?:\$|USD\s*)\s*[\d,.]+\s*[kK]?\s+and\s+(?:\$|USD\s*)?\s*[\d,.]+\s*[kK]?/i.test(source);
 }

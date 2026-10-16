@@ -12,9 +12,9 @@ describe("50-69 band eligibility", () => {
     expect(eligibleForBandDecision(49, defaults)).toBe(false);
   });
 
-  it("leaves a raised pursue threshold to a person", () => {
-    // The isolation fixture pursues at 90, so a 60 must stay in review.
-    expect(eligibleForBandDecision(60, { pursue_min_score: 90, review_min_score: 10 })).toBe(false);
+  it("decides 50-69 even when pursue is raised, and leaves 70-89 to a person", () => {
+    expect(eligibleForBandDecision(60, { pursue_min_score: 90, review_min_score: 10 })).toBe(true);
+    expect(eligibleForBandDecision(75, { pursue_min_score: 90, review_min_score: 10 })).toBe(false);
   });
 });
 
@@ -47,7 +47,8 @@ vi.mock("@/lib/ai/claude", () => ({
   completeJson: vi.fn(async () => ({
     data: {
       decision: "pursue",
-      reasoning: "The notice matches a trade the company performs and the deadline is still weeks away.",
+      reasons: ["The notice NAICS matches the company and the deadline is still weeks away."],
+      fit_criteria_checked: ["naics", "geography", "deadline"],
     },
     usage: null,
   })),
@@ -56,27 +57,32 @@ vi.mock("@/lib/ai/claude", () => ({
 describe("band decision persistence", () => {
   it("keeps a stated reason and rejects an empty one", async () => {
     const { decideReviewBand } = await import("@/lib/ai/band-decision");
-    const decision = await decideReviewBand({
+    const input = {
       title: "Dining facility attendant services, Dyess AFB",
       score: 62,
       summary: "Recorded score 62. Food service is in the company trades.",
       deadline: "2026-11-20T00:00:00.000Z",
-    });
-    expect(decision).toEqual({
-      choice: "pursue",
-      reasoning: "The notice matches a trade the company performs and the deadline is still weeks away.",
-    });
+      notice: { naics: "722310", setAside: "SDVOSB", place: "Abilene, TX", value: 250000 },
+      company: {
+        naics: ["722310"],
+        serviceAreas: ["TX"],
+        smallBusiness: true,
+        certifications: ["SDVOSB"],
+        annualRevenue: 4000000,
+      },
+    };
+    const decision = await decideReviewBand(input);
+    expect(decision?.choice).toBe("pursue");
+    expect(decision?.fitCriteriaChecked).toEqual(["naics", "geography", "deadline"]);
+    expect(decision?.reasoning).toContain("NAICS");
 
     const claude = await import("@/lib/ai/claude");
     vi.mocked(claude.completeJson).mockResolvedValueOnce({
-      data: { decision: "pass", reasoning: "too thin" },
+      data: { decision: "pass", reasons: ["too thin"], fit_criteria_checked: ["naics"] },
       usage: null,
     } as never);
-    await expect(decideReviewBand({
-      title: "Untitled",
-      score: 55,
-      summary: "Weak fit.",
-      deadline: null,
-    })).resolves.toBeNull();
+    await expect(decideReviewBand({ ...input, title: "Untitled", score: 55, summary: "Weak fit.", deadline: null })).resolves.toBeNull();
+    vi.mocked(claude.completeJson).mockRejectedValueOnce(new Error("provider refused"));
+    await expect(decideReviewBand(input)).resolves.toBeNull();
   });
 });

@@ -55,6 +55,7 @@ function deps(over: Partial<RecoveryProbeDeps> & { rows?: ProviderHold[] } = {})
       return true;
     },
     markRecovered: async () => undefined,
+    leadBusinessDays: 5,
     ...rest,
   };
   return Object.assign(base, { alerts, queued });
@@ -92,10 +93,10 @@ describe("probe schedule", () => {
 });
 
 describe("rescore filter", () => {
-  const far = new Date(NOW.getTime() + 48 * 60 * 60_000).toISOString();
+  const far = new Date("2026-11-02T17:11:00.000Z").toISOString();
   const soon = new Date(NOW.getTime() + 12 * 60 * 60_000).toISOString();
 
-  it("keeps an open incomplete review item whose deadline is more than 24 hours out", () => {
+  it("keeps an open incomplete review item whose deadline is outside the lead time", () => {
     expect(eligibleForRescore({
       id: "opp-1",
       tier: "review",
@@ -190,7 +191,7 @@ describe("recoverOrg", () => {
   });
 
   it("re-queues only eligible rows, once, and sends one recovery alert with the count", async () => {
-    const far = new Date(NOW.getTime() + 3 * 24 * 60 * 60_000).toISOString();
+    const far = new Date("2026-11-02T17:11:00.000Z").toISOString();
     const soon = new Date(NOW.getTime() + 2 * 60 * 60_000).toISOString();
     const rows = [
       { id: "keep", tier: "review", status: "open", stage: "scoring", riskFlags: ["incomplete_scoring"], deadline: far },

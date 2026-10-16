@@ -765,18 +765,34 @@ export function AutomationRulesForm({
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
-                    label="Minimum lead time before a review item is passed"
-                    hint="Business days. A response deadline inside this window, or already past, is archived. 0 turns that pass off. Default is 5."
+                    label="Minimum bid lead time"
+                    hint="Business days. An open opportunity inside this window, or already past its deadline, is passed unless bid building has started. 0 turns that pass off. Default is 5."
                   >
                     <input
                       type="number"
                       min={0}
                       max={60}
                       className="input"
-                      value={form.review_close_lead_business_days}
-                      onChange={num("review_close_lead_business_days")}
+                      value={form.min_bid_lead_business_days}
+                      onChange={num("min_bid_lead_business_days")}
                     />
                   </Field>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border/55 p-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={form.autonomous_review_decisions}
+                      onChange={(event) =>
+                        setForm((f) => ({ ...f, autonomous_review_decisions: event.target.checked }))
+                      }
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-foreground">Decide scores from 50 to 69</span>
+                      <span className="mt-1 block text-sm text-slate-600">
+                        On by default. The model pursues or passes that band and the reason is saved. Off leaves the band for a person. A bid is never submitted from this decision.
+                      </span>
+                    </span>
+                  </label>
                   <Field
                     label="Warn me this many hours before the window closes"
                     hint="The warning goes out whichever option you chose above."

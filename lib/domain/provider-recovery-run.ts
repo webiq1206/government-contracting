@@ -33,6 +33,8 @@ export interface RecoveryProbeDeps {
   claimAlert: (orgId: string, incidentId: string, kind: "start" | "end") => Promise<boolean>;
   sendAlert: (input: { orgId: string; kind: "start" | "end"; subject: string; text: string }) => Promise<void>;
   candidates: (orgId: string) => Promise<RescoreRow[]>;
+  /** Business days the account still requires before a response deadline. */
+  leadBusinessDays: number;
   enqueueRescore: (orgId: string, opportunityId: string, singletonKey: string) => Promise<boolean>;
   markRecovered: (orgId: string, incidentId: string, note: string) => Promise<void>;
 }
@@ -93,7 +95,7 @@ export async function recoverOrg(orgId: string, deps: RecoveryProbeDeps): Promis
     await deps.clearSchedule(orgId, hold.provider);
     let requeued = 0;
     for (const row of await deps.candidates(orgId)) {
-      if (!eligibleForRescore(row, now)) continue;
+      if (!eligibleForRescore(row, now, deps.leadBusinessDays)) continue;
       const queued = await deps.enqueueRescore(orgId, row.id, rescoreKey(row.id, incident.id));
       if (queued) requeued += 1;
     }

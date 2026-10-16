@@ -12,11 +12,13 @@ import { runWithOrg } from "../tenant-context";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import { enqueue } from "../queue";
 import { advance, IllegalTransition, openOrUpdateIncident } from "../incidents";
+import { getAutomationRules } from "../app-settings";
 import { probeProviderRecovery } from "../ai/claude";
 import { currentProviderEvidence, recordProviderProbe } from "../ai/provider-facts";
 import { deliverOutageAlert } from "../outage-alert";
 import { recoverOrg, type ProviderHold } from "../domain/provider-recovery-run";
 import { providerRefusalCause } from "../domain/provider-recovery";
+import { addBusinessDays } from "../domain/review-lead";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 import type { AiProvider } from "../ai/routing";
@@ -97,9 +99,15 @@ export const providerRecoveryProbe: AgentDefinition = {
     let startAlerts = 0;
     let endAlerts = 0;
     for (const org of fanout.orgs) {
-      const outcome = await runWithOrg(org.id, () =>
-        recoverOrg(org.id, {
+      const outcome = await runWithOrg(org.id, async () => {
+        const rules = await getAutomationRules();
+        const rescoreAfter =
+          rules.min_bid_lead_business_days > 0
+            ? addBusinessDays(new Date(), rules.min_bid_lead_business_days)
+            : new Date(Date.now() + 24 * 60 * 60_000);
+        return recoverOrg(org.id, {
           now: () => new Date(),
+          leadBusinessDays: rules.min_bid_lead_business_days,
           holds: holdsFor,
           probe: async (orgId, provider) => {
             try {
@@ -159,8 +167,8 @@ export const providerRecoveryProbe: AgentDefinition = {
                   and stage in ('monitoring', 'scoring')
                   and 'incomplete_scoring' = any(coalesce(risk_flags, '{}'))
                   and deadline is not null
-                  and deadline > now() + interval '24 hours'`,
-              [orgId]
+                  and deadline >= $2`,
+              [orgId, rescoreAfter.toISOString()]
             ).then((rows) =>
               rows.map((row) => ({
                 id: row.id,
@@ -180,8 +188,8 @@ export const providerRecoveryProbe: AgentDefinition = {
             return Boolean(queued);
           },
           markRecovered,
-        })
-      );
+        });
+      });
       probed += outcome.probed.length;
       requeued += outcome.requeued;
       startAlerts += outcome.startAlerts;

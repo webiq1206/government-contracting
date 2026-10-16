@@ -7,8 +7,16 @@
 
 export const DEFAULT_REVIEW_LEAD_BUSINESS_DAYS = 5;
 
-export const LEAD_PASS_NOTE =
-  "Passed: the response deadline is already past or inside the minimum lead time, so there is not enough time to price and submit.";
+export const LEAD_PASS_NOTE = "auto-pass: deadline";
+
+/** Stages that already have a bid in progress or a result. The lead-time pass leaves them alone. */
+export const PAST_BID_BUILDING = [
+  "bid_building",
+  "review_submit",
+  "submitted",
+  "won",
+  "lost",
+] as const;
 
 /** Midnight-preserving walk that skips Saturday and Sunday. */
 export function addBusinessDays(start: Date, days: number): Date {

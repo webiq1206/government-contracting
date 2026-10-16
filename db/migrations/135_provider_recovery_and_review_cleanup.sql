@@ -38,7 +38,7 @@ declare
   cutoff timestamptz := now();
   remaining integer := 5;
   dow integer;
-  pass_note text := 'Passed: the response deadline is already past or inside the minimum lead time, so there is not enough time to price and submit.';
+  pass_note text := 'auto-pass: deadline';
 begin
   while remaining > 0 loop
     cutoff := cutoff + interval '1 day';
@@ -66,11 +66,8 @@ begin
            else notes || E'\n' || pass_note
          end
    where status = 'open'
-     and tier = 'review'
-     and human_action_required = true
-     and stage in ('monitoring', 'scoring')
      and is_sources_sought is not true
-     and coalesce(pursuit_state, 'active') = 'active'
+     and stage not in ('bid_building', 'review_submit', 'submitted', 'won', 'lost', 'dismissed')
      and deadline is not null
      and deadline < cutoff;
 end $$;

@@ -1,13 +1,14 @@
 /**
- * Archive review items whose response deadline is already too close.
+ * Archive open opportunities whose response deadline is already too close.
  *
  * Runs for one organization. A second run matches nothing, because the
- * rows it changes are no longer open review items.
+ * rows it changes are no longer open. Bid building and anything past it
+ * are left where they are.
  */
 import { query } from "./db";
 import { logAgent } from "./logger";
 import { stopOpportunityAutomation } from "./close-opportunity-work";
-import { addBusinessDays, LEAD_PASS_NOTE } from "./domain/review-lead";
+import { addBusinessDays, LEAD_PASS_NOTE, PAST_BID_BUILDING } from "./domain/review-lead";
 
 export async function archiveReviewInsideLeadTime(
   orgId: string,
@@ -36,26 +37,24 @@ export async function archiveReviewInsideLeadTime(
             end
       where org_id = $1
         and status = 'open'
-        and tier = 'review'
-        and human_action_required = true
-        and stage in ('monitoring', 'scoring')
         and is_sources_sought is not true
-        and coalesce(pursuit_state, 'active') = 'active'
+        and stage <> all($4::text[])
+        and stage <> 'dismissed'
         and deadline is not null
         and deadline < $2
       returning id`,
-    [orgId, cutoff.toISOString(), LEAD_PASS_NOTE]
+    [orgId, cutoff.toISOString(), LEAD_PASS_NOTE, [...PAST_BID_BUILDING]]
   );
   if (rows.length === 0) return [];
   await stopOpportunityAutomation(orgId, rows.map((row) => row.id), "passed");
   for (const row of rows) {
     await logAgent({
       agent: "review-expiry-sweep",
-      action: "lead-time-pass",
+      action: "auto-pass: deadline",
       opportunityId: row.id,
       level: "info",
       message: LEAD_PASS_NOTE,
-      reasoning: `The response deadline is inside ${businessDays} business day(s), which is the account's minimum lead time.`,
+      reasoning: `The response deadline is inside ${businessDays} business day(s), which is the account's minimum bid lead time.`,
     });
   }
   return rows;

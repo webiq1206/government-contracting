@@ -476,6 +476,7 @@ async function scoreOpportunity(
     analysis_input_hash: completedAnalysis ? opp.analysis_input_hash ?? null : null,
     band_decision: undefined as "pursue" | "pass" | undefined,
     band_decision_reasoning: undefined as string | undefined,
+    band_fit_criteria: undefined as string[] | undefined,
   };
 
   // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
@@ -503,13 +504,16 @@ async function scoreOpportunity(
       "lost",
     ]).has(opp.stage);
 
-  // A finished 50-69 score can be decided here. An incomplete score, a raised
-  // pursue threshold, or a review flag stays with a person.
+  // A finished 50-69 score can be decided here when the account allows it.
+  // An incomplete score, a review flag, a hard exclusion, or an unavailable
+  // model stays in review. This never submits a bid.
   let bandReasoning: string | null = null;
   if (
+    rules.autonomous_review_decisions &&
     !scoringIncomplete &&
     !preserveLifecycle &&
     flags.length === 0 &&
+    (breakdown.hard_exclusions_triggered ?? []).length === 0 &&
     breakdown.tier === "review" &&
     eligibleForBandDecision(breakdown.total, profile.decision_thresholds)
   ) {
@@ -518,11 +522,25 @@ async function scoreOpportunity(
       score: breakdown.total,
       summary,
       deadline: opp.deadline,
-    }).catch(() => null);
+      notice: {
+        naics: opp.naics_code,
+        setAside: opp.set_aside_type,
+        place: [opp.location_text, opp.location_state].filter(Boolean).join(", ") || null,
+        value: opp.value_estimated,
+      },
+      company: {
+        naics: profile.naics_codes ?? [],
+        serviceAreas: profile.service_areas ?? [],
+        smallBusiness: profile.small_business ?? null,
+        certifications: profile.certifications ?? [],
+        annualRevenue: profile.annual_revenue ?? null,
+      },
+    });
     if (decision) {
       bandReasoning = decision.reasoning;
       breakdown.band_decision = decision.choice;
       breakdown.band_decision_reasoning = decision.reasoning;
+      breakdown.band_fit_criteria = decision.fitCriteriaChecked;
       breakdown.tier = decision.choice === "pursue" ? "pursue" : "dismiss";
       await logAgent({
         agent: "scoring-engine",
@@ -530,7 +548,7 @@ async function scoreOpportunity(
         opportunityId,
         level: "info",
         message: `Review-band decision: ${decision.choice} at ${breakdown.total}/100.`,
-        reasoning: decision.reasoning,
+        reasoning: `${decision.reasoning} Fit checked: ${decision.fitCriteriaChecked.join(", ")}.`,
       });
       if (opp.org_id) {
         await query(

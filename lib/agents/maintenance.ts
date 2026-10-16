@@ -1432,7 +1432,7 @@ export const reviewExpirySweep: AgentDefinition = {
       warned += warnable.length;
 
       const closedForLead = await runWithOrg(orgId, () =>
-        archiveReviewInsideLeadTime(orgId, rules.review_close_lead_business_days)
+        archiveReviewInsideLeadTime(orgId, rules.min_bid_lead_business_days)
       );
       passedForLead += closedForLead.length;
 

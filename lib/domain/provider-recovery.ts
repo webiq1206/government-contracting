@@ -7,6 +7,8 @@
  * call, which is the existing recovery path.
  */
 
+import { addBusinessDays } from "./review-lead";
+
 export const PROBE_BACKOFF_MS = [
   10 * 60_000,
   30 * 60_000,
@@ -45,15 +47,29 @@ export interface RescoreRow {
   deadline: Date | string | null;
 }
 
-/** Review items a recovered provider should score again. */
-export function eligibleForRescore(row: RescoreRow, now: Date): boolean {
+/**
+ * Review items a recovered provider should score again.
+ *
+ * Far enough out means the deadline is outside the account's minimum bid
+ * lead time. Items inside that window are passed instead of scored again.
+ * When the lead-time rule is off, the floor is 24 hours.
+ */
+export function eligibleForRescore(
+  row: RescoreRow,
+  now: Date,
+  leadBusinessDays = 5
+): boolean {
   if (row.tier !== "review" || row.status !== "open") return false;
   if (!SCORING_STAGES.has(row.stage)) return false;
   if (!row.riskFlags.includes("incomplete_scoring")) return false;
   if (row.deadline == null) return false;
   const deadline = new Date(row.deadline).getTime();
   if (!Number.isFinite(deadline)) return false;
-  return deadline > now.getTime() + 24 * 60 * 60_000;
+  const floor =
+    leadBusinessDays > 0
+      ? addBusinessDays(now, leadBusinessDays).getTime()
+      : now.getTime() + 24 * 60 * 60_000;
+  return deadline >= floor;
 }
 
 /** Stable for one incident, so a second probe cannot queue the same rescore. */

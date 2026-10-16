@@ -10,11 +10,14 @@ import {
 
 describe("business-day lead time", () => {
   it("defaults to five business days and can be turned off", () => {
-    expect(DEFAULT_RULES.review_close_lead_business_days).toBe(DEFAULT_REVIEW_LEAD_BUSINESS_DAYS);
+    expect(DEFAULT_RULES.min_bid_lead_business_days).toBe(DEFAULT_REVIEW_LEAD_BUSINESS_DAYS);
     expect(DEFAULT_REVIEW_LEAD_BUSINESS_DAYS).toBe(5);
-    expect(normalizeRules({}).review_close_lead_business_days).toBe(5);
-    expect(normalizeRules({ review_close_lead_business_days: 0 }).review_close_lead_business_days).toBe(0);
-    expect(normalizeRules({ review_close_lead_business_days: 99 }).review_close_lead_business_days).toBe(60);
+    expect(DEFAULT_RULES.autonomous_review_decisions).toBe(true);
+    expect(normalizeRules({}).min_bid_lead_business_days).toBe(5);
+    expect(normalizeRules({}).autonomous_review_decisions).toBe(true);
+    expect(normalizeRules({ autonomous_review_decisions: false }).autonomous_review_decisions).toBe(false);
+    expect(normalizeRules({ min_bid_lead_business_days: 0 }).min_bid_lead_business_days).toBe(0);
+    expect(normalizeRules({ min_bid_lead_business_days: 99 }).min_bid_lead_business_days).toBe(60);
   });
 
   it("walks five business days across a weekend", () => {
@@ -51,9 +54,10 @@ describe("lead-time cleanup", () => {
   it("archives only open review items and can be run twice", () => {
     expect(migration).toContain(LEAD_PASS_NOTE);
     expect(pass).toContain("LEAD_PASS_NOTE");
-    expect(migration).toContain("tier = 'review'");
     expect(migration).toContain("status = 'open'");
-    expect(migration).toContain("stage in ('monitoring', 'scoring')");
+    expect(migration).toContain("bid_building");
+    expect(pass).toContain("auto-pass: deadline");
+    expect(script).toContain("--dry-run");
     expect(migration).toContain("position(pass_note in notes)");
     expect(pass).toContain("where org_id = $1");
     expect(script).toContain("--apply");

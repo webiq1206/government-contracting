@@ -1,7 +1,7 @@
 /**
- * The 50-69 band is the default human-review range. An account that raises
- * its pursue threshold above 70 has asked for a person to see those scores,
- * so this decision stays inside the default band.
+ * The 50-69 band. Scores the account already treats as pursue or dismiss
+ * are not decided here. Scores above 69 that are still below a raised
+ * pursue threshold stay with a person.
  */
 
 export const AUTONOMOUS_BAND_MIN = 50;
@@ -12,7 +12,6 @@ export function eligibleForBandDecision(
   thresholds: { pursue_min_score: number; review_min_score: number }
 ): boolean {
   if (!Number.isFinite(score)) return false;
-  if (thresholds.pursue_min_score > 70) return false;
   return (
     score >= AUTONOMOUS_BAND_MIN &&
     score <= AUTONOMOUS_BAND_MAX &&
@@ -25,5 +24,8 @@ export type BandChoice = "pursue" | "pass";
 
 export interface BandDecision {
   choice: BandChoice;
+  reasons: string[];
+  fitCriteriaChecked: string[];
+  /** Joined reasons, stored on the opportunity and written to the agent log. */
   reasoning: string;
 }

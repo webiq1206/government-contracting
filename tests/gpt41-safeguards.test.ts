@@ -41,6 +41,9 @@ describe("GPT-4.1 production safeguards", () => {
     expect(groundedMoney(1235, "Our total is $1,234.56")).toBeNull();
     expect(groundedMoney(10300, "80 units at $125 plus $300 delivery")).toBeNull();
     expect(groundedMoney(125, "Budget $125k")).toBeNull();
+    expect(groundedMoney(125000, "Budget $125k")).toBe(125000);
+    expect(groundedMoney(12500, "Our firm price is $12.5k, tax included.")).toBe(12500);
+    expect(groundedMoney(125, "Budget $125m")).toBeNull();
     expect(groundedMoney(120, "USD 120")).toBe(120);
     expect(groundedMoney(0, "Freight $0")).toBe(0);
     expect(groundedMoney(-1, "-$1")).toBeNull();
@@ -49,6 +52,7 @@ describe("GPT-4.1 production safeguards", () => {
     expect(quoteHasRange("$10,000 to $12,000")).toBe(true);
     expect(quoteHasRange("between $10,000 and $12,000")).toBe(true);
     expect(quoteHasRange("Total $10,000")).toBe(false);
+    expect(quoteHasRange("$12.5k to $14k")).toBe(true);
   });
   it("holds sending while the compliance audit is pending even after human signoff", () => {
     expect(assessReadiness({ mechanicallyComplete: true, blockerCount: 0, auditStatus: "pending", openAuditBlockers: 0, verifiedBy: "Reviewer", submissionState: "approved", humanGateRequired: false }).maySend).toBe(false);
