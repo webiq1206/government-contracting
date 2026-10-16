@@ -102,7 +102,7 @@ export function OutcomeForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-md border border-border bg-surface p-4">
+    <form data-clarity-mask="true" onSubmit={submit} className="space-y-4 rounded-md border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">

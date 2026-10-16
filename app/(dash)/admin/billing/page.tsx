@@ -196,7 +196,7 @@ New subscriptions may be blocked by missing billing configuration. Missing:{" "}
           ))}
         </div>
 
-        <form action="/admin/billing" method="get" className="card grid items-end gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
+        <form data-clarity-mask="true" action="/admin/billing" method="get" className="card grid items-end gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
           <label className="min-w-0 flex-1">
             <span className="label mb-1 block">Find an account</span>
             <input className="input" type="search" name="q" defaultValue={q} placeholder="Company or owner email" />

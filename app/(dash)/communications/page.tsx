@@ -299,7 +299,7 @@ export default async function CommunicationsPage(
         <Link href="/outreach" className="btn-ghost mb-2 text-sm">Outreach overview</Link>
         <Link href="/communications/unmatched" className="btn-ghost mb-2 text-sm">All unmatched mail ({pendingTotal === null ? "count unavailable" : pendingTotal.toLocaleString("en-US")})</Link>
         {all.length >= 2000 && <p className="mb-2 text-xs text-muted-foreground">Inbox counts cover the most recent 2,000 conversations. Older records remain searchable in the full ledger.</p>}
-        <form method="get" action="/communications" className="search-row">
+        <form data-clarity-mask="true" method="get" action="/communications" className="search-row">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           <input
             type="search"

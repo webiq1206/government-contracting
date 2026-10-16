@@ -34,7 +34,7 @@ export default async function CommunicationsHistory({ searchParams }: {
         {opts.sub && <Link href={`/subs/${encodeURIComponent(opts.sub)}`} className="mr-4 text-sm text-accent">Contact record</Link>}
         {opts.project && <Link href={`/opportunity/${encodeURIComponent(opts.project)}`} className="text-sm text-accent">Project record</Link>}
       </header>
-      <form className="flex flex-wrap items-end gap-3" action="/communications/history">
+      <form data-clarity-mask="true" className="flex flex-wrap items-end gap-3" action="/communications/history">
         {["sub", "project", "thread"].map(key => opts[key as keyof LedgerOptions] && <input key={key} type="hidden" name={key} value={opts[key as keyof LedgerOptions]} />)}
         <label className="min-w-0 w-full flex-none text-sm sm:w-auto sm:flex-1">Search messages
           <input className="input mt-1 w-full" name="q" type="search" defaultValue={opts.q} placeholder="Name, address, subject, message or project" maxLength={300} />

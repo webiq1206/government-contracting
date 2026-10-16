@@ -126,6 +126,7 @@ export function MarkAsSent({
         </button>
       </div>
       <form
+      data-clarity-mask="true"
       className="hidden space-y-3 border-t border-border pt-3"
       onSubmit={(e) => {
         e.preventDefault();

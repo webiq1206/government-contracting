@@ -35,7 +35,7 @@ export function ApiSpendingControls({ budget: b, save, busy, editable = true }: 
       {b.unknown_costs>0 && <Link href="/automation" className="text-sm underline">Review automation status</Link>}
     </div>
     {!editable && <p className="text-sm">An account owner or administrator can change this budget.</p>}
-    {editing && editable && <form className="space-y-3 border-t pt-3" onSubmit={e=>{
+    {editing && editable && <form data-clarity-mask="true" className="space-y-3 border-t pt-3" onSubmit={e=>{
       e.preventDefault();const f=new FormData(e.currentTarget);
       const amount=(key:string)=>String(f.get(key)??"").trim()||null;
       void save({action:"budget",budget:{monthlyLimit:amount("monthlyLimit"),dailyLimit:amount("dailyLimit"),dailyRequests:amount("dailyRequests")===null?null:Number(f.get("dailyRequests")),allowComplex:f.get("allowComplex")==="on",paused:b.paused}});

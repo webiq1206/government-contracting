@@ -456,7 +456,7 @@ export default async function AgentsPage(
           </div>
 
           {/* Search + level filter (GET form so links stay shareable) */}
-          <form key={JSON.stringify([agentFilter, q, levelFilter])} method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+          <form data-clarity-mask="true" key={JSON.stringify([agentFilter, q, levelFilter])} method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
             <select className="select w-full lg:w-auto" name="agent" defaultValue={agentFilter ?? ""} aria-label="Filter by automation">
               <option value="">All automations</option>
               {visibleRoster.map((agent) => <option key={agent.name} value={agent.name}>{agent.label}</option>)}

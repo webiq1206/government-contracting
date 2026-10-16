@@ -263,7 +263,7 @@ explanation="How the workflow works, with recent activity from this account and 
             <h2 id="kb-search" className="sr-only">
               Search the Knowledge Center
             </h2>
-            <form method="get" action="/how-it-works" className="search-row">
+            <form data-clarity-mask="true" method="get" action="/how-it-works" className="search-row">
               {full && <input type="hidden" name="full" value="1" />}
               <input
                 type="search"

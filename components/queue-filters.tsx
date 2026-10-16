@@ -52,7 +52,7 @@ export function QueueFilters({
         Search & filters{active ? " · Active" : ""}
       </summary>
       <div className="space-y-3 pb-3">
-        <form method="get" action="/today" className="search-row min-w-0">
+        <form data-clarity-mask="true" method="get" action="/today" className="search-row min-w-0">
           {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
           {kind && <input type="hidden" name="kind" value={kind} />}
           {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}

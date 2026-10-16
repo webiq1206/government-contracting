@@ -55,7 +55,7 @@ export default async function OutreachPage({ searchParams }: {
         </div>
       </header>
 
-      <form action="/outreach" className="card flex flex-wrap items-end gap-3">
+      <form data-clarity-mask="true" action="/outreach" className="card flex flex-wrap items-end gap-3">
         {opts.project && <input type="hidden" name="project" value={opts.project} />}
         <input type="hidden" name="asOf" value={data.asOf} />
         <div className="w-full text-sm sm:min-w-64 sm:flex-1">

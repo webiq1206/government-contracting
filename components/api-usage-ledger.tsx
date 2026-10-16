@@ -165,6 +165,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
         {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="inline-flex min-h-11 items-center text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
       </div>
       {moreFilters && <form
+        data-clarity-mask="true"
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
         aria-label="Usage filters"
@@ -601,6 +602,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   across tenants.
                 </p>
                 <form
+                  data-clarity-mask="true"
                   className="grid gap-3 sm:grid-cols-2"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -661,6 +663,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   draft in Stripe to collect payment.
                 </p>
                 <form
+                  data-clarity-mask="true"
                   className="flex flex-wrap gap-3"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -699,6 +702,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   prices current when a provider changes its rates.
                 </p>
                 <form
+                  data-clarity-mask="true"
                   className="grid gap-3 sm:grid-cols-2"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -831,6 +835,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   release a reservation or resolve a pending task.
                 </p>
                 <form
+                  data-clarity-mask="true"
                   className="mt-5 space-y-3 border-t pt-4"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -889,6 +894,7 @@ function ProviderSetting({
     [secret, setSecret] = useState("");
   return (
     <form
+      data-clarity-mask="true"
       className="card space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
@@ -1014,6 +1020,7 @@ function LimitSettings({
         credentials.
       </p>
       <form
+        data-clarity-mask="true"
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();

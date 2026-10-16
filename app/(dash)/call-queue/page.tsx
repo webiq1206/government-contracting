@@ -359,7 +359,7 @@ description="Prepared follow-up calls appear here when phone tasks are enabled a
                 />
               )}
 
-              <form method="get" action="/call-queue" className="search-row">
+              <form data-clarity-mask="true" method="get" action="/call-queue" className="search-row">
                 {focusId && <input type="hidden" name="opportunity" value={focusId} />}
                 {grouping !== "none" && <input type="hidden" name="group" value={grouping} />}
                 <input

@@ -192,7 +192,7 @@ export function DisplayNameForm({ initial }: { initial: string }) {
   }
 
   return (
-    <form onSubmit={save} className="space-y-2">
+    <form data-clarity-mask="true" onSubmit={save} className="space-y-2">
       <label htmlFor="account-name" className="label block">
         Your name
       </label>
@@ -263,7 +263,7 @@ export function PasswordForm() {
   }
 
   return (
-    <form onSubmit={save} className="space-y-3">
+    <form data-clarity-mask="true" onSubmit={save} className="space-y-3">
       <div className="space-y-1">
         <label htmlFor="pw-current" className="label block">
           Current password

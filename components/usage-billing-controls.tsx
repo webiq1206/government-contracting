@@ -258,6 +258,7 @@ export function UsageBillingControls() {
       </div>
       {selected && (
         <form
+          data-clarity-mask="true"
           className="space-y-3 rounded border border-border p-4"
           onSubmit={async (e) => {
             e.preventDefault();
@@ -345,6 +346,7 @@ export function UsageBillingControls() {
           account without moving money again.
         </p>
         <form
+          data-clarity-mask="true"
           className="space-y-2"
           onSubmit={(e) => {
             e.preventDefault();

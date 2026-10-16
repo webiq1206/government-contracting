@@ -53,7 +53,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} className="space-y-4">
       <div>
         <label className="label" htmlFor="password">
           New password
