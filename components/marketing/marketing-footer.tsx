@@ -73,6 +73,15 @@ export function MarketingFooter({
           <Link href={loginHref}>Log in</Link>
           <Link href="/signup">Start free trial</Link>
           <AnalyticsPreferencesButton inheritColor />
+          <a href="https://fazier.com" target="_blank" rel="noopener">
+            <img
+              src="https://fazier.com/api/v1//public/badges/launch_badges.svg?badge_type=launched&theme=light"
+              width={120}
+              height={51}
+              alt="Fazier badge"
+              style={{ width: 120, height: 51 }}
+            />
+          </a>
         </div>
       </div>
     </footer>
