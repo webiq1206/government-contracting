@@ -8,6 +8,17 @@ vi.mock("../lib/db", () => ({ query: mocks.query, queryOne: vi.fn(), transaction
 vi.mock("../lib/queue", () => ({ enqueue: mocks.enqueue }));
 vi.mock("../lib/logger", () => ({ logAgent: mocks.log }));
 vi.mock("../lib/organizations", () => ({ listActiveOrganizations: async () => [{ id: "tenant-a" }] }));
+vi.mock("../lib/domain/pursuit-recovery-run", () => ({
+  recoverOpenPursuitGaps: async () => ({
+    bandQueued: 0,
+    sourcingQueued: 0,
+    verifyQueued: 0,
+    outreachQueued: 0,
+    queueFailures: 0,
+    alerted: 0,
+    resolved: 0,
+  }),
+}));
 import { scoringRecoverySweep } from "../lib/agents/maintenance";
 describe("recovery sweep admission outcomes", () => {
   beforeEach(() => {

@@ -36,6 +36,7 @@ import { jobsAfterFinalPursue, queuedAfterScore } from "../domain/score-downstre
 import { eligibleForBandDecision } from "../domain/band-decision";
 import { scoringRiskFlags } from "../domain/scoring-flags";
 import { decideReviewBand } from "../ai/band-decision";
+import { decideSavedBand } from "./band-decision-pass";
 import { documentScoringReadiness } from "../domain/document-scoring";
 import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
@@ -121,6 +122,9 @@ export const scoringEngine: AgentDefinition = {
       };
     }
     const orgId = opp.org_id;
+    if (ctx.payload.bandDecisionOnly === true) {
+      return runWithOrg(orgId, () => decideSavedBand(opp));
+    }
     const expectedAnalysisHash =
       typeof ctx.payload.analysisInputHash === "string"
         ? ctx.payload.analysisInputHash
@@ -556,10 +560,19 @@ async function scoreOpportunity(
               set band_decision = $2,
                   band_decision_reasoning = $3,
                   band_decision_at = now()
-            where id = $1 and org_id = $4`,
+            where id = $1 and org_id = $4 and band_decision is null`,
           [opportunityId, decision.choice, decision.reasoning, opp.org_id]
         );
       }
+    } else {
+      await logAgent({
+        agent: "scoring-engine",
+        action: "band-decision-waiting",
+        opportunityId,
+        level: "warn",
+        status: "skipped",
+        message: `The 50-69 decision for ${breakdown.total}/100 did not return a reason. The score was kept and will be tried again.`,
+      });
     }
   }
 
