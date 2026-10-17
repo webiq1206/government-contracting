@@ -5,7 +5,6 @@ import {
   recapFailureCanRetry,
   recapGapMs,
   recapRetryDelayMs,
-  RECAP_RATE_LIMIT_ATTEMPTS,
   RECAP_SENDS_PER_TICK,
 } from "@/lib/domain/recap-send-pace";
 
@@ -66,10 +65,11 @@ describe("recap send pace", () => {
     ).toBe(true);
   });
 
-  it("lets a rate-limited row try longer than a dead address, and still requires no message id", () => {
+  it("stops every automatic claim at three tries and never reclaims an accepted send", () => {
     const sql = readFileSync("lib/recap/delivery.ts", "utf8");
-    expect(sql).toContain("attempts < ${RECAP_RATE_LIMIT_ATTEMPTS}");
-    expect(RECAP_RATE_LIMIT_ATTEMPTS).toBeGreaterThan(3);
+    expect(sql).toContain("attempts < ${MAX_AUTOMATIC_ATTEMPTS}");
+    expect(sql).not.toContain("RECAP_RATE_LIMIT_ATTEMPTS");
+    expect(sql).toContain("export const MAX_AUTOMATIC_ATTEMPTS = 3");
     expect(sql).toContain("provider_message_id is null");
     expect(sql).toContain("next_retry_at");
     const sender = readFileSync("lib/agents/daily-recap.ts", "utf8");

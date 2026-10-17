@@ -66,6 +66,7 @@ export async function decideReviewBand(input: BandDecisionInput): Promise<BandDe
         maxTokens: 500,
         complexity: "routine",
         feature: "review band decision",
+        retries: 0,
       }
     );
     if (data.decision !== "pursue" && data.decision !== "pass") return null;

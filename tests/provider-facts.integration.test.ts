@@ -97,6 +97,23 @@ describe("durable provider/account/current-credential evidence", () => {
     expect(results.every(r => r.status === "rejected")).toBe(true);
     expect(state.attempts).toBe(1);
   });
+  it("honors a bounded Retry-After on a 429 instead of latching the account", async () => {
+    state.openai.mockRejectedValueOnce({
+      status: 429,
+      type: "rate_limit_error",
+      message: "rate limited",
+      headers: { "retry-after": "120" },
+    });
+    await expect(call()).rejects.toThrow(/rate limiting/);
+    expect(await providerEnqueueHold(state.org, "routine")).toContain("Next automatic attempt after");
+    await expect(call()).rejects.toThrow(/rate limiting/);
+    expect(state.attempts).toBe(1);
+    expect((await currentProviderFacts("OpenAI"))?.refusal_reason ?? null).toBeNull();
+    advanceCooldown();
+    await expect(call()).resolves.toMatchObject({ text: "synthetic" });
+    expect(state.attempts).toBe(2);
+    expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
+  });
   it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }])("holds a rate limit until the probe succeeds for %j", async err => {
     state.openai.mockRejectedValueOnce(err);
     await expect(call()).rejects.toMatchObject({ retryable: false });

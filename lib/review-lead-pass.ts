@@ -13,10 +13,24 @@ import { addBusinessDays, LEAD_PASS_NOTE, PAST_BID_BUILDING } from "./domain/rev
 export async function archiveReviewInsideLeadTime(
   orgId: string,
   businessDays: number,
-  now = new Date()
+  now = new Date(),
+  options?: { dryRun?: boolean }
 ): Promise<{ id: string }[]> {
   if (!Number.isFinite(businessDays) || businessDays <= 0) return [];
   const cutoff = addBusinessDays(now, businessDays);
+  const stages = [...PAST_BID_BUILDING];
+  const predicate = `status = 'open'
+        and is_sources_sought is not true
+        and stage <> all($3::text[])
+        and stage <> 'dismissed'
+        and deadline is not null
+        and deadline < $2`;
+  if (options?.dryRun) {
+    return query<{ id: string }>(
+      `select id from opportunities where org_id = $1 and ${predicate}`,
+      [orgId, cutoff.toISOString(), stages]
+    );
+  }
   const rows = await query<{ id: string }>(
     `update opportunities
         set stage = 'dismissed',
@@ -31,19 +45,14 @@ export async function archiveReviewInsideLeadTime(
             pursuit_changed_by = 'review-lead-time',
             pursuit_version = pursuit_version + 1,
             notes = case
-              when coalesce(notes, '') = '' then $3
-              when position($3 in notes) > 0 then notes
-              else notes || E'\n' || $3
+              when coalesce(notes, '') = '' then $4
+              when position($4 in notes) > 0 then notes
+              else notes || E'\n' || $4
             end
       where org_id = $1
-        and status = 'open'
-        and is_sources_sought is not true
-        and stage <> all($4::text[])
-        and stage <> 'dismissed'
-        and deadline is not null
-        and deadline < $2
+        and ${predicate}
       returning id`,
-    [orgId, cutoff.toISOString(), LEAD_PASS_NOTE, [...PAST_BID_BUILDING]]
+    [orgId, cutoff.toISOString(), stages, LEAD_PASS_NOTE]
   );
   if (rows.length === 0) return [];
   await stopOpportunityAutomation(orgId, rows.map((row) => row.id), "passed");

@@ -86,6 +86,25 @@ export async function providerEnqueueHold(orgId: string, tier: AiTier): Promise<
 }
 
 /**
+ * A 429 that names a rate limit and carries a usable Retry-After waits that
+ * long. Quota and credit refusals do not match this pattern, and a missing
+ * or unrepresentable delay stays a permanent refusal. The delay itself is
+ * still floored at 60 seconds by withRetryTime.
+ */
+function rateLimitCooldownSeconds(e: {
+  status?: number | null;
+  reason?: string;
+  diagnostics?: { retryAfterSeconds?: number | null; omittedFields?: string[] };
+} | null): number | null {
+  if (!e || e.status !== 429 || !e.reason) return null;
+  if (e.diagnostics?.omittedFields?.includes("retryAfterSeconds")) return null;
+  if (!/rate limiting|too many requests|\b429\b/i.test(e.reason)) return null;
+  const seconds = e.diagnostics?.retryAfterSeconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0 || seconds > 604800) return null;
+  return seconds;
+}
+
+/**
  * Commit an attempt token before I/O, then release the database connection.
  * Tokens never expire: a stopped worker or failed evidence write leaves an
  * unresolved hold, even for explicit recovery tests. Clearing that hold needs
@@ -128,10 +147,14 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const e = "error" in outcome ? outcome.error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null; handoffUncertain?: boolean;
     diagnostics?: { retryAfterSeconds?: number | null; omittedFields?: string[] } } : null;
   const observed = e?.provider === provider && typeof e.retryable === "boolean" && Boolean(e.reason);
-  const reason = observed ? (e!.retryable
-    ? withRetryTime(e!.reason!, e!.diagnostics?.omittedFields?.includes("retryAfterSeconds") ? Infinity : e!.diagnostics?.retryAfterSeconds) : e!.reason!) : null;
+  const cooldownSeconds = observed && e!.retryable === false ? rateLimitCooldownSeconds(e) : null;
+  const reason = observed ? (e!.retryable || cooldownSeconds != null
+    ? withRetryTime(e!.reason!, cooldownSeconds != null
+      ? cooldownSeconds
+      : (e!.diagnostics?.omittedFields?.includes("retryAfterSeconds") ? Infinity : e!.diagnostics?.retryAfterSeconds))
+    : e!.reason!) : null;
   const status = observed ? e!.status ?? null : null;
-  const permanent = observed && (e!.retryable === false || requiresRetryReview(reason));
+  const permanent = observed && cooldownSeconds == null && (e!.retryable === false || requiresRetryReview(reason));
   // A timeout/ambiguous server failure can follow execution. Keep its token
   // even for interactive calls without a work receipt; elapsed time is not
   // evidence that replay is safe.

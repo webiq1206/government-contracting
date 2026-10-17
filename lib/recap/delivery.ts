@@ -14,7 +14,6 @@
  * the deadline has passed, the reply was answered, the numbers have moved.
  */
 import { query, queryOne } from "../db";
-import { RECAP_RATE_LIMIT_ATTEMPTS } from "../domain/recap-send-pace";
 
 export type RecapDeliveryStatus = "pending" | "sent" | "failed" | "bounced";
 
@@ -172,13 +171,7 @@ export async function claimDelivery(input: ClaimInput): Promise<ClaimResult> {
            due_at = coalesce(recap_deliveries.due_at, excluded.due_at),
            updated_at = now()
      where recap_deliveries.provider_message_id is null
-       and (
-         recap_deliveries.attempts < ${MAX_AUTOMATIC_ATTEMPTS}
-         or (
-           recap_deliveries.attempts < ${RECAP_RATE_LIMIT_ATTEMPTS}
-           and recap_deliveries.error ~* 'rate.?limit|too many requests|\\m429\\M|quota exceeded'
-         )
-       )
+       and recap_deliveries.attempts < ${MAX_AUTOMATIC_ATTEMPTS}
        and (
          (recap_deliveries.status = 'failed'
            and recap_deliveries.provider_attempted_at is null)

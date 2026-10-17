@@ -51,6 +51,87 @@ function stripHtmlText(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
 }
 
+const RFQ_VOLUME_SQL = `select
+  (select count(*) from communications
+    where org_id = $1
+      and channel = 'email' and direction = 'outbound'
+      and delivery_state in ('sent','delivered')
+      and created_at >= (date_trunc('day', now() at time zone 'UTC') at time zone 'UTC')
+      and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
+  ) as sent_today,
+  (select count(distinct subcontractor_id) from communications
+    where org_id = $1 and opportunity_id = $2
+      and channel = 'email' and direction = 'outbound'
+      and delivery_state in ('sent','delivered')
+      and coalesce(meta->>'trade','') = $3
+      and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
+  ) as sent_for_trade`;
+
+/** Stop a quote request that would exceed the account cap. Overflow is queued for the next UTC day. */
+async function holdOutboundRfq(input: {
+  orgId: string;
+  opportunityId: string;
+  subcontractorId: string;
+  trade: string;
+  companyName: string;
+  payload: Record<string, unknown>;
+}): Promise<AgentResult | null> {
+  const { getAutomationRules } = await import("../app-settings");
+  const { normalizeRules } = await import("../domain/intake");
+  const { decideRfqVolume } = await import("../domain/rfq-volume");
+  const rules = normalizeRules(await getAutomationRules());
+  const volume = await queryOne<{ sent_today: string | number | null; sent_for_trade: string | number | null }>(
+    RFQ_VOLUME_SQL,
+    [input.orgId, input.opportunityId, input.trade]
+  );
+  const decision = decideRfqVolume({
+    outboundEnabled: rules.rfq_outbound_enabled,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+    sentToday: Number(volume?.sent_today ?? 0),
+    sentForTrade: Number(volume?.sent_for_trade ?? 0),
+  });
+  if (decision.send) return null;
+  await query(
+    `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+    [input.opportunityId, input.orgId]
+  );
+  const why = decision.reason === "kill_switch"
+    ? "Outbound quote requests are paused for this account."
+    : decision.reason === "daily_cap"
+      ? `This account already sent ${rules.rfq_daily_cap} quote requests today.`
+      : `This trade already has ${rules.rfq_subs_per_trade} quote requests on this opportunity.`;
+  await logAgent({
+    agent: "outreach",
+    action: "rfq-held",
+    level: "warn",
+    status: "skipped",
+    opportunityId: input.opportunityId,
+    subcontractorId: input.subcontractorId,
+    message: `Held the quote request to ${input.companyName}. ${why}`,
+  });
+  return {
+    ok: false,
+    permanent: true,
+    retryable: false,
+    humanActionRequired: true,
+    summary: `Held the quote request to ${input.companyName}. ${why}`,
+    ...(decision.resumeAfterSeconds != null
+      ? {
+          enqueued: [{
+            agent: "outreach",
+            payload: input.payload,
+            opts: {
+              startAfterSeconds: decision.resumeAfterSeconds,
+              singletonKey: `rfq-next-day:${input.opportunityId}:${input.subcontractorId}:${input.trade}`,
+              singletonSeconds: 86_400,
+            },
+          }],
+        }
+      : {}),
+  };
+}
+
 export const outreach: AgentDefinition = {
   name: "outreach",
   label: "Outreach",
@@ -286,6 +367,16 @@ export const outreach: AgentDefinition = {
     if (!outreachAllowed(await getWorkExecution(), opp)) {
       return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed). Nothing was sent." };
     }
+
+    const volumeHold = await holdOutboundRfq({
+      orgId,
+      opportunityId,
+      subcontractorId,
+      trade,
+      companyName: sub.company_name,
+      payload: { opportunityId, subcontractorId, trade },
+    });
+    if (volumeHold) return volumeHold;
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };

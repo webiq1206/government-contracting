@@ -146,6 +146,21 @@ export interface AutomationRules {
    * the gate before bid submission stay either way.
    */
   autonomous_review_decisions: boolean;
+  /**
+   * Quote requests that may leave the account in one UTC day.
+   * The next request waits until the next day and is flagged for a person.
+   */
+  rfq_daily_cap: number;
+  /**
+   * Subcontractors who may be sent a quote request for one trade on one
+   * opportunity. The next firm waits until the next day.
+   */
+  rfq_subs_per_trade: number;
+  /**
+   * Kill switch for new quote requests. Off holds every request and does
+   * not schedule it for the next day. Absent means on.
+   */
+  rfq_outbound_enabled: boolean;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -173,6 +188,9 @@ export const DEFAULT_RULES: AutomationRules = {
   final_nudge_enabled: false,
   min_bid_lead_business_days: 5,
   autonomous_review_decisions: true,
+  rfq_daily_cap: 25,
+  rfq_subs_per_trade: 5,
+  rfq_outbound_enabled: true,
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
@@ -226,6 +244,11 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // On unless the account explicitly turns it off. A stored config from
     // before this key existed has no opinion, and the default is to decide.
     autonomous_review_decisions: v?.autonomous_review_decisions !== false,
+    rfq_daily_cap: num(v?.rfq_daily_cap, DEFAULT_RULES.rfq_daily_cap, 1, 500),
+    rfq_subs_per_trade: num(v?.rfq_subs_per_trade, DEFAULT_RULES.rfq_subs_per_trade, 1, 50),
+    // Only an explicit false stops outbound quote requests. A stored config
+    // from before this key existed keeps sending.
+    rfq_outbound_enabled: v?.rfq_outbound_enabled !== false,
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;

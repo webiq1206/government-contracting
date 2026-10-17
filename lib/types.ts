@@ -688,7 +688,7 @@ export interface AgentResult {
     agent: string;
     payload: Record<string, unknown>;
     /** Optional queue dedup: same key within singletonSeconds is enqueued once. */
-    opts?: { singletonKey?: string; singletonSeconds?: number };
+    opts?: { singletonKey?: string; singletonSeconds?: number; startAfterSeconds?: number };
   }[];
   humanActionRequired?: boolean;
 }

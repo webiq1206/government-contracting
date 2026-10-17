@@ -572,7 +572,49 @@ export function AutomationRulesForm({
                       onChange={num("outreach_batch_limit")}
                     />
                   </Field>
+                  <Field
+                    label="Quote requests per day"
+                    hint="Accepted quote requests across the account, midnight to midnight UTC. The next one waits until the next day and is flagged for a person. Default is 25."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      className="input"
+                      value={form.rfq_daily_cap}
+                      onChange={num("rfq_daily_cap")}
+                    />
+                  </Field>
+                  <Field
+                    label="Subcontractors per trade"
+                    hint="On one opportunity. The next firm for that trade waits until the next day. Default is 5."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      className="input"
+                      value={form.rfq_subs_per_trade}
+                      onChange={num("rfq_subs_per_trade")}
+                    />
+                  </Field>
                 </div>
+                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-border/55 p-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={!form.rfq_outbound_enabled}
+                    onChange={(event) =>
+                      setForm((f) => ({ ...f, rfq_outbound_enabled: !event.target.checked }))
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">Pause outbound quote requests</span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      Nothing new is sent, and a held request is not scheduled for the next day. Follow-ups already in flight are unchanged.
+                    </span>
+                  </span>
+                </label>
                 <p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-slate-700">
                   {form.followup_max === 0 ? (
                     <>

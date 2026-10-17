@@ -15,6 +15,10 @@ describe("the cadence helper", () => {
     expect(agentCadence("not-an-agent")).toBeNull();
   });
 
+  it("registers the provider recovery probe every ten minutes", () => {
+    expect(schedule("ai-provider-recovery-probe")).toBe("*/10 * * * *");
+  });
+
   it("maps every scheduled agent", () => {
     const map = agentSchedules();
     for (const { agent, cron } of scheduledAgents()) expect(map[agent.name]).toBe(cron);

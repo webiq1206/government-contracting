@@ -8,12 +8,6 @@
  */
 
 export const RECAP_SENDS_PER_TICK = 8;
-/**
- * A dead address stops after the ordinary three tries. A Gmail rate limit is
- * not a dead address: the morning cron can keep claiming that row, with the
- * backoff below, until these attempts are used up.
- */
-export const RECAP_RATE_LIMIT_ATTEMPTS = 8;
 const GAP_MIN_MS = 2_000;
 const GAP_JITTER_MS = 800;
 
@@ -42,7 +36,9 @@ export function recapRetryDelayMs(attempts: number, random = Math.random()): num
 /**
  * A failed row may be claimed again only when no message could exist, or
  * Gmail explicitly rate-limited a send that did not return a message id and
- * the backoff has elapsed.
+ * the backoff has elapsed. The claim itself stops at three attempts, so a
+ * rate limit does not get a longer automatic run, and a saved message id is
+ * never claimed again.
  */
 export function recapFailureCanRetry(input: {
   providerAttemptedAt: string | null;

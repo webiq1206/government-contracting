@@ -72,11 +72,15 @@ describe("band decision persistence", () => {
       },
     };
     const decision = await decideReviewBand(input);
+    const claude = await import("@/lib/ai/claude");
+    expect(vi.mocked(claude.completeJson)).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ retries: 0 })
+    );
     expect(decision?.choice).toBe("pursue");
     expect(decision?.fitCriteriaChecked).toEqual(["naics", "geography", "deadline"]);
     expect(decision?.reasoning).toContain("NAICS");
 
-    const claude = await import("@/lib/ai/claude");
     vi.mocked(claude.completeJson).mockResolvedValueOnce({
       data: { decision: "pass", reasons: ["too thin"], fit_criteria_checked: ["naics"] },
       usage: null,

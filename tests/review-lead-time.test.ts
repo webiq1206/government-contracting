@@ -5,7 +5,6 @@ import {
   addBusinessDays,
   closesInsideLeadTime,
   DEFAULT_REVIEW_LEAD_BUSINESS_DAYS,
-  LEAD_PASS_NOTE,
 } from "@/lib/domain/review-lead";
 
 describe("business-day lead time", () => {
@@ -51,16 +50,31 @@ describe("lead-time cleanup", () => {
     expect(pass).not.toMatch(banned);
   });
 
-  it("archives only open review items and can be run twice", () => {
-    expect(migration).toContain(LEAD_PASS_NOTE);
+  it("keeps the migration schema-only and previews through the sweep before it writes", () => {
+    expect(migration.toLowerCase()).not.toContain("update opportunities");
+    expect(migration).toContain("add column if not exists band_decision");
+    expect(migration).toContain("opportunities_band_decision_ck");
     expect(pass).toContain("LEAD_PASS_NOTE");
-    expect(migration).toContain("status = 'open'");
-    expect(migration).toContain("bid_building");
+    expect(pass).toContain("stopOpportunityAutomation");
     expect(pass).toContain("auto-pass: deadline");
+    expect(pass).toContain("org_id = $1");
+    const body = pass.slice(pass.indexOf("export async function archiveReviewInsideLeadTime"));
+    const dry = body.indexOf("dryRun");
+    const update = body.indexOf("update opportunities");
+    const stop = body.indexOf("stopOpportunityAutomation");
+    expect(dry).toBeGreaterThan(-1);
+    expect(dry).toBeLessThan(update);
+    expect(update).toBeLessThan(stop);
+    expect(body.slice(dry, update)).toContain("select id from opportunities");
+    expect(body.slice(dry, update)).toContain("return");
     expect(script).toContain("--dry-run");
-    expect(migration).toContain("position(pass_note in notes)");
-    expect(pass).toContain("where org_id = $1");
     expect(script).toContain("--apply");
+    const preview = script.indexOf("{ dryRun: true }");
+    const apply = script.indexOf("if (apply");
+    expect(preview).toBeGreaterThan(-1);
+    expect(apply).toBeGreaterThan(preview);
+    expect(script.slice(apply)).not.toContain("dryRun: true");
+    expect(script.slice(apply)).toContain("archiveReviewInsideLeadTime");
   });
 
   it("runs even when automatic review dismissal is off", () => {
