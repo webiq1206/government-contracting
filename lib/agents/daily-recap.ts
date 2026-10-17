@@ -42,16 +42,16 @@ import { platformAdminEmails } from "../platform-admin";
 import { dayWindow } from "../domain/recap/day-window";
 import { getRecapSettings } from "../recap/settings";
 import { sweepRecapBounces } from "../recap/bounces";
+import { isMailboxRateLimit, recapGapMs, recapRetryDelayMs, RECAP_SENDS_PER_TICK } from "../domain/recap-send-pace";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
 /**
- * The pacing. Twenty-five sends a tick is a hundred an hour, which clears any
- * plausible customer list well inside the late window while leaving the shared
- * mailbox free for the mail somebody is waiting on.
+ * Eight sends a tick, at least two seconds apart with a little jitter.
+ * A Gmail rate limit stops the tick; the claimed rows wait out their backoff
+ * instead of being sent again on the next quarter-hour.
  */
-const MAX_SENDS_PER_RUN = 25;
-const PAUSE_BETWEEN_SENDS_MS = 600;
+const MAX_SENDS_PER_RUN = RECAP_SENDS_PER_TICK;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -150,9 +150,10 @@ export const dailyRecap: AgentDefinition = {
     if (fanoutProblem) notes.push(fanoutProblem);
 
     let budget = MAX_SENDS_PER_RUN;
+    let rateLimited = false;
 
     for (const org of fanout.orgs) {
-      if (budget <= 0) break;
+      if (budget <= 0 || rateLimited) break;
 
       const spent = await runWithOrg(org.id, async () => {
         try {
@@ -173,11 +174,15 @@ export const dailyRecap: AgentDefinition = {
             message: `Recap run failed for one account: ${(err as Error).message}`.slice(0, 500),
           });
           tally.failed += 1;
-          return 0;
+          return { spent: 0, rateLimited: false };
         }
       });
 
-      budget -= spent;
+      budget -= spent.spent;
+      if (spent.rateLimited) {
+        rateLimited = true;
+        notes.push("Gmail rate-limited the recap. Remaining sends wait for the backoff instead of going out again this tick.");
+      }
     }
 
     if (budget <= 0) {
@@ -192,7 +197,7 @@ export const dailyRecap: AgentDefinition = {
      * can look at the page instead, and a customer's morning should not be
      * spent on ours.
      */
-    if (budget > 0) {
+    if (budget > 0 && !rateLimited) {
       const spent = await sendPlatformRecap(now, budget, tally).catch(async (err) => {
         await logAgent({
           agent: "daily-recap",
@@ -202,9 +207,12 @@ export const dailyRecap: AgentDefinition = {
           message: `The platform recap failed: ${(err as Error).message}`.slice(0, 500),
         });
         tally.failed += 1;
-        return 0;
+        return { spent: 0, rateLimited: false };
       });
-      budget -= spent;
+      budget -= spent.spent;
+      if (spent.rateLimited) {
+        notes.push("Gmail rate-limited the platform recap. Remaining sends wait for the backoff.");
+      }
     }
 
     const parts = [
@@ -248,12 +256,16 @@ export const dailyRecap: AgentDefinition = {
  *
  * Returns how much of the send budget it used.
  */
-async function sendPlatformRecap(now: Date, budget: number, tally: RunTally): Promise<number> {
+async function sendPlatformRecap(
+  now: Date,
+  budget: number,
+  tally: RunTally
+): Promise<{ spent: number; rateLimited: boolean }> {
   const admins = platformAdminEmails();
-  if (admins.size === 0) return 0;
+  if (admins.size === 0) return { spent: 0, rateLimited: false };
 
   const recipients = await platformRecapRecipients(admins);
-  if (recipients.length === 0) return 0;
+  if (recipients.length === 0) return { spent: 0, rateLimited: false };
 
   // The platform's own account holds the operational settings; the recipient
   // list here is the allowlist, not that account's members.
@@ -321,16 +333,23 @@ async function sendPlatformRecap(now: Date, budget: number, tally: RunTally): Pr
       text: rendered.text,
     });
 
-    const failure = result.error ?? (result.disabled ? "Platform inbox is not connected." : null);
+    const messageId = result.rfc822MessageId ?? result.messageId ?? null;
+    const failure = messageId ? null : result.error ?? (result.disabled ? "Platform inbox is not connected." : null);
 
     if (failure) {
-      await markFailed(claim.delivery.id, failure, {
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        quiet: recap.quiet,
-        urgentCount: recap.urgentCount,
-      });
+      const rateLimited = isMailboxRateLimit(failure);
+      await markFailed(
+        claim.delivery.id,
+        failure,
+        {
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+          quiet: recap.quiet,
+          urgentCount: recap.urgentCount,
+        },
+        rateLimited ? { nextRetryAt: new Date(Date.now() + recapRetryDelayMs(claim.delivery.attempts ?? 1)) } : undefined
+      );
       tally.failed += 1;
       await logAgent({
         agent: "daily-recap",
@@ -342,6 +361,7 @@ async function sendPlatformRecap(now: Date, budget: number, tally: RunTally): Pr
           500
         ),
       });
+      if (rateLimited) return { spent: spent + 1, rateLimited: true };
     } else {
       await markSent(claim.delivery.id, {
         subject: rendered.subject,
@@ -349,17 +369,17 @@ async function sendPlatformRecap(now: Date, budget: number, tally: RunTally): Pr
         text: rendered.text,
         quiet: recap.quiet,
         urgentCount: recap.urgentCount,
-        providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
+        providerMessageId: messageId,
       });
       tally.sent += 1;
       if (decision.late) tally.late += 1;
     }
 
     spent += 1;
-    if (spent < budget) await sleep(PAUSE_BETWEEN_SENDS_MS);
+    if (spent < budget) await sleep(recapGapMs());
   }
 
-  return spent;
+  return { spent, rateLimited: false };
 }
 
 /** Returns how much of the send budget this account used. */
@@ -368,12 +388,12 @@ async function sendForOrg(
   now: Date,
   budget: number,
   tally: RunTally
-): Promise<number> {
+): Promise<{ spent: number; rateLimited: boolean }> {
   const settings = await getRecapSettings(orgId);
-  if (!settings.enabled) return 0;
+  if (!settings.enabled) return { spent: 0, rateLimited: false };
 
   const recipients = await recapRecipients(orgId, settings);
-  if (recipients.length === 0) return 0;
+  if (recipients.length === 0) return { spent: 0, rateLimited: false };
 
   let spent = 0;
 
@@ -476,16 +496,23 @@ async function sendForOrg(
       text: rendered.text,
     });
 
-    const failure = result.error ?? (result.disabled ? "Platform inbox is not connected." : null);
+    const messageId = result.rfc822MessageId ?? result.messageId ?? null;
+    const failure = messageId ? null : result.error ?? (result.disabled ? "Platform inbox is not connected." : null);
 
     if (failure) {
-      await markFailed(claim.delivery.id, failure, {
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        quiet: recap.quiet,
-        urgentCount: recap.urgentCount,
-      });
+      const limited = isMailboxRateLimit(failure);
+      await markFailed(
+        claim.delivery.id,
+        failure,
+        {
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+          quiet: recap.quiet,
+          urgentCount: recap.urgentCount,
+        },
+        limited ? { nextRetryAt: new Date(Date.now() + recapRetryDelayMs(claim.delivery.attempts ?? 1)) } : undefined
+      );
       tally.failed += 1;
       /*
        * Logged under its own action, not the success one. The dedupe checks
@@ -504,6 +531,7 @@ async function sendForOrg(
             500
           ),
       });
+      if (limited) return { spent: spent + 1, rateLimited: true };
     } else {
       await markSent(claim.delivery.id, {
         subject: rendered.subject,
@@ -511,7 +539,7 @@ async function sendForOrg(
         text: rendered.text,
         quiet: recap.quiet,
         urgentCount: recap.urgentCount,
-        providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
+        providerMessageId: messageId,
       });
       tally.sent += 1;
       if (decision.late) tally.late += 1;
@@ -526,8 +554,8 @@ async function sendForOrg(
     }
 
     spent += 1;
-    if (spent < budget) await sleep(PAUSE_BETWEEN_SENDS_MS);
+    if (spent < budget) await sleep(recapGapMs());
   }
 
-  return spent;
+  return { spent, rateLimited: false };
 }

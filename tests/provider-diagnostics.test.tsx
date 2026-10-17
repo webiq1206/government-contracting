@@ -76,17 +76,17 @@ describe("normal OpenAI request failure with an injected response", () => {
     ["organization_spend_limit_exceeded", "insufficient_quota", false, "organization spend limit"],
     ["organization_usage_limit_exceeded", "insufficient_quota", false, "assigned organization usage limit"],
     ["insufficient_quota", null, false, "billing quota or account allowance"],
-    ["rate_limit_exceeded", null, true, "rate limiting"],
-    ["slow_down", "rate_limit_error", true, "rate limiting"],
+    ["rate_limit_exceeded", null, false, "rate limiting"],
+    ["slow_down", "rate_limit_error", false, "rate limiting"],
   ])("classifies the specific saved code %s without treating all 429s as rate limits", (code, type, retryable, reason) => {
     const d = describeOpenAiFailure(new OpenAiApiError("ignored private body", 429, code, type, null))!;
     expect(d.retryable).toBe(retryable); expect(d.reason).toContain(reason);
-    expect(classifyFailure(d.reason)).toBe(retryable ? "provider_rate_limit" : "provider_credit");
+    expect(classifyFailure(d.reason)).toBe(/rate limiting/.test(reason) ? "provider_rate_limit" : "provider_credit");
   });
   it.each([401, 403, 429])("keeps bare %s refusals unresolved and held for review", status => {
     const d = describeOpenAiFailure(new OpenAiApiError(privateText, status, null, null, null))!;
     expect(d.retryable).toBe(false);
-    expect(classifyFailure(d.reason)).toBe("provider_refusal");
+    expect(classifyFailure(d.reason)).toBe(status === 429 ? "provider_rate_limit" : "provider_refusal");
     expect(providerNeedsIntervention(`AI_UNAVAILABLE: ${d.reason}`)).toBe(true);
   });
 });

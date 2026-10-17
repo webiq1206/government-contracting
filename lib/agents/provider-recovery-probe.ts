@@ -18,6 +18,8 @@ import { currentProviderEvidence, recordProviderProbe } from "../ai/provider-fac
 import { deliverOutageAlert } from "../outage-alert";
 import { recoverOrg, type ProviderHold } from "../domain/provider-recovery-run";
 import { providerRefusalCause } from "../domain/provider-recovery";
+import { SCORING_STALL_CAUSE } from "../domain/scoring-watchdog";
+import { watchScoring } from "../domain/scoring-watchdog-run";
 import { addBusinessDays } from "../domain/review-lead";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
@@ -105,7 +107,7 @@ export const providerRecoveryProbe: AgentDefinition = {
           rules.min_bid_lead_business_days > 0
             ? addBusinessDays(new Date(), rules.min_bid_lead_business_days)
             : new Date(Date.now() + 24 * 60 * 60_000);
-        return recoverOrg(org.id, {
+        const recovered = await recoverOrg(org.id, {
           now: () => new Date(),
           leadBusinessDays: rules.min_bid_lead_business_days,
           holds: holdsFor,
@@ -189,6 +191,57 @@ export const providerRecoveryProbe: AgentDefinition = {
           },
           markRecovered,
         });
+        const watch = await watchScoring(org.id, {
+        counts: async (id) => {
+          const scores = await queryOne<{ n: number }>(
+            `select count(*)::int as n from agent_logs
+              where org_id = $1 and agent = 'scoring-engine' and action = 'score'
+                and created_at >= now() - interval '24 hours'
+                and message like 'scored via Claude%'
+                and message not like '%incomplete%'`,
+            [id]
+          );
+          const arrived = await queryOne<{ n: number }>(
+            `select count(*)::int as n from opportunities
+              where org_id = $1 and created_at >= now() - interval '24 hours'`,
+            [id]
+          );
+          return { completedScores: Number(scores?.n ?? 0), arrived: Number(arrived?.n ?? 0) };
+        },
+        incidentOpen: async (id) =>
+          queryOne<{ id: string }>(
+            `select id from automation_incidents
+              where org_id = $1 and cause = $2 and state <> 'recovered'
+              limit 1`,
+            [id, SCORING_STALL_CAUSE]
+          ),
+        openIncident: async (id) => {
+          const row = await openOrUpdateIncident({
+            orgId: id,
+            cause: SCORING_STALL_CAUSE,
+            severity: "blocking",
+            startedAt: new Date(),
+            detectionSource: "scoring_watchdog",
+            failedCount: 1,
+            recommendedAction: "Wait for the provider probe, then confirm a score finishes.",
+          });
+          return { id: row.id };
+        },
+        claimAlert,
+        sendAlert: async (alert) => {
+          const delivered = await deliverOutageAlert({ subject: alert.subject, text: alert.text });
+          await logAgent({
+            agent: "ai-provider-recovery-probe",
+            action: alert.kind === "start" ? "scoring-stall-alert" : "scoring-stall-cleared",
+            level: delivered === "unconfigured" ? "warn" : "info",
+            message: alert.text,
+          });
+        },
+        markRecovered,
+        });
+        if (watch.alerted) startAlerts += 1;
+        if (watch.resolved) endAlerts += 1;
+        return recovered;
       });
       probed += outcome.probed.length;
       requeued += outcome.requeued;

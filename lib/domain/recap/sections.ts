@@ -41,6 +41,7 @@ import {
   replyDestination,
   reviewDestination,
 } from "./destinations";
+import { providerStatusLine } from "../provider-status-line";
 
 // ---------------------------------------------------------------------------
 // Time in words. Local to this module so the wording is one edit, not six.
@@ -330,6 +331,9 @@ export function buildRecap(
     sections,
     generatedAt: now.toISOString(),
     partial: ctx.partial,
+    ...(facts.providerStatuses
+      ? { providerStatus: providerStatusLine(facts.providerStatuses) }
+      : {}),
   };
 }
 

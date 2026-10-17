@@ -35,8 +35,8 @@ describe("describeClaudeFailure", () => {
     expect(d!.retryable).toBe(false);
   });
 
-  it("treats rate limits and Anthropic outages as worth retrying", () => {
-    expect(describeClaudeFailure(apiError(429, "rate limited", "rate_limit_error"))!.retryable).toBe(true);
+  it("latches a rate limit for the recovery probe and still retries an outage", () => {
+    expect(describeClaudeFailure(apiError(429, "rate limited", "rate_limit_error"))!.retryable).toBe(false);
     expect(describeClaudeFailure(apiError(529, "overloaded", "overloaded_error"))!.retryable).toBe(true);
   });
 

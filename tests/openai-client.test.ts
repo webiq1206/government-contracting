@@ -111,7 +111,7 @@ describe("describeOpenAiFailure", () => {
     expect(quota.retryable).toBe(false);
     const limit = describeOpenAiFailure(err(429, "rate_limit_exceeded", "Rate limit reached"))!;
     expect(limit.reason).toMatch(/rate limiting/);
-    expect(limit.retryable).toBe(true);
+    expect(limit.retryable).toBe(false);
   });
 
   it("treats outages and network failures as worth retrying", () => {

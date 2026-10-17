@@ -98,7 +98,7 @@ export function describeOpenAiFailure(
         "OpenAI is rate limiting this account, so requests are being refused. " +
         "Respect its saved Retry-After delay before an authorized retry.",
       status,
-      retryable: true,
+      retryable: false,
     };
   }
 

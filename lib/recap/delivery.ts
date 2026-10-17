@@ -14,6 +14,7 @@
  * the deadline has passed, the reply was answered, the numbers have moved.
  */
 import { query, queryOne } from "../db";
+import { RECAP_RATE_LIMIT_ATTEMPTS } from "../domain/recap-send-pace";
 
 export type RecapDeliveryStatus = "pending" | "sent" | "failed" | "bounced";
 
@@ -170,9 +171,20 @@ export async function claimDelivery(input: ClaimInput): Promise<ClaimResult> {
            late = recap_deliveries.late or excluded.late,
            due_at = coalesce(recap_deliveries.due_at, excluded.due_at),
            updated_at = now()
-     where recap_deliveries.attempts < ${MAX_AUTOMATIC_ATTEMPTS}
+     where recap_deliveries.provider_message_id is null
        and (
-         recap_deliveries.status = 'failed'
+         recap_deliveries.attempts < ${MAX_AUTOMATIC_ATTEMPTS}
+         or (
+           recap_deliveries.attempts < ${RECAP_RATE_LIMIT_ATTEMPTS}
+           and recap_deliveries.error ~* 'rate.?limit|too many requests|\\m429\\M|quota exceeded'
+         )
+       )
+       and (
+         (recap_deliveries.status = 'failed'
+           and recap_deliveries.provider_attempted_at is null)
+         or (recap_deliveries.status = 'failed'
+           and recap_deliveries.error ~* 'rate.?limit|too many requests|\\m429\\M|quota exceeded'
+           and (recap_deliveries.next_retry_at is null or recap_deliveries.next_retry_at <= now()))
          or (recap_deliveries.status = 'pending'
              and recap_deliveries.provider_attempted_at is null
              and recap_deliveries.updated_at < now() - interval '15 minutes')
@@ -284,7 +296,8 @@ export async function markSent(
 export async function markFailed(
   id: string,
   error: string,
-  rendered?: { subject: string; html: string; text: string; quiet: boolean; urgentCount: number }
+  rendered?: { subject: string; html: string; text: string; quiet: boolean; urgentCount: number },
+  pace?: { nextRetryAt: Date | null }
 ): Promise<void> {
   await query(
     `update recap_deliveries
@@ -293,7 +306,8 @@ export async function markFailed(
             html = coalesce($4, html),
             text_body = coalesce($5, text_body),
             quiet = coalesce($6, quiet),
-            urgent_count = coalesce($7, urgent_count)
+            urgent_count = coalesce($7, urgent_count),
+            next_retry_at = $8
       where id = $1`,
     [
       id,
@@ -303,6 +317,7 @@ export async function markFailed(
       rendered?.text ?? null,
       rendered?.quiet ?? null,
       rendered?.urgentCount ?? null,
+      pace?.nextRetryAt?.toISOString() ?? null,
     ]
   );
 }

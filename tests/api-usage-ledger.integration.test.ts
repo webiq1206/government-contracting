@@ -221,7 +221,7 @@ it("persists allowlisted failure evidence and configuration while excluding it f
   expect(JSON.stringify(tenant)).not.toContain("req_abcdef");
 });
 it.each([
-  [429, "rate_limit_error", "rate limiting", false],
+  [429, "rate_limit_error", "rate limiting", true],
   [429, "insufficient_quota", "billing quota or account allowance", true],
   [403, undefined, "specific account or access cause was not established", true],
 ] as const)("retains safe connection-test response diagnostics for HTTP %i / %s", async (status,type,message,held) => {

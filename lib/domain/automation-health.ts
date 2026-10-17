@@ -63,6 +63,7 @@ export type IncidentCause =
   | "network"
   | "not_configured"
   | "model_output"
+  | "scoring_stall"
   | "unknown";
 
 export interface IncidentSpec {
@@ -190,6 +191,13 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     repairHref: "/settings/integrations",
     blocking: false,
   },
+  scoring_stall: {
+    title: "Scoring has stopped while new solicitations arrived",
+    effect: "New opportunities came in during the last day and none of them received a finished score.",
+    repair: "The recovery probe keeps checking the AI provider. This notice closes itself once a score finishes.",
+    repairHref: "/agents",
+    blocking: true,
+  },
   model_output: {
     title: "An analysis came back unreadable",
     effect:
@@ -237,7 +245,9 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/ai work has an unresolved completion|reconcile its saved output before retrying|provider request is in progress or has an unresolved outcome/.test(text)) return "completion_reconciliation";
   if (/no verified platform sender|platform gmail connection or verified sender identity is not ready/.test(text)) return "sender_not_ready";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
-  if (/provider refusal/.test(text)) return "provider_refusal";
+  // Credit and quota are named before the generic "provider refusal" phrase.
+  // A 429 that says "provider refusal" is a rate limit, not a separate outage,
+  // and treating it as one is how recovery skips the jobs the probe just fixed.
   if (/credit balance|insufficient (?:credit|funds)|add credit|specified (?:api )?usage limits|regain access on|insufficient_quota|exceeded your current quota|billing quota|organization spend limit|project spend limit|organization usage limit/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
   // Google can return quota exhaustion as HTTP 403. Check throttling before
@@ -246,6 +256,9 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/rate.?limit|quota exceeded|quota.*(?:per minute|per user)|429|too many requests/i.test(text)) {
     return /gmail|mailbox|inbox/.test(text) ? "mailbox_rate_limit" : "provider_rate_limit";
   }
+  // A generic "provider refusal (HTTP 401)" has not established a bad key.
+  // Name that before the status-code check, which would otherwise call it auth.
+  if (/provider refusal/.test(text)) return "provider_refusal";
   // Match the named service before generic HTTP/auth words. A Google 401 is
   // not repaired by replacing an Anthropic key, and a Gmail timeout is not an
   // expired grant.

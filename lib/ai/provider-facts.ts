@@ -105,14 +105,13 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts
       where account_scope=$1 and provider=$2 and credential_hash=$3`, scope)).rows[0];
     if (row?.pending_attempt) throw busy();
-    if (requiresRetryReview(row?.failure_reason ?? null)) {
+    if (!recoveryTest && requiresRetryReview(row?.failure_reason ?? null)) {
       throw new ProviderRefusalError(provider, row!.failure_reason!, row!.failure_status);
     }
     if (row?.refusal_reason && !recoveryTest) {
       throw new ProviderRefusalError(provider, row.refusal_reason, row.refusal_status);
     }
-    if (row?.failure_reason && (retryTime(row.failure_reason) ?? 0) > Date.now()) {
-      // Explicit recovery also respects a provider's Retry-After window.
+    if (!recoveryTest && row?.failure_reason && (retryTime(row.failure_reason) ?? 0) > Date.now()) {
       throw new ProviderRefusalError(provider, row.failure_reason, row.failure_status, true);
     }
     await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
@@ -143,15 +142,26 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const saved = await queryOne<{ saved: boolean }>(`update ai_provider_facts set
     last_success_at=case when $5 then clock_timestamp() else last_success_at end,
     last_failure_at=case when $6::text is not null then clock_timestamp() else last_failure_at end,
-    failure_reason=coalesce($6,failure_reason),
-    failure_status=case when $6::text is not null then $7::integer else failure_status end,
-    refusal_reason=case when $5 then null when $8 then $6 else refusal_reason end,
-    refusal_status=case when $5 then null when $8 then $7::integer else refusal_status end,
+    failure_reason=case when $5 then null else coalesce($6,failure_reason) end,
+    failure_status=case when $5 then null when $6::text is not null then $7::integer else failure_status end,
+    refusal_reason=case when $5 then null when $8 and $10 then coalesce(refusal_reason, $6) when $8 then $6 else refusal_reason end,
+    refusal_status=case when $5 then null when $8 and $10 then coalesce(refusal_status, $7::integer) when $8 then $7::integer else refusal_status end,
     pending_attempt=case when $9 then pending_attempt else null end,
     pending_started_at=case when $9 then pending_started_at else null end
     where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
-    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain]).catch(error => { throw completionError(error); });
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain, recoveryTest]).catch(error => { throw completionError(error); });
   if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
+  if (success) {
+    await import("../provider-incident-resolve")
+      .then((mod) => mod.resolveProviderIncidents(identity.orgId, provider))
+      .catch((error) => {
+        console.error(
+          `[provider-facts] incident close failed after ${provider} answered: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+  }
   if ("error" in outcome) throw outcome.error;
   return outcome.value;
 }

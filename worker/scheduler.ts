@@ -14,7 +14,9 @@ let timer: NodeJS.Timeout | null = null;
 
 export function startScheduler(): () => void {
   const schedule = scheduledAgents().filter(
-    (s) => !config.worker.disabledAgents.includes(s.agent.name)
+    (s) =>
+      s.agent.name === "ai-provider-recovery-probe" ||
+      !config.worker.disabledAgents.includes(s.agent.name)
   );
 
   // Catch a typo'd cron at boot rather than letting it silently never fire.

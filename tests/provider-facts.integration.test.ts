@@ -6,6 +6,15 @@ const state = vi.hoisted(() => ({ db: null as any, org: "tenant-a", source: "ten
   keys: { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" } as Record<string,string>,
   profile: "Original profile", openai: vi.fn(), anthropic: vi.fn(), attempts: 0, budgetHeld: false, busy: false, meteringError: null as Error | null, failSettlement: false, failClaimAck: false, failSettlementAck: false, failSettlementProvider: null as string | null, transactions: 0 }));
 vi.mock("../lib/db", () => ({
+  query: async (sql: string, params: unknown[] = []) => {
+    try {
+      return (await state.db.query(sql, params)).rows;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/does not exist/.test(message)) return [];
+      throw error;
+    }
+  },
   queryOne: async (sql: string, params: unknown[]) => {
     if (state.failSettlement && sql.startsWith("update ai_provider_facts")) throw new Error("synthetic completion database outage");
     const row = (await state.db.query(sql, params)).rows[0] ?? null;
@@ -88,17 +97,18 @@ describe("durable provider/account/current-credential evidence", () => {
     expect(results.every(r => r.status === "rejected")).toBe(true);
     expect(state.attempts).toBe(1);
   });
-  it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }])("preserves transient backoff for %j", async err => {
+  it.each([{ status: 429, type: "rate_limit_error", message: "rate limited" }])("holds a rate limit until the probe succeeds for %j", async err => {
     state.openai.mockRejectedValueOnce(err);
-    await expect(call()).rejects.toMatchObject({ retryable: true });
-    expect(await providerEnqueueHold(state.org, "routine")).toContain("Next automatic attempt");
-    await expect(call()).rejects.toMatchObject({ retryable: true });
+    await expect(call()).rejects.toMatchObject({ retryable: false });
+    expect(await providerEnqueueHold(state.org, "routine")).toContain("rate limiting");
+    await expect(call()).rejects.toMatchObject({ retryable: false });
     expect(state.attempts).toBe(1);
     advanceCooldown();
-    expect((await recentAiTrouble(state.org, "OpenAI")).count).toBe(1);
+    await expect(call()).rejects.toThrow();
+    expect(state.attempts).toBe(1);
+    await expect(probeProviderRecovery("OpenAI", state.org)).resolves.toMatchObject({ text: "synthetic" });
+    expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
     await expect(call()).resolves.toMatchObject({ text: "synthetic" });
-    expect((await recentAiTrouble(state.org, "OpenAI")).count).toBe(0);
-    expect(state.attempts).toBe(2);
   });
   it("backs off without metering when another worker owns the credential lock", async () => {
     state.busy = true;
@@ -146,18 +156,17 @@ describe("durable provider/account/current-credential evidence", () => {
     vi.stubGlobal("fetch", fetch);
     await VALIDATORS.openai(state.keys);
     expect(await providerEnqueueHold(state.org, "routine")).not.toBeNull();
-    await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("Next automatic attempt");
-    advanceCooldown();
+    await VALIDATORS.openai(state.keys);
     state.budgetHeld = true;
     await expect(VALIDATORS.openai(state.keys)).rejects.toThrow("API_BUDGET");
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("billing quota or account allowance");
     state.budgetHeld = false;
     fetch.mockImplementation(async () => new Response(JSON.stringify({ id: "fake", usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 }));
     expect((await VALIDATORS.openai(state.keys)).ok).toBe(true);
     expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
     expect((await recentAiTrouble(state.org, "OpenAI")).count).toBe(0);
-    await call(); expect(state.attempts).toBe(4);
+    await call(); expect(state.attempts).toBe(5);
   });
   it("allows only configured fallback and records each provider independently", async () => {
     config.ai.fallback = true; state.openai.mockRejectedValueOnce(quota());
@@ -274,7 +283,7 @@ describe("short durable provider claims", () => {
     state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", message: "rate limited" });
     await expect(call()).rejects.toThrow();
     advanceCooldown();
-    await call();
+    await expect(probeProviderRecovery("OpenAI", state.org)).resolves.toMatchObject({ text: "synthetic" });
     let started!: () => void; let release!: () => void;
     const entered = new Promise<void>(resolve => { started = resolve; });
     const wait = new Promise<void>(resolve => { release = resolve; });
@@ -370,13 +379,16 @@ describe("pending primary admission",()=>{
   expect(state.openai).toHaveBeenCalledTimes(1);expect(state.attempts).toBe(1);
  });
 
- it("preserves real subclass HTTP429 backoff while holding a timeout from the fallback",async()=>{
+ it("holds an HTTP 429 until the probe succeeds, and holds a timeout from the fallback",async()=>{
   const work=()=>withApiUsageContext({workKey:"classify:record",relatedId:"record"},call);
   state.openai.mockRejectedValueOnce({status:429,type:"rate_limit_error",message:"rate limit"});
-  await expect(work()).rejects.toMatchObject({retryable:true});
-  await expect(work()).rejects.toMatchObject({retryable:true});
+  await expect(work()).rejects.toMatchObject({retryable:false});
+  await expect(work()).rejects.toMatchObject({retryable:false});
   expect(state.attempts).toBe(1);
   advanceCooldown();
+  await expect(work()).rejects.toMatchObject({retryable:false});
+  expect(state.attempts).toBe(1);
+  await expect(probeProviderRecovery("OpenAI", state.org)).resolves.toMatchObject({text:"synthetic"});
   await expect(work()).resolves.toMatchObject({text:"synthetic"});
   config.ai.fallback=true;state.openai.mockRejectedValue({status:429,type:"rate_limit_error",message:"rate limit"});state.anthropic.mockRejectedValue(new Error("socket timed out"));
   const other=()=>withApiUsageContext({workKey:"classify:other",relatedId:"other"},call);
@@ -413,13 +425,14 @@ it.each([{ status: 503, message: "unavailable" }, { message: "network timeout" }
   expect(state.openai).toHaveBeenCalledOnce();
   expect(state.anthropic).not.toHaveBeenCalled();
 });
-it.each(["604801", "99999999999999", "unparseable"])('does not shorten an unrepresentable Retry-After %s', async delay => {
+it.each(["604801", "99999999999999", "unparseable"])('does not turn an unrepresentable Retry-After %s into an automatic retry', async delay => {
   state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", headers: { "retry-after": delay } });
-  await expect(call()).rejects.toThrow();
+  await expect(call()).rejects.toThrow(/rate limiting/);
   advanceCooldown();
-  await expect(call()).rejects.toThrow("manual review");
-  await expect(probeProviderRecovery("OpenAI", state.org)).rejects.toThrow("manual review");
+  await expect(call()).rejects.toThrow(/rate limiting/);
   expect(state.openai).toHaveBeenCalledOnce();
+  await expect(probeProviderRecovery("OpenAI", state.org)).resolves.toMatchObject({ text: "synthetic" });
+  expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
 });
 it.each([{ maxTokens: 32769 }, { maxTokens: 0 }, { responseSchema: {}, schema: {} }])("rejects local invalid failover options before creating any receipt: %j", async opts => {
   config.ai.fallback = true;

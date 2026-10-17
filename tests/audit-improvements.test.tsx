@@ -35,7 +35,9 @@ describe("audit regression coverage", () => {
     expect(failure?.reason).toContain("saved diagnostics");
     expect(failure?.reason).not.toContain("rejected the API key");
     expect(causeSpec("provider_auth").title).not.toContain("AI key");
-    expect(describeClaudeFailure({ status: 429, message: "Too many requests" })?.retryable).toBe(true);
+    const throttle = describeClaudeFailure({ status: 429, message: "Too many requests" });
+    expect(throttle?.retryable).toBe(false);
+    expect(classifyFailure(throttle?.reason)).toBe("provider_rate_limit");
   });
   it("uses page-specific social previews and only one brand suffix", () => {
     const meta = publicMetadata("Government bid management software", "A connected bid workflow.", "/platform");

@@ -236,4 +236,63 @@ describe("daily recap operational failures", () => {
       )
     ).toBe(true);
   });
+
+  it("stops the tick on a Gmail rate limit and schedules a backoff instead of another send", async () => {
+    orgsToSweep.mockResolvedValueOnce({
+      orgs: [{ id: "org-1" }],
+      error: null,
+      soloFallback: false,
+      pausedCount: 0,
+    });
+    recapRecipients.mockResolvedValueOnce([
+      { userId: "user-1", email: "one@example.test", name: "One", timezone: "UTC" },
+      { userId: "user-2", email: "two@example.test", name: "Two", timezone: "UTC" },
+    ]);
+    buildRecapFor.mockResolvedValue({
+      recap: { quiet: false, urgentCount: 1, orgName: "Test" },
+    });
+    claimDelivery.mockResolvedValue({ delivery: { id: "delivery-1", attempts: 1 } });
+    sendDigest.mockResolvedValueOnce({ error: "Gmail 429 rate limit exceeded" });
+    const { dailyRecap } = await loadDailyRecap();
+
+    const result = await dailyRecap.handler({ payload: {} } as never);
+
+    expect(sendDigest).toHaveBeenCalledTimes(1);
+    expect(markSent).not.toHaveBeenCalled();
+    expect(markFailed).toHaveBeenCalledWith(
+      "delivery-1",
+      "Gmail 429 rate limit exceeded",
+      expect.objectContaining({ subject: "Recap" }),
+      expect.objectContaining({ nextRetryAt: expect.any(Date) })
+    );
+    expect(result.reasoning).toContain("backoff");
+  });
+
+  it("treats a returned message id as sent even when the provider also reports an error", async () => {
+    orgsToSweep.mockResolvedValueOnce({
+      orgs: [{ id: "org-1" }],
+      error: null,
+      soloFallback: false,
+      pausedCount: 0,
+    });
+    recapRecipients.mockResolvedValueOnce([
+      { userId: "user-1", email: "one@example.test", name: "One", timezone: "UTC" },
+    ]);
+    buildRecapFor.mockResolvedValue({
+      recap: { quiet: false, urgentCount: 0, orgName: "Test" },
+    });
+    sendDigest.mockResolvedValueOnce({
+      error: "Gmail 429 rate limit exceeded",
+      rfc822MessageId: "<already-accepted@mail>",
+    });
+    const { dailyRecap } = await loadDailyRecap();
+
+    await dailyRecap.handler({ payload: {} } as never);
+
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(markSent).toHaveBeenCalledWith(
+      "delivery-1",
+      expect.objectContaining({ providerMessageId: "<already-accepted@mail>" })
+    );
+  });
 });

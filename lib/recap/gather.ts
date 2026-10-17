@@ -16,6 +16,8 @@ import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "../domain/opportunit
  * with it.
  */
 import { query, queryOne } from "../db";
+import { currentProviderFacts } from "../ai/provider-facts";
+import type { ProviderStatusFact } from "../domain/provider-status-line";
 import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
 import { clipText } from "../domain/clip";
 import { TRIAGE_WHERE_SQL, WORKABLE_CALL_CARD_SQL } from "../data";
@@ -563,9 +565,12 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     });
   }
 
+  const providerStatuses = await providerStatusesFor(input.orgId).catch(() => []);
+
   return {
     orgId,
     orgName: org?.name ?? null,
+    providerStatuses,
     totals,
     deadlines: deadlines.map(
       (r): DeadlineFact => ({
@@ -717,4 +722,24 @@ function toOpportunity(r: Record<string, unknown>): OpportunityFact {
     stage: String(r.stage ?? ""),
     value: r.value_estimated == null ? null : num(r.value_estimated),
   };
+}
+
+async function providerStatusesFor(orgId: string): Promise<ProviderStatusFact[]> {
+  const facts = await Promise.all([
+    currentProviderFacts("OpenAI", orgId),
+    currentProviderFacts("Anthropic", orgId),
+  ]);
+  return (["OpenAI", "Anthropic"] as const).map((provider, index) => {
+    const row = facts[index];
+    const held = Boolean(row?.refusal_reason);
+    const probed = Boolean(row?.last_probe_at);
+    return {
+      provider,
+      refusalReason: row?.refusal_reason ?? null,
+      heldSince: held && row?.last_failure_at ? new Date(row.last_failure_at).toISOString() : null,
+      nextProbeAt: row?.next_probe_at ? new Date(row.next_probe_at).toISOString() : null,
+      lastProbeAt: row?.last_probe_at ? new Date(row.last_probe_at).toISOString() : null,
+      lastProbeOk: probed ? Number(row?.probe_failure_count ?? 0) === 0 : null,
+    };
+  });
 }
