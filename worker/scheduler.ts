@@ -7,6 +7,7 @@
 import { cronMatches, isValidCron } from "../lib/cron";
 import { enqueue } from "../lib/queue";
 import { scheduledAgents } from "../lib/agents/registry";
+import { ALWAYS_ON_SCHEDULED } from "../lib/agents/always-on";
 import { config } from "../lib/config";
 import { getPlatformAutomationState } from "../lib/app-settings";
 
@@ -15,7 +16,7 @@ let timer: NodeJS.Timeout | null = null;
 export function startScheduler(): () => void {
   const schedule = scheduledAgents().filter(
     (s) =>
-      s.agent.name === "ai-provider-recovery-probe" ||
+      ALWAYS_ON_SCHEDULED.has(s.agent.name) ||
       !config.worker.disabledAgents.includes(s.agent.name)
   );
 

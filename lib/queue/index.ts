@@ -322,6 +322,7 @@ export const QUEUE_NAMES = [
   "outreach-recovery-sweep",
   "review-expiry-sweep",
   "ai-provider-recovery-probe",
+  "pursuit-continuation-sweep",
   "reply-poll",
   "stalled-pipeline-sweep",
   "deadline-monitor",

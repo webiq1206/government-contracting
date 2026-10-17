@@ -1805,7 +1805,7 @@ export const scoringRecoverySweep: AgentDefinition = {
   name: "scoring-recovery-sweep",
   label: "Scoring Recovery",
   description:
-    "Safety net: re-queues scoring for opportunities that were ingested but never scored, and re-queues the analyst for open scored records that still have no brief.",
+    "Safety net: re-queues scoring for opportunities that were ingested but never scored, and re-queues the analyst for scored records that still have no brief.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // Deliberately its OWN job rather than a step inside the Opportunity
@@ -2017,7 +2017,12 @@ export const scoringRecoverySweep: AgentDefinition = {
     return {
       ok: queueFailures === 0,
       summary: parts.length > 0 ? `${parts.join("; ")}.` : "No eligible recovery jobs found. Records may still need review: recent attempts, retry limits and previous successes are excluded. Review the failed run before requesting another attempt.",
-      data: { scoringQueued, analysisQueued, queueFailures, deferred },
+      data: {
+        scoringQueued,
+        analysisQueued,
+        queueFailures,
+        deferred,
+      },
       humanActionRequired: queueFailures > 0,
     };
   },

@@ -19,6 +19,10 @@ describe("the cadence helper", () => {
     expect(schedule("ai-provider-recovery-probe")).toBe("*/10 * * * *");
   });
 
+  it("registers the pursuit continuation sweep every ten minutes", () => {
+    expect(schedule("pursuit-continuation-sweep")).toBe("*/10 * * * *");
+  });
+
   it("maps every scheduled agent", () => {
     const map = agentSchedules();
     for (const { agent, cron } of scheduledAgents()) expect(map[agent.name]).toBe(cron);

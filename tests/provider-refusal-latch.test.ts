@@ -128,9 +128,12 @@ describe("the latch has one writer and the probe is allowed through", () => {
     expect(holdAt).toBeLessThan(memoAt);
     expect(admission.slice(holdAt, memoAt)).toContain("if (providerHold) return providerHold");
     expect(read("lib/agents/runner.ts")).toContain(
-      'def.name !== "ai-provider-recovery-probe" && config.worker.disabledAgents.includes(def.name)'
+      "!ALWAYS_ON_SCHEDULED.has(def.name) && config.worker.disabledAgents.includes(def.name)"
     );
-    expect(read("worker/scheduler.ts")).toContain('s.agent.name === "ai-provider-recovery-probe"');
+    expect(read("worker/scheduler.ts")).toContain("ALWAYS_ON_SCHEDULED.has(s.agent.name)");
+    const alwaysOn = read("lib/agents/always-on.ts");
+    expect(alwaysOn).toContain("ai-provider-recovery-probe");
+    expect(alwaysOn).toContain("pursuit-continuation-sweep");
   });
 
   it("sends Sources Sought through the same completion latch", () => {
