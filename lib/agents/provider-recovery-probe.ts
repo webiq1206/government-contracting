@@ -15,6 +15,7 @@ import { advance, IllegalTransition, openOrUpdateIncident } from "../incidents";
 import { getAutomationRules } from "../app-settings";
 import { probeProviderRecovery } from "../ai/claude";
 import { currentProviderEvidence, recordProviderProbe } from "../ai/provider-facts";
+import { runHoldSweepCycle } from "./hold-sweep";
 import { deliverOutageAlert } from "../outage-alert";
 import { recoverOrg, type ProviderHold } from "../domain/provider-recovery-run";
 import { providerRefusalCause } from "../domain/provider-recovery";
@@ -96,6 +97,12 @@ export const providerRecoveryProbe: AgentDefinition = {
     if (fanout.error) {
       return { ok: false, summary: fanoutNote(fanout) ?? "No accounts were processed." };
     }
+    await runHoldSweepCycle().catch((error) => {
+      console.error(
+        "[ai-provider-recovery-probe] hold sweep failed:",
+        error instanceof Error ? error.message : error
+      );
+    });
     let probed = 0;
     let requeued = 0;
     let startAlerts = 0;

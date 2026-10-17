@@ -711,6 +711,7 @@ export const outreach: AgentDefinition = {
     let communicationId: string | undefined;
     let replayed = false;
     let claimId: string | null = null;
+    let claimSettled = false;
 
     try {
     if (sub.email && sub.email_verified) {
@@ -857,18 +858,20 @@ export const outreach: AgentDefinition = {
     if (claimId && sent && !replayed) {
       const { settleRfqSendSlot } = await import("../domain/rfq-reservation");
       await settleRfqSendSlot(orgId, claimId);
-      claimId = null;
+      claimSettled = true;
     }
-    } catch (err) {
-      if (claimId) {
-        const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
-        await releaseRfqSendSlot(orgId, claimId);
+    } finally {
+      if (claimId && !claimSettled) {
+        try {
+          const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
+          await releaseRfqSendSlot(orgId, claimId);
+        } catch (releaseError) {
+          console.error(
+            "[outreach] quote-request slot could not be released; the hold sweep will expire it:",
+            releaseError instanceof Error ? releaseError.message : releaseError
+          );
+        }
       }
-      throw err;
-    }
-    if (claimId) {
-      const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
-      await releaseRfqSendSlot(orgId, claimId);
     }
 
     // Exactly this trade's row. The old predicate fell open on an empty

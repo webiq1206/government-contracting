@@ -8,6 +8,7 @@ import { LEGACY_ORG_ID } from "../tenant-context";
 import { decryptSecret } from "../integration-settings";
 import { providerDiagnostics, configurationReference, type ProviderDiagnostics, type ConfigurationReference } from "./diagnostics";
 import { reserveProspectiveUsage } from "../prospective-boundary";
+import { USAGE_ABANDON_MINUTES } from "../domain/hold-registry";
 
 export type RequestIdentity = {
   orgId: string;
@@ -335,15 +336,14 @@ export async function finishUsage(
  * Close ledger rows whose request can no longer be running.
  *
  * A row stays `pending` when the process died between admission and
- * completion, or when the completion write itself failed. Nothing else ever
- * touches it, so it sat in the "in flight" column forever and kept its full
- * price ceiling held against every later admission. Two hours is far past
- * any single provider call's timeout. The reservation is kept (the provider
- * may have completed and billed the work) but the row is now a finished
- * failure awaiting verified cost evidence, and it ages out of the daily
- * and monthly windows like every other charge.
+ * completion, or when the completion write itself failed. The default age
+ * is the provider hard timeout plus its safety margin, so the call cannot
+ * still be on the wire. The reservation is kept (the provider may have
+ * completed and billed the work) but the row is now a finished failure
+ * awaiting verified cost evidence, and it ages out of the daily and monthly
+ * windows like every other charge. This does not replay the request.
  */
-export async function settleAbandonedUsage(olderThanMinutes = 120): Promise<number> {
+export async function settleAbandonedUsage(olderThanMinutes = USAGE_ABANDON_MINUTES): Promise<number> {
   const rows = await query<{ id: string }>(
     `update api_usage_events
         set outcome='failed', finished_at=now(),

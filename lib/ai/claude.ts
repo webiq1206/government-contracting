@@ -19,6 +19,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { withProviderFacts, ProviderRefusalError } from "./provider-facts";
+import { AI_CALL_TIMEOUT_MS } from "../domain/hold-registry";
 import { z } from "zod";
 import { config } from "../config";
 import { getProfileSystemText } from "./companyProfile";
@@ -597,7 +598,7 @@ async function runAnthropic(
 ): Promise<Completion> {
   const model = route.model;
   // No retained credentials and no hidden SDK retries. Every execution is metered.
-  const anthropic = new Anthropic({ apiKey, maxRetries: 0 });
+  const anthropic = new Anthropic({ apiKey, maxRetries: 0, timeout: AI_CALL_TIMEOUT_MS });
 
   // Built as a loose object so we can conditionally include params by model
   // family without fighting the (older) SDK's request types. The model string
@@ -644,8 +645,7 @@ async function runAnthropic(
     () => providerRequest("Anthropic", async () => {
       const response = await anthropic.messages.create(
       body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
-      { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
-        maxRetries: 0 }
+      { timeout: opts.timeoutMs ?? AI_CALL_TIMEOUT_MS, maxRetries: 0 }
       );
       if (!Array.isArray(response?.content) || !response.usage ||
         ![response.usage.input_tokens, response.usage.output_tokens].every(value => Number.isFinite(value) && value >= 0) ||
@@ -711,7 +711,7 @@ async function runOpenAi(
       effort: isBoundedGpt6(model) ? "none" : route.complex ? config.openai.reasoningComplex : config.openai.reasoningRoutine,
       reasoningHeadroom: config.openai.reasoningHeadroom,
       temperature: opts.temperature ?? 0.2,
-      timeoutMs: opts.timeoutMs,
+      timeoutMs: opts.timeoutMs ?? AI_CALL_TIMEOUT_MS,
       cacheKey: `brostco:${identity.orgId}`,
     };
   // Validate the bounded contract before admission/transport, so a local hold
