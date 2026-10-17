@@ -332,6 +332,7 @@ export function AutomationRulesForm({
     <section className="card space-y-2">
       <h2 className="font-semibold">Your automation rules are set</h2>
       <p className="text-sm">Follow-ups: up to {form.followup_max}, spaced {form.followup_hours} hours apart. Phone-call tasks: {form.calls_enabled ? "enabled" : "off"}.</p>
+      <p className="text-sm">Quote requests: up to {form.rfq_daily_cap} a day, {form.rfq_subs_per_trade} subcontractors per trade. Outbound quote requests are {form.rfq_outbound_enabled ? "on" : "paused"}.</p>
       <p className="text-sm">Archived records: {form.retention_days === 0 ? "kept until you remove them" : `kept for ${form.retention_days} days`}. Unreviewed opportunities: {form.auto_dismiss_review ? "dismissed after your saved waiting period" : "kept for your review"}.</p>
       <p className="text-xs text-muted-foreground">You can use these rules as they are. Open the controls only when you need to change how work runs.</p>
     </section>
@@ -523,6 +524,62 @@ export function AutomationRulesForm({
           label: "Outreach",
           content: (
             <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
+              <section className="card" id="quote-requests">
+                <h2 className="font-display text-xl text-foreground">Outbound quote requests</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  How many first quote requests this account may send. The defaults are 25 a day
+                  and 5 subcontractors for one trade on one opportunity. A request past either
+                  limit waits until the next day. Pausing stops new quote requests as soon as
+                  these rules are saved. Mail the mailbox already accepted is not recalled.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Quote requests per day"
+                    hint="Accepted quote requests across the account, midnight to midnight UTC. Default is 25."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      className="input"
+                      name="rfq_daily_cap"
+                      value={form.rfq_daily_cap}
+                      onChange={num("rfq_daily_cap")}
+                    />
+                  </Field>
+                  <Field
+                    label="Subcontractors per trade"
+                    hint="On one opportunity. Default is 5."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      className="input"
+                      name="rfq_subs_per_trade"
+                      value={form.rfq_subs_per_trade}
+                      onChange={num("rfq_subs_per_trade")}
+                    />
+                  </Field>
+                </div>
+                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-border/55 p-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    name="rfq_outbound_paused"
+                    checked={!form.rfq_outbound_enabled}
+                    onChange={(event) =>
+                      setForm((f) => ({ ...f, rfq_outbound_enabled: !event.target.checked }))
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">Pause outbound quote requests</span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      Off unless you turn it on, so quote requests keep going out. Saving it on pauses them immediately and does not schedule them for the next day.
+                    </span>
+                  </span>
+                </label>
+              </section>
               <section className="card">
                 <h2 className="font-display text-xl text-foreground">Chasing subcontractors</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">
@@ -572,49 +629,7 @@ export function AutomationRulesForm({
                       onChange={num("outreach_batch_limit")}
                     />
                   </Field>
-                  <Field
-                    label="Quote requests per day"
-                    hint="Accepted quote requests across the account, midnight to midnight UTC. The next one waits until the next day and is flagged for a person. Default is 25."
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      className="input"
-                      value={form.rfq_daily_cap}
-                      onChange={num("rfq_daily_cap")}
-                    />
-                  </Field>
-                  <Field
-                    label="Subcontractors per trade"
-                    hint="On one opportunity. The next firm for that trade waits until the next day. Default is 5."
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      className="input"
-                      value={form.rfq_subs_per_trade}
-                      onChange={num("rfq_subs_per_trade")}
-                    />
-                  </Field>
                 </div>
-                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-border/55 p-3">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={!form.rfq_outbound_enabled}
-                    onChange={(event) =>
-                      setForm((f) => ({ ...f, rfq_outbound_enabled: !event.target.checked }))
-                    }
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-foreground">Pause outbound quote requests</span>
-                    <span className="mt-1 block text-sm text-slate-600">
-                      Nothing new is sent, and a held request is not scheduled for the next day. Follow-ups already in flight are unchanged.
-                    </span>
-                  </span>
-                </label>
                 <p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-slate-700">
                   {form.followup_max === 0 ? (
                     <>

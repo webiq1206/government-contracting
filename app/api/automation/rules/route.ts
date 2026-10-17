@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { stopInheritedOutreachForOrg } from "@/lib/work-mode";
+import { pauseOutboundRfqs } from "@/lib/rfq-pause";
 import { requireUser, requireCapability } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
@@ -198,6 +199,12 @@ export async function POST(req: Request) {
   if (before.work_execution !== "self" && saved.work_execution === "self" && orgId) {
     outreachStopped = await stopInheritedOutreachForOrg(orgId);
   }
+  // The pause is the saved switch, not the next sweep. Unsent quote requests
+  // are flagged now. A request the mailbox already accepted is left alone.
+  let rfqPaused: { opportunities: number } | null = null;
+  if (before.rfq_outbound_enabled && !saved.rfq_outbound_enabled && orgId) {
+    rfqPaused = await pauseOutboundRfqs(orgId);
+  }
 
   await logAgent({
     agent: "operator",
@@ -205,6 +212,8 @@ export async function POST(req: Request) {
     level: "info",
     message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}, calls ${saved.calls_enabled ? "on" : "off (email-only workflow)"}, work ${saved.work_execution === "self" ? "self-performed" : saved.work_execution === "mixed" ? "mixed" : "subcontracted"}.${
       outreachStopped ? ` Stopped outreach automation on ${outreachStopped.opportunities} opportunit${outreachStopped.opportunities === 1 ? "y" : "ies"} (${outreachStopped.followUpsStopped} follow-up(s) unscheduled, ${outreachStopped.callsCleared} call(s) cleared).` : ""
+    }${
+      rfqPaused ? ` Paused outbound quote requests on ${rfqPaused.opportunities} opportunit${rfqPaused.opportunities === 1 ? "y" : "ies"}.` : ""
     }`,
   });
   return NextResponse.json({
