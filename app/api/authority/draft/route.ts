@@ -5,6 +5,7 @@ import { queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "@/lib/ai/claude";
 import { logAgent } from "@/lib/logger";
+import { config } from "@/lib/config";
 import { ahrefs } from "@/lib/integrations/ahrefs";
 import { outreachTemplate } from "@/lib/domain/backlink";
 
@@ -21,6 +22,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const admin = await requirePlatformAdmin();
   if (admin instanceof NextResponse) return admin;
+  if (!config.ahrefs.integrationEnabled) {
+    return NextResponse.json({ error: "Ahrefs is turned off. No request was sent." }, { status: 409 });
+  }
   const orgId = LEGACY_ORG_ID;
   return runWithOrg(orgId, async () => {
     const body = (await req.json().catch(() => ({}))) as { prospectId?: string };

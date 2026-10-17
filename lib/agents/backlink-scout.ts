@@ -18,6 +18,8 @@
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
+import { config } from "../config";
+import { retireAhrefsIncidents } from "../incidents";
 import { ahrefs, type RefDomain, type BrokenBacklink } from "../integrations/ahrefs";
 import { findContact } from "../integrations/contact-finder";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
@@ -67,6 +69,24 @@ export const backlinkScout: AgentDefinition = {
     // can never read, update, or deduplicate against this data.
     const orgId = LEGACY_ORG_ID;
     return runWithOrg(orgId, async () => {
+      if (!config.ahrefs.integrationEnabled) {
+        await retireAhrefsIncidents(orgId).catch((error) => {
+          console.error(
+            "[backlink-scout] open Ahrefs incidents could not be closed:",
+            error instanceof Error ? error.message : error
+          );
+        });
+        await logAgent({
+          agent: "backlink-scout",
+          action: "skip",
+          status: "skipped",
+          message: "Ahrefs is turned off. Site Authority scan skipped and no request was sent.",
+        });
+        return {
+          ok: true,
+          summary: "Ahrefs is turned off. Site Authority scan skipped and no request was sent.",
+        };
+      }
       const ahrefsConfig = await ahrefs.configuration(orgId);
       if (!ahrefsConfig.enabled) {
         await logAgent({

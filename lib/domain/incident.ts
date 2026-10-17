@@ -46,6 +46,7 @@ export const INCIDENT_STATES = [
   "backlog_draining",
   "recovered",
   "recovery_failed",
+  "retired",
 ] as const;
 export type IncidentState = (typeof INCIDENT_STATES)[number];
 
@@ -58,6 +59,7 @@ export const INCIDENT_STATE_LABEL: Record<IncidentState, string> = {
   backlog_draining: "Backlog draining",
   recovered: "Recovered",
   recovery_failed: "Recovery failed",
+  retired: "Turned off",
 };
 
 /**
@@ -77,28 +79,35 @@ export const INCIDENT_NEXT_ACTION: Record<IncidentState, string> = {
   backlog_draining: "Wait for the queue to drain, then confirm the work landed.",
   recovered: "Nothing. Confirmed working end to end.",
   recovery_failed: "Read the failure below and fix the underlying cause before retrying.",
+  retired: "Nothing. This integration is turned off. No provider test was sent and failed work was not replayed.",
 };
 
 /**
  * Legal moves.
  *
- * Nothing reaches `recovered` except from `backlog_draining`, and nothing
- * reaches `backlog_draining` except through a passed test. That is the whole
- * point of the machine: an incident cannot be declared over by anybody's
- * optimism, only by work that ran.
+ * Nothing reaches `recovered` except from `backlog_draining` or `test_passed`,
+ * and nothing reaches `backlog_draining` except through a passed test. That is
+ * the whole point of the machine: an incident cannot be declared over by
+ * anybody's optimism, only by work that ran.
+ *
+ * `retired` is the other closed state. An integration that has been switched
+ * off can leave every open state in one step. It does not record a passed
+ * test, does not set `recovered_at`, and does not replay failed work.
  */
 const TRANSITIONS: Record<IncidentState, IncidentState[]> = {
-  detected: ["mitigating", "provider_restored", "recovery_failed"],
-  mitigating: ["provider_restored", "recovery_failed"],
-  provider_restored: ["test_passed", "recovery_failed"],
-  test_passed: ["backlog_requeued", "recovered", "recovery_failed"],
-  backlog_requeued: ["backlog_draining", "recovery_failed"],
-  backlog_draining: ["recovered", "recovery_failed"],
+  detected: ["mitigating", "provider_restored", "recovery_failed", "retired"],
+  mitigating: ["provider_restored", "recovery_failed", "retired"],
+  provider_restored: ["test_passed", "recovery_failed", "retired"],
+  test_passed: ["backlog_requeued", "recovered", "recovery_failed", "retired"],
+  backlog_requeued: ["backlog_draining", "recovery_failed", "retired"],
+  backlog_draining: ["recovered", "recovery_failed", "retired"],
   // A recovery that failed can be worked again. An incident that recovered is
   // finished: a later outage is a new incident, because merging them would
   // lose the fact that the first one was fixed.
   recovered: [],
-  recovery_failed: ["mitigating", "provider_restored"],
+  recovery_failed: ["mitigating", "provider_restored", "retired"],
+  // Turned off is finished too. It is not a claim that the provider answered.
+  retired: [],
 };
 
 export function canTransition(from: IncidentState, to: IncidentState): boolean {
@@ -106,7 +115,7 @@ export function canTransition(from: IncidentState, to: IncidentState): boolean {
 }
 
 export function isOpen(state: IncidentState): boolean {
-  return state !== "recovered";
+  return state !== "recovered" && state !== "retired";
 }
 
 export function parseIncidentState(v: unknown): IncidentState {

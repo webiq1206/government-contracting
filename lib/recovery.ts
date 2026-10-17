@@ -25,7 +25,7 @@ import { currentOrgId, runWithOrg } from "./tenant-context";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { gmail } from "./integrations/gmail";
 import { logAgent } from "./logger";
-import { advance, IllegalTransition, incidentById, type IncidentRow } from "./incidents";
+import { advance, IllegalTransition, incidentById, retireAhrefsIncidents, type IncidentRow } from "./incidents";
 import { getAutomationRules } from "./app-settings";
 import {
   describePlan,
@@ -130,6 +130,10 @@ export async function testIncidentDependency(cause: string, orgId: string, provi
   if (cause.startsWith("provider_")) {
     if (provider === "openai" || provider === "anthropic") return testProvider(orgId, provider);
     if (provider === "ahrefs") {
+      if (!config.ahrefs.integrationEnabled) {
+        return { passed: false, model: "ahrefs", technical: null,
+          detail: "Ahrefs is turned off. No request was sent." };
+      }
       try {
         const [{ orgApiKey }, { VALIDATORS }] = await Promise.all([
           import("./integration-keys"),
@@ -340,10 +344,28 @@ export async function runRecoveryCheck(
 async function recoverIncident(incidentId: string, orgId: string, actor: string): Promise<RecoveryResult> {
   const incident = await incidentById(incidentId, orgId);
   if (!incident) throw new Error("No such incident for this organization.");
-  if (incident.state === "recovered") {
-    return { incidentId, state: "recovered", test: { passed: true, detail: "This incident was already recovered.", technical: null, model: "none" },
+  if (incident.state === "recovered" || incident.state === "retired") {
+    return { incidentId, state: incident.state, test: { passed: incident.state === "recovered", detail: incident.state === "retired" ? "Ahrefs is turned off. No request was sent." : "This incident was already recovered.", technical: null, model: "none" },
       plan: "No replay was needed.", requeued: 0, skipped: 0, remaining: 0,
-      confirmation: incident.recoveryNote, message: "This incident was already recovered. No duplicate work was queued." };
+      confirmation: incident.recoveryNote, message: incident.state === "retired"
+        ? "Ahrefs is turned off. No request was sent and no failed work was replayed."
+        : "This incident was already recovered. No duplicate work was queued." };
+  }
+
+  if (incident.provider === "ahrefs" && !config.ahrefs.integrationEnabled) {
+    await retireAhrefsIncidents(orgId);
+    const closed = await incidentById(incidentId, orgId);
+    return {
+      incidentId,
+      state: closed?.state ?? "retired",
+      test: { passed: false, detail: "Ahrefs is turned off. No request was sent.", technical: null, model: "ahrefs" },
+      plan: "No replay was needed because Ahrefs is turned off.",
+      requeued: 0,
+      skipped: 0,
+      remaining: 0,
+      confirmation: closed?.recoveryNote ?? null,
+      message: "Ahrefs is turned off. No request was sent and no failed work was replayed.",
+    };
   }
 
   const test = await testIncidentDependency(incident.cause, orgId, incident.provider);

@@ -176,6 +176,7 @@ describe("verification agent failure truth", () => {
   });
 
   it("reports an unreadable backlink contact crawl as a failed partial run", async () => {
+    process.env.AHREFS_ENABLED = "true";
     mocks.ahrefsConfiguration.mockResolvedValue({ enabled: true, target: "brostco.com" });
     mocks.authoritySnapshot.mockResolvedValue(null);
     mocks.referringDomains.mockResolvedValue({ items: [] });
@@ -219,5 +220,6 @@ describe("verification agent failure truth", () => {
     expect(failureWrite?.[1]).toEqual(
       expect.arrayContaining([expect.stringContaining('"contact_discovery_status":"failed"')])
     );
+    delete process.env.AHREFS_ENABLED;
   });
 });

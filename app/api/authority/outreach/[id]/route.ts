@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { config } from "@/lib/config";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { LEGACY_ORG_ID, runWithOrg } from "@/lib/tenant-context";
 import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
@@ -20,6 +21,12 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const params = await props.params;
   const admin = await requirePlatformAdmin();
   if (admin instanceof NextResponse) return admin;
+  if (!config.ahrefs.integrationEnabled) {
+    return NextResponse.json(
+      { error: "Ahrefs is turned off. No backlink outreach was sent." },
+      { status: 409 }
+    );
+  }
   const orgId = LEGACY_ORG_ID;
   return runWithOrg(orgId, async () => {
     const body = (await req.json().catch(() => ({}))) as {
