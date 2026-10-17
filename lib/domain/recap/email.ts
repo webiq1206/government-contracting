@@ -144,6 +144,7 @@ export function renderRecapEmail(recap: Recap, opts: RenderRecapOptions): Render
      * An account that would rather have the silence can turn that on.
      */
     body.push(emailText(`${greeting} Here is ${recap.dayLabel} for ${orgName ?? "your account"}.`));
+    if (recap.providerStatus) body.push(emailText(recap.providerStatus));
     body.push(
       emailText(
         `${RECAP_QUIET_SUMMARY} ` +
@@ -153,6 +154,7 @@ export function renderRecapEmail(recap: Recap, opts: RenderRecapOptions): Render
     body.push(emailButton("Open the recap", recapPage));
   } else {
     body.push(emailText(`${greeting} Here is ${recap.dayLabel} for ${orgName ?? "your account"}.`));
+    if (recap.providerStatus) body.push(emailText(recap.providerStatus));
     if (recap.urgentCount > 0) {
       body.push(
         emailCallout(
@@ -206,6 +208,7 @@ export function renderRecapText(recap: Recap, opts: RenderRecapOptions): string 
   if (opts.late) lines.push("[SENT LATE] The delivery slipped; the day covered is unchanged.", "");
 
   lines.push(`Daily recap for ${orgName}`, recap.dayLabel, rule("="));
+  if (recap.providerStatus) lines.push("", recap.providerStatus);
 
   if (recap.quiet) {
     lines.push(

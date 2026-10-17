@@ -5,7 +5,14 @@ const state=vi.hoisted(()=>({db:null as PGlite|null,paused:false,suppressed:fals
 vi.mock("../lib/db",()=>({query:async(sql:string,p:unknown[]=[]) => (await state.db!.query(sql,p)).rows,queryOne:async(sql:string,p:unknown[]=[]) => (await state.db!.query(sql,p)).rows[0]??null}));
 vi.mock("../lib/work-mode",()=>({opportunityOutreachAllowed:async()=>true}));
 vi.mock("../lib/impersonation",()=>({currentImpersonator:async()=>state.support?"admin":null}));
-vi.mock("../lib/app-settings",()=>({isAutomationStopped:async()=>state.paused,AUTOMATION_PAUSED_ERROR:"paused"}));
+vi.mock("../lib/app-settings",()=>({
+  isAutomationStopped:async()=>state.paused,
+  AUTOMATION_PAUSED_ERROR:"paused",
+  getAutomationRules:async()=>({rfq_outbound_enabled:true,followup_max:1,final_nudge_enabled:true}),
+  areCallsEnabled:async()=>false,
+  isAutomationPaused:async()=>false,
+  getWorkExecution:async()=>"sub",
+}));
 vi.mock("../lib/domain/email-suppression",()=>({isSuppressed:async()=>state.suppressed}));
 vi.mock("../lib/suppressions",()=>({suppressionBlocking:async()=>state.stopped?{}:null}));
 vi.mock("../lib/domain/suppression",()=>({describeSuppression:()=>"stopped"}));

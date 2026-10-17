@@ -47,6 +47,7 @@ import { concessionSweep } from "./concession-sweep";
 import { dailyRecap } from "./daily-recap";
 import { serviceSync } from "./service-sync";
 import { noticeDescriptionSweep } from "./notice-description-sweep";
+import { providerRecoveryProbe } from "./provider-recovery-probe";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -89,6 +90,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   dailyRecap,
   serviceSync,
   noticeDescriptionSweep,
+  providerRecoveryProbe,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
@@ -112,6 +114,9 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     // morning, and an idle run is two cheap queries per org.
     { agent: outreachRecoverySweep, cron: "*/30 * * * *" },
     { agent: reviewExpirySweep, cron: "*/10 * * * *" }, // every 10 min
+    // Often enough to notice a funded account the same morning, with the
+    // probe itself backing off after a failed test.
+    { agent: providerRecoveryProbe, cron: "*/10 * * * *" },
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
     { agent: stalledPipelineSweep, cron: "0 */2 * * *" }, // every 2h (matches the tightest STALL_HOURS window)
     { agent: deadlineMonitor, cron: "0 */6 * * *" }, // every 6 hours

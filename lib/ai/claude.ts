@@ -187,7 +187,7 @@ export function describeClaudeFailure(
         "Anthropic is rate limiting this account, so requests are being refused. " +
         "This usually clears on its own; if it does not, the account's rate limits need raising.",
       status,
-      retryable: true,
+      retryable: false,
     };
   }
 

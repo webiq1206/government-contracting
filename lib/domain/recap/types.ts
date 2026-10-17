@@ -136,6 +136,8 @@ export interface Recap {
   sections: RecapSection[];
   /** ISO instant this was assembled. Shown in the footer. */
   generatedAt: string;
+  /** One line of AI provider status for this account. Absent when it was not gathered. */
+  providerStatus?: string;
   /** True when this covers a day still in progress (the dashboard's "today"). */
   partial: boolean;
 }
@@ -454,6 +456,15 @@ export interface RecapFacts {
   outcomes: BidFact[];
   outreachSent: OutreachSubFact[];
   completed: { key: string; label: string; detail: string | null; href?: string; at: string }[];
+  /** AI provider status for this account, when the recap gathered it. */
+  providerStatuses?: {
+    provider: string;
+    refusalReason: string | null;
+    heldSince: string | null;
+    nextProbeAt: string | null;
+    lastProbeAt: string | null;
+    lastProbeOk: boolean | null;
+  }[];
   /** Platform scope only: one line per account. */
   accounts?: {
     id: string;

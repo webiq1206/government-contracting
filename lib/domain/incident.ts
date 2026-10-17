@@ -225,12 +225,37 @@ export function replayDecision(
   if (classifyFailure(failure.error) === "completion_reconciliation") return no("completion_unresolved");
   if (OUTWARD_FACING.has(failure.agent)) return no("unsafe_to_replay");
   /*
-   * A recovery fixes one cause. A job that failed on a bad API key during a
-   * credit outage will fail again on the bad API key, and requeueing it makes
-   * the backlog look like it is not draining when it is.
+   * Replay runs only after the provider has answered. Credit, quota, rate
+   * limit, auth and a generic provider refusal are one latch: a job whose
+   * text was filed under a sibling label still failed because that provider
+   * refused, and the successful call is what makes retrying it safe.
+   * A mailbox, database, spending or model-output failure is a different
+   * reason. planReplay counts one per skipped job under that reason.
    */
-  if (classifyFailure(failure.error) !== cause) return no("different_cause");
+  const failureCause = classifyFailure(failure.error);
+  if (!sameProviderRecovery(cause, failureCause) && failureCause !== cause) return no("different_cause");
   return { failure, eligible: true, reason: null };
+}
+
+/** Causes the recovery probe clears. A successful call covers every one of them. */
+export const PROVIDER_LATCH_CAUSES = [
+  "provider_credit",
+  "provider_auth",
+  "provider_refusal",
+  "provider_rate_limit",
+  "provider_unavailable",
+] as const;
+
+export function providerLatchCause(cause: string): (typeof PROVIDER_LATCH_CAUSES)[number] | null {
+  const normalized = cause.startsWith("provider_refusal:") ? "provider_refusal" : cause;
+  return (PROVIDER_LATCH_CAUSES as readonly string[]).includes(normalized)
+    ? (normalized as (typeof PROVIDER_LATCH_CAUSES)[number])
+    : null;
+}
+
+/** True when both labels belong to the provider latch the probe clears. */
+export function sameProviderRecovery(incidentCause: string, failureCause: string): boolean {
+  return providerLatchCause(incidentCause) != null && providerLatchCause(failureCause) != null;
 }
 
 export interface ReplayPlan {

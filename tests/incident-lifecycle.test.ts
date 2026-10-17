@@ -131,14 +131,17 @@ describe("deciding what is safe to replay", () => {
   });
 
   it("refuses a failure that had a different cause", () => {
-    /*
-     * A recovery fixes one thing. A job that failed on a bad API key during a
-     * credit outage will fail again on the bad API key, and requeueing it
-     * makes the backlog look like it is not draining when it is.
-     */
-    const d = replayDecision(failure({ error: "401 invalid x-api-key" }), cause);
-    expect(d.eligible).toBe(false);
-    expect(d.reason).toBe("different_cause");
+    // Replay runs only after the provider answered. A mailbox failure is
+    // still a different problem. A rate limit during the same outage is not.
+    const other = replayDecision(failure({ error: "Gmail 429 too many requests" }), cause);
+    expect(other.eligible).toBe(false);
+    expect(other.reason).toBe("different_cause");
+    const sibling = replayDecision(
+      failure({ error: "OpenAI provider refusal (HTTP 429): rate limiting this account" }),
+      cause
+    );
+    expect(sibling.eligible).toBe(true);
+    expect(sibling.reason).toBeNull();
   });
 });
 
@@ -196,6 +199,46 @@ describe("what a recovery would do, before it does it", () => {
   it("says nothing about reasons when everything is eligible", () => {
     const plan = planReplay([replayDecision(failure(), "provider_credit")]);
     expect(describePlan(plan)).toBe("1 of 1 will run again.");
+  });
+});
+
+describe("why a recovery skips a job", () => {
+  it("counts one skipped job per reason, and keeps a sibling provider refusal eligible", () => {
+    /*
+     * planReplay adds one to skippedByReason for each decision. A later
+     * success is "already done". A stopped pursuit, Sources Sought, and a
+     * mailbox or database failure are different reasons. A rate limit or
+     * auth failure during the same provider outage is not: the provider
+     * has already answered, which is what made the replay safe.
+     */
+    const decisions = [
+      replayDecision(failure({ id: "done", error: "credit balance too low" }), "provider_credit", {
+        supersededBySuccess: true,
+      }),
+      replayDecision(failure({ id: "stopped" }), "provider_credit", { pursuitStopped: true }),
+      replayDecision(failure({ id: "sought", agent: "sources-sought-responder" }), "provider_credit", {
+        sourcesSought: true,
+      }),
+      replayDecision(failure({ id: "gmail", error: "Gmail 429 too many requests" }), "provider_credit"),
+      replayDecision(
+        failure({ id: "sibling", error: "OpenAI provider refusal (HTTP 429): rate limiting this account" }),
+        "provider_credit"
+      ),
+      replayDecision(failure({ id: "auth", error: "401 invalid api key" }), "provider_credit"),
+      replayDecision(failure({ id: "db", error: "remaining connection slots are reserved" }), "provider_credit"),
+    ];
+    const plan = planReplay(decisions);
+    expect(plan.total).toBe(7);
+    expect(plan.eligible.map((job) => job.id).sort()).toEqual(["auth", "sibling"]);
+    expect(plan.skippedByReason).toEqual({
+      superseded: 1,
+      pursuit_stopped: 1,
+      market_research: 1,
+      different_cause: 2,
+    });
+    expect(plan.skippedByReason.superseded).toBe(
+      decisions.filter((d) => d.reason === "superseded").length
+    );
   });
 });
 

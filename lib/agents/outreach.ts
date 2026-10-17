@@ -51,6 +51,102 @@ function stripHtmlText(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
 }
 
+/** Stop a quote request that would exceed the account cap. A slot is claimed before the send. */
+async function holdOutboundRfq(input: {
+  orgId: string;
+  opportunityId: string;
+  subcontractorId: string;
+  trade: string;
+  companyName: string;
+  payload: Record<string, unknown>;
+}): Promise<AgentResult | { claimId: string }> {
+  const { getAutomationRules } = await import("../app-settings");
+  const { normalizeRules } = await import("../domain/intake");
+  const { decideRfqVolume } = await import("../domain/rfq-volume");
+  const { reserveRfqSendSlot } = await import("../domain/rfq-reservation");
+  const rules = normalizeRules(await getAutomationRules());
+  const paused = decideRfqVolume({
+    outboundEnabled: rules.rfq_outbound_enabled,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+    sentToday: 0,
+    sentForTrade: 0,
+  });
+  if (!paused.send) {
+    return holdRfq(input, rules.rfq_daily_cap, rules.rfq_subs_per_trade, paused);
+  }
+  const slot = await reserveRfqSendSlot({
+    orgId: input.orgId,
+    opportunityId: input.opportunityId,
+    subcontractorId: input.subcontractorId,
+    trade: input.trade,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+  });
+  if (slot.ok) return { claimId: slot.claimId };
+  const decision = decideRfqVolume({
+    outboundEnabled: true,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+    sentToday: slot.reason === "daily_cap" ? rules.rfq_daily_cap : 0,
+    sentForTrade: slot.reason === "trade_cap" ? rules.rfq_subs_per_trade : 0,
+  });
+  return holdRfq(input, rules.rfq_daily_cap, rules.rfq_subs_per_trade, decision);
+}
+
+async function holdRfq(
+  input: {
+    orgId: string;
+    opportunityId: string;
+    subcontractorId: string;
+    trade: string;
+    companyName: string;
+    payload: Record<string, unknown>;
+  },
+  dailyCap: number,
+  perTradeCap: number,
+  decision: { reason: "kill_switch" | "daily_cap" | "trade_cap" | null; resumeAfterSeconds: number | null }
+): Promise<AgentResult> {
+  await query(
+    `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+    [input.opportunityId, input.orgId]
+  );
+  const why = decision.reason === "kill_switch"
+    ? "Outbound quote requests are paused for this account."
+    : decision.reason === "daily_cap"
+      ? `This account already sent ${dailyCap} quote requests today.`
+      : `This trade already has ${perTradeCap} quote requests on this opportunity.`;
+  await logAgent({
+    agent: "outreach",
+    action: "rfq-held",
+    level: "warn",
+    status: "skipped",
+    opportunityId: input.opportunityId,
+    subcontractorId: input.subcontractorId,
+    message: `Held the quote request to ${input.companyName}. ${why}`,
+  });
+  return {
+    ok: false,
+    permanent: true,
+    retryable: false,
+    humanActionRequired: true,
+    summary: `Held the quote request to ${input.companyName}. ${why}`,
+    ...(decision.resumeAfterSeconds != null
+      ? {
+          enqueued: [{
+            agent: "outreach",
+            payload: input.payload,
+            opts: {
+              startAfterSeconds: decision.resumeAfterSeconds,
+              singletonKey: `rfq-next-day:${input.opportunityId}:${input.subcontractorId}:${input.trade}`,
+              singletonSeconds: 86_400,
+            },
+          }],
+        }
+      : {}),
+  };
+}
+
 export const outreach: AgentDefinition = {
   name: "outreach",
   label: "Outreach",
@@ -614,8 +710,20 @@ export const outreach: AgentDefinition = {
     let heldByRule = false;
     let communicationId: string | undefined;
     let replayed = false;
+    let claimId: string | null = null;
 
+    try {
     if (sub.email && sub.email_verified) {
+      const volumeHold = await holdOutboundRfq({
+        orgId,
+        opportunityId,
+        subcontractorId,
+        trade,
+        companyName: sub.company_name,
+        payload: { opportunityId, subcontractorId, trade },
+      });
+      if (!("claimId" in volumeHold)) return volumeHold;
+      claimId = volumeHold.claimId;
       const res = await sendOutreachEmail({
         scheduled: { key: JSON.stringify(["outreach", opportunityId, subcontractorId, trade ?? ""]),
           followUpAt, meta: { kind: "outreach", trade, quote_due_at: resolved.quote.at ?? null,
@@ -746,6 +854,22 @@ export const outreach: AgentDefinition = {
             : "draft",
       ]
     );
+    if (claimId && sent && !replayed) {
+      const { settleRfqSendSlot } = await import("../domain/rfq-reservation");
+      await settleRfqSendSlot(orgId, claimId);
+      claimId = null;
+    }
+    } catch (err) {
+      if (claimId) {
+        const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
+        await releaseRfqSendSlot(orgId, claimId);
+      }
+      throw err;
+    }
+    if (claimId) {
+      const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
+      await releaseRfqSendSlot(orgId, claimId);
+    }
 
     // Exactly this trade's row. The old predicate fell open on an empty
     // trade and stamped EVERY trade line for the pair, so one failed send

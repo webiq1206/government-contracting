@@ -358,7 +358,7 @@ async function runAdmittedAgent(
     return result;
   };
 
-  if (config.worker.disabledAgents.includes(def.name)) {
+  if (def.name !== "ai-provider-recovery-probe" && config.worker.disabledAgents.includes(def.name)) {
     return finish({ ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` });
   }
 

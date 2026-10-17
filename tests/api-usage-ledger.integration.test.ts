@@ -241,6 +241,7 @@ it.each([
     expect(row.provider_request_id).toBe("req_cafefeed");
     const fact = (await state.db.query("select * from ai_provider_facts")).rows[0];
     expect(Boolean(fact.refusal_reason)).toBe(held);
+    if (type === "rate_limit_error") expect(fact.failure_reason).toContain("Next automatic attempt after");
     for (const evidence of [row,fact,result]) {
       expect(JSON.stringify(evidence)).not.toContain(secret);
       expect(JSON.stringify(evidence)).not.toContain(privateText);

@@ -2,10 +2,12 @@
  * SCORING ENGINE, triggered on every new opportunity.
  * Applies the 100-point rubric from the Company Profile. Checks hard exclusions
  * FIRST (deterministic + Claude for free-text rules). Assigns tier: pursue (>=70),
- * review (50-69), dismiss (<50). Logs the full breakdown. On pursue: triggers
- * Solicitation Analyst and Pricing Research in parallel. On review: writes the
- * brief (analyst only, no sourcing) and sets the auto-dismiss timer. On dismiss:
- * closes + logs.
+ * review (50-69), dismiss (<50). A finished score in the default 50-69 band
+ * gets one pursue-or-pass decision with its reasoning saved. An incomplete
+ * score stays in review. On pursue: triggers Solicitation Analyst, and after
+ * document scoring starts pricing and subcontractor research. On review: writes
+ * the brief (analyst only, no sourcing) and sets the auto-dismiss timer. On
+ * dismiss: closes + logs.
  */
 import { z } from "zod";
 import { outreachAllowed } from "../domain/work-mode";
@@ -30,7 +32,10 @@ import {
   type ScoreFacts,
 } from "../domain/score-confidence";
 import { getAutomationRules } from "../app-settings";
-import { queuedAfterScore } from "../domain/score-downstream";
+import { jobsAfterFinalPursue, queuedAfterScore } from "../domain/score-downstream";
+import { eligibleForBandDecision } from "../domain/band-decision";
+import { scoringRiskFlags } from "../domain/scoring-flags";
+import { decideReviewBand } from "../ai/band-decision";
 import { documentScoringReadiness } from "../domain/document-scoring";
 import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
@@ -469,6 +474,9 @@ async function scoreOpportunity(
     ...buildScoreBreakdown(dims, exclusions, profile, summary),
     data_confidence: confidence,
     analysis_input_hash: completedAnalysis ? opp.analysis_input_hash ?? null : null,
+    band_decision: undefined as "pursue" | "pass" | undefined,
+    band_decision_reasoning: undefined as string | undefined,
+    band_fit_criteria: undefined as string[] | undefined,
   };
 
   // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
@@ -480,16 +488,7 @@ async function scoreOpportunity(
   const forceReview =
     (flags.length > 0 || forceIntakeReview) && breakdown.tier === "pursue";
   if (forceReview) breakdown.tier = "review";
-  // Model prose was written before evidence caps and review routing. Do not
-  // publish its earlier score or a relative deadline as the final decision.
-  breakdown.summary = `Recorded score: ${breakdown.total}/100. Decision: ${breakdown.tier}. ${breakdown.hard_exclusions_triggered.length ? "A hard exclusion applies. " : ""}${forceReview ? "A review flag requires a human decision even though the score met the pursuit threshold. " : ""}The dimension scores below are the recorded basis for this decision. Check the current deadline and source documents before acting.`;
 
-  // 3) Persist score + tier + route.
-  const enqueued: AgentResult["enqueued"] = [];
-  let stage = opp.stage;
-  let humanAction = false;
-  let reviewExpires: string | null = null;
-  let status = opp.status ?? "open";
   const scoringFromDocuments = opts.analysisComplete || (documentsRequired && completedAnalysis);
   const preserveLifecycle =
     opts.preserveLifecycle ||
@@ -504,6 +503,76 @@ async function scoreOpportunity(
       "won",
       "lost",
     ]).has(opp.stage);
+
+  // A finished 50-69 score can be decided here when the account allows it.
+  // An incomplete score, a review flag, a hard exclusion, or an unavailable
+  // model stays in review. This never submits a bid.
+  let bandReasoning: string | null = null;
+  if (
+    rules.autonomous_review_decisions &&
+    !scoringIncomplete &&
+    !preserveLifecycle &&
+    flags.length === 0 &&
+    (breakdown.hard_exclusions_triggered ?? []).length === 0 &&
+    breakdown.tier === "review" &&
+    eligibleForBandDecision(breakdown.total, profile.decision_thresholds)
+  ) {
+    const decision = await decideReviewBand({
+      title: opp.title,
+      score: breakdown.total,
+      summary,
+      deadline: opp.deadline,
+      notice: {
+        naics: opp.naics_code,
+        setAside: opp.set_aside_type,
+        place: [opp.location_text, opp.location_state].filter(Boolean).join(", ") || null,
+        value: opp.value_estimated,
+      },
+      company: {
+        naics: profile.naics_codes ?? [],
+        serviceAreas: profile.service_areas ?? [],
+        smallBusiness: profile.small_business ?? null,
+        certifications: profile.certifications ?? [],
+        annualRevenue: profile.annual_revenue ?? null,
+      },
+    });
+    if (decision) {
+      bandReasoning = decision.reasoning;
+      breakdown.band_decision = decision.choice;
+      breakdown.band_decision_reasoning = decision.reasoning;
+      breakdown.band_fit_criteria = decision.fitCriteriaChecked;
+      breakdown.tier = decision.choice === "pursue" ? "pursue" : "dismiss";
+      await logAgent({
+        agent: "scoring-engine",
+        action: "band-decision",
+        opportunityId,
+        level: "info",
+        message: `Review-band decision: ${decision.choice} at ${breakdown.total}/100.`,
+        reasoning: `${decision.reasoning} Fit checked: ${decision.fitCriteriaChecked.join(", ")}.`,
+      });
+      if (opp.org_id) {
+        await query(
+          `update opportunities
+              set band_decision = $2,
+                  band_decision_reasoning = $3,
+                  band_decision_at = now()
+            where id = $1 and org_id = $4`,
+          [opportunityId, decision.choice, decision.reasoning, opp.org_id]
+        );
+      }
+    }
+  }
+
+  // Model prose was written before evidence caps and review routing. Do not
+  // publish its earlier score or a relative deadline as the final decision.
+  breakdown.summary = `Recorded score: ${breakdown.total}/100. Decision: ${breakdown.tier}. ${breakdown.hard_exclusions_triggered.length ? "A hard exclusion applies. " : ""}${forceReview ? "A review flag requires a human decision even though the score met the pursuit threshold. " : ""}${bandReasoning ? `Review-band reasoning: ${bandReasoning} ` : ""}The dimension scores below are the recorded basis for this decision. Check the current deadline and source documents before acting.`;
+
+  // 3) Persist score + tier + route.
+  const enqueued: AgentResult["enqueued"] = [];
+  let stage = opp.stage;
+  let humanAction = false;
+  let reviewExpires: string | null = null;
+  let status = opp.status ?? "open";
 
   if (breakdown.tier === "pursue") {
     // A preliminary score above the pursue threshold advances to document
@@ -521,10 +590,7 @@ async function scoreOpportunity(
     } else if (scoringFromDocuments) {
       stage = "sub_research";
       humanAction = false;
-      enqueued.push(
-        { agent: "pricing-research", payload: { opportunityId } },
-        { agent: "sub-finder", payload: { opportunityId } }
-      );
+      enqueued.push(...jobsAfterFinalPursue(opportunityId));
     } else {
       stage = "analysis";
       humanAction = false;
@@ -566,14 +632,14 @@ async function scoreOpportunity(
     }
   }
 
-  const persistedFlags = [
-    ...(opp.risk_flags ?? []).filter((flag) => flag !== "awaiting_document_analysis"),
-    ...exclusions,
-    ...flags,
-    ...(preserveLifecycle && breakdown.tier !== "pursue"
-      ? ["score_changed_after_document_analysis"]
-      : []),
-  ];
+  const persistedFlags = scoringRiskFlags({
+    existing: opp.risk_flags ?? [],
+    exclusions,
+    flags,
+    scoringIncomplete,
+    preserveLifecycle,
+    tier: breakdown.tier,
+  });
 
   await query(
     `update opportunities

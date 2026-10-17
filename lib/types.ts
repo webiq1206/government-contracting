@@ -248,6 +248,10 @@ export interface ScoreBreakdown {
     reasoning: string;
   }[];
   summary: string;
+  /** Pursue or pass chosen for a finished 50-69 score, when one was made. */
+  band_decision?: "pursue" | "pass";
+  band_decision_reasoning?: string;
+  band_fit_criteria?: string[];
 }
 
 export interface BidContact {
@@ -684,7 +688,7 @@ export interface AgentResult {
     agent: string;
     payload: Record<string, unknown>;
     /** Optional queue dedup: same key within singletonSeconds is enqueued once. */
-    opts?: { singletonKey?: string; singletonSeconds?: number };
+    opts?: { singletonKey?: string; singletonSeconds?: number; startAfterSeconds?: number };
   }[];
   humanActionRequired?: boolean;
 }

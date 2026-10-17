@@ -133,6 +133,35 @@ export interface AutomationRules {
    * with a place to record the requirements it must meet first.
    */
   final_nudge_enabled: boolean;
+  /**
+   * Business days a bid must still have before its response deadline.
+   * An open opportunity closer than this, and not already in bid building
+   * or submitted, is passed and archived. Zero turns that pass off.
+   * Weekends do not count.
+   */
+  min_bid_lead_business_days: number;
+  /**
+   * Whether a finished score in the 50-69 band is decided by the model.
+   * On by default. Off leaves that band for a person. Hard exclusions and
+   * the gate before bid submission stay either way.
+   */
+  autonomous_review_decisions: boolean;
+  /**
+   * Quote requests that may leave the account in one UTC day.
+   * The default is 100. The next request waits until the next day and is
+   * flagged for a person.
+   */
+  rfq_daily_cap: number;
+  /**
+   * Subcontractors who may be sent a quote request for one trade on one
+   * opportunity. The next firm waits until the next day.
+   */
+  rfq_subs_per_trade: number;
+  /**
+   * Kill switch for new quote requests. Off holds every request and does
+   * not schedule it for the next day. Absent means on.
+   */
+  rfq_outbound_enabled: boolean;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -158,6 +187,11 @@ export const DEFAULT_RULES: AutomationRules = {
   // Off. See the field comment: the message this gates cannot currently meet
   // the bar every other outbound message is held to.
   final_nudge_enabled: false,
+  min_bid_lead_business_days: 5,
+  autonomous_review_decisions: true,
+  rfq_daily_cap: 100,
+  rfq_subs_per_trade: 5,
+  rfq_outbound_enabled: true,
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
@@ -202,6 +236,20 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // behaviour is the thing being stopped. A stored config written before
     // this key existed has no opinion about it, and no opinion means off.
     final_nudge_enabled: v?.final_nudge_enabled === true,
+    min_bid_lead_business_days: num(
+      v?.min_bid_lead_business_days,
+      DEFAULT_RULES.min_bid_lead_business_days,
+      0,
+      60
+    ),
+    // On unless the account explicitly turns it off. A stored config from
+    // before this key existed has no opinion, and the default is to decide.
+    autonomous_review_decisions: v?.autonomous_review_decisions !== false,
+    rfq_daily_cap: num(v?.rfq_daily_cap, DEFAULT_RULES.rfq_daily_cap, 1, 500),
+    rfq_subs_per_trade: num(v?.rfq_subs_per_trade, DEFAULT_RULES.rfq_subs_per_trade, 1, 50),
+    // Only an explicit false stops outbound quote requests. A stored config
+    // from before this key existed keeps sending.
+    rfq_outbound_enabled: v?.rfq_outbound_enabled !== false,
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;

@@ -107,7 +107,8 @@ export function routeAfterAnalysis(input: {
   }
   return {
     stage: "sub_research",
-    humanAction: input.humanActionRequired,
+    // A pursue that is allowed to source does not stay parked on a person.
+    humanAction: false,
     enqueueSubFinder: true,
     reason: "advance",
   };

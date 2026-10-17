@@ -450,9 +450,12 @@ async function sourceSubs(
     });
   }
 
+  // A contactable candidate already queued for verification is the automatic
+  // path. The human flag is for the case where nothing was queued.
+  const needsPerson = enqueued.length === 0 && (humanAction || !searchCompleted);
   await query(
     `update opportunities set stage='sub_research', human_action_required=$2 where id=$1`,
-    [opportunityId, humanAction || !searchCompleted]
+    [opportunityId, needsPerson]
   );
 
   const summaryParts = [
@@ -483,7 +486,7 @@ async function sourceSubs(
       verifyEnqueued: enqueued.length,
     },
     enqueued,
-    humanActionRequired: humanAction || !searchCompleted,
+    humanActionRequired: needsPerson,
   };
 }
 

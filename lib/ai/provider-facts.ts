@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { queryOne, transaction } from "../db";
+import { query, queryOne, transaction } from "../db";
 import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
 import { eligibleForFailover, requiresRetryReview, retryTime, withRetryTime } from "./failover-policy";
@@ -14,6 +14,9 @@ export interface ProviderFacts {
   failure_status: number | null;
   refusal_reason: string | null;
   refusal_status: number | null;
+  probe_failure_count?: number | null;
+  last_probe_at?: Date | null;
+  next_probe_at?: Date | null;
 }
 
 /** Shared platform keys share an account hold. Tenant keys never share it. */
@@ -83,6 +86,25 @@ export async function providerEnqueueHold(orgId: string, tier: AiTier): Promise<
 }
 
 /**
+ * A 429 that names a rate limit and carries a usable Retry-After waits that
+ * long. Quota and credit refusals do not match this pattern, and a missing
+ * or unrepresentable delay stays a permanent refusal. The delay itself is
+ * still floored at 60 seconds by withRetryTime.
+ */
+function rateLimitCooldownSeconds(e: {
+  status?: number | null;
+  reason?: string;
+  diagnostics?: { retryAfterSeconds?: number | null; omittedFields?: string[] };
+} | null): number | null {
+  if (!e || e.status !== 429 || !e.reason) return null;
+  if (e.diagnostics?.omittedFields?.includes("retryAfterSeconds")) return null;
+  if (!/rate limiting|too many requests|\b429\b/i.test(e.reason)) return null;
+  const seconds = e.diagnostics?.retryAfterSeconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0 || seconds > 604800) return null;
+  return seconds;
+}
+
+/**
  * Commit an attempt token before I/O, then release the database connection.
  * Tokens never expire: a stopped worker or failed evidence write leaves an
  * unresolved hold, even for explicit recovery tests. Clearing that hold needs
@@ -102,14 +124,13 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts
       where account_scope=$1 and provider=$2 and credential_hash=$3`, scope)).rows[0];
     if (row?.pending_attempt) throw busy();
-    if (requiresRetryReview(row?.failure_reason ?? null)) {
+    if (!recoveryTest && requiresRetryReview(row?.failure_reason ?? null)) {
       throw new ProviderRefusalError(provider, row!.failure_reason!, row!.failure_status);
     }
     if (row?.refusal_reason && !recoveryTest) {
       throw new ProviderRefusalError(provider, row.refusal_reason, row.refusal_status);
     }
-    if (row?.failure_reason && (retryTime(row.failure_reason) ?? 0) > Date.now()) {
-      // Explicit recovery also respects a provider's Retry-After window.
+    if (!recoveryTest && row?.failure_reason && (retryTime(row.failure_reason) ?? 0) > Date.now()) {
       throw new ProviderRefusalError(provider, row.failure_reason, row.failure_status, true);
     }
     await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
@@ -126,10 +147,14 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const e = "error" in outcome ? outcome.error as { provider?: string; retryable?: boolean; reason?: string; status?: number | null; handoffUncertain?: boolean;
     diagnostics?: { retryAfterSeconds?: number | null; omittedFields?: string[] } } : null;
   const observed = e?.provider === provider && typeof e.retryable === "boolean" && Boolean(e.reason);
-  const reason = observed ? (e!.retryable
-    ? withRetryTime(e!.reason!, e!.diagnostics?.omittedFields?.includes("retryAfterSeconds") ? Infinity : e!.diagnostics?.retryAfterSeconds) : e!.reason!) : null;
+  const cooldownSeconds = observed && e!.retryable === false ? rateLimitCooldownSeconds(e) : null;
+  const reason = observed ? (e!.retryable || cooldownSeconds != null
+    ? withRetryTime(e!.reason!, cooldownSeconds != null
+      ? cooldownSeconds
+      : (e!.diagnostics?.omittedFields?.includes("retryAfterSeconds") ? Infinity : e!.diagnostics?.retryAfterSeconds))
+    : e!.reason!) : null;
   const status = observed ? e!.status ?? null : null;
-  const permanent = observed && (e!.retryable === false || requiresRetryReview(reason));
+  const permanent = observed && cooldownSeconds == null && (e!.retryable === false || requiresRetryReview(reason));
   // A timeout/ambiguous server failure can follow execution. Keep its token
   // even for interactive calls without a work receipt; elapsed time is not
   // evidence that replay is safe.
@@ -140,15 +165,63 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   const saved = await queryOne<{ saved: boolean }>(`update ai_provider_facts set
     last_success_at=case when $5 then clock_timestamp() else last_success_at end,
     last_failure_at=case when $6::text is not null then clock_timestamp() else last_failure_at end,
-    failure_reason=coalesce($6,failure_reason),
-    failure_status=case when $6::text is not null then $7::integer else failure_status end,
-    refusal_reason=case when $5 then null when $8 then $6 else refusal_reason end,
-    refusal_status=case when $5 then null when $8 then $7::integer else refusal_status end,
+    failure_reason=case when $5 then null else coalesce($6,failure_reason) end,
+    failure_status=case when $5 then null when $6::text is not null then $7::integer else failure_status end,
+    refusal_reason=case when $5 then null when $8 and $10 then coalesce(refusal_reason, $6) when $8 then $6 else refusal_reason end,
+    refusal_status=case when $5 then null when $8 and $10 then coalesce(refusal_status, $7::integer) when $8 then $7::integer else refusal_status end,
     pending_attempt=case when $9 then pending_attempt else null end,
     pending_started_at=case when $9 then pending_started_at else null end
     where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
-    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain]).catch(error => { throw completionError(error); });
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain, recoveryTest]).catch(error => { throw completionError(error); });
   if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
+  if (success) {
+    await import("../provider-incident-resolve")
+      .then((mod) => mod.resolveProviderIncidents(identity.orgId, provider))
+      .catch((error) => {
+        console.error(
+          `[provider-facts] incident close failed after ${provider} answered: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+  }
   if ("error" in outcome) throw outcome.error;
   return outcome.value;
+}
+
+/**
+ * Record the health probe's schedule. A success here does not clear
+ * refusal_reason; probeProviderRecovery does that when the provider answers.
+ */
+export async function recordProviderProbe(
+  orgId: string,
+  provider: AiProvider,
+  outcome: { ok: true } | { ok: false; waitMs: number }
+): Promise<void> {
+  const { orgApiKey } = await import("../integration-keys");
+  const { requestIdentity } = await import("../api-usage/ledger");
+  const key = ENV_KEY_FOR[provider];
+  const value = await orgApiKey(key, orgId);
+  if (!value) return;
+  const identity = await requestIdentity(key, value, orgId);
+  const scope = providerScope(identity, provider);
+  if (outcome.ok) {
+    await query(
+      `update ai_provider_facts
+          set probe_failure_count = 0,
+              next_probe_at = null,
+              last_probe_at = clock_timestamp()
+        where account_scope = $1 and provider = $2 and credential_hash = $3`,
+      scope
+    );
+    return;
+  }
+  await query(
+    `update ai_provider_facts
+        set probe_failure_count = probe_failure_count + 1,
+            last_probe_at = clock_timestamp(),
+            next_probe_at = clock_timestamp() + ($4::bigint * interval '1 millisecond')
+      where account_scope = $1 and provider = $2 and credential_hash = $3`,
+    [...scope, outcome.waitMs]
+  );
 }

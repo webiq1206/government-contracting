@@ -35,3 +35,18 @@ export function queuedAfterScore(
   }
   return [];
 }
+
+/**
+ * Work that starts once a completed document score says pursue.
+ *
+ * Sub Finder enqueues Sub Verify, and a verified email enqueues Outreach.
+ * Outreach writes follow_up_at, which the follow-up sweep sends.
+ */
+export function jobsAfterFinalPursue(
+  opportunityId: string
+): NonNullable<AgentResult["enqueued"]> {
+  return [
+    { agent: "pricing-research", payload: { opportunityId } },
+    { agent: "sub-finder", payload: { opportunityId } },
+  ];
+}

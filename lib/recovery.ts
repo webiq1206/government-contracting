@@ -26,6 +26,7 @@ import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { gmail } from "./integrations/gmail";
 import { logAgent } from "./logger";
 import { advance, IllegalTransition, incidentById, type IncidentRow } from "./incidents";
+import { getAutomationRules } from "./app-settings";
 import {
   describePlan,
   planReplay,
@@ -34,6 +35,8 @@ import {
   type JobFailure,
   type ReplayContext,
 } from "./domain/incident";
+import { eligibleForRescore, rescoreKey } from "./domain/provider-recovery";
+import { addBusinessDays } from "./domain/review-lead";
 
 export interface ProviderTest {
   passed: boolean;
@@ -440,6 +443,71 @@ async function recoverIncident(incidentId: string, orgId: string, actor: string)
         [key, orgId, incidentId]
       );
     }
+  }
+
+  // Heuristic scores finish as ok, so they never appear in the failure list.
+  // The same cutoff and singleton key as the probe put them back.
+  const rules = await getAutomationRules();
+  const now = new Date();
+  const rescoreAfter =
+    rules.min_bid_lead_business_days > 0
+      ? addBusinessDays(now, rules.min_bid_lead_business_days)
+      : new Date(now.getTime() + 24 * 60 * 60_000);
+  const incomplete = await query<{
+    id: string;
+    tier: string | null;
+    status: string | null;
+    stage: string;
+    risk_flags: string[] | null;
+    deadline: Date | null;
+  }>(
+    `select id, tier, status, stage, risk_flags, deadline
+       from opportunities
+      where org_id = $1
+        and status = 'open'
+        and tier = 'review'
+        and stage in ('monitoring', 'scoring')
+        and 'incomplete_scoring' = any(coalesce(risk_flags, '{}'))
+        and deadline is not null
+        and deadline >= $2`,
+    [orgId, rescoreAfter.toISOString()]
+  );
+  for (const row of incomplete) {
+    if (
+      !eligibleForRescore(
+        {
+          id: row.id,
+          tier: row.tier,
+          status: row.status,
+          stage: row.stage,
+          riskFlags: row.risk_flags ?? [],
+          deadline: row.deadline,
+        },
+        now,
+        rules.min_bid_lead_business_days
+      )
+    ) {
+      continue;
+    }
+    const key = rescoreKey(row.id, incidentId);
+    let jobId: string | null = null;
+    try {
+      jobId = await enqueue(
+        "scoring-engine",
+        { opportunityId: row.id, trigger: "provider-recovery" },
+        { orgId, singletonKey: key }
+      );
+    } catch (error) {
+      await logAgent({
+        agent: "recovery-check",
+        action: "rescore-failed",
+        level: "error",
+        status: "error",
+        opportunityId: row.id,
+        message: `Recovery could not queue a rescore: ${(error as Error).message}`,
+      });
+    }
+    if (jobId) requeued += 1;
   }
 
   const counts = await requeueCounts(incidentId, orgId);

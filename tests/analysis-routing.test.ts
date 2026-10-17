@@ -53,6 +53,21 @@ describe("analysis routing", () => {
     expect(route.reason).toBe("advance");
     expect(route.stage).toBe("sub_research");
     expect(route.enqueueSubFinder).toBe(true);
+    expect(route.humanAction).toBe(false);
+  });
+
+  it("clears a leftover human flag when pursue starts sourcing", () => {
+    const route = routeAfterAnalysis({
+      tier: "pursue",
+      stage: "analysis",
+      status: "open",
+      humanActionRequired: true,
+      blockedPrime: false,
+      blockedIncomplete: false,
+    });
+    expect(route.enqueueSubFinder).toBe(true);
+    expect(route.humanAction).toBe(false);
+    expect(route.stage).not.toBe("submitted");
   });
 
   it("does not pull a later stage backward", () => {
