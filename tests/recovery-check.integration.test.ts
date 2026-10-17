@@ -229,16 +229,22 @@ d("run recovery check", () => {
 
   it("does not replay a failure that had a different cause", async () => {
     /*
-     * A job that failed on a bad API key during a credit outage will fail
-     * again on the bad API key, and requeueing it makes the backlog look like
-     * it is not draining when it is.
+     * A mailbox failure during a credit outage is a different problem.
+     * Replaying it fails again for the same mailbox reason. An auth failure
+     * belongs to the same provider latch: the successful call is what makes
+     * retrying it safe.
      */
+    await seedFailure({
+      agent: "solicitation-analyst",
+      error: "Gmail 429 too many requests",
+    });
     await seedFailure({ error: "401 authentication_error: invalid x-api-key" });
     await seedFailure({ error: "Your credit balance is too low" });
     const inc = await openIncident();
     const result = await runRecoveryCheck(inc.id, org, "op@probe.invalid");
 
-    expect(result.requeued).toBe(1);
+    expect(result.requeued).toBe(2);
+    expect(ENQUEUED.map((job) => job.name).sort()).toEqual(["scoring-engine", "scoring-engine"]);
     expect(result.plan).toContain("failed for a different reason");
   });
 
