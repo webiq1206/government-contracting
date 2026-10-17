@@ -274,6 +274,7 @@ export async function closeOutDeclinedSub(
 
   let thankYouSent = false;
   let alreadyThanked = false;
+  let thankYouPaused = false;
   let thankYouFailure: string | null = null;
 
   if (sendThankYou) {
@@ -305,7 +306,20 @@ export async function closeOutDeclinedSub(
         [opportunityId, orgId],
       );
       const to = (input.recipientEmail ?? sub?.email ?? "").trim();
-      if (to) {
+      const { getAutomationRules } = await import("../app-settings");
+      const rules = await getAutomationRules();
+      if (rules.rfq_outbound_enabled === false) {
+        thankYouPaused = true;
+        await logAgent({
+          agent: source === "email_reply" ? "reply-poll" : "operator",
+          action: "rfq-paused",
+          level: "info",
+          status: "skipped",
+          opportunityId,
+          subcontractorId,
+          message: "Outbound quote requests are paused, so the decline acknowledgement was not sent.",
+        });
+      } else if (to) {
         const firstName = (() => {
           const raw = (sub?.owner_name ?? "").trim();
           if (!raw) return "there";
@@ -392,11 +406,13 @@ export async function closeOutDeclinedSub(
         ? `Sub declined / cannot fulfill. Closed out on this solicitation and sent a thank-you email.`
         : alreadyThanked
           ? `Sub declined / cannot fulfill. Closed out on this solicitation (thank-you already sent).`
-          : `Sub declined / cannot fulfill. Closed out on this solicitation.${
-              sendThankYou
-                ? ` Thank-you email was not sent (${thankYouFailure ?? "delivery failed"}); open the conversation to send it after the email issue is corrected.`
-                : ""
-            }`,
+          : thankYouPaused
+            ? `Sub declined / cannot fulfill. Closed out on this solicitation. The thank-you email was not sent because outbound quote requests are paused.`
+            : `Sub declined / cannot fulfill. Closed out on this solicitation.${
+                sendThankYou
+                  ? ` Thank-you email was not sent (${thankYouFailure ?? "delivery failed"}); open the conversation to send it after the email issue is corrected.`
+                  : ""
+              }`,
       reasoning: capabilityNotes?.trim() || undefined,
     });
   }

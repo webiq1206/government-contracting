@@ -3133,7 +3133,11 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
             level: "info",
             message: `Asked ${companyName ?? fromEmail} for ${gaps.map(describeGap).join(", ")} before this can move forward.`,
           });
-        } else if (clarify.reason && clarify.reason !== "already asked") {
+        } else if (
+          clarify.reason &&
+          clarify.reason !== "already asked" &&
+          clarify.reason !== "rfq-paused"
+        ) {
           await logAgent({
             agent: "reply-poll",
             action: "clarification-not-sent",

@@ -529,8 +529,8 @@ export function AutomationRulesForm({
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">
                   How many first quote requests this account may send. The defaults are 100 a day
                   and 5 subcontractors for one trade on one opportunity. A request past either
-                  limit waits until the next day. Pausing stops new quote requests as soon as
-                  these rules are saved. Mail the mailbox already accepted is not recalled.
+                  limit waits until the next day. Pausing stops outbound mail to subcontractors
+                  as soon as these rules are saved. Mail the mailbox already accepted is not recalled.
                 </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
@@ -575,7 +575,7 @@ export function AutomationRulesForm({
                   <span>
                     <span className="block text-sm font-medium text-foreground">Pause outbound quote requests</span>
                     <span className="mt-1 block text-sm text-slate-600">
-                      Off unless you turn it on, so quote requests keep going out. Saving it on pauses them immediately and does not schedule them for the next day.
+                      Off unless you turn it on, so quote requests keep going out. Saving it on pauses quote requests, follow-ups, clarification requests, decline acknowledgements, and paperwork requests immediately. None of those are queued to send later.
                     </span>
                   </span>
                 </label>
