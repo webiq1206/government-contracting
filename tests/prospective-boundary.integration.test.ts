@@ -145,6 +145,9 @@ beforeAll(async () => {
   for (const file of ['112_api_usage_ledger.sql','113_api_spending_controls.sql','116_api_safe_defaults.sql',
     '118_openai_provider.sql','131_provider_diagnostics.sql','132_prospective_boundary.sql'])
     await fixture.db.exec(readFileSync('db/migrations/'+file, 'utf8'));
+  // Migration 139 also indexes tables this fixture does not build. The preview
+  // path only needs the lease column those indexes sit beside.
+  await fixture.db.exec('alter table prospective_previews add column if not exists running_since timestamptz');
 }, 30000);
 afterAll(async () => cleanup());
 beforeEach(async () => {
