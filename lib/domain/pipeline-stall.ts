@@ -1,7 +1,8 @@
 /**
  * One alert when pursue work is waiting and the job that would move it has
- * not run. A later tick does not send the alert again. The alert ends when
- * the waiting work is gone.
+ * not run. An open incident does not send the alert again. After the
+ * incident clears, a flap back to eligible stays quiet for the cooldown.
+ * The alert ends when the waiting work is gone.
  *
  * Band and sourcing use two hours, matching the scoring stall. Quote
  * requests use six hours, because a verified email can wait on the daily cap
@@ -12,6 +13,8 @@ export const BAND_STALL_HOURS = 2;
 export const SOURCING_STALL_HOURS = 2;
 export const RFQ_STALL_HOURS = 6;
 export const PIPELINE_STALL_CAUSE = "pursuit_pipeline_stall";
+/** How long a cleared stall must stay clear before a new alert can send. */
+export const PIPELINE_STALL_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 export interface PipelineStallCounts {
   undecidedBand: number;
@@ -36,8 +39,20 @@ export function pipelineStallEligible(input: PipelineStallCounts): boolean {
 export function pipelineStallDecision(input: {
   eligible: boolean;
   incidentOpen: boolean;
+  lastAlertAt?: Date | null;
+  now?: Date;
 }): "alert" | "resolve" | "quiet" {
-  if (input.eligible) return "alert";
+  if (input.eligible && input.incidentOpen) return "quiet";
+  if (input.eligible) {
+    const now = input.now ?? new Date();
+    if (
+      input.lastAlertAt &&
+      now.getTime() - input.lastAlertAt.getTime() < PIPELINE_STALL_COOLDOWN_MS
+    ) {
+      return "quiet";
+    }
+    return "alert";
+  }
   if (input.incidentOpen) return "resolve";
   return "quiet";
 }

@@ -22,7 +22,6 @@ import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { listActiveOrganizations } from "../organizations";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import { archiveReviewInsideLeadTime } from "../review-lead-pass";
-import { recoverOpenPursuitGaps } from "../domain/pursuit-recovery-run";
 
 /**
  * Active organization ids for a cron sweep that must run per tenant. Falls
@@ -1805,7 +1804,7 @@ export const scoringRecoverySweep: AgentDefinition = {
   name: "scoring-recovery-sweep",
   label: "Scoring Recovery",
   description:
-    "Safety net: re-queues scoring for opportunities that were ingested but never scored, re-queues the analyst for scored records that still have no brief, decides finished 50-69 scores that have no decision, and queues sub-finder, sub-verify, and outreach for pursue items whose next step was lost.",
+    "Safety net: re-queues scoring for opportunities that were ingested but never scored, and re-queues the analyst for scored records that still have no brief.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // Deliberately its OWN job rather than a step inside the Opportunity
@@ -1997,24 +1996,7 @@ export const scoringRecoverySweep: AgentDefinition = {
       });
     }
 
-    const gaps = await recoverOpenPursuitGaps(orgs.map((org) => org.id));
-    queueFailures += gaps.queueFailures;
-
     const parts: string[] = [];
-    if (gaps.bandQueued > 0) {
-      parts.push(
-        `queued a band decision for ${gaps.bandQueued} finished 50-69 score${gaps.bandQueued === 1 ? "" : "s"} that had none`
-      );
-    }
-    if (gaps.sourcingQueued > 0) {
-      parts.push(`queued sourcing for ${gaps.sourcingQueued} pursue item${gaps.sourcingQueued === 1 ? "" : "s"} with no pairing`);
-    }
-    if (gaps.verifyQueued > 0) {
-      parts.push(`queued verification for ${gaps.verifyQueued} unverified pairing${gaps.verifyQueued === 1 ? "" : "s"}`);
-    }
-    if (gaps.outreachQueued > 0) {
-      parts.push(`queued ${gaps.outreachQueued} quote request${gaps.outreachQueued === 1 ? "" : "s"} for a verified email`);
-    }
     if (scoringQueued > 0) {
       parts.push(
         `Re-queued scoring for ${scoringQueued} unscored opportunit${scoringQueued === 1 ? "y" : "ies"}`
@@ -2039,10 +2021,6 @@ export const scoringRecoverySweep: AgentDefinition = {
         analysisQueued,
         queueFailures,
         deferred,
-        bandQueued: gaps.bandQueued,
-        sourcingQueued: gaps.sourcingQueued,
-        verifyQueued: gaps.verifyQueued,
-        outreachQueued: gaps.outreachQueued,
       },
       humanActionRequired: queueFailures > 0,
     };

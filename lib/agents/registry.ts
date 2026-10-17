@@ -48,6 +48,7 @@ import { dailyRecap } from "./daily-recap";
 import { serviceSync } from "./service-sync";
 import { noticeDescriptionSweep } from "./notice-description-sweep";
 import { providerRecoveryProbe } from "./provider-recovery-probe";
+import { pursuitContinuationSweep } from "./pursuit-continuation-sweep";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -91,6 +92,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   serviceSync,
   noticeDescriptionSweep,
   providerRecoveryProbe,
+  pursuitContinuationSweep,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
@@ -117,6 +119,9 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     // Often enough to notice a funded account the same morning, with the
     // probe itself backing off after a failed test.
     { agent: providerRecoveryProbe, cron: "*/10 * * * *" },
+    // On its own clock, so a dropped pursue handoff is not stuck behind
+    // another job. The sweep itself refuses work it already finished.
+    { agent: pursuitContinuationSweep, cron: "*/10 * * * *" },
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
     { agent: stalledPipelineSweep, cron: "0 */2 * * *" }, // every 2h (matches the tightest STALL_HOURS window)
     { agent: deadlineMonitor, cron: "0 */6 * * *" }, // every 6 hours

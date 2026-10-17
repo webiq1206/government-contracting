@@ -43,7 +43,7 @@ export interface VerifyCandidate {
 export function needsSubVerify(row: VerifyCandidate): boolean {
   if (!row.pursuitActive || row.status !== "open" || row.tier !== "pursue") return false;
   if (!row.outreachAllowed || row.removed || row.verified) return false;
-  return row.outreachState === "pending" || row.outreachState === "draft" || row.outreachState === "email_unverified";
+  return row.outreachState === "pending" || row.outreachState === "draft";
 }
 
 export interface OutreachCandidate {

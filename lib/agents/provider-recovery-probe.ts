@@ -148,7 +148,7 @@ export const providerRecoveryProbe: AgentDefinition = {
               level: delivered === "unconfigured" ? "warn" : "info",
               message:
                 delivered === "unconfigured"
-                  ? `An outage alert was not delivered because no operator email or SMS alert channel is configured. ${alert.text}`
+                  ? `An outage alert was not delivered because operator email could not be sent. ${alert.text}`
                   : alert.text,
             });
           },

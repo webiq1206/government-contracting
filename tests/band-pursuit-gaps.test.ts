@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bandBackfillSkip, bandBackfillWrite } from "@/lib/domain/band-backfill";
 import { needsOutreach, needsSubFinder, needsSubVerify } from "@/lib/domain/pursuit-continuation";
 import {
+  PIPELINE_STALL_COOLDOWN_MS,
   pipelineStallDecision,
   pipelineStallEligible,
   pipelineStallText,
@@ -100,6 +101,15 @@ describe("pursue items whose next job was never queued again", () => {
       verified: true,
       outreachState: "pending",
     })).toBe(false);
+    expect(needsSubVerify({
+      tier: "pursue",
+      status: "open",
+      pursuitActive: true,
+      outreachAllowed: true,
+      removed: false,
+      verified: false,
+      outreachState: "email_unverified",
+    })).toBe(false);
 
     const verified = {
       tier: "pursue",
@@ -137,13 +147,29 @@ describe("pipeline stall alerts", () => {
     const waiting = { ...clear, unverifiedPairings: 18, verifyRuns: 0, undecidedBand: 20, bandDecisions: 0 };
     expect(pipelineStallEligible(waiting)).toBe(true);
     expect(pipelineStallDecision({ eligible: true, incidentOpen: false })).toBe("alert");
-    expect(pipelineStallDecision({ eligible: true, incidentOpen: true })).toBe("alert");
+    expect(pipelineStallDecision({ eligible: true, incidentOpen: true })).toBe("quiet");
     expect(pipelineStallText(waiting)).toContain("sub-verify");
     expect(pipelineStallText(waiting)).toContain("50-69");
   });
 
   it("does not treat a paused quote-request switch as a stalled outreach job", () => {
     expect(pipelineStallEligible({ ...clear, unsentVerified: 1, outreachRuns: 0, outboundPaused: true })).toBe(false);
+  });
+
+  it("stays quiet when a cleared stall flaps back inside the cooldown", () => {
+    const now = new Date("2026-10-17T12:00:00Z");
+    expect(pipelineStallDecision({
+      eligible: true,
+      incidentOpen: false,
+      lastAlertAt: new Date(now.getTime() - PIPELINE_STALL_COOLDOWN_MS + 60_000),
+      now,
+    })).toBe("quiet");
+    expect(pipelineStallDecision({
+      eligible: true,
+      incidentOpen: false,
+      lastAlertAt: new Date(now.getTime() - PIPELINE_STALL_COOLDOWN_MS - 60_000),
+      now,
+    })).toBe("alert");
   });
 
   it("sends the all-clear once the waiting work is gone", () => {

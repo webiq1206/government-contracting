@@ -22,6 +22,7 @@ import {
   RECOVERY_REQUEUE_KEY,
 } from "../queue";
 import { config } from "../config";
+import { ALWAYS_ON_SCHEDULED } from "./always-on";
 import { runWithOrg } from "../tenant-context";
 import { runWithPursuitVersion } from "../pursuit-job-context";
 import {
@@ -358,7 +359,7 @@ async function runAdmittedAgent(
     return result;
   };
 
-  if (def.name !== "ai-provider-recovery-probe" && config.worker.disabledAgents.includes(def.name)) {
+  if (!ALWAYS_ON_SCHEDULED.has(def.name) && config.worker.disabledAgents.includes(def.name)) {
     return finish({ ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` });
   }
 
