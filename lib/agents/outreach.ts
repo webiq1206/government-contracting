@@ -51,23 +51,7 @@ function stripHtmlText(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
 }
 
-const RFQ_VOLUME_SQL = `select
-  (select count(*) from communications
-    where org_id = $1
-      and channel = 'email' and direction = 'outbound'
-      and delivery_state in ('sent','delivered')
-      and created_at >= (date_trunc('day', now() at time zone 'UTC') at time zone 'UTC')
-      and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
-  ) as sent_today,
-  (select count(distinct subcontractor_id) from communications
-    where org_id = $1 and opportunity_id = $2
-      and channel = 'email' and direction = 'outbound'
-      and delivery_state in ('sent','delivered')
-      and coalesce(meta->>'trade','') = $3
-      and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
-  ) as sent_for_trade`;
-
-/** Stop a quote request that would exceed the account cap. Overflow is queued for the next UTC day. */
+/** Stop a quote request that would exceed the account cap. A slot is claimed before the send. */
 async function holdOutboundRfq(input: {
   orgId: string;
   opportunityId: string;
@@ -75,23 +59,54 @@ async function holdOutboundRfq(input: {
   trade: string;
   companyName: string;
   payload: Record<string, unknown>;
-}): Promise<AgentResult | null> {
+}): Promise<AgentResult | { claimId: string }> {
   const { getAutomationRules } = await import("../app-settings");
   const { normalizeRules } = await import("../domain/intake");
   const { decideRfqVolume } = await import("../domain/rfq-volume");
+  const { reserveRfqSendSlot } = await import("../domain/rfq-reservation");
   const rules = normalizeRules(await getAutomationRules());
-  const volume = await queryOne<{ sent_today: string | number | null; sent_for_trade: string | number | null }>(
-    RFQ_VOLUME_SQL,
-    [input.orgId, input.opportunityId, input.trade]
-  );
-  const decision = decideRfqVolume({
+  const paused = decideRfqVolume({
     outboundEnabled: rules.rfq_outbound_enabled,
     dailyCap: rules.rfq_daily_cap,
     perTradeCap: rules.rfq_subs_per_trade,
-    sentToday: Number(volume?.sent_today ?? 0),
-    sentForTrade: Number(volume?.sent_for_trade ?? 0),
+    sentToday: 0,
+    sentForTrade: 0,
   });
-  if (decision.send) return null;
+  if (!paused.send) {
+    return holdRfq(input, rules.rfq_daily_cap, rules.rfq_subs_per_trade, paused);
+  }
+  const slot = await reserveRfqSendSlot({
+    orgId: input.orgId,
+    opportunityId: input.opportunityId,
+    subcontractorId: input.subcontractorId,
+    trade: input.trade,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+  });
+  if (slot.ok) return { claimId: slot.claimId };
+  const decision = decideRfqVolume({
+    outboundEnabled: true,
+    dailyCap: rules.rfq_daily_cap,
+    perTradeCap: rules.rfq_subs_per_trade,
+    sentToday: slot.reason === "daily_cap" ? rules.rfq_daily_cap : 0,
+    sentForTrade: slot.reason === "trade_cap" ? rules.rfq_subs_per_trade : 0,
+  });
+  return holdRfq(input, rules.rfq_daily_cap, rules.rfq_subs_per_trade, decision);
+}
+
+async function holdRfq(
+  input: {
+    orgId: string;
+    opportunityId: string;
+    subcontractorId: string;
+    trade: string;
+    companyName: string;
+    payload: Record<string, unknown>;
+  },
+  dailyCap: number,
+  perTradeCap: number,
+  decision: { reason: "kill_switch" | "daily_cap" | "trade_cap" | null; resumeAfterSeconds: number | null }
+): Promise<AgentResult> {
   await query(
     `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
     [input.opportunityId, input.orgId]
@@ -99,8 +114,8 @@ async function holdOutboundRfq(input: {
   const why = decision.reason === "kill_switch"
     ? "Outbound quote requests are paused for this account."
     : decision.reason === "daily_cap"
-      ? `This account already sent ${rules.rfq_daily_cap} quote requests today.`
-      : `This trade already has ${rules.rfq_subs_per_trade} quote requests on this opportunity.`;
+      ? `This account already sent ${dailyCap} quote requests today.`
+      : `This trade already has ${perTradeCap} quote requests on this opportunity.`;
   await logAgent({
     agent: "outreach",
     action: "rfq-held",
@@ -367,16 +382,6 @@ export const outreach: AgentDefinition = {
     if (!outreachAllowed(await getWorkExecution(), opp)) {
       return { ok: true, summary: "Subcontractor outreach is off for this opportunity (it is self-performed). Nothing was sent." };
     }
-
-    const volumeHold = await holdOutboundRfq({
-      orgId,
-      opportunityId,
-      subcontractorId,
-      trade,
-      companyName: sub.company_name,
-      payload: { opportunityId, subcontractorId, trade },
-    });
-    if (volumeHold) return volumeHold;
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
@@ -705,8 +710,20 @@ export const outreach: AgentDefinition = {
     let heldByRule = false;
     let communicationId: string | undefined;
     let replayed = false;
+    let claimId: string | null = null;
 
+    try {
     if (sub.email && sub.email_verified) {
+      const volumeHold = await holdOutboundRfq({
+        orgId,
+        opportunityId,
+        subcontractorId,
+        trade,
+        companyName: sub.company_name,
+        payload: { opportunityId, subcontractorId, trade },
+      });
+      if (!("claimId" in volumeHold)) return volumeHold;
+      claimId = volumeHold.claimId;
       const res = await sendOutreachEmail({
         scheduled: { key: JSON.stringify(["outreach", opportunityId, subcontractorId, trade ?? ""]),
           followUpAt, meta: { kind: "outreach", trade, quote_due_at: resolved.quote.at ?? null,
@@ -837,6 +854,22 @@ export const outreach: AgentDefinition = {
             : "draft",
       ]
     );
+    if (claimId && sent && !replayed) {
+      const { settleRfqSendSlot } = await import("../domain/rfq-reservation");
+      await settleRfqSendSlot(orgId, claimId);
+      claimId = null;
+    }
+    } catch (err) {
+      if (claimId) {
+        const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
+        await releaseRfqSendSlot(orgId, claimId);
+      }
+      throw err;
+    }
+    if (claimId) {
+      const { releaseRfqSendSlot } = await import("../domain/rfq-reservation");
+      await releaseRfqSendSlot(orgId, claimId);
+    }
 
     // Exactly this trade's row. The old predicate fell open on an empty
     // trade and stamped EVERY trade line for the pair, so one failed send

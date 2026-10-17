@@ -142,7 +142,11 @@ export const outreachFollowup: AgentDefinition = {
        * product did another.
        */
       const nudgeRules = await runWithOrg(org.id, () => getAutomationRules());
-      if (nudgeRules.final_nudge_enabled && nudgeRules.followup_max > 0) {
+      if (
+        nudgeRules.rfq_outbound_enabled !== false &&
+        nudgeRules.final_nudge_enabled &&
+        nudgeRules.followup_max > 0
+      ) {
         const lastCall = await runWithOrg(org.id, () => lastCallForOrg(org.id));
         lastCalls += lastCall.sent;
         failedTotal += lastCall.failures;
@@ -181,6 +185,8 @@ export const outreachFollowup: AgentDefinition = {
 export async function lastCallForOrg(
   orgId: string
 ): Promise<{ sent: number; due: number; failures: number }> {
+  const rules = await getAutomationRules();
+  if (rules.rfq_outbound_enabled === false) return { sent: 0, due: 0, failures: 0 };
   const due = await query<{
     opportunity_id: string;
     subcontractor_id: string;
@@ -470,6 +476,18 @@ async function followUpForOrg(
   // rather than cleared: turning the rule back on should resume the queue it
   // was paused with, not start from an empty one.
   if (rules.followup_max <= 0) return { sent: 0, due: 0, failures: 0, held: 0 };
+  // Pausing outbound quote requests stops the chase as well as the first email.
+  // The due timestamps stay, so turning outreach back on resumes the same queue.
+  if (rules.rfq_outbound_enabled === false) {
+    await logAgent({
+      agent: "outreach-followup",
+      action: "rfq-paused",
+      level: "info",
+      status: "skipped",
+      message: "Outbound quote requests are paused, so follow-ups were not sent. Their schedules were left unchanged.",
+    });
+    return { sent: 0, due: 0, failures: 0, held: 0 };
+  }
 
   const due = await query<{
     id: string;

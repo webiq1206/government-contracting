@@ -27,7 +27,7 @@ import { join } from "node:path";
  */
 const TENANT_TABLES = [
   "company_profile", "subcontractors", "opportunities", "contracts", "quotes", "bids",
-  "call_cards", "communications", "compliance_items", "content_library", "custom_kpis",
+  "call_cards", "communications", "rfq_daily_slots", "rfq_send_claims", "compliance_items", "content_library", "custom_kpis",
   "documents", "pricing_comps", "scoring_weights", "templates", "agent_logs",
   "integration_tokens", "integration_settings", "app_settings", "file_blobs", "job_runs",
   "backlink_competitors", "backlink_prospects", "backlink_outreach",

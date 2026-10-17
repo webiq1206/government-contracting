@@ -73,12 +73,14 @@ describe("outbound RFQ volume", () => {
     })).toEqual({ send: false, reason: "kill_switch", resumeAfterSeconds: null });
   });
 
-  it("is enforced before a quote request is sent, and only overflow is queued for the next day", () => {
+  it("claims a slot before a quote request is sent, and only overflow is queued for the next day", () => {
     const source = readFileSync("lib/agents/outreach.ts", "utf8");
+    const reservation = readFileSync("lib/domain/rfq-reservation.ts", "utf8");
     const hold = source.indexOf("const volumeHold = await holdOutboundRfq");
     const send = source.indexOf("const res = await sendOutreachEmail");
     expect(hold).toBeGreaterThan(-1);
     expect(hold).toBeLessThan(send);
+    expect(source).toContain("reserveRfqSendSlot");
     expect(source).toContain("human_action_required = true");
     expect(source).toContain('action: "rfq-held"');
     expect(source).toContain("rfq-next-day:");
@@ -86,6 +88,8 @@ describe("outbound RFQ volume", () => {
     expect(source).toContain("permanent: true");
     const holdFn = source.slice(source.indexOf("async function holdOutboundRfq"));
     expect(holdFn).toContain("resumeAfterSeconds != null");
-    expect(holdFn).toContain("decline_thank_you");
+    expect(reservation).toContain("for update");
+    expect(reservation).toContain("decline_thank_you");
+    expect(reservation.indexOf("RFQ_SLOT_GUARD_SQL")).toBeLessThan(reservation.indexOf("RFQ_SLOT_CLAIM_SQL"));
   });
 });
