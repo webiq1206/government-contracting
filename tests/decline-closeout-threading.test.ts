@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 interface LoadOptions {
   activeTrades?: Array<{ trade: string | null }>;
   priorThankYou?: boolean;
+  paused?: boolean;
 }
 
 async function load(options: LoadOptions = {}) {
@@ -31,6 +32,9 @@ async function load(options: LoadOptions = {}) {
   const logAgent = vi.fn(async () => undefined);
   vi.doMock("@/lib/db", () => ({ query, queryOne }));
   vi.doMock("@/lib/logger", () => ({ logAgent }));
+  vi.doMock("@/lib/app-settings", () => ({
+    getAutomationRules: async () => ({ rfq_outbound_enabled: options.paused !== true }),
+  }));
   vi.doMock("@/lib/integrations/email-transport", () => ({
     sendOutreachEmail: vi.fn(),
   }));
@@ -51,6 +55,7 @@ async function load(options: LoadOptions = {}) {
 afterEach(() => {
   vi.doUnmock("@/lib/db");
   vi.doUnmock("@/lib/logger");
+  vi.doUnmock("@/lib/app-settings");
   vi.doUnmock("@/lib/integrations/email-transport");
   vi.doUnmock("@/lib/ai/companyProfile");
   vi.doUnmock("@/lib/domain/solicitation-completeness");
@@ -105,6 +110,36 @@ describe("decline closeout email", () => {
         "<ours-2@example.test>",
         "replying-person@example.test",
       ])
+    );
+  });
+
+  it("records the decline without sending or queueing a thank-you while outbound mail is paused", async () => {
+    const { mod, query, logAgent } = await load({ paused: true });
+    const sendEmail = vi.fn();
+    const result = await mod.closeOutDeclinedSub({
+      orgId: "org-1",
+      opportunityId: "opp-1",
+      subcontractorId: "sub-1",
+      trade: "HVAC",
+      source: "email_reply",
+      sendThankYou: true,
+      recipientEmail: "replying-person@example.test",
+      sendEmail,
+    });
+    expect(result).toEqual({ thankYouSent: false, alreadyThanked: false });
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(query.mock.calls.some(([sql]) => /insert into communications/.test(String(sql)))).toBe(false);
+    expect(logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "rfq-paused", status: "skipped" })
+    );
+    const declined = logAgent.mock.calls.find(
+      ([entry]) => (entry as { action: string }).action === "reply-declined"
+    );
+    expect(String((declined?.[0] as { message?: string }).message)).toContain(
+      "not sent because outbound quote requests are paused"
+    );
+    expect(String((declined?.[0] as { message?: string }).message)).not.toContain(
+      "open the conversation"
     );
   });
 

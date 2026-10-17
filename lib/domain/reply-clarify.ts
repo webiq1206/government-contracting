@@ -13,6 +13,7 @@
  *   - at most once per subcontractor per solicitation
  */
 import { query, queryOne } from "../db";
+import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import type { ReplyOutcome } from "./reply-outcome";
 
@@ -73,6 +74,21 @@ export async function requestClarification(input: {
     return { sent: false, reason: "outcome does not warrant a follow-up" };
   }
   if (!input.toEmail) return { sent: false, reason: "no email address" };
+
+  const { getAutomationRules } = await import("../app-settings");
+  const rules = await getAutomationRules();
+  if (rules.rfq_outbound_enabled === false) {
+    await logAgent({
+      agent: "reply-poll",
+      action: "rfq-paused",
+      level: "info",
+      status: "skipped",
+      opportunityId: input.opportunityId,
+      subcontractorId: input.subcontractorId,
+      message: `Outbound quote requests are paused, so the clarification to ${input.companyName ?? input.toEmail} was not sent.`,
+    });
+    return { sent: false, reason: "rfq-paused" };
+  }
 
   // One ask per sub per solicitation. Without this, every re-poll of the
   // sliding window would send another near-identical email.

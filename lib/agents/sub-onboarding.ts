@@ -32,6 +32,7 @@ import {
   type AwardComplianceRow,
 } from "../sub-compliance-store";
 import { isEmailable } from "../domain/sub-contactability";
+import { getAutomationRules } from "../app-settings";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
@@ -250,6 +251,7 @@ export const subOnboarding: AgentDefinition = {
 
     let chased = 0;
     let alreadyClear = 0;
+    let pausedSends = 0;
     const undesignated: string[] = [];
     const unreachable: string[] = [];
     const blocked: string[] = [];
@@ -279,6 +281,22 @@ export const subOnboarding: AgentDefinition = {
 
       const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
         row.orgId ? runWithOrg(row.orgId, fn) : fn();
+      const rules = await inRowOrg(() => getAutomationRules());
+      if (rules.rfq_outbound_enabled === false) {
+        pausedSends++;
+        await inRowOrg(() =>
+          logAgent({
+            agent: "sub-onboarding",
+            action: "rfq-paused",
+            level: "info",
+            status: "skipped",
+            subcontractorId: row.subcontractorId,
+            opportunityId: row.opportunityId,
+            message: `Outbound quote requests are paused, so the paperwork request to ${row.companyName} was not sent.`,
+          })
+        );
+        continue;
+      }
       const attempt = await inRowOrg(() => chase(row, needed));
       if (attempt.sent) chased++;
       else unreachable.push(row.companyName);
@@ -320,6 +338,9 @@ export const subOnboarding: AgentDefinition = {
       `${candidates.length} subcontractor${candidates.length === 1 ? "" : "s"} on won work checked`,
       `${alreadyClear} already clear`,
       `${chased} chased`,
+      pausedSends
+        ? `${pausedSends} paperwork request${pausedSends === 1 ? "" : "s"} skipped because outbound quote requests are paused`
+        : null,
       undesignated.length ? `${undesignated.length} awaiting designation` : null,
       unreachable.length ? `${unreachable.length} could not be emailed` : null,
       unrecorded.length ? `${unrecorded.length} delivery result not recorded` : null,

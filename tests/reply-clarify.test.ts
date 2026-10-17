@@ -8,24 +8,33 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 async function load(opts: {
   alreadyAsked?: boolean;
   dedupeError?: boolean;
+  paused?: boolean;
   send?: ReturnType<typeof vi.fn>;
 } = {}) {
   vi.resetModules();
   const send = opts.send ?? vi.fn(async () => ({ provider: "gmail", messageId: "m1", threadId: "t1" }));
+  const query = vi.fn(async () => []);
+  const logAgent = vi.fn(async () => undefined);
   vi.doMock("@/lib/db", () => ({
-    query: vi.fn(async () => []),
+    query,
     queryOne: vi.fn(async () => {
       if (opts.dedupeError) throw new Error("database unavailable");
       return opts.alreadyAsked ? { id: "prior" } : null;
     }),
   }));
+  vi.doMock("@/lib/logger", () => ({ logAgent }));
+  vi.doMock("@/lib/app-settings", () => ({
+    getAutomationRules: async () => ({ rfq_outbound_enabled: opts.paused !== true }),
+  }));
   vi.doMock("@/lib/integrations/email-transport", () => ({ sendOutreachEmail: send }));
   const mod = await import("@/lib/domain/reply-clarify");
-  return { mod, send };
+  return { mod, send, query, logAgent };
 }
 
 afterEach(() => {
   vi.doUnmock("@/lib/db");
+  vi.doUnmock("@/lib/logger");
+  vi.doUnmock("@/lib/app-settings");
   vi.doUnmock("@/lib/integrations/email-transport");
   vi.resetModules();
 });
@@ -85,6 +94,17 @@ describe("clarification requests", () => {
     expect((await mod.requestClarification({ ...BASE, gaps: [] })).sent).toBe(false);
     expect((await mod.requestClarification({ ...BASE, toEmail: "" })).sent).toBe(false);
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("skips a clarification while outbound mail is paused and does not queue one", async () => {
+    const { mod, send, query, logAgent } = await load({ paused: true });
+    const res = await mod.requestClarification(BASE);
+    expect(res).toEqual({ sent: false, reason: "rfq-paused" });
+    expect(send).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    expect(logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "rfq-paused", status: "skipped" })
+    );
   });
 
   it("reports failure instead of claiming a send that did not happen", async () => {
