@@ -7,7 +7,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const state = vi.hoisted(() => ({ db: null as PGlite | null }));
 
@@ -31,7 +31,11 @@ import {
   providerAttemptIsStale,
   sweepActed,
 } from "../lib/domain/hold-registry";
-import { pipelineStallActions, PIPELINE_STALL_HOURS } from "../lib/domain/pipeline-watch";
+import {
+  PIPELINE_STALL_COOLDOWN_MS,
+  pipelineStallDecision,
+  pipelineStallEligible,
+} from "../lib/domain/pipeline-stall";
 
 describe("hold leases", () => {
   it("waits until the provider abort cannot still be on the wire", () => {
@@ -58,28 +62,37 @@ describe("hold leases", () => {
         "Quote-request slot",
         "Scheduled email claim",
         "Prospective fence",
+        "Solicitation reverification",
       ])
     );
+    const reverification = HOLD_REGISTRY.find((row) => row.name === "Solicitation reverification");
+    expect(reverification?.ttl).toContain("15 min");
+    expect(reverification?.replay).toBe("never");
   });
 
-  it("alerts once while eligible work is stalled and once when it clears", () => {
-    expect(PIPELINE_STALL_HOURS).toEqual({ scoring: 2, band: 2, rfq: 6 });
-    expect(pipelineStallActions({
-      scoringEligible: 3,
-      bandEligible: 0,
-      rfqEligible: 1,
-      scoringIncidentOpen: false,
-      bandIncidentOpen: false,
-      rfqIncidentOpen: true,
-    })).toEqual([{ kind: "scoring", action: "alert" }]);
-    expect(pipelineStallActions({
-      scoringEligible: 0,
-      bandEligible: 0,
-      rfqEligible: 0,
-      scoringIncidentOpen: true,
-      bandIncidentOpen: false,
-      rfqIncidentOpen: false,
-    })).toEqual([{ kind: "scoring", action: "resolve" }]);
+  it("sends one stall alert per stall and skips outreach while it is paused", () => {
+    expect(pipelineStallDecision({ eligible: true, incidentOpen: false })).toBe("alert");
+    expect(pipelineStallDecision({ eligible: true, incidentOpen: true })).toBe("quiet");
+    const now = new Date("2026-10-17T12:00:00Z");
+    expect(pipelineStallDecision({
+      eligible: true,
+      incidentOpen: false,
+      lastAlertAt: new Date(now.getTime() - 60_000),
+      now,
+    })).toBe("quiet");
+    expect(PIPELINE_STALL_COOLDOWN_MS).toBe(6 * 60 * 60 * 1000);
+    expect(pipelineStallEligible({
+      undecidedBand: 0,
+      bandDecisions: 0,
+      unsourcedPursue: 0,
+      finderRuns: 0,
+      unverifiedPairings: 0,
+      verifyRuns: 0,
+      unsentVerified: 4,
+      outreachRuns: 0,
+      outboundPaused: true,
+    })).toBe(false);
+    expect(existsSync("lib/domain/pipeline-watch.ts")).toBe(false);
   });
 
   it("does not treat a quiet sweep as something to mail", () => {
@@ -97,7 +110,9 @@ describe("hold leases", () => {
 });
 
 describe("a crash after the claim and a lost settlement write", () => {
-  const staleScope = `tenant:${randomUUID()}`;
+  const staleOrgId = randomUUID();
+  const otherOrgId = randomUUID();
+  const staleScope = `tenant:${staleOrgId}`;
   const freshScope = `tenant:${randomUUID()}`;
   const staleAttempt = randomUUID();
   const freshAttempt = randomUUID();
@@ -123,9 +138,18 @@ describe("a crash after the claim and a lost settlement write", () => {
       );
       create table job_runs (
         id uuid primary key default gen_random_uuid(),
+        org_id uuid,
         agent text not null,
         status text not null,
         started_at timestamptz not null default now(),
+        finished_at timestamptz,
+        error text
+      );
+      create table solicitation_verifications (
+        id uuid primary key default gen_random_uuid(),
+        org_id uuid,
+        state text not null,
+        started_at timestamptz,
         finished_at timestamptz,
         error text
       );
@@ -179,10 +203,20 @@ describe("a crash after the claim and a lost settlement write", () => {
       [staleScope, staleAttempt, freshScope, freshAttempt]
     );
     await state.db.query(
-      `insert into job_runs (agent, status, started_at) values
-         ('scoring-engine', 'running', now() - interval '24 minutes'),
-         ('scoring-engine', 'running', now() - interval '40 minutes'),
-         ('notice-description-sweep', 'running', now() - interval '100 minutes')`
+      `insert into job_runs (org_id, agent, status, started_at) values
+         ($1::uuid, 'scoring-engine', 'running', now() - interval '24 minutes'),
+         ($1::uuid, 'scoring-engine', 'running', now() - interval '26 minutes'),
+         ($2::uuid, 'scoring-engine', 'running', now() - interval '24 minutes'),
+         ($1::uuid, 'scoring-engine', 'running', now() - interval '40 minutes'),
+         (null, 'scoring-engine', 'running', now() - interval '24 minutes'),
+         (null, 'notice-description-sweep', 'running', now() - interval '100 minutes')`,
+      [staleOrgId, otherOrgId]
+    );
+    await state.db.query(
+      `insert into solicitation_verifications (org_id, state, started_at) values
+         ($1::uuid, 'in_progress', now() - interval '20 minutes'),
+         ($1::uuid, 'in_progress', now() - interval '1 minute')`,
+      [staleOrgId]
     );
     await state.db.query(
       `insert into api_usage_events (id, outcome, started_at, reserved_cost) values
@@ -242,10 +276,20 @@ describe("a crash after the claim and a lost settlement write", () => {
       reserved_cost: "2",
     });
     expect(usage.rows.find((row) => row.id === freshUsage)).toMatchObject({ outcome: "pending" });
-    const runs = await state.db!.query("select agent, status, error from job_runs order by started_at");
-    expect(runs.rows.filter((row) => row.agent === "scoring-engine" && row.status === "error").length).toBe(1);
-    expect(runs.rows.find((row) => row.agent === "scoring-engine" && row.status === "running")).toBeTruthy();
+    const runs = await state.db!.query<{ org_id: string | null; agent: string; status: string }>(
+      "select org_id::text as org_id, agent, status from job_runs"
+    );
+    const scoring = runs.rows.filter((row) => row.agent === "scoring-engine");
+    expect(scoring.filter((row) => row.status === "error").map((row) => row.org_id)).toEqual([staleOrgId]);
+    expect(scoring.filter((row) => row.org_id === otherOrgId).every((row) => row.status === "running")).toBe(true);
+    expect(scoring.filter((row) => row.org_id === null && row.status === "running")).toHaveLength(1);
+    expect(scoring.filter((row) => row.status === "running")).toHaveLength(4);
     expect(runs.rows.find((row) => row.agent === "notice-description-sweep")?.status).toBe("error");
+    expect(result.expiredReverifications).toBe(1);
+    const checks = await state.db!.query<{ state: string }>(
+      "select state from solicitation_verifications order by started_at"
+    );
+    expect(checks.rows.map((row) => row.state)).toEqual(["failed", "in_progress"]);
     const claims = await state.db!.query("select state from rfq_send_claims order by created_at");
     expect(claims.rows.map((row) => row.state)).toEqual(["released", "reserved"]);
     const dispatch = await state.db!.query(
@@ -279,6 +323,25 @@ describe("a crash after the claim and a lost settlement write", () => {
     const openai = readFileSync("lib/ai/openai.ts", "utf8");
     expect(ai).toContain("timeout: opts.timeoutMs ?? AI_CALL_TIMEOUT_MS");
     expect(openai).toContain("req.timeoutMs ?? AI_CALL_TIMEOUT_MS");
-    expect(readFileSync("lib/agents/registry.ts", "utf8")).toContain('holdSweep, cron: "*/10 * * * *"');
+    expect(src).toContain("distinct on (reclaimed.account_scope, reclaimed.provider, reclaimed.credential_hash)");
+    expect(src).toContain("runs.org_id");
+    const registry = readFileSync("lib/agents/registry.ts", "utf8");
+    expect(registry).toContain('pursuitContinuationSweep, cron: "*/10 * * * *"');
+    expect(registry).not.toContain("hold-sweep");
+    expect(registry).not.toContain("holdSweep");
+    const continuation = readFileSync("lib/agents/pursuit-continuation-sweep.ts", "utf8");
+    expect(continuation).toContain("runHoldSweepCycle");
+    expect(continuation).toContain("recoverOpenPursuitGaps");
+    expect(readFileSync("worker/scheduler.ts", "utf8")).toContain("singletonKey: `${agent.name}:${stamp}`");
+    expect(readFileSync("lib/agents/provider-recovery-probe.ts", "utf8")).not.toContain("runHoldSweepCycle");
+    expect(readFileSync("worker/index.ts", "utf8")).not.toContain("runHoldSweepCycle");
+    const cycle = readFileSync("lib/agents/hold-sweep.ts", "utf8");
+    expect(cycle).not.toContain("band_decision");
+    expect(cycle).not.toContain("enqueue(");
+    expect(cycle).not.toContain("pipeline_band_stall");
+    expect(cycle).not.toContain("pipeline_rfq_stall");
+    const reverify = readFileSync("lib/agents/reverify.ts", "utf8");
+    expect(reverify).toContain("finally");
+    expect(reverify).toContain("The in-progress lease was released and the check was not replayed.");
   });
 });

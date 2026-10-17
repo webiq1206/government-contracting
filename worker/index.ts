@@ -253,20 +253,6 @@ async function main() {
 
   const stopScheduler = startScheduler();
   const stopUsageBilling = startUsageBilling();
-  // Direct, not via the queue: a wedged queue is one of the failures this
-  // sweep exists to notice. The agent cron calls the same cycle.
-  const { runHoldSweepCycle } = await import("../lib/agents/hold-sweep");
-  const holdSweepTimer = setInterval(
-    () =>
-      void runHoldSweepCycle().catch((error) => {
-        console.error("[worker] hold sweep failed:", error instanceof Error ? error.message : error);
-      }),
-    10 * 60_000
-  );
-  holdSweepTimer.unref?.();
-  void runHoldSweepCycle().catch((error) => {
-    console.error("[worker] hold sweep failed:", error instanceof Error ? error.message : error);
-  });
 
   async function shutdown(signal: string) {
     console.log(`[worker] ${signal} received, shutting down...`);
@@ -274,7 +260,6 @@ async function main() {
     setPhase("stopping");
     clearInterval(healthTimer);
     clearInterval(recoveryTimer);
-    clearInterval(holdSweepTimer);
     stopHeartbeat();
     stopScheduler();
     stopUsageBilling();

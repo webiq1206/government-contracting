@@ -2,6 +2,12 @@
 -- Run db:migrate BEFORE publishing this revision.
 -- No rows are deleted. A preview that is already running keeps a null
 -- running_since and is eligible for the sweep from its created_at.
+--
+-- The indexes are ordinary CREATE INDEX, not CONCURRENTLY. lib/migrate.ts
+-- runs each file inside BEGIN/COMMIT, and CREATE INDEX CONCURRENTLY cannot
+-- run in a transaction or beside the other statements in this file. The
+-- hold-sweep fixture builds these tables with a handful of rows. Production
+-- sizes are not stored in the repo.
 
 alter table prospective_previews
   add column if not exists running_since timestamptz;

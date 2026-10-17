@@ -43,6 +43,7 @@ export interface HoldSweepResult {
   settledManualUncertain: number;
   pendingReceiptsLeft: number;
   unresolvedScheduledMail: number;
+  expiredReverifications: number;
 }
 
 export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
@@ -71,20 +72,29 @@ export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
           and facts.provider = due.provider
           and facts.credential_hash = due.credential_hash
           and facts.pending_attempt is not null
-        returning due.provider, due.account_scope, due.pending_started_at
+        returning due.provider, due.account_scope, due.pending_started_at, due.credential_hash
      ),
      closed as (
        update job_runs
           set status = 'error',
               finished_at = clock_timestamp(),
               error = $3
-        where status = 'running'
-          and agent = any($4::text[])
-          and exists (
-            select 1 from reclaimed
-             where job_runs.started_at <= reclaimed.pending_started_at
-               and job_runs.started_at > reclaimed.pending_started_at - ($2::bigint * interval '1 millisecond')
-          )
+        where id in (
+          select distinct on (reclaimed.account_scope, reclaimed.provider, reclaimed.credential_hash)
+                 runs.id
+            from reclaimed
+            join job_runs as runs
+              on runs.status = 'running'
+             and runs.agent = any($4::text[])
+             and runs.org_id = case
+                   when split_part(reclaimed.account_scope, ':', 2) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                   then split_part(reclaimed.account_scope, ':', 2)::uuid
+                   else null
+                 end
+             and runs.started_at <= reclaimed.pending_started_at
+             and runs.started_at > reclaimed.pending_started_at - ($2::bigint * interval '1 millisecond')
+           order by reclaimed.account_scope, reclaimed.provider, reclaimed.credential_hash, runs.started_at desc
+        )
         returning id
      )
      select provider, account_scope, pending_started_at,
@@ -146,6 +156,21 @@ export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
     [PROVIDER_ATTEMPT_TTL_MS]
   );
   result.heldPreviews = previews.length;
+
+  const reverifications = await query<{ id: string }>(
+    `update solicitation_verifications
+        set state = 'failed',
+            finished_at = clock_timestamp(),
+            error = $2
+      where state = 'in_progress'
+        and started_at <= clock_timestamp() - ($1::bigint * interval '1 millisecond')
+      returning id`,
+    [
+      PROVIDER_ATTEMPT_TTL_MS,
+      "The check stayed in progress past its 15 minute lease. It was not replayed.",
+    ]
+  );
+  result.expiredReverifications = reverifications.length;
 
   const queued = await query<{ id: string }>(
     `update communications
@@ -213,6 +238,7 @@ function emptyResult(): HoldSweepResult {
     settledManualUncertain: 0,
     pendingReceiptsLeft: 0,
     unresolvedScheduledMail: 0,
+    expiredReverifications: 0,
   };
 }
 
@@ -242,6 +268,11 @@ export function sweepMail(result: HoldSweepResult): { subject: string; text: str
   }
   if (result.settledManualUncertain > 0) {
     lines.push(`Manual sends left unknown for Gmail review: ${result.settledManualUncertain}.`);
+  }
+  if (result.expiredReverifications > 0) {
+    lines.push(
+      `Reverification checks marked failed after their lease: ${result.expiredReverifications}. They were not replayed.`
+    );
   }
   if (result.pendingReceiptsLeft > 0) {
     lines.push(

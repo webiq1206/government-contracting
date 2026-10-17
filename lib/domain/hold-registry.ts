@@ -51,7 +51,7 @@ export const HOLD_REGISTRY: readonly HoldRecord[] = [
     where: "ai_provider_facts.pending_attempt / pending_started_at",
     currentExpiry: "none; a crash or an uncertain settlement kept the token forever",
     ttl: "15 min (10 min hard abort + 5 min margin)",
-    releasePath: "hold sweep nulls the token and records a failure. The recovery probe also runs the sweep before it reads holds.",
+    releasePath: "the pursuit continuation sweep nulls the token and records a failure. That is the same 10 minute job as the pursue backfill, under one pg-boss singleton. The recovery probe does not run a second sweep.",
     replay: "never",
   },
   {
@@ -98,8 +98,16 @@ export const HOLD_REGISTRY: readonly HoldRecord[] = [
     name: "Job run",
     where: "job_runs.status = running",
     currentExpiry: "60 min and only if the run started before this process booted",
-    ttl: "15 min when the run was the holder of a released provider attempt; otherwise 90 min",
-    releasePath: "the sweep sets status error and does not enqueue the job again. closeInterruptedRuns still closes runs orphaned by a restart.",
+    ttl: "15 min for the one running provider job on the org named by that hold; otherwise 90 min",
+    releasePath: "the sweep sets status error on that one job, matched by org_id and the hold's start window, and does not enqueue it again. A platform hold names no org and closes no tenant job. closeInterruptedRuns still closes runs orphaned by a restart.",
+    replay: "never",
+  },
+  {
+    name: "Solicitation reverification",
+    where: "solicitation_verifications.state = in_progress",
+    currentExpiry: "none if the worker dies after markRunning",
+    ttl: "15 min from started_at",
+    releasePath: "the continuation sweep sets the run failed after the TTL. The reverify agent finishes the run in a finally if it throws. The check is not replayed.",
     replay: "never",
   },
   {
@@ -210,6 +218,7 @@ export function sweepActed(result: {
   heldPreviews: number;
   settledManualQueued: number;
   settledManualUncertain: number;
+  expiredReverifications?: number;
 }): boolean {
   return (
     result.reclaimedAttempts.length +
@@ -219,7 +228,8 @@ export function sweepActed(result: {
       result.settledDispatchClaims +
       result.heldPreviews +
       result.settledManualQueued +
-      result.settledManualUncertain >
+      result.settledManualUncertain +
+      (result.expiredReverifications ?? 0) >
     0
   );
 }
