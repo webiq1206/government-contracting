@@ -106,9 +106,12 @@ function rateLimitCooldownSeconds(e: {
 
 /**
  * Commit an attempt token before I/O, then release the database connection.
- * Tokens never expire: a stopped worker or failed evidence write leaves an
- * unresolved hold, even for explicit recovery tests. Clearing that hold needs
- * reconciliation, not a timer that could overlap an unknown/billed request.
+ * The token stays until this settlement write, including when the outcome is
+ * uncertain, so a second call cannot overlap a request that may still be
+ * billed. A crash or a failed settlement write leaves the token in place.
+ * The hold sweep releases it only after the provider hard timeout plus a
+ * margin, and that release does not replay the call. Admission itself never
+ * takes over an unresolved token.
  */
 export async function withProviderFacts<T>(identity: RequestIdentity, provider: AiProvider,
   execute: () => Promise<T>, recoveryTest = false): Promise<T> {
@@ -172,7 +175,16 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     pending_attempt=case when $9 then pending_attempt else null end,
     pending_started_at=case when $9 then pending_started_at else null end
     where account_scope=$1 and provider=$2 and credential_hash=$3 and pending_attempt=$4
-    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain, recoveryTest]).catch(error => { throw completionError(error); });
+    returning true as saved`, [...scope, attempt, success, reason, status, permanent, uncertain, recoveryTest]).catch(error => {
+      // The token stays. A finally that cleared it here would let the next
+      // call overlap a request whose outcome was never recorded. The sweep
+      // releases it after the timeout margin and does not replay this call.
+      console.error(
+        `[provider-facts] ${provider} attempt ${attempt} was left pending because the completion write failed. It will not be replayed.`,
+        error instanceof Error ? error.message : error
+      );
+      throw completionError(error);
+    });
   if (!saved) throw completionError(new Error("Provider attempt ownership changed"));
   if (success) {
     await import("../provider-incident-resolve")

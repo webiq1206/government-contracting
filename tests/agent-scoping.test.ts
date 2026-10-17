@@ -116,6 +116,11 @@ const DELIBERATELY_GLOBAL = [
   // Same shared-path reason, and the answer is "this is a PDF", which carries
   // nothing of the document itself.
   "select mime from documents where storage_path = $1",
+  // The hold sweep is one platform pass. This count is how many scheduled
+  // mail claims were left untouched so they cannot be sent twice. It returns
+  // a number, not a message, and filtering it to one organization would hide
+  // claims the sweep is required to leave alone.
+  "select count(*)::int as n from communications where request_key is not null and delivery_state in (",
 ];
 
 function crossTenantScans(src: string): string[] {

@@ -69,8 +69,9 @@ export const reverify: AgentDefinition = {
       return { ok: false, summary: "reverify needs a run, an opportunity and an organization" };
     }
 
-    await markRunning(runId, orgId);
-
+    const started = await markRunning(runId, orgId);
+    let settled = false;
+    try {
     const opp = await queryOne<Opportunity>(
       `select * from opportunities where id = $1 and org_id = $2`,
       [opportunityId, orgId]
@@ -86,6 +87,7 @@ export const reverify: AgentDefinition = {
         aborted: true,
         error: "The opportunity is no longer on this account.",
       });
+      settled = true;
       return { ok: false, summary: "opportunity not found" };
     }
 
@@ -251,6 +253,7 @@ export const reverify: AgentDefinition = {
         ? sha256(JSON.stringify(sortedNotice(notice as unknown as Record<string, unknown>)))
         : null,
     });
+    settled = true;
 
     const material = findings.filter((f) => f.kind !== "unchanged" && f.impact !== "safe_metadata");
     const impact = downstreamImpact(findings);
@@ -287,6 +290,26 @@ export const reverify: AgentDefinition = {
       data: { state: run.state, failedScopes: failed, materialDifferences: material.length },
       humanActionRequired: incomplete || material.length > 0,
     };
+    } finally {
+      if (started && !settled) {
+        await finishVerification({
+          runId,
+          orgId,
+          findings: [],
+          coverage: emptyCoverage(),
+          failedScopes: [],
+          fingerprintAfter: null,
+          aborted: true,
+          error:
+            "The check stopped before it finished. The in-progress lease was released and the check was not replayed.",
+        }).catch((error) => {
+          console.error(
+            "[reverify] could not release the in-progress check:",
+            error instanceof Error ? error.message : error
+          );
+        });
+      }
+    }
   },
 };
 

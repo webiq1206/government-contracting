@@ -242,7 +242,8 @@ export async function reserveProspectiveUsage(client: Client, identity: RequestI
 }
 
 /** Durable normal-dispatch admission. Activation cannot race already-running
- * callbacks. Exceptions and uncertain sends retain the claim; no TTL reclaims. */
+ * callbacks. An uncertain result keeps the claim. The hold sweep finishes a
+ * claim only after the provider timeout plus its margin, and does not replay it. */
 export async function withProspectiveDispatch<T>(kind:'agent'|'enqueue'|'mail', execute:()=>Promise<T>,
   isCertain:(value:T)=>boolean = ()=>true): Promise<T> {
   const id = randomUUID();
@@ -252,9 +253,18 @@ export async function withProspectiveDispatch<T>(kind:'agent'|'enqueue'|'mail', 
       throw new ProspectiveBlockedError();
     await client.query('insert into prospective_dispatch_claims(id,kind) values($1,$2)',[id,kind]);
   });
-  const result = await execute();
-  if (isCertain(result)) await query('update prospective_dispatch_claims set finished_at=now() where id=$1 and finished_at is null',[id]);
-  return result;
+  let certain = false;
+  try {
+    const result = await execute();
+    certain = isCertain(result);
+    return result;
+  } finally {
+    if (certain) {
+      await query('update prospective_dispatch_claims set finished_at=now() where id=$1 and finished_at is null',[id]).catch((error) => {
+        console.error("[prospective] dispatch claim could not be finished; the hold sweep will expire it:", error instanceof Error ? error.message : error);
+      });
+    }
+  }
 }
 
 export async function executePreview(id:string) {
@@ -268,7 +278,7 @@ export async function executePreview(id:string) {
       throw new ProspectiveBlockedError('This preview is not admitted or already has an owner. It cannot be replayed.');
     await validateRecord(client,row);
     await preflightEnvelope(client,row);
-    await client.query("update prospective_previews set owner=$2,state='running' where id=$1",[id,owner]);
+    await client.query("update prospective_previews set owner=$2,state='running',running_since=clock_timestamp() where id=$1",[id,owner]);
     return row;
   });
   if (row.state === 'complete') return row.result;

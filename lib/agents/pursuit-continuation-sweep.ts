@@ -3,19 +3,29 @@
  *
  * This job is on its own clock. It does not wait for a provider probe or for
  * the scoring recovery sweep, so a dropped enqueue cannot sit until some
- * other job happens to run.
+ * other job happens to run. The same job releases holds that outlived their
+ * call, so that release uses this job's pg-boss singleton and no second cron.
  */
 import type { AgentDefinition, AgentResult } from "./types";
 import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { recoverOpenPursuitGaps } from "../domain/pursuit-recovery-run";
+import { runHoldSweepCycle } from "./hold-sweep";
+import { sweepActed } from "../domain/hold-registry";
 
 export const pursuitContinuationSweep: AgentDefinition = {
   name: "pursuit-continuation-sweep",
   label: "Pursuit continuation",
   description:
-    "Queues a missing band decision, subcontractor search, verification, or quote request when that step never started or was interrupted.",
+    "Queues a missing band decision, subcontractor search, verification, or quote request when that step never started or was interrupted, and releases leases that outlived their call.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    const released = await runHoldSweepCycle().catch((error) => {
+      console.error(
+        "[pursuit-continuation-sweep] hold release failed:",
+        error instanceof Error ? error.message : error
+      );
+      return null;
+    });
     const fanout = await orgsToSweep("pursuit-continuation-sweep");
     if (fanout.error) {
       return { ok: false, summary: fanoutNote(fanout) ?? "No accounts were processed." };
@@ -42,6 +52,11 @@ export const pursuitContinuationSweep: AgentDefinition = {
     if (gaps.queueFailures > 0) {
       parts.push(
         `${gaps.queueFailures} continuation job${gaps.queueFailures === 1 ? "" : "s"} could not be queued`
+      );
+    }
+    if (released && sweepActed(released)) {
+      parts.push(
+        `released ${released.reclaimedAttempts.length} provider attempt${released.reclaimedAttempts.length === 1 ? "" : "s"} and closed ${released.closedRuns} run${released.closedRuns === 1 ? "" : "s"}`
       );
     }
     return {

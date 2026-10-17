@@ -10,7 +10,7 @@ export interface ManualEmailInput {
 type Claim = { id: string; request_fingerprint: string; delivery_state: string;
   gmail_thread_id: string | null; rfc822_message_id: string | null };
 
-/** The claim never expires: an interrupted provider handoff needs reconciliation. */
+/** An uncertain claim is never retried. A manual claim still queued after the hold TTL is marked held for an operator; it is not sent. */
 export async function sendManualEmail({ requestKey, actorId, params }: ManualEmailInput) {
   const fingerprint = createHash("sha256").update(JSON.stringify({ actorId,
     sub: params.subcontractorId, opportunity: params.opportunityId ?? null,

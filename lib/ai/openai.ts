@@ -26,6 +26,7 @@
  */
 
 import { providerDiagnostics, type ProviderDiagnostics } from "../api-usage/diagnostics";
+import { AI_CALL_TIMEOUT_MS } from "../domain/hold-registry";
 import { gpt6TokenEnvelope, isBoundedGpt6 } from "./model-contracts";
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
@@ -287,7 +288,7 @@ export async function openAiResponse(
   fetchImpl: typeof fetch = fetch
 ): Promise<OpenAiResult> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), req.timeoutMs ?? 600_000);
+  const timer = setTimeout(() => ctl.abort(), req.timeoutMs ?? AI_CALL_TIMEOUT_MS);
   try {
     const res = await fetchImpl(OPENAI_RESPONSES_URL, {
       method: "POST",
