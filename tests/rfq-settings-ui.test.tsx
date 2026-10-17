@@ -89,7 +89,9 @@ describe("organization quote-request settings", () => {
     await act(async () => root.render(<AutomationRulesForm initial={DEFAULT_RULES} />));
 
     expect(container.textContent).toContain("Outbound quote requests are on");
-    expect(input("rfq_daily_cap").value).toBe("25");
+    expect(container.textContent).toContain("Default is 100.");
+    expect(container.textContent).toContain("The defaults are 100 a day");
+    expect(input("rfq_daily_cap").value).toBe("100");
     expect(input("rfq_daily_cap").disabled).toBe(false);
     expect(input("rfq_subs_per_trade").value).toBe("5");
     expect(input("rfq_subs_per_trade").disabled).toBe(false);

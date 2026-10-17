@@ -4,11 +4,11 @@ import { DEFAULT_RULES, normalizeRules } from "@/lib/domain/intake";
 import { decideRfqVolume, secondsUntilNextUtcDay } from "@/lib/domain/rfq-volume";
 
 describe("outbound RFQ volume", () => {
-  it("defaults to 25 a day and 5 subcontractors per trade, and stays on until turned off", () => {
-    expect(DEFAULT_RULES.rfq_daily_cap).toBe(25);
+  it("defaults to 100 a day and 5 subcontractors per trade, and stays on until turned off", () => {
+    expect(DEFAULT_RULES.rfq_daily_cap).toBe(100);
     expect(DEFAULT_RULES.rfq_subs_per_trade).toBe(5);
     expect(DEFAULT_RULES.rfq_outbound_enabled).toBe(true);
-    expect(normalizeRules({}).rfq_daily_cap).toBe(25);
+    expect(normalizeRules({}).rfq_daily_cap).toBe(100);
     expect(normalizeRules({}).rfq_subs_per_trade).toBe(5);
     expect(normalizeRules({}).rfq_outbound_enabled).toBe(true);
     expect(normalizeRules({ rfq_outbound_enabled: false }).rfq_outbound_enabled).toBe(false);
@@ -21,11 +21,18 @@ describe("outbound RFQ volume", () => {
   it("sends inside both caps", () => {
     expect(decideRfqVolume({
       outboundEnabled: true,
-      sentToday: 24,
-      dailyCap: 25,
+      sentToday: 99,
+      dailyCap: DEFAULT_RULES.rfq_daily_cap,
       sentForTrade: 4,
-      perTradeCap: 5,
+      perTradeCap: DEFAULT_RULES.rfq_subs_per_trade,
     })).toEqual({ send: true, reason: null, resumeAfterSeconds: null });
+    expect(decideRfqVolume({
+      outboundEnabled: true,
+      sentToday: DEFAULT_RULES.rfq_daily_cap,
+      dailyCap: DEFAULT_RULES.rfq_daily_cap,
+      sentForTrade: 0,
+      perTradeCap: DEFAULT_RULES.rfq_subs_per_trade,
+    }).reason).toBe("daily_cap");
   });
 
   it("holds the next request until the next UTC day and does not reschedule a paused account", () => {

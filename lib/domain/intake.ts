@@ -148,7 +148,8 @@ export interface AutomationRules {
   autonomous_review_decisions: boolean;
   /**
    * Quote requests that may leave the account in one UTC day.
-   * The next request waits until the next day and is flagged for a person.
+   * The default is 100. The next request waits until the next day and is
+   * flagged for a person.
    */
   rfq_daily_cap: number;
   /**
@@ -188,7 +189,7 @@ export const DEFAULT_RULES: AutomationRules = {
   final_nudge_enabled: false,
   min_bid_lead_business_days: 5,
   autonomous_review_decisions: true,
-  rfq_daily_cap: 25,
+  rfq_daily_cap: 100,
   rfq_subs_per_trade: 5,
   rfq_outbound_enabled: true,
 };
