@@ -328,8 +328,14 @@ export const config = {
     get apiKey() { return str("AHREFS_API_KEY"); },
     // The domain we're building authority for (our own site).
     get target() { return str("AHREFS_TARGET", "brostco.com"); },
+    /**
+     * Site Authority is off unless this is explicitly turned on.
+     * A saved API key is not enough: the key stays stored, and no Ahrefs
+     * request or backlink job runs while this is false.
+     */
+    get integrationEnabled() { return bool("AHREFS_ENABLED", false); },
     get enabled() {
-      return Boolean(this.apiKey);
+      return this.integrationEnabled && Boolean(this.apiKey);
     },
   },
 

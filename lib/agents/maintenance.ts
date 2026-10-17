@@ -22,6 +22,7 @@ import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { listActiveOrganizations } from "../organizations";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import { archiveReviewInsideLeadTime } from "../review-lead-pass";
+import { retireAhrefsIncidents } from "../incidents";
 
 /**
  * Active organization ids for a cron sweep that must run per tenant. Falls
@@ -2462,6 +2463,18 @@ export const backlinkOutreachSweep: AgentDefinition = {
   description: "Sends approved backlink outreach, follow-ups, and records replies.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    if (!config.ahrefs.integrationEnabled) {
+      await runWithOrg(LEGACY_ORG_ID, () => retireAhrefsIncidents(LEGACY_ORG_ID)).catch((error) => {
+        console.error(
+          "[backlink-outreach-sweep] open Ahrefs incidents could not be closed:",
+          error instanceof Error ? error.message : error
+        );
+      });
+      return {
+        ok: true,
+        summary: "Ahrefs is turned off. Backlink outreach was not sent and no Ahrefs request was made.",
+      };
+    }
     // Site Authority is a platform-only workspace. Its prospects, approvals,
     // and digest destination belong to the founding organization, so this job
     // must never fan out into customer mailboxes merely because the generic

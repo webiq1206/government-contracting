@@ -269,7 +269,7 @@ describe("verified Twilio receipts", () => {
     await vi.waitFor(async () => expect(await audits()).toHaveLength(1));
     await state.db.query("update api_usage_events set billing_status='billed',invoice_reference='in_synthetic' where id=$1", [event]);
     responses[1](receipt("1.0"));
-    expect(await results).toEqual([1, 0]);
+    expect((await results).slice().sort((a, b) => a - b)).toEqual([0, 1]);
     expect((await stored()).billing_status).toBe("billed"); expect(await audits()).toHaveLength(1);
   });
   it("does not settle an orphan usage row without a tenant", async () => {

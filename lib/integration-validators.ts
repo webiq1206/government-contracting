@@ -323,6 +323,9 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
   },
 
   ahrefs: async (v) => {
+    if (!config.ahrefs.integrationEnabled) {
+      return { ok: false, message: "Ahrefs is turned off. No request was sent." };
+    }
     const key = v.AHREFS_API_KEY;
     if (!key) return { ok: false, message: "Enter your Ahrefs API key first." };
     // Cheapest possible check: read the account's own limits/usage (no row units).

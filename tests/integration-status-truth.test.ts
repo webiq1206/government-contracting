@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 afterEach(() => {
+  delete process.env.AHREFS_ENABLED;
   vi.resetModules();
   vi.clearAllMocks();
   vi.doUnmock("@/lib/integrations/gmail");
@@ -73,9 +74,34 @@ describe("Ahrefs settings and provider outcomes", () => {
       fetchJson,
       withRetry: async (fn: () => Promise<unknown>) => fn(),
     }));
+    process.env.AHREFS_ENABLED = "true";
     const ahrefsModule = await import("@/lib/integrations/ahrefs");
     return { ...ahrefsModule, orgApiKey, fetchJson, recordIntegrationUse };
   }
+
+  it("does not call Ahrefs when the integration is turned off, even with a saved key", async () => {
+    delete process.env.AHREFS_ENABLED;
+    const orgApiKey = vi.fn(async () => "saved-admin-key");
+    const fetchJson = vi.fn(async () => ({ refdomains: [] }));
+    vi.doMock("@/lib/integration-keys", () => ({ orgApiKey }));
+    vi.doMock("@/lib/integration-settings", () => ({ recordIntegrationUse: vi.fn() }));
+    vi.doMock("@/lib/integrations/http", async (importOriginal) => ({
+      ...await importOriginal<typeof import("@/lib/integrations/http")>(),
+      fetchJson,
+      withRetry: async (fn: () => Promise<unknown>) => fn(),
+    }));
+    const { ahrefs } = await import("@/lib/integrations/ahrefs");
+    await expect(ahrefs.configuration("platform-org")).resolves.toEqual({
+      enabled: false,
+      target: "brostco.com",
+    });
+    await expect(ahrefs.referringDomains("example.com")).resolves.toEqual({ disabled: true, items: [] });
+    await expect(ahrefs.organicCompetitors("example.com")).resolves.toEqual({ disabled: true, items: [] });
+    await expect(ahrefs.brokenBacklinks("example.com")).resolves.toEqual({ disabled: true, items: [] });
+    await expect(ahrefs.authoritySnapshot("example.com")).resolves.toBeNull();
+    expect(fetchJson).not.toHaveBeenCalled();
+    expect(orgApiKey).not.toHaveBeenCalled();
+  });
 
   it("uses the platform account values saved by the admin UI", async () => {
     const { ahrefs, orgApiKey } = await loadAhrefs({});

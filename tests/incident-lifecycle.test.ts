@@ -67,10 +67,18 @@ describe("the incident lifecycle", () => {
     expect(canTransition("recovery_failed", "recovered")).toBe(false);
   });
 
-  it("treats everything except recovered as open", () => {
+  it("treats recovered and retired as closed", () => {
     for (const s of INCIDENT_STATES) {
-      expect(isOpen(s), s).toBe(s !== "recovered");
+      expect(isOpen(s), s).toBe(s !== "recovered" && s !== "retired");
     }
+  });
+
+  it("lets a turned-off integration leave any open state without claiming recovery", () => {
+    for (const from of INCIDENT_STATES) {
+      expect(canTransition(from, "retired"), from).toBe(from !== "recovered" && from !== "retired");
+    }
+    expect(canTransition("retired", "recovered")).toBe(false);
+    expect(canTransition("retired", "detected")).toBe(false);
   });
 
   it("reads an unrecognised state as still needing a person", () => {

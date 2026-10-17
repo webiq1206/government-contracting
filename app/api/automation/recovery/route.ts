@@ -102,20 +102,25 @@ export async function POST(req: Request) {
   // put in a request body.
   const incident = await incidentById(incidentId, ctx.orgId);
   if (!incident) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (incident.state === "recovered") {
+  if (incident.state === "recovered" || incident.state === "retired") {
+    const turnedOff = incident.state === "retired";
     return NextResponse.json({
       incidentId: incident.id,
       state: incident.state,
       stateLabel: INCIDENT_STATE_LABEL[incident.state],
       nextAction: INCIDENT_NEXT_ACTION[incident.state],
       testPassed: incident.testPassed,
-      testDetail: "This incident was already recovered. No work was queued again.",
+      testDetail: turnedOff
+        ? "Ahrefs is turned off. No request was sent."
+        : "This incident was already recovered. No work was queued again.",
       plan: "No replay was needed because this incident is already closed.",
       requeued: 0,
       skipped: 0,
       remaining: 0,
       confirmation: incident.recoveryNote,
-      message: "This incident is already recovered. A later outage will open a new incident.",
+      message: turnedOff
+        ? "Ahrefs is turned off. No request was sent and no failed work was replayed."
+        : "This incident is already recovered. A later outage will open a new incident.",
       alreadyRecovered: true,
     });
   }

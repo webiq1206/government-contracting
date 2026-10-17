@@ -21,6 +21,7 @@
  * catch the failure and display an unavailable-state warning instead.
  */
 import { query } from "./db";
+import { config } from "./config";
 import { requestCache as cache } from "@/lib/request-cache";
 import { resolveTenantOrgId } from "./tenant";
 import { getAutomationState, getPlatformAutomationState } from "./app-settings";
@@ -37,6 +38,13 @@ const LABELS = new Map(ROSTER.map((a) => [a.name, a.label]));
 /** Twenty-four hours: long enough to catch an overnight stall, short enough
  *  that a fixed problem stops being reported the same day it was fixed. */
 const WINDOW = "24 hours";
+
+/** Historical Ahrefs failures must not keep opening incidents after the integration is off. */
+export function ahrefsLogExclusion(integrationEnabled: boolean): string {
+  return integrationEnabled
+    ? ""
+    : "and agent <> 'backlink-scout' and coalesce(message, '') not ilike '%ahrefs%'";
+}
 
 interface LogRow {
   agent: string;
@@ -58,6 +66,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
 const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
   return runWithOrg(org, async () => {
 
+  const ahrefsExclusion = ahrefsLogExclusion(config.ahrefs.integrationEnabled);
   const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered, providerHolds] = await Promise.all([
     getAutomationState().then((s) => s.paused),
     readWorkerHeartbeat(),
@@ -67,7 +76,8 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
          from agent_logs
         where org_id = $1
           and created_at > now() - interval '${WINDOW}'
-          and status in ('ok','error')`,
+          and status in ('ok','error')
+          ${ahrefsExclusion}`,
       [org]
     ).then((r) => r[0] ?? { runs: 0, errors: 0 }),
     // Every failure in the window, not the newest 500 mixed rows. A busy
@@ -79,6 +89,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
         where org_id = $1
           and created_at > now() - interval '${WINDOW}'
           and status = 'error'
+          ${ahrefsExclusion}
         order by created_at desc
         limit 500`,
       [org]
@@ -89,6 +100,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
         where org_id = $1
           and created_at > now() - interval '${WINDOW}'
           and status = 'ok'
+          ${ahrefsExclusion}
         order by created_at desc
         limit 1`,
       [org]

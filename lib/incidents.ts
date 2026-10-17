@@ -8,8 +8,10 @@
  * a legal one.
  */
 import { query, queryOne, transaction } from "./db";
+import { config } from "./config";
 import {
   canTransition,
+  isOpen,
   parseIncidentState,
   type IncidentSeverity,
   type IncidentState,
@@ -82,7 +84,7 @@ function toRow(r: Record<string, unknown>): IncidentRow {
 /** Every open incident for one organization, worst first. */
 export async function openIncidents(orgId: string): Promise<IncidentRow[]> {
   const rows = await query<Record<string, unknown>>(
-    `${SELECT} where org_id = $1 and state <> 'recovered'
+    `${SELECT} where org_id = $1 and state not in ('recovered', 'retired')
       order by (severity = 'blocking') desc, started_at`,
     [orgId]
   );
@@ -130,7 +132,7 @@ export async function openOrUpdateIncident(input: OpenIncidentInput): Promise<In
        (org_id, cause, severity, provider, started_at, detected_at, detection_source,
         failed_count, recommended_action, last_agent_success_at, next_run_at, remaining_count)
      values ($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$7)
-     on conflict (org_id, cause) where state <> 'recovered'
+     on conflict (org_id, cause) where state not in ('recovered', 'retired')
      do update set
        failed_count = excluded.failed_count,
        remaining_count = greatest(0, excluded.failed_count - automation_incidents.completed_count),
@@ -347,6 +349,15 @@ export async function syncAutomationIncidents(
   },
   nextRunAt?: Date | null
 ): Promise<IncidentRow[]> {
+  // Close Ahrefs before recording what health still sees. Otherwise the open
+  // Ahrefs row occupies the one-incident slot for provider_auth and a real
+  // failure from another provider cannot be recorded.
+  if (!config.ahrefs.integrationEnabled) {
+    await retireAhrefsIncidents(orgId).catch((error) => {
+      console.error(`[incidents] could not close Ahrefs incidents: ${(error as Error).message}`);
+    });
+  }
+
   for (const found of health.incidents) {
     if (!found.spec.blocking) continue;
     await openOrUpdateIncident({
@@ -372,5 +383,38 @@ export async function syncAutomationIncidents(
   const reconciled = await Promise.all(
     open.map((i) => reconcileDraining(i).catch(() => i))
   );
-  return reconciled.filter((i) => i.state !== "recovered");
+  return reconciled.filter((i) => isOpen(i.state));
+}
+
+export const AHREFS_RETIRED_NOTE =
+  "Ahrefs is turned off. This incident was closed without a provider call and without replaying failed work.";
+
+/**
+ * Close open Ahrefs incidents because the integration is off.
+ *
+ * Only rows whose provider is Ahrefs. A provider_auth incident for another
+ * service stays open. The closed row is `retired`, not `recovered`, so it
+ * does not count as proof that Ahrefs answered.
+ */
+export async function retireAhrefsIncidents(orgId: string): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `select id from automation_incidents
+      where org_id = $1
+        and lower(provider) = 'ahrefs'
+        and state not in ('recovered', 'retired')`,
+    [orgId]
+  );
+  let closed = 0;
+  for (const row of rows) {
+    await advance({
+      incidentId: row.id,
+      orgId,
+      to: "retired",
+      actor: "ahrefs-disabled",
+      detail: AHREFS_RETIRED_NOTE,
+      set: { recoveryNote: AHREFS_RETIRED_NOTE, recoveryOwner: "ahrefs-disabled" },
+    });
+    closed += 1;
+  }
+  return closed;
 }

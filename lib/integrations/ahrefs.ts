@@ -11,6 +11,7 @@
  * = 10 units/row, several = 5). Methods here keep `select` minimal and bound
  * `limit` so a scheduled run can't blow the monthly quota.
  */
+import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
 import { recordIntegrationUse } from "../integration-settings";
 import { LEGACY_ORG_ID } from "../tenant-context";
@@ -117,6 +118,9 @@ async function providerCall<T>(
   path: AhrefsPath,
   options: FetchJsonOptions
 ): Promise<T> {
+  if (!config.ahrefs.integrationEnabled) {
+    throw new AhrefsProviderError("Ahrefs is turned off. No request was sent.");
+  }
   try {
     const data = await withRetry(() =>
       fetchJson<T>(`${BASE}${path}`, {
@@ -196,6 +200,7 @@ export const ahrefs = {
    * retried by the queue.
    */
   async admissionHold(orgId = LEGACY_ORG_ID): Promise<string | null> {
+    if (!config.ahrefs.integrationEnabled) return null;
     const creds = await credentials(orgId);
     if (!creds.apiKey) return null;
     try {
@@ -210,6 +215,7 @@ export const ahrefs = {
   },
 
   async configuration(orgId = LEGACY_ORG_ID): Promise<AhrefsConfiguration> {
+    if (!config.ahrefs.integrationEnabled) return { enabled: false, target: DEFAULT_TARGET };
     const resolved = await credentials(orgId);
     return { enabled: resolved.apiKey.length > 0, target: resolved.target };
   },
@@ -224,6 +230,7 @@ export const ahrefs = {
 
   /** Domain Rating for a target (our own DR trend, or a prospect's authority). */
   async domainRating(target: string, orgId = LEGACY_ORG_ID): Promise<number | null> {
+    if (!config.ahrefs.integrationEnabled) return null;
     const creds = await credentials(orgId);
     if (!creds.apiKey || !target) return null;
     const data = await providerCall<{ domain_rating?: { domain_rating?: number } }>(
@@ -240,6 +247,7 @@ export const ahrefs = {
     target: string,
     orgId = LEGACY_ORG_ID
   ): Promise<{ live_refdomains: number | null; live: number | null } | null> {
+    if (!config.ahrefs.integrationEnabled) return null;
     const creds = await credentials(orgId);
     if (!creds.apiKey || !target) return null;
     const data = await providerCall<{
@@ -283,6 +291,7 @@ export const ahrefs = {
     { limit = 100, minDr = 0 }: { limit?: number; minDr?: number } = {},
     orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: RefDomain[] }> {
+    if (!config.ahrefs.integrationEnabled) return { disabled: true, items: [] };
     const creds = await credentials(orgId);
     if (!creds.apiKey || !target) return { disabled: true, items: [] };
     const where =
@@ -319,6 +328,7 @@ export const ahrefs = {
     { limit = 20, country = "us" }: { limit?: number; country?: string } = {},
     orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: Competitor[] }> {
+    if (!config.ahrefs.integrationEnabled) return { disabled: true, items: [] };
     const creds = await credentials(orgId);
     if (!creds.apiKey || !target) return { disabled: true, items: [] };
     const data = await providerCall<{ competitors?: Competitor[] }>(
@@ -351,6 +361,7 @@ export const ahrefs = {
     { limit = 20, minDr = 0 }: { limit?: number; minDr?: number } = {},
     orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: BrokenBacklink[] }> {
+    if (!config.ahrefs.integrationEnabled) return { disabled: true, items: [] };
     const creds = await credentials(orgId);
     if (!creds.apiKey || !target) return { disabled: true, items: [] };
     const where =
