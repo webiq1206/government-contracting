@@ -682,6 +682,14 @@ export interface AgentResult {
   /** Spending protection is waiting for a settings change or allowance reset.
    * Keep the failed run visible; scheduled recovery checks admission before replay. */
   spendingHeld?: boolean;
+  /**
+   * The work was refused because an earlier attempt is still inside its
+   * lease (a work receipt or a scheduled send claim). It is a short wait,
+   * not a failure: the runner logs it as completion-held, nobody is paged,
+   * and no attempt cap or recovery backoff counts it. The lease ends on its
+   * own and the scheduled sweeps run the work again.
+   */
+  transientHold?: boolean;
   reasoning?: string;
   data?: Record<string, unknown>;
   enqueued?: {

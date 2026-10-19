@@ -8,6 +8,11 @@
  * search that paired nobody, and a verification that left the email
  * unverified, are not queued again. Items already parked for a person are
  * left alone. Quote requests stay unsent while outbound mail is paused.
+ *
+ * A run refused because an earlier attempt was still inside its lease
+ * (logged as completion-held) is a wait, not an attempt: it neither counts
+ * toward the cap nor starts the backoff, so a worker restart during a call
+ * can never park a record on its own.
  */
 import type { QueryResultRow } from "pg";
 import { query, queryOne } from "../db";
@@ -323,8 +328,8 @@ async function recoverOrgGaps(orgId: string): Promise<PursuitGapResult> {
        join opportunities o on o.id = os.opportunity_id and o.org_id = os.org_id
        left join lateral (
          select bool_or(l.status in ('ok', 'skipped')) as finished,
-                count(*) filter (where l.status = 'error')::int as attempts,
-                max(l.created_at) filter (where l.status = 'error') as last_at
+                count(*) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held')::int as attempts,
+                max(l.created_at) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held') as last_at
            from agent_logs l
           where l.org_id = os.org_id
             and l.opportunity_id = os.opportunity_id
@@ -360,8 +365,8 @@ async function recoverOrgGaps(orgId: string): Promise<PursuitGapResult> {
        from opportunity_subs os
        join opportunities o on o.id = os.opportunity_id and o.org_id = os.org_id
        left join lateral (
-         select count(*) filter (where l.status = 'error')::int as attempts,
-                max(l.created_at) filter (where l.status = 'error') as last_at,
+         select count(*) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held')::int as attempts,
+                max(l.created_at) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held') as last_at,
                 bool_or(l.status in ('ok', 'skipped')) as finished
            from agent_logs l
           where l.org_id = os.org_id
@@ -404,8 +409,8 @@ async function recoverOrgGaps(orgId: string): Promise<PursuitGapResult> {
          join subcontractors s on s.id = os.subcontractor_id and s.org_id = $1
          left join lateral (
            select bool_or(l.status in ('ok', 'skipped')) as finished,
-                  count(*) filter (where l.status = 'error')::int as attempts,
-                  max(l.created_at) filter (where l.status = 'error') as last_at
+                  count(*) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held')::int as attempts,
+                  max(l.created_at) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held') as last_at
              from agent_logs l
             where l.org_id = os.org_id
               and l.opportunity_id = os.opportunity_id
@@ -458,7 +463,7 @@ async function recoverOrgGaps(orgId: string): Promise<PursuitGapResult> {
          join subcontractors s on s.id = os.subcontractor_id and s.org_id = $1
          left join lateral (
            select bool_or(l.status in ('ok', 'skipped')) as finished,
-                  count(*) filter (where l.status = 'error')::int as attempts
+                  count(*) filter (where l.status = 'error' and coalesce(l.action, '') <> 'completion-held')::int as attempts
              from agent_logs l
             where l.org_id = os.org_id
               and l.opportunity_id = os.opportunity_id
