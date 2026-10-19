@@ -19,6 +19,7 @@ import {
   describeEmailSafetyIssues,
 } from "../domain/email-safety";
 import { resolveOutreachSender } from "../domain/sender-identity";
+import { wrapLetter } from "../domain/outreach-letter";
 import { pursuitStatus } from "../pursuit-guard";
 import { tryResolveTenantOrgId } from "../tenant";
 
@@ -462,7 +463,9 @@ export async function sendOutreachEmail(
       beforeProviderSend: params.beforeProviderSend,
       to: params.to,
       subject: params.subject,
-      html: params.html,
+      // One outer layout for every message a subcontractor receives, whichever
+      // agent composed it. Idempotent, so a caller that already wrapped is fine.
+      html: wrapLetter(params.html),
       text: params.text,
       trackingId: params.trackingId,
       from,

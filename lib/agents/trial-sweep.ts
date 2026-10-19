@@ -14,6 +14,7 @@
 import { query } from "../db";
 import { logAgent } from "../logger";
 import { systemMail } from "../integrations/system-mail";
+import { trialWarningEmail } from "../domain/report-emails";
 import { config } from "../config";
 import { TRIAL_STATUS, TRIAL_EXPIRED_STATUS } from "../billing/entitlements";
 import type { AgentDefinition } from "./types";
@@ -49,26 +50,8 @@ async function loadLiveTrials(): Promise<TrialRow[]> {
   );
 }
 
-function warningCopy(org: TrialRow, appUrl: string): { subject: string; text: string } {
-  const days = org.days_left;
-  const when = days <= 1 ? "tomorrow" : `in ${days} days`;
-  return {
-    subject:
-      days <= 1
-        ? "Your Brost Co trial ends tomorrow"
-        : `Your Brost Co trial ends in ${days} days`,
-    text: [
-      `Your free trial of Brost Co ends ${when}.`,
-      "",
-      "Everything you have set up stays exactly as it is: your company profile, the opportunities found for you, your subcontractors, and any quotes already received. Choosing a plan lifts the trial limits and keeps the automation running.",
-      "",
-      `Choose a plan: ${appUrl.replace(/\/+$/, "")}/settings/billing`,
-      "",
-      "If Brost Co is not the right fit, you do not need to do anything. Nothing has been charged and no card is on file.",
-      "",
-      "Brost Co",
-    ].join("\n"),
-  };
+function warningCopy(org: TrialRow, appUrl: string): { subject: string; text: string; html: string } {
+  return trialWarningEmail(appUrl, { daysLeft: org.days_left });
 }
 
 export const trialSweep: AgentDefinition = {
@@ -200,6 +183,7 @@ export const trialSweep: AgentDefinition = {
             to: org.owner_email,
             subject: copy.subject,
             text: copy.text,
+            html: copy.html,
           });
           if (delivery.disabled || delivery.error) {
             sendError = delivery.error ?? "The platform mailbox refused the message.";

@@ -1,3 +1,4 @@
+import { plainToHtml } from "@/lib/domain/template-render";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCapability } from "@/lib/api-auth";
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
   if (!target.email_verified || !target.email || target.email !== body.recipient || !sender.connected || sender.from !== body.sender)
     return NextResponse.json({ error: "The verified recipient or sender changed or is unavailable. Reload and review before sending.", safeToCompose: await refuse() }, { status: 409 });
   const text = withMailSignature(body.message, orgId, sender.from);
-  const html = `<div>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />")}</div>`;
+  const html = plainToHtml(text);
   const result = await runWithPursuitVersion({ opportunityId: body.opportunityId, version: target.pursuit_version }, () => sendManualEmail({
     requestKey: body.requestKey, actorId: auth.id,
     params: { orgId, subcontractorId: target.id, opportunityId: body.opportunityId, trade: target.trade,

@@ -45,6 +45,6 @@ export function marketingMessage(input: Recipient & { text: string; html: string
   return {
     unsubscribeUrl,
     text: `${input.text}\n\nTo stop outreach from this sender: ${unsubscribeUrl}`,
-    html: `${input.html}<p style="font-size:12px;color:#555"><a href="${escapeHtml(unsubscribeUrl)}">Stop outreach from this sender</a></p>`,
+    html: `${input.html}<p style="margin:18px 0 0;font-size:12px;color:#5a6a72"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#5a6a72">Stop outreach from this sender</a></p>`,
   };
 }

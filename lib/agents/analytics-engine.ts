@@ -14,6 +14,7 @@ import { logAgent } from "../logger";
 import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
+import { kpiDigestEmail } from "../domain/report-emails";
 import type { AgentDefinition } from "./types";
 
 /** Named once, because the fan-out helper logs under it. */
@@ -161,6 +162,14 @@ async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
       [orgId]
     );
     const pipelineValue = n(pipelineRow?.total);
+    // How much of the pipeline that figure describes. Federal notices often
+    // publish no estimate, so the sum alone reads as covering everything.
+    const pipelineCountRow = await queryOne<{ total: string | number | null; valued: string | number | null }>(
+      `select count(*) as total, count(value_estimated) as valued
+         from opportunities
+        where ${BID_OPPORTUNITY_SQL} and status='open' and stage not in ('dismissed','lost') and org_id = $1`,
+      [orgId]
+    );
 
     // --- Revenue from active contracts. ---
     const revenueRow = await queryOne<{ total: string | number | null }>(
@@ -222,6 +231,8 @@ async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
       },
       avg_margin_on_wins_pct: avgMarginOnWins,
       pipeline_value: pipelineValue,
+      pipeline_count: n(pipelineCountRow?.total),
+      pipeline_valued: n(pipelineCountRow?.valued),
       active_contract_revenue: activeContractRevenue,
       pipeline_velocity: { note: "counts per stage (not durations)", by_stage: pipelineByStage },
       sub_reliability_rankings: subRankings,
@@ -262,11 +273,12 @@ async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
           mailError =
             "The platform Gmail connection or verified sender identity is not ready.";
         } else {
+          const email = kpiDigestEmail(config.appUrl, kpis);
           const delivery = await systemMail.sendDigest({
             to: config.systemMail.digestTo,
-            subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
-            html: renderDigestHtml(kpis),
-            text: renderDigestText(kpis),
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
           });
           if (delivery.disabled || delivery.error) {
             mailError =
@@ -362,55 +374,5 @@ function projectCashFlow(contracts: MilestoneRow[]): CashFlowProjection {
   };
 }
 
-function usd(v: number): string {
-  return `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
 
-function renderDigestText(k: {
-  win_rate: { overall: number; won: number; lost: number };
-  avg_margin_on_wins_pct: number;
-  pipeline_value: number;
-  active_contract_revenue: number;
-  cash_flow_projection: CashFlowProjection;
-}): string {
-  const cf = k.cash_flow_projection.buckets
-    .map((b) => `${b.days}d: ${usd(b.amount)}`)
-    .join(", ");
-  return [
-    `BROST CO Weekly KPIs`,
-    `Win rate: ${k.win_rate.overall}% (${k.win_rate.won}W/${k.win_rate.lost}L)`,
-    `Avg margin on wins: ${k.avg_margin_on_wins_pct}%`,
-    `Pipeline value: ${usd(k.pipeline_value)}`,
-    `Active contract revenue: ${usd(k.active_contract_revenue)}`,
-    `Cash-flow projection (${k.cash_flow_projection.basis}): ${cf}`,
-  ].join("\n");
-}
 
-function renderDigestHtml(k: {
-  win_rate: { overall: number; won: number; lost: number };
-  avg_margin_on_wins_pct: number;
-  pipeline_value: number;
-  active_contract_revenue: number;
-  cash_flow_projection: CashFlowProjection;
-}): string {
-  const rows = [
-    ["Win rate", `${k.win_rate.overall}% (${k.win_rate.won}W/${k.win_rate.lost}L)`],
-    ["Avg margin on wins", `${k.avg_margin_on_wins_pct}%`],
-    ["Pipeline value", usd(k.pipeline_value)],
-    ["Active contract revenue", usd(k.active_contract_revenue)],
-    ...k.cash_flow_projection.buckets.map(
-      (b) => [`Cash flow (${b.days}d)`, usd(b.amount)] as [string, string]
-    ),
-  ];
-  const trs = rows
-    .map(
-      ([label, val]) =>
-        `<tr><td style="padding:4px 12px 4px 0">${label}</td><td style="padding:4px 0;font-weight:600">${val}</td></tr>`
-    )
-    .join("");
-  return `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424">
-<h2 style="font-family:Inter,Helvetica,Arial,sans-serif;font-weight:600;color:#152033;margin:0 0 4px">BROST CO Weekly KPIs</h2>
-<div style="width:48px;height:2px;background:#2457E6;margin:0 0 14px"></div>
-<table style="border-collapse:collapse">${trs}</table>
-</div>`;
-}

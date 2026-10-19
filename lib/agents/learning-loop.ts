@@ -25,6 +25,7 @@ import type { AgentDefinition } from "./types";
 const AGENT_NAME = "learning-loop";
 import type { AgentResult, ScoreBreakdown } from "../types";
 import { reliabilityBreakdown, isPreferred as preferred } from "../domain/reliability";
+import { learningLoopEmail } from "../domain/report-emails";
 
 const AnalysisSchema = z.object({
   weight_adjustments: z
@@ -266,9 +267,19 @@ async function learnForOrg(orgId: string): Promise<LearningOrgResult> {
   // would mail each customer's win/loss record to us, once per customer.
   let mailError: string | null = null;
   if (orgId === LEGACY_ORG_ID && config.systemMail.digestTo) {
-    const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
-      report
-    )}</pre>`;
+    const email = learningLoopEmail(config.appUrl, {
+      wins,
+      losses,
+      proposedVersion: proposedVersion ?? null,
+      subUpdated: subUpdates.updated,
+      subPromoted: subUpdates.promoted,
+      insights: [
+        ...(claudeSkipped ? [{ label: "Weight analysis", text: "Skipped because no AI provider is configured." }] : []),
+        ...(analysis?.pricing_insight ? [{ label: "Pricing", text: analysis.pricing_insight }] : []),
+        ...(analysis?.agency_insights ? [{ label: "Agencies", text: analysis.agency_insights }] : []),
+      ],
+      summary: analysis?.summary ?? null,
+    });
     try {
       const ready = await systemMail.deliverable();
       if (!ready) {
@@ -276,9 +287,9 @@ async function learnForOrg(orgId: string): Promise<LearningOrgResult> {
       } else {
         const delivery = await systemMail.sendDigest({
           to: config.systemMail.digestTo,
-          subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
-          html,
-          text: report,
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
         });
         if (delivery.disabled || delivery.error) {
           mailError = delivery.error ?? "The platform inbox refused the weekly learning digest.";
@@ -494,9 +505,3 @@ async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
   return { updated, promoted };
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}

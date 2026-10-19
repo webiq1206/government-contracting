@@ -132,11 +132,11 @@ describe("plainToHtml", () => {
     expect(result).toContain("Line two");
   });
 
-  it("converts blank lines to <br> tags", () => {
+  it("converts blank lines to paragraphs", () => {
     const result = plainToHtml("Para one\n\nPara two");
-    expect(result).toContain("<br>");
-    expect(result).toContain("Para one");
-    expect(result).toContain("Para two");
+    expect(result.match(/<p /g)).toHaveLength(2);
+    expect(result).toContain(">Para one</p>");
+    expect(result).toContain(">Para two</p>");
   });
 
   it("escapes HTML before applying markup", () => {
@@ -303,7 +303,7 @@ describe("follow-up template render path", () => {
     expect(result).toContain("Jared");
   });
 
-  it("plainToHtml converts follow-up body newlines to <br> tags", () => {
+  it("plainToHtml converts follow-up body newlines to paragraphs", () => {
     const vars = buildFollowUpVars({
       ownerName: "Sam",
       senderName: "Jared",
@@ -315,7 +315,7 @@ describe("follow-up template render path", () => {
     });
     const plain = renderTemplate(tmplBody, vars);
     const html = plainToHtml(plain);
-    expect(html).toContain("<br>");
+    expect(html).toContain("<p ");
     expect(html).not.toContain("\n"); // newlines converted
   });
 });

@@ -14,6 +14,7 @@ vi.mock("../lib/integrations/twilio", () => ({
 }));
 vi.mock("../lib/config", () => ({
   config: {
+    appUrl: "https://brostco.com",
     systemMail: {
       get digestTo() {
         return mocks.digestTo;
@@ -45,5 +46,15 @@ describe("outage alert address", () => {
     expect(sent).toBe("email");
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ to: "hello@brostco.com" }));
     expect(mocks.alert).not.toHaveBeenCalled();
+  });
+
+  it("sends the branded layout, and still sends plain text if layout fails", async () => {
+    mocks.digestTo = "hello@brostco.com";
+    await deliverOutageAlert({ subject: "Pursue work is waiting", text: "Work is waiting." });
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      subject: "BrostCo: Pursue work is waiting",
+      html: expect.stringContaining("Open Automation Health"),
+      text: expect.stringContaining("Work is waiting."),
+    }));
   });
 });

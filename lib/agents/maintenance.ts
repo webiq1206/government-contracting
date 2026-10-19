@@ -17,6 +17,8 @@ import { captureReply, matchInboundReply } from "../reply-capture";
 import { sms } from "../integrations/twilio";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
+import { replyNotificationEmail, type ReplyNoticeItem } from "../domain/report-emails";
+import { signatureLines } from "../domain/outreach-letter";
 import { logAgent } from "../logger";
 import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { listActiveOrganizations } from "../organizations";
@@ -257,7 +259,7 @@ export async function lastCallForOrg(
       "If you can still quote it, just reply with your number. If not, no problem at all, a quick \"we'll pass\" lets me close the file.",
       "",
       "Thanks either way,",
-      ...(senderName ? [senderName] : []),
+      ...signatureLines(profile, senderName),
     ];
     const text = lines.join("\n");
     const res = await sendOutreachEmail({
@@ -985,7 +987,14 @@ async function followUpForOrg(
       // No template at all. Minimal, and never pretending to be a reply.
       const greeting = vars.owner_name || "there";
       subject = threadSubject ?? "Following up on our quote request";
-      const body = `Hi ${greeting},\n\nJust following up on my previous email. Happy to answer any questions or set up a quick call.\n\n${vars.sender_name}`;
+      const body = [
+        `Hi ${greeting},`,
+        "",
+        "Just following up on my previous email. Happy to answer any questions or set up a quick call.",
+        "",
+        "Thanks,",
+        ...signatureLines(profile, senderName),
+      ].join("\n");
       if (useFallback) {
         const sections = buildOutreachSections({
           vars,
@@ -2779,7 +2788,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
     }
 
     const enqueued: AgentResult["enqueued"] = [];
-    const notifyLines: string[] = [];
+    const notifyLines: ReplyNoticeItem[] = [];
     let matched = 0;
     let reviewCount = 0;
     let processingFailures = 0;
@@ -3100,11 +3109,13 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       }
 
       if (decision.needsReview) {
-        notifyLines.push(
-          `<li><strong>${companyName ?? fromEmail}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;,` +
-            ` but nothing was changed automatically. ${decision.reviewReason}` +
-            `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
-        );
+        notifyLines.push({
+          title: `${companyName ?? fromEmail}, about ${comm.opportunity_title ?? "an opportunity"}`,
+          detail: `Nothing was changed automatically. ${decision.reviewReason}`,
+          snippet: r.snippet.slice(0, 200),
+          tone: "critical",
+          tag: "Needs your decision",
+        });
         await logAgent({
           agent: "reply-poll",
           action: "reply-needs-review",
@@ -3181,11 +3192,12 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
 
       if (declined) {
         // closeOutDeclinedSub already wrote the reply-declined agent log.
-        notifyLines.push(
-          `<li><strong>${companyName ?? fromEmail}</strong> declined / cannot fulfill &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
-            ` Closed out on this solicitation${thankYouSent ? "; thank-you sent" : ""}.` +
-            `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
-        );
+        notifyLines.push({
+          title: `${companyName ?? fromEmail}, about ${comm.opportunity_title ?? "an opportunity"}`,
+          detail: `Declined or cannot do the work. Closed out on this solicitation${thankYouSent ? " and a thank-you was sent" : ""}.`,
+          snippet: r.snippet.slice(0, 200),
+          tag: "Declined",
+        });
         continue;
       }
 
@@ -3210,23 +3222,24 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         }.${priceNote}`,
         reasoning: `Reply excerpt: ${replyText.slice(0, 300)}`,
       });
-      notifyLines.push(
-        `<li><strong>${companyName ?? fromEmail}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
+      notifyLines.push({
+        title: `${companyName ?? fromEmail}, about ${comm.opportunity_title ?? "an opportunity"}`,
+        detail:
           `${
             quoteSaved
-              ? ` Quote <strong>$${extracted.quoteAmount!.toLocaleString()}</strong> saved automatically.`
+              ? `Quote of $${extracted.quoteAmount!.toLocaleString()} saved automatically. `
               : quoteSkippedExisting
-                ? ` Quotes <strong>$${extracted.quoteAmount!.toLocaleString()}</strong>, but an existing quote is on file, review manually.`
+                ? `Quotes $${extracted.quoteAmount!.toLocaleString()}, but a quote is already on file. Review it manually. `
                 : mentionedPrice != null
-                  ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.`
+                  ? `Mentions $${mentionedPrice.toLocaleString()}. `
                   : ""
           }` +
-          ` Updated: marked ${OUTCOME_LABEL[decision.outcome].toLowerCase()}, reply saved${
-            callsEnabled ? ", call card queued" : ""
-          }.` +
-          `${clarified ? ` We asked them for ${gaps.map(describeGap).join(", ")}.` : ""}` +
-          `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
-      );
+          `Marked ${OUTCOME_LABEL[decision.outcome].toLowerCase()}, reply saved${callsEnabled ? ", call card queued" : ""}.` +
+          `${clarified ? ` We asked them for ${gaps.map(describeGap).join(", ")}.` : ""}`,
+        snippet: r.snippet.slice(0, 200),
+        tone: quoteSkippedExisting ? "warning" : quoteSaved ? "good" : "normal",
+        tag: quoteSaved ? "Quote saved" : quoteSkippedExisting ? "Check quote" : "Replied",
+      });
     }
 
     // Once every reply in this batch is recorded, see whether any of the
@@ -3236,9 +3249,12 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       const res = await advanceIfQuotesComplete(opportunityId);
       if (res.advanced && res.enqueue) {
         enqueued.push(res.enqueue);
-        notifyLines.push(
-          `<li>All trades are now priced on &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo;. Moved to Bid Building automatically.</li>`
-        );
+        notifyLines.push({
+          title: opportunityTitles.get(opportunityId) ?? "A solicitation",
+          detail: "Every trade is now priced. Moved to Bid Building automatically.",
+          tone: "good",
+          tag: "Fully priced",
+        });
         continue;
       }
       // Not complete. If that is because everyone said no, escalate: source
@@ -3246,13 +3262,19 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       const exhaustion = await closeIfSubsExhausted(opportunityId);
       if (exhaustion.action === "resourced" && exhaustion.enqueue) {
         enqueued.push(exhaustion.enqueue);
-        notifyLines.push(
-          `<li>Every sub approached for &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo; has declined. Searching for more candidates automatically.</li>`
-        );
+        notifyLines.push({
+          title: opportunityTitles.get(opportunityId) ?? "A solicitation",
+          detail: "Every subcontractor approached has declined. Searching for more candidates automatically.",
+          tone: "warning",
+          tag: "Searching again",
+        });
       } else if (exhaustion?.action === "closed") {
-        notifyLines.push(
-          `<li>&ldquo;${opportunityTitles.get(opportunityId) ?? "A solicitation"}&rdquo; was closed: no subcontractor can perform the work, even after a second search. The record says why.</li>`
-        );
+        notifyLines.push({
+          title: opportunityTitles.get(opportunityId) ?? "A solicitation",
+          detail: "Closed: no subcontractor can perform the work, even after a second search. The record says why.",
+          tone: "critical",
+          tag: "Closed",
+        });
       }
     }
 
@@ -3370,11 +3392,14 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       } else {
         let notification: Awaited<ReturnType<typeof systemMail.send>>;
         try {
+          // Every field here is built from text the subcontractor wrote or
+          // that came from a public notice; the builder escapes all of it.
+          const email = replyNotificationEmail(config.appUrl, notifyLines);
           notification = await systemMail.send({
             to: config.systemMail.digestTo,
-            subject: `BROST CO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
-            html: `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p><div style="width:48px;height:2px;background:#B28F5D;margin-top:16px"></div></div>`,
-            text: `Replies just came in. Each sub is marked responsive and has a call card on Today. Open Today to start the calls.`,
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
           });
         } catch (err) {
           notification = {

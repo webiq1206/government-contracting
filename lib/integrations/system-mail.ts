@@ -13,6 +13,7 @@ import { gmail } from "./gmail";
 import { config } from "../config";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { resolveOutreachSender } from "../domain/sender-identity";
+import { composeSystemEmailHtml } from "../domain/system-email";
 
 export interface SystemMailResult {
   disabled?: boolean;
@@ -23,17 +24,6 @@ export interface SystemMailResult {
   rfc822MessageId?: string;
 }
 
-/** Minimal HTML wrapper so plain-text system mail is still readable. */
-function asHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5">${escaped.replace(
-    /\n/g,
-    "<br />"
-  )}</div>`;
-}
 
 /**
  * The From header for platform mail.
@@ -145,7 +135,10 @@ export const systemMail = {
       res = await gmail.send({
         to,
         subject: params.subject,
-        html: params.html ?? asHtml(params.text),
+        // Every platform email leaves in the branded layout, whatever the
+        // caller supplied: plain text is laid out, a fragment is wrapped, and
+        // a finished document passes through untouched.
+        html: safeCompose(params),
         text: params.text,
         // The platform's own inbox, explicitly. Falling back to ambient tenant
         // context here would send a password reset from a customer's mailbox.
@@ -185,7 +178,55 @@ export const systemMail = {
       to: params.to,
       subject: params.subject,
       html: params.html,
-      text: params.text ?? params.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+      text: params.text ?? htmlToPlain(params.html),
     });
   },
 };
+
+/**
+ * A readable plain-text part for an HTML-only digest. Block ends become line
+ * breaks and links keep their address, so the text alternative is a usable
+ * email rather than one run-on line.
+ */
+export function htmlToPlain(html: string): string {
+  return html
+    .replace(/<(?:style|title|head)[\s\S]*?<\/(?:style|title|head)>/gi, "")
+    .replace(/<span[^>]*display:none[^>]*>[\s\S]*?<\/span>/gi, "")
+    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, label: string) => {
+      const text = label.replace(/<[^>]+>/g, "").trim();
+      return text && text !== href ? `${text} (${href})` : href;
+    })
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/(?:p|div|h[1-6]|tr|table|ul|ol)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/td>/gi, "  ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&middot;/g, "·")
+    .replace(/&ldquo;|&rdquo;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * The branded layout, or a plain escaped body if laying it out fails. A
+ * password reset or an outage alert must never be lost to a template bug.
+ */
+function safeCompose(params: { subject: string; text: string; html?: string }): string {
+  try {
+    return composeSystemEmailHtml(config.appUrl, params);
+  } catch (error) {
+    console.error("[system-mail] layout failed; sending a plain body:", error instanceof Error ? error.message : error);
+    if (params.html) return params.html;
+    const escaped = params.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6">${escaped.replace(/\n/g, "<br />")}</div>`;
+  }
+}

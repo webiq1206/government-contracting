@@ -19,6 +19,7 @@ import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { listActiveOrganizations } from "../organizations";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { systemMail } from "../integrations/system-mail";
+import { complianceDigestEmail } from "../domain/report-emails";
 import { config } from "../config";
 import {
   currentStatus,
@@ -295,34 +296,18 @@ async function sweepOrg(orgId: string): Promise<{
       const entries = [...bySub.values()].sort(
         (a, b) => Number(b.working) - Number(a.working) || Number(b.expired) - Number(a.expired)
       );
-      const lines = entries.map(
-        (e) =>
-          `${e.working ? "[ON A LIVE CONTRACT] " : ""}${e.expired ? "LAPSED" : "Expiring"}: ${e.name} - ${e.items.join("; ")}`
-      );
-      const working = entries.filter((e) => e.working && e.expired).length;
       try {
         const ready = await systemMail.deliverable();
         if (!ready) {
           digestError =
             "The platform mail connection or verified sender identity is not ready. Check platform Gmail settings and retry the sweep.";
         } else {
+          const email = complianceDigestEmail(config.appUrl, entries);
           const delivery = await systemMail.send({
             to: config.systemMail.digestTo,
-            subject: working
-              ? `Subcontractor insurance: ${working} uninsured on live contracts`
-              : `Subcontractor insurance: ${justExpired.length} lapsed, ${expiringSoon.length} expiring`,
-            text: [
-              "Insurance and tax documents that need attention:",
-              "",
-              ...lines,
-              "",
-              "Anyone listed as LAPSED is blocked from receiving work until a current certificate is on file.",
-              working
-                ? "Anyone marked ON A LIVE CONTRACT is already working. Stop their work until a current certificate is in hand."
-                : "",
-            ]
-              .filter((l) => l !== "")
-              .join("\n"),
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
           });
           if (delivery.disabled || delivery.error) {
             digestError =

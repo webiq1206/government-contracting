@@ -26,6 +26,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { query, queryOne, transaction } from "../db";
 import { config } from "../config";
 import { systemMail } from "../integrations/system-mail";
+import { invitationEmail } from "../domain/report-emails";
 import { recordAdminAction, recordRequiredAdminAction } from "./audit";
 import { reserveConcessionCode } from "./concessions";
 import {
@@ -579,25 +580,18 @@ async function sendInvitationEmail(input: {
 }): Promise<{ sent: boolean; error?: string }> {
   const url = invitationUrl(input.token);
   const { PLANS } = await import("../billing/catalog");
-  const planName = PLANS[input.plan]?.name ?? "Brost Co";
+  const planName = PLANS[input.plan]?.name ?? "BrostCo";
   const expiry = input.expiresAt.toDateString();
 
-  const text = [
-    `${input.inviterEmail} has invited you to Brost Co.`,
-    "",
-    "Brost Co finds federal contracting opportunities that fit your company, scores them, and runs the subcontractor outreach for the ones worth bidding.",
-    "",
-    `Your plan: ${planName}, billed ${input.interval === "year" ? "annually" : "monthly"}.`,
-    `Your terms: ${input.terms}`,
-    ...(input.note ? ["", input.note] : []),
-    "",
-    "Set up your account here:",
+  const email = invitationEmail(config.appUrl, {
+    inviterEmail: input.inviterEmail,
+    planName,
+    interval: input.interval,
+    terms: input.terms,
+    note: input.note,
     url,
-    "",
-    `This link works until ${expiry}, and only once.`,
-    "",
-    "If you were not expecting this, you can ignore it and nothing will happen.",
-  ].join("\n");
+    expiry,
+  });
 
   let mailReady = false;
   try {
@@ -621,7 +615,7 @@ async function sendInvitationEmail(input: {
     };
   }
   const res = await systemMail
-    .send({ to: input.to, subject: `${input.inviterEmail} invited you to Brost Co`, text })
+    .send({ to: input.to, ...email })
     .catch((err: unknown) => ({ error: (err as Error).message }) as { error: string });
 
   if (("disabled" in res && res.disabled) || res.error) {

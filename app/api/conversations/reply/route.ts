@@ -1,3 +1,4 @@
+import { plainToHtml } from "@/lib/domain/template-render";
 import { NextResponse } from "next/server";
 import { requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
@@ -13,15 +14,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Plain text typed by an operator, rendered as HTML without letting markup through. */
+/** The same paragraph layout every other message to a subcontractor uses. */
 function toHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424;font-size:14px;line-height:1.6">${escaped.replace(
-    /\n/g,
-    "<br />"
-  )}</div>`;
+  return plainToHtml(text);
 }
 
 /** Extract one deliverable mailbox from a stored RFC address value. */

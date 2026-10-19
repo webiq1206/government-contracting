@@ -25,6 +25,7 @@ import {
   emailText,
 } from "../email-shell";
 import { ageNote, recapPreheader, recapSubject } from "./sections";
+import { SYSTEM_BRAND_NAME, SYSTEM_LOGO_PATH } from "../system-email";
 import { RECAP_QUIET_SUMMARY, type Recap, type RecapItem, type RecapSection } from "./types";
 
 export interface RenderRecapOptions {
@@ -186,7 +187,9 @@ export function renderRecapEmail(recap: Recap, opts: RenderRecapOptions): Render
       preheader: recapPreheader(recap),
       body: body.join("\n"),
       footer,
-      brandName: opts.brandName,
+      brandName: opts.brandName ?? SYSTEM_BRAND_NAME,
+      brandHref: /^https?:\/\//.test(opts.appUrl) ? opts.appUrl.replace(/\/+$/, "") : null,
+      logoUrl: absoluteUrl(opts.appUrl, SYSTEM_LOGO_PATH),
     }),
     text: renderRecapText(recap, opts),
   };

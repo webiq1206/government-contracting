@@ -43,6 +43,9 @@ export const BRAND = {
   reviewSoft: "#fbf1df",
   pursue: "#2b6f52",
   pursueSoft: "#eaf5ef",
+  /** Text on the ink header band: the dark theme's accent text and a soft grey-teal. */
+  onInkAccent: "#9ac9c5",
+  onInkSoft: "#d5e3e1",
 } as const;
 
 const FONT =
@@ -73,6 +76,12 @@ export function absoluteUrl(base: string, path: string | null | undefined): stri
 export interface EmailShellOptions {
   /** The <title>, and the heading in the coloured header band. */
   title: string;
+  /**
+   * Absolute URL of the light wordmark, shown at the top of the header band.
+   * Images are often blocked until the reader allows them, so the alt text
+   * carries the brand name in the same place.
+   */
+  logoUrl?: string | null;
   /** The line under the heading, and the inbox preview text. */
   preheader?: string;
   /** Small line above the heading: a date, an account name. */
@@ -82,6 +91,13 @@ export interface EmailShellOptions {
   /** Footer lines, rendered small and muted. HTML allowed. */
   footer?: string[];
   brandName?: string;
+  /** Where the brand line in the footer links to, shown as its host name. */
+  brandHref?: string | null;
+  /**
+   * Show the preheader under the heading as well as in the inbox preview.
+   * Off when the first line of the body already says the same thing.
+   */
+  showPreheader?: boolean;
 }
 
 /**
@@ -93,7 +109,12 @@ export interface EmailShellOptions {
  * we send.
  */
 export function emailShell(opts: EmailShellOptions): string {
-  const brand = opts.brandName ?? "BROST CO";
+  const brand = opts.brandName ?? "BrostCo";
+  const logo = opts.logoUrl
+    ? `<img src="${escapeHtml(opts.logoUrl)}" width="132" alt="${escapeHtml(
+        brand
+      )}" style="display:block;width:132px;max-width:132px;height:auto;margin:0 0 14px;border:0;outline:none;color:#ffffff;font-family:${FONT};font-size:16px;font-weight:700" />`
+    : "";
   const footer = (opts.footer ?? [])
     .map(
       (line) =>
@@ -119,10 +140,11 @@ export function emailShell(opts: EmailShellOptions): string {
     <td align="center" style="padding:0 12px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:${BRAND.surface};border:1px solid ${BRAND.border};border-radius:4px">
         <tr>
-          <td style="background:${BRAND.ink};padding:20px 24px;border-radius:4px 4px 0 0">
+          <td style="background:${BRAND.ink};padding:20px 24px;border-radius:4px 4px 0 0;border-bottom:3px solid ${BRAND.accent}">
+            ${logo}
             ${
               opts.eyebrow
-                ? `<p style="margin:0 0 6px;font-family:${FONT};font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#b2c7ff">${escapeHtml(
+                ? `<p style="margin:0 0 6px;font-family:${FONT};font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND.onInkAccent}">${escapeHtml(
                     opts.eyebrow
                   )}</p>`
                 : ""
@@ -131,8 +153,8 @@ export function emailShell(opts: EmailShellOptions): string {
               opts.title
             )}</h1>
             ${
-              opts.preheader
-                ? `<p style="margin:8px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:#ccd8eb">${escapeHtml(
+              opts.preheader && opts.showPreheader !== false
+                ? `<p style="margin:8px 0 0;font-family:${FONT};font-size:14px;line-height:1.5;color:${BRAND.onInkSoft}">${escapeHtml(
                     opts.preheader
                   )}</p>`
                 : ""
@@ -147,7 +169,7 @@ export function emailShell(opts: EmailShellOptions): string {
             ${footer}
             <p style="margin:10px 0 0;font-family:${FONT};font-size:12px;line-height:1.5;color:${BRAND.inkSoft}">${escapeHtml(
               brand
-            )}</p>
+            )}${brandLink(opts.brandHref)}</p>
           </td>
         </tr>
       </table>
@@ -156,6 +178,16 @@ export function emailShell(opts: EmailShellOptions): string {
 </table>
 </body>
 </html>`;
+}
+
+function tonePalette(tone: "critical" | "warning" | "normal" | "good") {
+  return tone === "critical"
+    ? { rule: BRAND.risk, bg: BRAND.riskSoft, text: BRAND.risk }
+    : tone === "warning"
+      ? { rule: BRAND.review, bg: BRAND.reviewSoft, text: BRAND.review }
+      : tone === "good"
+        ? { rule: BRAND.pursue, bg: BRAND.pursueSoft, text: BRAND.pursue }
+        : { rule: BRAND.border, bg: BRAND.surfaceMuted, text: BRAND.inkSoft };
 }
 
 /** A section heading with a rule under it, and an optional one-line blurb. */
@@ -183,7 +215,7 @@ export interface EmailRowOptions {
   href?: string | null;
   /** The short word carrying the state. Always present when there is a tint. */
   tag?: string;
-  tone?: "critical" | "warning" | "normal";
+  tone?: "critical" | "warning" | "normal" | "good";
   /** Right-hand timing text: "due in 6 hours". */
   meta?: string;
   /** The age line, when the item has been here before. */
@@ -200,12 +232,7 @@ export interface EmailRowOptions {
  */
 export function emailRow(o: EmailRowOptions): string {
   const tone = o.tone ?? "normal";
-  const palette =
-    tone === "critical"
-      ? { rule: BRAND.risk, bg: BRAND.riskSoft, text: BRAND.risk }
-      : tone === "warning"
-        ? { rule: BRAND.review, bg: BRAND.reviewSoft, text: BRAND.review }
-        : { rule: BRAND.border, bg: BRAND.surfaceMuted, text: BRAND.inkSoft };
+  const palette = tonePalette(tone);
 
   const titleHtml = o.href
     ? `<a href="${escapeHtml(o.href)}" style="color:${BRAND.accent};text-decoration:underline;font-weight:600">${escapeHtml(
@@ -276,7 +303,7 @@ export function emailStats(stats: EmailStat[]): string {
   if (stats.length === 0) return "";
   const cells = stats.map((s) => {
     const value = `<span style="font-size:20px;font-weight:700;color:${BRAND.ink}">${escapeHtml(
-      String(s.value)
+      typeof s.value === "number" ? s.value.toLocaleString("en-US") : String(s.value)
     )}</span>`;
     const label = s.href
       ? `<a href="${escapeHtml(s.href)}" style="color:${BRAND.accent};text-decoration:underline">${escapeHtml(
@@ -317,13 +344,8 @@ export function emailButton(label: string, href: string): string {
 }
 
 /** A banner for something the reader must not miss, tone carried by its label. */
-export function emailCallout(label: string, text: string, tone: "critical" | "warning" | "normal" = "warning"): string {
-  const palette =
-    tone === "critical"
-      ? { rule: BRAND.risk, bg: BRAND.riskSoft, text: BRAND.risk }
-      : tone === "warning"
-        ? { rule: BRAND.review, bg: BRAND.reviewSoft, text: BRAND.review }
-        : { rule: BRAND.border, bg: BRAND.surfaceMuted, text: BRAND.inkSoft };
+export function emailCallout(label: string, text: string, tone: "critical" | "warning" | "normal" | "good" = "warning"): string {
+  const palette = tonePalette(tone);
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;background:${palette.bg};border:1px solid ${palette.rule};border-radius:3px">
   <tr><td style="padding:10px 12px;font-family:${FONT};font-size:13px;line-height:1.5;color:${BRAND.ink}">
     <strong style="color:${palette.text}">${escapeHtml(label)}</strong> ${escapeHtml(text)}
@@ -336,4 +358,64 @@ export function emailText(text: string): string {
   return `<p style="margin:0 0 10px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BRAND.ink}">${escapeHtml(
     text
   )}</p>`;
+}
+
+/** A bulleted list. Each item is plain text; bare URLs become links. */
+export function emailList(items: string[]): string {
+  const usable = items.map((i) => i.trim()).filter(Boolean);
+  if (usable.length === 0) return "";
+  return `<ul style="margin:0 0 12px;padding-left:20px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BRAND.ink}">${usable
+    .map((i) => `<li style="margin:0 0 4px">${linkifyEscaped(escapeHtml(i))}</li>`)
+    .join("")}</ul>`;
+}
+
+/**
+ * Label and value pairs, one per row: the shape of a short report such as a
+ * weekly KPI summary. Values are right-aligned so figures line up.
+ */
+export function emailFacts(rows: Array<{ label: string; value: string; note?: string }>): string {
+  const usable = rows.filter((r) => r.label.trim() && r.value.trim());
+  if (usable.length === 0) return "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse">${usable
+    .map(
+      (r) => `<tr>
+    <td style="padding:8px 0;border-bottom:1px solid ${BRAND.border};font-family:${FONT};font-size:14px;line-height:1.4;color:${BRAND.inkSoft}">${escapeHtml(
+      r.label
+    )}${
+        r.note
+          ? `<div style="margin-top:2px;font-size:12px;color:${BRAND.inkSoft}">${escapeHtml(r.note)}</div>`
+          : ""
+      }</td>
+    <td align="right" style="padding:8px 0 8px 12px;border-bottom:1px solid ${BRAND.border};font-family:${FONT};font-size:15px;line-height:1.4;font-weight:700;color:${BRAND.ink};white-space:nowrap">${escapeHtml(
+      r.value
+    )}</td>
+  </tr>`
+    )
+    .join("")}</table>`;
+}
+
+/** Ordinary copy that may contain bare URLs, which become links. */
+export function emailLinkedText(text: string): string {
+  return `<p style="margin:0 0 10px;font-family:${FONT};font-size:14px;line-height:1.6;color:${BRAND.ink}">${linkifyEscaped(
+    escapeHtml(text)
+  )}</p>`;
+}
+
+/** Turn bare http(s) URLs in already-escaped text into links. */
+export function linkifyEscaped(escaped: string): string {
+  return escaped.replace(
+    /(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g,
+    (url) => `<a href="${url}" style="color:${BRAND.accent};text-decoration:underline;word-break:break-all">${url}</a>`
+  );
+}
+
+function brandLink(href: string | null | undefined): string {
+  if (!href) return "";
+  let host = "";
+  try {
+    host = new URL(href).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+  return ` &middot; <a href="${escapeHtml(href)}" style="color:${BRAND.inkSoft};text-decoration:underline">${escapeHtml(host)}</a>`;
 }

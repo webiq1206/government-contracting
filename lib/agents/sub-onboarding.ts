@@ -24,6 +24,10 @@ import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { runWithOrg } from "../tenant-context";
 import { sendOutreachEmail } from "../integrations/email-transport";
+import { getProfileJson } from "../ai/companyProfile";
+import { plainToHtml } from "../domain/template-render";
+import { signatureLines } from "../domain/outreach-letter";
+import { outreachDisplayName } from "../domain/solicitation-completeness";
 import { subPortalUrl, PORTAL_TTL_SECONDS } from "../domain/sub-portal-link";
 import { DOC_LABEL, type DocType } from "../domain/sub-compliance";
 import {
@@ -104,28 +108,29 @@ async function chase(
   const url = subPortalUrl(row.subcontractorId);
   const job = row.opportunityTitle ?? "a job we have just been awarded";
   const subject = `Before we can start on ${job}: your paperwork`;
+  // Signed as the company that won the work, from its own profile. This goes
+  // out from the customer's inbox; it must never sign as the platform.
+  const profile = await getProfileJson().catch(() => null);
+  const signature = signatureLines(profile, profile ? outreachDisplayName(profile) : null);
   const text = [
-    `Good news, we won ${job} and we have you down for it.`,
+    "Hi,",
+    "",
+    `Good news: we won ${job}, and we have you down for it.`,
     "",
     `Before work can start we need this on file for ${row.companyName}: ${needed}.`,
     "",
-    "You can send it here, it takes about five minutes and there is no account to make:",
+    "You can send it here. It takes about five minutes and there is no account to make:",
     url,
     "",
     `That link works for ${Math.round(PORTAL_TTL_SECONDS / 86_400)} days. Reply to this email if anything is not right.`,
     "",
-    "Brost Co",
+    "Thanks,",
+    ...signature,
   ].join("\n");
-  const html = `<div>${text
-    .split("\n")
-    .map((l) =>
-      l === url
-        ? `<p><a href="${url}">${url}</a></p>`
-        : l
-          ? `<p>${l}</p>`
-          : ""
-    )
-    .join("")}</div>`;
+  const html = plainToHtml(text).replace(
+    escapeForLink(url),
+    `<a href="${escapeForLink(url)}">${escapeForLink(url)}</a>`
+  );
 
   // The last accepted receipt anchors the next chase. Time passing cannot
   // turn an uncertain attempt into a different intent and bypass its claim.
@@ -363,3 +368,8 @@ export const subOnboarding: AgentDefinition = {
     };
   },
 };
+
+/** The portal URL as plainToHtml escapes it, so the link can be found again. */
+function escapeForLink(url: string): string {
+  return url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}

@@ -111,7 +111,11 @@ const BULLET_RE = /^\s*[-*•]\s+(.*)$/;
  * - `**bold**`
  * - `==highlight==` (yellow background span for email clients, same line only)
  * - consecutive lines starting with `- `, `* `, or `• ` as a bullet list
- * - remaining newlines as `<br>`
+ * - blank lines as paragraph breaks, single newlines as `<br>` inside one
+ *
+ * Paragraphs are real `<p>` elements with spacing, not runs of `<br>`, so the
+ * gap between paragraphs is the same in every mail client and a signature
+ * block stays together as one unit.
  *
  * Content is HTML-escaped first so operator-authored markup cannot inject tags.
  */
@@ -119,13 +123,19 @@ export function plainToHtml(plain: string): string {
   const lines = plain.replace(/\r\n/g, "\n").split("\n");
   const parts: string[] = [];
   let listBuf: string[] = [];
+  let paraBuf: string[] = [];
 
+  function flushPara() {
+    if (paraBuf.length === 0) return;
+    parts.push(`<p style="margin:0 0 14px">${paraBuf.join("<br>")}</p>`);
+    paraBuf = [];
+  }
   function flushList() {
     if (listBuf.length === 0) return;
     const items = listBuf
       .map((item) => `<li>${applyInlineMarkup(escapeHtml(item))}</li>`)
       .join("");
-    parts.push(`<ul style="margin:8px 0;padding-left:20px">${items}</ul>`);
+    parts.push(`<ul style="margin:0 0 14px;padding-left:22px">${items}</ul>`);
     listBuf = [];
   }
 
@@ -133,22 +143,18 @@ export function plainToHtml(plain: string): string {
     const line = normalizeEmailLine(raw);
     const bullet = line.match(BULLET_RE);
     if (bullet) {
+      flushPara();
       listBuf.push(bullet[1]);
       continue;
     }
     flushList();
-    if (line.length === 0) {
-      parts.push("<br>");
+    if (line.trim().length === 0) {
+      flushPara();
     } else {
-      parts.push(applyInlineMarkup(escapeHtml(line)));
-      parts.push("<br>");
+      paraBuf.push(applyInlineMarkup(escapeHtml(line)));
     }
   }
   flushList();
-
-  // Drop a trailing <br> so the email does not end with an extra blank line.
-  if (parts.length > 0 && parts[parts.length - 1] === "<br>") {
-    parts.pop();
-  }
+  flushPara();
   return parts.join("");
 }

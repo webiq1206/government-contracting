@@ -15,6 +15,11 @@
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
+import { getProfileJson } from "../ai/companyProfile";
+import { runWithOrg } from "../tenant-context";
+import { plainToHtml } from "./template-render";
+import { signatureLines } from "./outreach-letter";
+import { outreachDisplayName } from "./solicitation-completeness";
 import type { ReplyOutcome } from "./reply-outcome";
 
 /** Plain-English label for each gap. Never jargon: a sub reads this. */
@@ -116,20 +121,16 @@ export async function requestClarification(input: {
 
   const job = input.opportunityTitle ?? "the project we contacted you about";
   const items = input.gaps.map(describeGap);
-  const bullets = items.map((i) => `<li>${i}</li>`).join("");
   const plainList = items.map((i) => `- ${i}`).join("\n");
 
   const greeting = input.companyName ? `Hi ${input.companyName},` : "Hi,";
   const subject = input.originalSubject?.trim()
     ? `Re: ${input.originalSubject.trim().replace(/^re:\s*/i, "")}`
     : `Quick follow-up on ${job}`;
-  const html =
-    `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424;font-size:14px;line-height:1.6">` +
-    `<p>${greeting}</p>` +
-    `<p>Thanks for getting back to us on ${job}. Before we can put your numbers in, we still need:</p>` +
-    `<ul>${bullets}</ul>` +
-    `<p>Just reply to this email and we will take it from there.</p>` +
-    `</div>`;
+  // Signed like every other message this company sends a subcontractor. The
+  // company name and the job title come from outside (the sub's own record
+  // and a public notice), so the HTML is built by the escaping renderer.
+  const profile = await runWithOrg(input.orgId, () => getProfileJson()).catch(() => null);
   const text = [
     greeting,
     "",
@@ -138,7 +139,11 @@ export async function requestClarification(input: {
     plainList,
     "",
     "Just reply to this email and we will take it from there.",
+    "",
+    "Thanks,",
+    ...signatureLines(profile, profile ? outreachDisplayName(profile) : null),
   ].join("\n");
+  const html = plainToHtml(text);
 
   const res = await sendOutreachEmail({
     scheduled: { key: JSON.stringify(["clarification", input.opportunityId, input.subcontractorId]),
