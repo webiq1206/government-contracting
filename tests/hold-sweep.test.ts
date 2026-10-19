@@ -1,8 +1,8 @@
 /**
  * A dead process leaves the claim behind and must not leave it forever.
- * The sweep releases only what is older than the provider timeout plus its
- * margin, and it never turns a pending receipt or a scheduled send into
- * another provider call.
+ * The sweep releases only what is older than the lease for that claim, and
+ * it never calls a provider or sends mail itself: released work goes back
+ * to its schedule and runs again under a fresh claim.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
@@ -25,6 +25,7 @@ vi.mock("../lib/db", () => ({
 import { reclaimStaleProviderAttempts } from "../lib/domain/hold-sweep";
 import {
   AI_CALL_TIMEOUT_MS,
+  AI_RECEIPT_TTL_MS,
   HOLD_REGISTRY,
   PROVIDER_ATTEMPT_TTL_MS,
   USAGE_ABANDON_MINUTES,
@@ -40,6 +41,9 @@ import {
 describe("hold leases", () => {
   it("waits until the provider abort cannot still be on the wire", () => {
     expect(PROVIDER_ATTEMPT_TTL_MS).toBeGreaterThan(AI_CALL_TIMEOUT_MS);
+    // A receipt covers a primary and a fallback call; its lease is longer.
+    expect(AI_RECEIPT_TTL_MS).toBeGreaterThanOrEqual(2 * AI_CALL_TIMEOUT_MS + (PROVIDER_ATTEMPT_TTL_MS - AI_CALL_TIMEOUT_MS));
+    expect(AI_RECEIPT_TTL_MS).toBe(25 * 60_000);
     expect(USAGE_ABANDON_MINUTES * 60_000).toBe(PROVIDER_ATTEMPT_TTL_MS);
     expect(providerAttemptIsStale(new Date(Date.now() - PROVIDER_ATTEMPT_TTL_MS + 1_000))).toBe(false);
     expect(providerAttemptIsStale(new Date(Date.now() - PROVIDER_ATTEMPT_TTL_MS))).toBe(true);
@@ -68,6 +72,14 @@ describe("hold leases", () => {
     const reverification = HOLD_REGISTRY.find((row) => row.name === "Solicitation reverification");
     expect(reverification?.ttl).toContain("15 min");
     expect(reverification?.replay).toBe("never");
+    // The two leases that used to be unbounded. An unbounded lease held one
+    // record forever after a single interrupted call.
+    const receipt = HOLD_REGISTRY.find((row) => row.name === "AI work receipt");
+    expect(receipt?.ttl).toContain("25 min");
+    expect(receipt?.currentExpiry).not.toContain("none");
+    const scheduled = HOLD_REGISTRY.find((row) => row.name === "Scheduled email claim");
+    expect(scheduled?.ttl).toContain("15 min");
+    expect(scheduled?.releasePath).toContain("Sent");
   });
 
   it("sends one stall alert per stall and skips outreach while it is paused", () => {
@@ -243,12 +255,16 @@ describe("a crash after the claim and a lost settlement write", () => {
       `insert into communications (request_key, delivery_state, meta, created_at, provider_attempted_at) values
          ($1, 'queued', '{"kind":"manual"}'::jsonb, now() - interval '20 minutes', null),
          ($2, 'attempting', '{"kind":"manual"}'::jsonb, now() - interval '20 minutes', now() - interval '20 minutes'),
-         ($3, 'queued', '{"kind":"outreach"}'::jsonb, now() - interval '90 days', null)`,
-      [randomUUID(), randomUUID(), randomUUID()]
+         ($3, 'queued', '{"kind":"outreach"}'::jsonb, now() - interval '90 days', null),
+         ($4, 'queued', '{"kind":"outreach"}'::jsonb, now() - interval '1 minute', null),
+         ($5, 'attempting', '{"kind":"outreach"}'::jsonb, now() - interval '40 minutes', now() - interval '40 minutes')`,
+      [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()]
     );
     await state.db.query(
-      `insert into ai_work_receipts (org_id, work_key, state, started_at)
-       values ($1, 'scoring', 'pending', now() - interval '20 minutes')`,
+      `insert into ai_work_receipts (org_id, work_key, state, started_at) values
+         ($1, 'scoring-live', 'pending', now() - interval '20 minutes'),
+         ($1, 'scoring-dead', 'pending', now() - interval '26 minutes'),
+         ($1, 'scoring-done', 'complete', now() - interval '26 minutes')`,
       [randomUUID()]
     );
   }, 30_000);
@@ -301,22 +317,51 @@ describe("a crash after the claim and a lost settlement write", () => {
     );
     expect(previews.rows.map((row) => row.state)).toEqual(["held", "running"]);
     const mail = await state.db!.query(
-      "select delivery_state, coalesce(meta->>'kind', '') as kind from communications"
+      "select delivery_state, coalesce(meta->>'kind', '') as kind, delivery_detail from communications"
     );
     expect(mail.rows.map((row) => `${row.kind}:${row.delivery_state}`).sort()).toEqual([
       "manual:held",
       "manual:unknown",
+      "outreach:attempting",
+      "outreach:held",
       "outreach:queued",
     ]);
-    expect(
-      (await state.db!.query("select state from ai_work_receipts")).rows
-    ).toEqual([{ state: "pending" }]);
+    expect(String(mail.rows.find((row) => row.kind === "outreach" && row.delivery_state === "held")?.delivery_detail))
+      .toContain("never reached the mailbox");
+    expect(result.releasedQueuedMail).toBe(1);
+    // The attempting outreach row may have reached the mailbox; the sweep
+    // itself leaves it for the Sent-folder reconciliation and counts it.
+    expect(result.unresolvedScheduledMail).toBe(1);
+    const receipts = await state.db!.query<{ work_key: string; state: string }>(
+      "select work_key, state from ai_work_receipts order by work_key"
+    );
+    expect(receipts.rows).toEqual([
+      { work_key: "scoring-dead", state: "retryable" },
+      { work_key: "scoring-done", state: "complete" },
+      { work_key: "scoring-live", state: "pending" },
+    ]);
+    expect(result.releasedReceipts).toBe(1);
+    expect(result.pendingReceiptsLeft).toBe(1);
   });
 
-  it("does not teach the sweep to replay a receipt or a scheduled send", () => {
+  it("does nothing more on a second pass", async () => {
+    const result = await reclaimStaleProviderAttempts();
+    expect(result.releasedReceipts).toBe(0);
+    expect(result.releasedQueuedMail).toBe(0);
+    expect(result.pendingReceiptsLeft).toBe(1);
+  });
+
+  it("does not teach the sweep to call a provider or send mail itself", () => {
     const src = readFileSync("lib/domain/hold-sweep.ts", "utf8");
-    expect(src).not.toContain("state = 'retryable'");
-    expect(src).not.toContain("state='retryable'");
+    expect(src).not.toMatch(/from "\.\.\/ai\//);
+    expect(src).not.toMatch(/from "\.\.\/integrations\//);
+    expect(src).not.toContain("complete(");
+    expect(src).not.toContain("send(");
+    // A receipt past its lease is handed back, never replayed here.
+    expect(src).toContain("set state = 'retryable'");
+    expect(src).toContain("AI_RECEIPT_TTL_MS");
+    // A queued claim is released only when the mailbox was never asked.
+    expect(src).toContain("provider_attempted_at is null");
     expect(src).toContain("coalesce(meta->>'kind', '') = 'manual'");
     expect(src).toContain("coalesce(meta->>'kind', '') <> 'manual'");
     const ai = readFileSync("lib/ai/claude.ts", "utf8");
@@ -338,6 +383,10 @@ describe("a crash after the claim and a lost settlement write", () => {
     const cycle = readFileSync("lib/agents/hold-sweep.ts", "utf8");
     expect(cycle).not.toContain("band_decision");
     expect(cycle).not.toContain("enqueue(");
+    expect(cycle).toContain("reconcileUncertainScheduledMail");
+    const reconcile = readFileSync("lib/scheduled-mail-reconcile.ts", "utf8");
+    expect(reconcile).not.toContain(".send(");
+    expect(reconcile).toContain("findSentMessage");
     expect(cycle).not.toContain("pipeline_band_stall");
     expect(cycle).not.toContain("pipeline_rfq_stall");
     const reverify = readFileSync("lib/agents/reverify.ts", "utf8");

@@ -31,10 +31,14 @@ function run(over: Partial<RunFact> = {}): RunFact {
 const BEATING = { paused: false, heartbeatAt: RECENT, phase: "ready", now: NOW };
 
 describe("classifyFailure", () => {
-  it("keeps unresolved paid completions distinct and prohibits paid replay", () => {
+  it("reads a receipt lease hold, old wording and new, as a short wait rather than an outage", () => {
     const cause = classifyFailure("AI work has an unresolved completion. Reconcile its saved output before retrying; no paid replay is allowed.");
     expect(cause).toBe("completion_reconciliation");
-    expect(causeSpec(cause).repair).toContain("Do not replay the paid request");
+    expect(classifyFailure("AI work for this record is waiting on an earlier attempt that has not settled. It was not replayed.")).toBe("completion_reconciliation");
+    expect(classifyFailure("AI failover is held: an earlier work receipt is still inside its lease.")).toBe("completion_reconciliation");
+    expect(causeSpec(cause).blocking).toBe(false);
+    expect(causeSpec(cause).repair).toContain("runs the work again");
+    expect(causeSpec(cause).repair).not.toMatch(/reconcile the saved output/i);
   });
   it("does not turn a platform sender failure into an inbox outage", () => {
     const cause = classifyFailure("The platform Gmail connection or verified sender identity is not ready, so no recaps were sent.");
