@@ -13,7 +13,8 @@ import { logAgent } from "./logger";
 import { resolveOutreachSender } from "./domain/sender-identity";
 import { isSuppressed } from "./domain/email-suppression";
 import { marketingMessage } from "./domain/marketing-opt-out";
-import { escapeHtml } from "./domain/email-shell";
+import { plainToHtml } from "./domain/template-render";
+import { wrapLetter } from "./domain/outreach-letter";
 
 /**
  * The From / Reply-To pair for this organization, or nothing.
@@ -184,7 +185,7 @@ export async function sendApprovedOutreach(
 
   const trackingId = randomUUID();
   const plain = row.body ?? "";
-  const html = escapeHtml(plain).replace(/\n/g, "<br>");
+  const html = plainToHtml(plain);
   // Named, not inferred: this decides whose mailbox the outreach leaves from,
   // and which of that mailbox's verified addresses it appears to come from.
   let message: ReturnType<typeof marketingMessage>;
@@ -204,6 +205,7 @@ export async function sendApprovedOutreach(
       to: row.contact_email,
       subject: row.subject ?? "Hello",
       ...message,
+      html: wrapLetter(message.html),
       trackingId,
       orgId,
       ...sender.headers,
@@ -367,7 +369,7 @@ export async function sendFollowUps(
     let message: ReturnType<typeof marketingMessage>;
     try {
       if (await isSuppressed(orgId, r.contact_email!)) continue;
-      message = marketingMessage({ orgId, email: r.contact_email!, html: escapeHtml(body).replace(/\n/g, "<br>"), text: body });
+      message = marketingMessage({ orgId, email: r.contact_email!, html: plainToHtml(body), text: body });
     } catch {
       errors++;
       await recordSendFailure({ outreachId: r.id, orgId, domain: r.domain, reason: "Recipient preferences or unsubscribe settings could not be verified. No follow-up was sent. Check the database, AUTH_SECRET and HTTPS APP_URL.", action: "outreach-followup" });
@@ -379,6 +381,7 @@ export async function sendFollowUps(
         to: r.contact_email!,
         subject: `Re: ${r.subject ?? "Following up"}`,
         ...message,
+        html: wrapLetter(message.html),
         trackingId: r.tracking_id ?? undefined,
         orgId,
         ...sender.headers,

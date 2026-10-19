@@ -320,7 +320,7 @@ export async function notifyTrialStarted(input: {
       })
     : "when your trial ends";
   const per = input.interval === "year" ? "per year" : "per month";
-  await send(input, "trial-started", "Your Brost Co trial has started", [
+  await send(input, "trial-started", "Your BrostCo trial has started", [
     `Your ${input.planName} trial is live. Nothing is charged today.`,
     "",
     `On ${when} your card is charged ${money(input.amountCents)} ${per}, and then on the same date each ${input.interval === "year" ? "year" : "month"}.`,
@@ -344,7 +344,7 @@ export async function notifyTrialEnding(input: {
       })
     : "shortly";
   const per = input.interval === "year" ? "per year" : "per month";
-  await send(input, "trial-ending", "Your Brost Co trial ends soon", [
+  await send(input, "trial-ending", "Your BrostCo trial ends soon", [
     `Your trial ends on ${when}. Your card will be charged ${money(input.amountCents)} ${per} to continue.`,
     "",
     `Nothing to do if you want to carry on. To change plan or cancel: ${billingUrl()}`,
@@ -366,7 +366,7 @@ export async function notifyPaymentSucceeded(input: {
         year: "numeric",
       })
     : null;
-  await send(input, "payment-succeeded", "Your Brost Co payment went through", [
+  await send(input, "payment-succeeded", "Your BrostCo payment went through", [
     `We received ${money(input.amountCents)}. Thank you.`,
     ...(next ? ["", `Your next renewal is ${next}.`] : []),
     ...(input.invoiceUrl ? ["", `Your invoice: ${input.invoiceUrl}`] : []),
@@ -391,7 +391,7 @@ export async function notifyPaymentFailed(input: {
         day: "numeric",
       })
     : null;
-  await send(input, "payment-failed", "Your Brost Co payment did not go through", [
+  await send(input, "payment-failed", "Your BrostCo payment did not go through", [
     `We could not charge ${money(input.amountCents)}.${input.reason ? ` ${input.reason}` : ""}`,
     "",
     retry
@@ -417,7 +417,7 @@ export async function notifyCanceled(input: {
         year: "numeric",
       })
     : null;
-  await send(input, "subscription-canceled", "Your Brost Co subscription is canceled", [
+  await send(input, "subscription-canceled", "Your BrostCo subscription is canceled", [
     input.immediate
       ? "Your subscription has been canceled and access has ended."
       : when
@@ -444,7 +444,7 @@ export async function notifyReactivated(input: {
   await send(
     input,
     "subscription-reactivated",
-    "Your Brost Co subscription is active again",
+    "Your BrostCo subscription is active again",
     [
       "Your subscription has been restarted, so nothing is interrupted.",
       ...(next ? ["", `Your next renewal is ${next}.`] : []),

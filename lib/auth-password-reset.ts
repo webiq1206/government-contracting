@@ -6,6 +6,7 @@ import { query, transaction } from "./db";
 import { hashPassword } from "./auth";
 import { config } from "./config";
 import { systemMail } from "./integrations/system-mail";
+import { passwordResetEmail } from "./domain/report-emails";
 import { trackEvent } from "./analytics";
 
 function hashToken(token: string): string {
@@ -94,18 +95,7 @@ async function sendResetEmail(
     return "unavailable";
   }
   const result = await systemMail
-    .send({
-      to,
-      subject: "Reset your Brost Co password",
-      text: [
-        name ? `Hi ${name},` : "Hi,",
-        "",
-        "Reset your Brost Co password using this link (expires in 1 hour):",
-        resetUrl,
-        "",
-        "If you did not request this, you can ignore this email.",
-      ].join("\n"),
-    })
+    .send({ to, ...passwordResetEmail(config.appUrl, { name, resetUrl }) })
     .catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
 
   // Logged, never returned to the caller. Anything learned here is known only

@@ -7,6 +7,8 @@ import type { PoolClient, QueryResultRow } from "pg";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { scrubGovtContacts } from "../integrations/scrub-contacts";
+import { plainToHtml } from "./template-render";
+import { signatureLines } from "./outreach-letter";
 import {
   sendOutreachEmail,
   type OutreachSendResult,
@@ -42,6 +44,7 @@ export interface DeclineThankYouInput {
   /** Who signs, from THIS organization's profile. Never a platform default. */
   senderName?: string | null;
   senderCompany?: string | null;
+  senderPhone?: string | null;
 }
 
 export interface DeclineThankYouEmail {
@@ -75,10 +78,10 @@ export function buildDeclineThankYouEmail(
   // Sign as the organization that actually sent the outreach. The platform's
   // own name in another customer's email is worse than no signature at all,
   // so an empty profile just ends at "Best regards".
-  const signature = [
-    (input.senderName ?? "").trim(),
-    (input.senderCompany ?? "").trim(),
-  ].filter(Boolean);
+  const signature = signatureLines(
+    { legal_name: input.senderCompany ?? null, phone: input.senderPhone ?? null },
+    input.senderName ?? null,
+  );
   const text = [
     `Hi ${greeting},`,
     "",
@@ -90,22 +93,9 @@ export function buildDeclineThankYouEmail(
     ...signature,
   ].join("\n");
 
-  const html = text
-    .split("\n")
-    .map((line) =>
-      line ? `<p style="margin:0 0 12px">${escapeHtml(line)}</p>` : "<br/>",
-    )
-    .join("");
+  const html = plainToHtml(text);
 
   return { subject, text, html };
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export interface CloseOutDeclinedSubInput {
@@ -338,6 +328,7 @@ export async function closeOutDeclinedSub(
           trade,
           senderName: profile ? outreachDisplayName(profile) : null,
           senderCompany: profile?.legal_name ?? null,
+          senderPhone: profile?.phone ?? null,
         });
         const subject = input.originalSubject?.trim()
           ? `Re: ${input.originalSubject.trim().replace(/^re:\s*/i, "")}`

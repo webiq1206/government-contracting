@@ -5,6 +5,7 @@
 import { isPlaceholderScope } from "./solicitation-completeness";
 import { documentItems } from "./outreach-sections";
 import type { BriefSection } from "./outreach-brief";
+import { LETTER_RULE, LETTER_SOFT } from "./outreach-letter";
 
 const INTERNAL_FAILURE_RE =
   /\b(could not|couldn't|unable to|failed to|fail to|too thin|HTTP \d{3}|not extractable|no extractable text|too large to parse|could not fetch|could not collect|failed to collect)\b/i;
@@ -104,12 +105,12 @@ export function buildOutreachDetailsBlock(
   const htmlBits: string[] = [];
   if (facts.length) {
     htmlBits.push(
-      `<p style="color:#242424;margin:0 0 8px">${facts.map(escapeHtml).join("<br/>")}</p>`
+      `<p style="margin:0 0 8px">${facts.map(escapeHtml).join("<br/>")}</p>`
     );
   }
   if (docLines.length) {
     htmlBits.push(
-      `<p style="color:#242424;margin:8px 0 4px"><strong>Documents</strong></p>` +
+      `<p style="margin:8px 0 4px"><strong>Documents</strong></p>` +
         `<ul style="margin:0 0 8px;padding-left:20px">${docLines
           .map(
             (l) =>
@@ -127,7 +128,7 @@ export function buildOutreachDetailsBlock(
   return {
     plain: `\n\n${plainParts.join("\n\n")}`,
     html:
-      `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px">` +
+      `<div style="border-top:1px solid ${LETTER_RULE};margin-top:18px;padding-top:12px">` +
       htmlBits.join("") +
       `</div>`,
   };
@@ -160,17 +161,23 @@ export function renderOutreachBrief(sections: BriefSection[]): OutreachDetailsBl
   const html = usable
     .map(
       (s) =>
-        `<p style="color:#242424;margin:14px 0 4px;font-weight:600">${escapeHtml(s.heading)}</p>` +
-        `<ul style="margin:0;padding-left:20px;color:#242424">${s.items
-          .map((i) => `<li style="margin:2px 0">${linkify(escapeHtml(i))}</li>`)
+        `<p style="margin:16px 0 6px;font-size:15px;font-weight:700">${escapeHtml(s.heading)}</p>` +
+        `<ul style="margin:0;padding-left:22px">${s.items
+          .map((i) => `<li style="margin:0 0 4px">${linkify(escapeHtml(i))}</li>`)
           .join("")}</ul>`
     )
     .join("");
 
+  /*
+   * The brief sits under the signature, like an enclosure under a letter, so
+   * it is set off with a rule and its own label. Neutral colours: this is the
+   * customer's email, not a BrostCo page.
+   */
   return {
-    plain: `\n\n${plain}`,
+    plain: `\n\n${"-".repeat(40)}\nPROJECT DETAILS\n\n${plain}`,
     html:
-      `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:4px">` +
+      `<div style="border-top:1px solid ${LETTER_RULE};margin-top:22px;padding-top:6px">` +
+      `<p style="margin:10px 0 0;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${LETTER_SOFT}">Project details</p>` +
       html +
       `</div>`,
   };

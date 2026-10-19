@@ -41,7 +41,8 @@
     "edge-cases": "tsx scripts/edge-case-sweep.ts",
     "repair:email-history": "tsx scripts/repair-email-history.ts",
     "purge-test-orgs": "tsx scripts/purge-test-orgs.ts",
-    "indexnow": "node --import tsx scripts/seo/indexnow-submit.ts"
+    "indexnow": "node --import tsx scripts/seo/indexnow-submit.ts",
+    "email:gallery": "tsx scripts/email-gallery.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
