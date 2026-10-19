@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ query: vi.fn(), enqueue: vi.fn(), log: vi.fn(), spending: vi.fn(), providerHold: vi.fn() }));
 vi.mock("../lib/ai/provider-facts", () => ({ providerEnqueueHold: mocks.providerHold }));
@@ -43,6 +44,13 @@ describe("recovery sweep admission outcomes", () => {
     expect(result.data).toMatchObject({ deferred: 0, scoringQueued: 1, analysisQueued: 0, queueFailures: 1 });
     expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("database unavailable") }));
   });
+});
+
+it("does not count a lease wait toward the three failures a day that pause re-queueing", () => {
+  const src = readFileSync("lib/agents/maintenance.ts", "utf8");
+  const caps = src.match(/attempts\.status='error' and attempts\.started_at > now\(\)-interval '24 hours'[\s\S]{0,200}?< 3/g) ?? [];
+  expect(caps).toHaveLength(2);
+  for (const cap of caps) expect(cap).toContain("coalesce(attempts.summary->>'transientHold', '') <> 'true'");
 });
 
 it("does not recreate analysis work on repeated provider-refused sweeps, while free scoring remains available", async () => {

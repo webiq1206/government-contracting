@@ -62,6 +62,16 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("treats a lease wait an agent reports in words the same way, and persists it on the run", async () => {
+    mocks.handler.mockResolvedValueOnce({ ok: false, retryable: false, transientHold: true, summary: "A prior email to this firm is still inside its send lease." });
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, transientHold: true, humanActionRequired: false });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(mocks.logAgent).toHaveBeenCalledWith(expect.objectContaining({ action: "completion-held", level: "warn", status: "error" }));
+    const write = mocks.query.mock.calls.find((call) => String(call[0]).includes("update job_runs set status=$2"));
+    expect(JSON.parse(write![1][3])).toMatchObject({ transientHold: true, humanActionRequired: false });
+  });
+
   it("treats a work receipt inside its lease as a short wait: no queue retry, nobody paged", async () => {
     const { receiptHoldError } = await import("@/lib/ai/work-receipts");
     mocks.handler.mockRejectedValueOnce(receiptHoldError());

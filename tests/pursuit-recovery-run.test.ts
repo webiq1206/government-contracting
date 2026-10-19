@@ -254,6 +254,17 @@ describe("recovery sweep for decisions and pursue work", () => {
 });
 
 describe("continuation sweep ownership", () => {
+  it("never counts a lease wait as an attempt, so a restart mid-call cannot park a record", () => {
+    const src = readFileSync("lib/domain/pursuit-recovery-run.ts", "utf8");
+    const exclusion = "l.status = 'error' and coalesce(l.action, '') <> 'completion-held'";
+    const counts = src.match(/count\(\*\) filter \(where l\.status = 'error'[^\n]*/g) ?? [];
+    expect(counts.length).toBeGreaterThanOrEqual(4);
+    for (const count of counts) expect(count).toContain(exclusion);
+    const lastAttempts = src.match(/max\(l\.created_at\) filter \(where l\.status = 'error'[^\n]*/g) ?? [];
+    expect(lastAttempts.length).toBeGreaterThanOrEqual(3);
+    for (const last of lastAttempts) expect(last).toContain(exclusion);
+  });
+
   it("is not hung off scoring recovery or the provider probe", () => {
     expect(readFileSync("lib/agents/maintenance.ts", "utf8")).not.toContain("recoverOpenPursuitGaps");
     expect(readFileSync("lib/agents/provider-recovery-probe.ts", "utf8")).not.toContain("recoverOpenPursuitGaps");
