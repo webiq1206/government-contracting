@@ -276,9 +276,13 @@ export const outreach: AgentDefinition = {
           and coalesce(meta->>'kind','') not in ('decline_thank_you','final_nudge','clarification','compliance-chase')
          order by created_at limit 1`,[opportunityId,subcontractorId,trade,orgId]);
     if (priorSend) {
+      // An earlier send whose outcome was never written. The hold sweep
+      // settles it against the mailbox's Sent folder once its 15 minute lease
+      // ends; until then nothing may be sent to this firm about this bid. A
+      // short wait, not a failure: no cap counts it and nobody is paged.
       if (["queued","attempting","unknown"].includes(priorSend.delivery_state))
-        return {ok:false,retryable:false,humanActionRequired:true,
-          summary:"A prior email has uncertain delivery. Review its communication and Gmail Sent before further outreach."};
+        return {ok:false,retryable:false,transientHold:true,
+          summary:"A prior email to this firm is still inside its send lease because its outcome was not recorded. Nothing was sent. The hold sweep settles it against Gmail Sent and the next outreach run continues."};
       const { pursuitStatus } = await import("../pursuit-guard");
       const pursuit = await pursuitStatus(opportunityId);
       if (!pursuit.mayAct) return {ok:false,retryable:pursuit.retryable,

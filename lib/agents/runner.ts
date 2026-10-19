@@ -696,12 +696,16 @@ async function runAdmittedAgent(
     const result: AgentResult =
       !returned.ok && !returned.spendingHeld && isSpendingHold(returned.summary)
         ? { ...returned, spendingHeld: true, humanActionRequired: true }
-        : returned;
+        : !returned.ok && returned.transientHold
+          // A lease wait reported in words is the same short wait as one
+          // thrown from the receipt: nobody is paged and no cap counts it.
+          ? { ...returned, humanActionRequired: false }
+          : returned;
 
     await inOrg(() =>
       logAgent({
         agent: def.name,
-        action: result.spendingHeld ? "spending-held" : "run",
+        action: result.spendingHeld ? "spending-held" : result.transientHold ? "completion-held" : "run",
         level: result.ok && !result.humanActionRequired ? "success" : "warn",
         status: result.ok ? (result.humanActionRequired ? "skipped" : "ok") : "error",
         message: result.summary,
@@ -811,6 +815,7 @@ async function runAdmittedAgent(
     const transientHold = failure?.transientHold === true;
     const result: AgentResult = { ok: false, summary: message,
       ...(typeof failure?.retryable === "boolean" ? { retryable: failure.retryable, provider: failure.provider, providerStatus: failure.status, humanActionRequired: !failure.retryable && !transientHold } : {}),
+      ...(transientHold ? { transientHold: true } : {}),
       ...(spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) };
     // Still an error row, so Automation Health keeps showing the hold as the
     // blocking incident it is, with its repair link. The action is what lets
@@ -856,6 +861,9 @@ async function finishJobRun(
       [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data,
         retryable: result.retryable, provider: result.provider, providerStatus: result.providerStatus,
         humanActionRequired: result.humanActionRequired,
+        // Persisted so the recovery sweeps can tell a lease wait from a
+        // failed attempt when they count a record's errors.
+        ...(result.transientHold ? { transientHold: true } : {}),
         ...(result.spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) })]
     );
     return null;

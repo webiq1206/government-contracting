@@ -1850,7 +1850,9 @@ export const scoringRecoverySweep: AgentDefinition = {
               and recent.started_at > now()-interval '1 hour')
             and (select count(*) from job_runs attempts where attempts.org_id=$1
               and attempts.opportunity_id=opportunities.id and attempts.agent='scoring-engine'
-              and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours'
+              -- A lease wait (an earlier attempt still inside its receipt lease) is not a failed attempt.
+              and coalesce(attempts.summary->>'transientHold', '') <> 'true') < 3
             and created_at < now() - interval '20 minutes'
           order by created_at asc
           limit 200`,
@@ -1951,7 +1953,9 @@ export const scoringRecoverySweep: AgentDefinition = {
               and recent.started_at > now()-interval '1 hour')
             and (select count(*) from job_runs attempts where attempts.org_id=$1
               and attempts.opportunity_id=opportunities.id and attempts.agent='solicitation-analyst'
-              and attempts.status='error' and attempts.started_at > now()-interval '24 hours') < 3
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours'
+              -- A lease wait (an earlier attempt still inside its receipt lease) is not a failed attempt.
+              and coalesce(attempts.summary->>'transientHold', '') <> 'true') < 3
             and not exists (
               select 1 from unnest(coalesce(risk_flags,'{}')) as flag
               where flag like 'pre_analysis_%'
