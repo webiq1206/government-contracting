@@ -101,6 +101,35 @@ than left half-started, and runs that were in flight when the previous instance
 stopped are closed out on the next boot so the Automation Log stops showing work
 that is not happening.
 
+## Why work used to stop for good after one interrupted AI call
+
+Every paid AI call is wrapped in a work receipt (`ai_work_receipts`), and every
+scheduled email in a send claim (`communications.delivery_state` queued,
+attempting, unknown). Both exist so a lost acknowledgement cannot be billed or
+sent twice. Until October 2026 neither had an expiry: a worker restart in the
+middle of a solicitation analysis (every publish restarts the worker) left the
+receipt pending forever, every later run of that record was refused as "an
+unresolved completion", the record never reached sub research or outreach, and
+the daily recap reported the analyst failing again each day.
+
+Both now have a lease, listed with every other latch in
+`lib/domain/hold-registry.ts`:
+
+- A work receipt is live for 25 minutes (two 10 minute provider aborts plus a
+  margin). Past that, admission and the 10 minute hold sweep mark it
+  retryable and the scheduled recovery sweep runs the work again, once. A run
+  refused inside the lease is logged as `completion-held` (a warning, not a
+  failure needing a person).
+- A queued send claim that never reached the mailbox is released to `held`
+  after 15 minutes, which the next outreach run may send. An attempting or
+  unknown claim is settled against the connected mailbox's Sent folder: found
+  becomes sent with its message id, not found becomes held. A mailbox that
+  cannot be read leaves the row alone and raises the existing alert.
+
+If the recap shows the same record held for more than an hour, the worker is
+being interrupted mid-call repeatedly; check the deployment's restarts rather
+than the record.
+
 ## User preferences
 
 - No em dashes in user-visible strings.

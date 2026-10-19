@@ -803,9 +803,14 @@ async function runAdmittedAgent(
   } catch (err) {
     const message = failureMessage(err);
     const spendingHeld = isSpendingHold(err);
-    const failure = err as { retryable?: boolean; provider?: AgentResult["provider"]; status?: number | null };
+    const failure = err as { retryable?: boolean; provider?: AgentResult["provider"]; status?: number | null; transientHold?: boolean };
+    // A work receipt still inside its lease refuses this run so the queue
+    // does not pile retries onto a call that may be in flight, but it is a
+    // short wait, not a person's problem: the scheduled recovery sweep runs
+    // the work again once the lease ends.
+    const transientHold = failure?.transientHold === true;
     const result: AgentResult = { ok: false, summary: message,
-      ...(typeof failure?.retryable === "boolean" ? { retryable: failure.retryable, provider: failure.provider, providerStatus: failure.status, humanActionRequired: !failure.retryable } : {}),
+      ...(typeof failure?.retryable === "boolean" ? { retryable: failure.retryable, provider: failure.provider, providerStatus: failure.status, humanActionRequired: !failure.retryable && !transientHold } : {}),
       ...(spendingHeld ? { spendingHeld: true, humanActionRequired: true } : {}) };
     // Still an error row, so Automation Health keeps showing the hold as the
     // blocking incident it is, with its repair link. The action is what lets
@@ -814,8 +819,8 @@ async function runAdmittedAgent(
     await inOrg(() =>
       logAgent({
         agent: def.name,
-        action: spendingHeld ? "spending-held" : "run",
-        level: spendingHeld ? "warn" : "error",
+        action: spendingHeld ? "spending-held" : transientHold ? "completion-held" : "run",
+        level: spendingHeld || transientHold ? "warn" : "error",
         status: "error",
         message,
         ...recordRefs(payload),

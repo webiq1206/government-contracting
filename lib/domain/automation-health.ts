@@ -93,10 +93,10 @@ export interface IncidentSpec {
  */
 const CAUSES: Record<IncidentCause, IncidentSpec> = {
   completion_reconciliation: {
-    title: "Saved AI work needs reconciliation",
-    effect: "The affected work is held because a previous completion is unresolved. This guard prevents another paid request.",
-    repair: "Review and reconcile the saved output before retrying. Do not replay the paid request or bypass the spending guard.",
-    blocking: true,
+    title: "AI work waited on an earlier attempt's lease",
+    effect: "The affected record was refused for this run because an earlier attempt had not settled. Nothing was billed twice. The lease ends about 25 minutes after that attempt started.",
+    repair: "Nothing to do. The scheduled recovery sweep runs the work again once the lease ends. If the same record is still held after an hour, the worker is being interrupted mid-call; check the deployment's restarts.",
+    blocking: false,
   },
   sender_not_ready: {
     title: "The platform email sender is not ready",
@@ -242,7 +242,7 @@ export function causeSpec(cause: IncidentCause, errors: readonly string[] = []):
 export function classifyFailure(error: string | null | undefined): IncidentCause {
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
-  if (/ai work has an unresolved completion|reconcile its saved output before retrying|provider request is in progress or has an unresolved outcome/.test(text)) return "completion_reconciliation";
+  if (/ai work has an unresolved completion|reconcile its saved output before retrying|provider request is in progress or has an unresolved outcome|waiting on an earlier attempt that has not settled|earlier work receipt is still inside its lease/.test(text)) return "completion_reconciliation";
   if (/no verified platform sender|platform gmail connection or verified sender identity is not ready/.test(text)) return "sender_not_ready";
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
   // Credit and quota are named before the generic "provider refusal" phrase.

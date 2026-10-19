@@ -379,7 +379,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
          from agent_logs
         where org_id = $1 and created_at >= $2 and created_at < $3
           and status = 'error'
-          and coalesce(action, '') <> 'spending-held'
+          and coalesce(action, '') not in ('spending-held', 'completion-held')
         group by agent
         order by n desc limit 10`,
       win

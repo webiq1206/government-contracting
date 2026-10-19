@@ -1,19 +1,26 @@
 /**
  * Release holds whose calls can no longer be on the wire.
  *
- * Nothing in this file calls a provider, sends mail, or marks a work receipt
- * retryable. A pending receipt still refuses a replay of that same work.
- * The price reservation on an abandoned usage row is left in place.
+ * Nothing in this file calls a provider or sends mail. A work receipt or a
+ * queued mail claim that outlived its lease is handed back to its normal
+ * schedule, which runs the work again under a fresh claim; an attempt that
+ * may have reached the mailbox is left for the Sent-folder reconciliation in
+ * the agent layer. The price reservation on an abandoned usage row is left
+ * in place.
  */
 import { query } from "../db";
 import { settleAbandonedUsage } from "../api-usage/ledger";
 import {
+  AI_RECEIPT_TTL_MS,
   JOB_RUN_CEILING_MS,
   MAIL_CLAIM_TTL_MS,
   PROVIDER_ATTEMPT_TTL_MS,
   PROVIDER_JOB_AGENTS,
   USAGE_ABANDON_MINUTES,
 } from "./hold-registry";
+
+export const QUEUED_MAIL_RELEASE_DETAIL =
+  "The scheduled send never reached the mailbox before its lease expired. Nothing was sent; the next outreach run may send it.";
 
 const ATTEMPT_FAILURE =
   "A provider attempt stayed unresolved past the request timeout and its safety margin. " +
@@ -41,9 +48,18 @@ export interface HoldSweepResult {
   heldPreviews: number;
   settledManualQueued: number;
   settledManualUncertain: number;
+  /** Receipts past their lease, handed back to the schedule. */
+  releasedReceipts: number;
+  /** Receipts still inside their lease: a call may be in flight. */
   pendingReceiptsLeft: number;
+  /** Scheduled sends that never reached the mailbox, now held for a retry. */
+  releasedQueuedMail: number;
+  /** Attempting or unknown scheduled sends past their lease, awaiting Sent-folder reconciliation. */
   unresolvedScheduledMail: number;
   expiredReverifications: number;
+  /** Set by the agent layer after it reads the mailbox. */
+  confirmedSentMail?: number;
+  releasedUncertainMail?: number;
 }
 
 export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
@@ -200,23 +216,41 @@ export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
   );
   result.settledManualUncertain = attempting.length;
 
-  const receipts = await query<{ n: number }>(
-    `select count(*)::int as n from ai_work_receipts
+  // Admission expires these too, one organization at a time, when work for
+  // that organization next arrives. The sweep does it for every organization
+  // so a tenant with nothing else queued is not left with a stale lease.
+  const receipts = await query<{ id: string }>(
+    `update ai_work_receipts
+        set state = 'retryable'
       where state = 'pending'
-        and started_at <= clock_timestamp() - ($1::bigint * interval '1 millisecond')`,
-    [PROVIDER_ATTEMPT_TTL_MS]
+        and started_at <= clock_timestamp() - ($1::bigint * interval '1 millisecond')
+      returning work_key as id`,
+    [AI_RECEIPT_TTL_MS]
   );
-  result.pendingReceiptsLeft = Number(receipts[0]?.n ?? 0);
+  result.releasedReceipts = receipts.length;
+  const live = await query<{ n: number }>(
+    `select count(*)::int as n from ai_work_receipts where state = 'pending'`
+  );
+  result.pendingReceiptsLeft = Number(live[0]?.n ?? 0);
 
-  const mail = await query<{ n: number }>(
-    `select count(*)::int as n from communications
-      where request_key is not null
-        and delivery_state in ('queued', 'attempting', 'unknown')
+  // A queued scheduled send has no provider_attempted_at: the mailbox was
+  // never asked. Nothing can have left, so the claim goes back to held, the
+  // one state the normal send path may claim again.
+  const queuedMail = await query<{ id: string }>(
+    `update communications
+        set delivery_state = 'held',
+            delivery_detail = $2,
+            delivery_updated_at = clock_timestamp()
+      where delivery_state = 'queued'
+        and request_key is not null
+        and provider_attempted_at is null
         and coalesce(meta->>'kind', '') <> 'manual'
-        and created_at <= clock_timestamp() - ($1::bigint * interval '1 millisecond')`,
-    [MAIL_CLAIM_TTL_MS]
+        and created_at <= clock_timestamp() - ($1::bigint * interval '1 millisecond')
+      returning id`,
+    [MAIL_CLAIM_TTL_MS, QUEUED_MAIL_RELEASE_DETAIL]
   );
-  result.unresolvedScheduledMail = Number(mail[0]?.n ?? 0);
+  result.releasedQueuedMail = queuedMail.length;
+  result.unresolvedScheduledMail = await countUnresolvedScheduledMail();
 
   if (result.reclaimedAttempts.length > 0) {
     console.warn(
@@ -224,6 +258,24 @@ export async function reclaimStaleProviderAttempts(): Promise<HoldSweepResult> {
     );
   }
   return result;
+}
+
+/**
+ * Scheduled sends whose outcome is still unknown after their lease: the
+ * mailbox may or may not have accepted them. These are what the Sent-folder
+ * reconciliation works through, and what the operator alert counts when the
+ * mailbox cannot be read.
+ */
+export async function countUnresolvedScheduledMail(): Promise<number> {
+  const mail = await query<{ n: number }>(
+    `select count(*)::int as n from communications
+      where request_key is not null
+        and delivery_state in ('queued', 'attempting', 'unknown')
+        and coalesce(meta->>'kind', '') <> 'manual'
+        and coalesce(provider_attempted_at, created_at) <= clock_timestamp() - ($1::bigint * interval '1 millisecond')`,
+    [MAIL_CLAIM_TTL_MS]
+  );
+  return Number(mail[0]?.n ?? 0);
 }
 
 function emptyResult(): HoldSweepResult {
@@ -236,7 +288,9 @@ function emptyResult(): HoldSweepResult {
     heldPreviews: 0,
     settledManualQueued: 0,
     settledManualUncertain: 0,
+    releasedReceipts: 0,
     pendingReceiptsLeft: 0,
+    releasedQueuedMail: 0,
     unresolvedScheduledMail: 0,
     expiredReverifications: 0,
   };
@@ -244,7 +298,7 @@ function emptyResult(): HoldSweepResult {
 
 export function sweepMail(result: HoldSweepResult): { subject: string; text: string } {
   const lines = [
-    "The hold sweep released work that had outlived its lease. Nothing here was replayed.",
+    "The hold sweep released work that had outlived its lease. Nothing here was replayed by the sweep itself; work handed back to its schedule runs again under a fresh claim.",
   ];
   if (result.reclaimedAttempts.length > 0) {
     const names = result.reclaimedAttempts.map((row) => row.provider).join(", ");
@@ -274,14 +328,34 @@ export function sweepMail(result: HoldSweepResult): { subject: string; text: str
       `Reverification checks marked failed after their lease: ${result.expiredReverifications}. They were not replayed.`
     );
   }
+  if (result.releasedReceipts > 0) {
+    lines.push(
+      `AI work receipts past their 25 minute lease, handed back to the schedule: ${result.releasedReceipts}. The next scheduled run retries that work once.`
+    );
+  }
   if (result.pendingReceiptsLeft > 0) {
     lines.push(
-      `AI work receipts left pending so they cannot be billed twice: ${result.pendingReceiptsLeft}.`
+      `AI work receipts still inside their lease: ${result.pendingReceiptsLeft}. A call may be in flight.`
+    );
+  }
+  if (result.releasedQueuedMail > 0) {
+    lines.push(
+      `Scheduled sends that never reached the mailbox, now held for the next outreach run: ${result.releasedQueuedMail}.`
+    );
+  }
+  if ((result.confirmedSentMail ?? 0) > 0) {
+    lines.push(
+      `Uncertain sends found in the mailbox's Sent folder and recorded as sent: ${result.confirmedSentMail}.`
+    );
+  }
+  if ((result.releasedUncertainMail ?? 0) > 0) {
+    lines.push(
+      `Uncertain sends not found in Sent after their lease, now held for the next outreach run: ${result.releasedUncertainMail}.`
     );
   }
   if (result.unresolvedScheduledMail > 0) {
     lines.push(
-      `Scheduled mail claims left unchanged for operator review: ${result.unresolvedScheduledMail}.`
+      `Scheduled sends still unresolved because the mailbox could not be read: ${result.unresolvedScheduledMail}. They are retried on the next sweep.`
     );
   }
   return { subject: "BrostCo released a stuck hold", text: lines.join("\n") };

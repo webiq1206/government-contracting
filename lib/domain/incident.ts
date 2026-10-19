@@ -181,7 +181,7 @@ export const INELIGIBLE_LABEL: Record<IneligibleReason, string> = {
   manually_resolved: "somebody has already handled it",
   already_requeued: "it was requeued by an earlier recovery",
   unsafe_to_replay: "replaying it could send something twice",
-  completion_unresolved: "saved AI output must be reconciled; paid replay is not allowed",
+  completion_unresolved: "an earlier attempt's lease has not ended; the scheduled sweep retries it on its own",
   different_cause: "it failed for a different reason, so this recovery would not fix it",
 };
 

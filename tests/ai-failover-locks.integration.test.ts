@@ -21,7 +21,7 @@ const live=!!process.env.DATABASE_URL && !!process.env.ALLOW_TESTS_AGAINST_DATAB
   const execute=vi.fn(async()=>{entered();await waiting;return "saved output";});
   const first=run("cron","message-a",execute);await started;
   try {
-   await expect(run("manual","message-a",execute)).rejects.toThrow("unresolved");
+   await expect(run("manual","message-a",execute)).rejects.toThrow("has not settled");
    expect(execute).toHaveBeenCalledOnce();
    expect((await query("select state from ai_work_receipts where org_id=$1",[org]))[0]).toMatchObject({state:"pending"});
   }finally{release();}
@@ -29,16 +29,21 @@ const live=!!process.env.DATABASE_URL && !!process.env.ALLOW_TESTS_AGAINST_DATAB
   expect(await run("cron","message-a",execute,false)).toBe("saved output");
   expect(execute).toHaveBeenCalledOnce();
  });
- it("does not convert a flag-off legacy execution while it is active or after it completes",async()=>{
+ it("waits for a flag-off legacy execution while it is active, and leaves its saved output alone after it completes",async()=>{
   await query("delete from ai_work_receipts where org_id=$1",[org]);
   let entered!:()=>void;let release!:()=>void;
   const started=new Promise<void>(resolve=>{entered=resolve;});const waiting=new Promise<void>(resolve=>{release=resolve;});
   const first=run("legacy","message-b",async()=>{entered();await waiting;return "legacy output";},false);await started;
-  const execute=vi.fn(async()=>"must not execute");
-  try {await expect(run("new","message-b",execute)).rejects.toThrow("earlier work receipts");}finally{release();}
+  const execute=vi.fn(async()=>"new output");
+  try {await expect(run("new","message-b",execute)).rejects.toThrow("earlier work receipt is still inside its lease");}finally{release();}
   await first;
-  await expect(run("new","message-b",execute)).rejects.toThrow("earlier work receipts");
   expect(execute).not.toHaveBeenCalled();
-  expect((await query("select state,result from ai_work_receipts where org_id=$1",[org]))[0]).toMatchObject({state:"complete",result:"legacy output"});
+  // A completed legacy row is a saved answer under a key nothing reads any
+  // more. It does not hold the tenant; the new identity runs its work once.
+  expect(await run("new","message-b",execute)).toBe("new output");
+  expect(execute).toHaveBeenCalledOnce();
+  const rows=await query<{scope_key:string;state:string;result:unknown}>("select scope_key,state,result from ai_work_receipts where org_id=$1 order by scope_key",[org]);
+  expect(rows.find(r=>!r.scope_key.startsWith("v2:"))).toMatchObject({state:"complete",result:"legacy output"});
+  expect(rows.find(r=>r.scope_key.startsWith("v2:"))).toMatchObject({state:"complete",result:"new output"});
  });
 });

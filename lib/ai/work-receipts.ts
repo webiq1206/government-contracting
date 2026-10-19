@@ -3,9 +3,37 @@ import { queryOne, transaction } from "../db";
 import { apiUsageContext } from "../api-usage/context";
 import { resolveTenantOrgId } from "../tenant";
 import { eligibleForFailover } from "./failover-policy";
+import { AI_RECEIPT_TTL_MS } from "../domain/hold-registry";
 import type { AiProvider } from "./routing";
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-/** A later sweep cannot replay unresolved paid work, even with changed input. */
+
+/**
+ * The sentence every hold on unsettled AI work carries. Automation Health
+ * classifies on it, so change it there as well.
+ */
+export const RECEIPT_HOLD_MESSAGE =
+  "AI work for this record is waiting on an earlier attempt that has not settled. " +
+  "It was not replayed. The lease on that attempt ends about 25 minutes after it started, " +
+  "and the next scheduled run retries the work on its own after that.";
+
+/** A hold is a short lease, never a permanent stop: it reports as transient. */
+export function receiptHoldError(cause?: unknown): Error & { retryable: false; transientHold: true } {
+  return Object.assign(new Error(RECEIPT_HOLD_MESSAGE, cause === undefined ? undefined : { cause }),
+    { retryable: false as const, transientHold: true as const });
+}
+
+/**
+ * One billed attempt per logical work item at a time.
+ *
+ * A receipt is pending from just before the provider call until its result
+ * is saved. While it is pending, no sweep, manual run or recovery job may
+ * start the same work again: that is how a lost completion ACK used to get
+ * billed twice. The lease is bounded. A receipt older than AI_RECEIPT_TTL_MS
+ * cannot still be on the wire (each client aborts at AI_CALL_TIMEOUT_MS and a
+ * receipt covers at most a primary and a fallback call), so admission expires
+ * it and takes the work over. Before that expiry existed, one interrupted call
+ * held its record forever and every later run was refused as unresolved.
+ */
 export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promise<T>, rollout?: {
   logicalInput: unknown; enableProviderIndependent: boolean;
 }): Promise<T> {
@@ -17,9 +45,14 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
   let scope = hash([context.workKey, context.relatedId ?? inputHash]);
   let key = hash([scope, inputHash]);
   const owner = randomUUID();
-  const hold = (cause?: unknown) => Object.assign(new Error(
-    "AI work has an unresolved completion. Reconcile its saved output before retrying; no paid replay is allowed.", { cause }), { retryable: false });
+  const hold = (cause?: unknown) => receiptHoldError(cause);
   const admitted = await transaction(async client => {
+    // Expire leases that outlived the longest possible call. The attempt they
+    // protected is over, settled or not, and the row no longer guards a live
+    // request. Done first so every check below sees only live leases.
+    await client.query(`update ai_work_receipts set state='retryable'
+      where org_id=$1 and state='pending'
+        and started_at <= clock_timestamp() - ($2::bigint * interval '1 millisecond')`, [org, AI_RECEIPT_TTL_MS]);
     let providerIndependent = false;
     if (rollout) {
       // Deploy this dual reader with the switch OFF and drain pre-reader
@@ -35,14 +68,17 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
         key = hash([scope, inputHash]);
       }
     }
-    // Older rows did not retain a provider-independent operation identity.
-    // Never guess a mapping, discard results, or reopen an uncertain request.
-    // Opaque legacy rows cannot safely be reassigned by guessing their input.
+    // Older rows did not retain a provider-independent operation identity, so
+    // a legacy call still inside its lease may be the very work being asked
+    // for. Wait for that lease. A legacy row that already completed is a
+    // saved answer under a key nothing reads any more; redoing that work once
+    // is a one-time cost, not a second bill for a call still in flight.
     if (providerIndependent) {
-      const legacy = await client.query(`select state from ai_work_receipts
-        where org_id=$1 and scope_key not like 'v2:%' and state in ('pending','complete') limit 1`, [org]);
+      const legacy = await client.query(`select 1 from ai_work_receipts
+        where org_id=$1 and scope_key not like 'v2:%' and state='pending' limit 1`, [org]);
       if (legacy.rows.length) throw Object.assign(new Error(
-        "AI failover is held: earlier work receipts require reconciliation before provider-independent routing can begin."), { retryable: false });
+        "AI failover is held: an earlier work receipt is still inside its lease. Provider-independent routing begins once it ends."),
+        { retryable: false, transientHold: true });
       // Incidental queue/manual/recovery payload changes must not reopen an
       // unresolved tenant-wide operation under a different workKey either.
       const pendingTenant = await client.query("select 1 from ai_work_receipts where org_id=$1 and scope_key like 'v2:%' and state='pending' limit 1", [org]);
@@ -54,9 +90,9 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
     const pending = await client.query("select owner from ai_work_receipts where org_id=$1 and scope_key=$2 and state='pending' limit 1",[org,scope]);
     if (pending.rows.length) throw hold();
     if (prior?.state === "complete") return {cached:true as const,result:prior.result};
-    await client.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
-      values($1,$2,$3,$4,$5,'pending') on conflict(org_id,work_key) do update
-      set owner=excluded.owner,state='pending',started_at=now()`,[org,key,scope,inputHash,owner]);
+    await client.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state,started_at,completed_at)
+      values($1,$2,$3,$4,$5,'pending',clock_timestamp(),null) on conflict(org_id,work_key) do update
+      set owner=excluded.owner,state='pending',started_at=clock_timestamp(),completed_at=null`,[org,key,scope,inputHash,owner]);
     return {cached:false as const};
   });
   if (admitted.cached) return admitted.result;
@@ -72,6 +108,7 @@ export async function withAiWorkReceipt<T>(input: unknown, execute: () => Promis
       throw error;
     }
     // A timeout, HTTP 5xx, or lost completion ACK can follow a billed request.
+    // The receipt stays pending for the rest of its lease, then expires.
     throw hold(error);
   }
   try {

@@ -67,10 +67,10 @@ describe("provider-independent receipt rollout",()=>{
  const independent=(input:unknown,fn:()=>Promise<unknown>)=>withApiUsageContext({workKey:"reply-poll"},()=>withAiWorkReceipt(input,fn,{logicalInput:input,enableProviderIndependent:true}));
  it("holds all mailbox input after an ambiguous attempt rather than reopening it under another route",async()=>{
   const first=vi.fn(async()=>{throw Error("provider timeout");});
-  await expect(independent({prompt:"message-a"},first)).rejects.toThrow("unresolved");
+  await expect(independent({prompt:"message-a"},first)).rejects.toThrow("has not settled");
   const second=vi.fn(async()=>"new answer");
-  await expect(independent({prompt:"message-a",maxTokens:200},second)).rejects.toThrow("unresolved");
-  await expect(independent({prompt:"message-b"},second)).rejects.toThrow("unresolved");
+  await expect(independent({prompt:"message-a",maxTokens:200},second)).rejects.toThrow("has not settled");
+  await expect(independent({prompt:"message-b"},second)).rejects.toThrow("has not settled");
   expect(first).toHaveBeenCalledOnce();expect(second).not.toHaveBeenCalled();
  });
  it("reuses the committed logical output while independent messages remain separate",async()=>{
@@ -86,13 +86,25 @@ describe("provider-independent receipt rollout",()=>{
     {prompt:"message-a",route:"OpenAI"},execute,{logicalInput:{prompt:"message-a"},enableProviderIndependent:false}));
   expect(result).toBe("saved answer");expect(execute).toHaveBeenCalledOnce();
  });
- it.each(["pending","complete"])("holds opaque legacy %s receipts without changing them",async status=>{
-  await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
-   values($1,'old-key','old-scope','old-input',$2,$3)`,[state.org,randomUUID(),status]);
+ it("waits for a legacy receipt still inside its lease without changing it",async()=>{
+  await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state,started_at)
+   values($1,'old-key','old-scope','old-input',$2,'pending',now())`,[state.org,randomUUID()]);
   const execute=vi.fn(async()=>"new");
-  await expect(independent("prompt",execute)).rejects.toThrow("earlier work receipts require reconciliation");
+  await expect(independent("prompt",execute)).rejects.toMatchObject({retryable:false,transientHold:true});
+  await expect(independent("prompt",execute)).rejects.toThrow("still inside its lease");
   expect(execute).not.toHaveBeenCalled();
-  expect((await state.db!.query<{state:string}>("select state from ai_work_receipts where org_id=$1",[state.org])).rows[0].state).toBe(status);
+  expect((await state.db!.query<{state:string}>("select state from ai_work_receipts where org_id=$1",[state.org])).rows[0].state).toBe("pending");
+ });
+ it("does not let a completed legacy receipt, or an expired legacy lease, hold the whole tenant",async()=>{
+  await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state,started_at,result) values
+   ($1,'done-key','old-scope','old-input',$2,'complete',now()-interval '1 day','"legacy answer"'),
+   ($1,'dead-key','old-scope','old-input',$3,'pending',now()-interval '26 minutes',null)`,[state.org,randomUUID(),randomUUID()]);
+  const execute=vi.fn(async()=>"new");
+  expect(await independent("prompt",execute)).toBe("new");
+  expect(execute).toHaveBeenCalledOnce();
+  const rows=(await state.db!.query<{work_key:string;state:string}>("select work_key,state from ai_work_receipts where org_id=$1 order by work_key",[state.org])).rows;
+  expect(rows.find(r=>r.work_key==="done-key")?.state).toBe("complete");
+  expect(rows.find(r=>r.work_key==="dead-key")?.state).toBe("retryable");
  });
  it("permits a known nonexecuted legacy refusal while retaining its history",async()=>{
   await state.db!.query(`insert into ai_work_receipts(org_id,work_key,scope_key,input_hash,owner,state)
@@ -105,13 +117,52 @@ describe("provider-independent receipt rollout",()=>{
 it("holds ambiguous v2 work across cron/manual/recovery queue payloads", async () => {
  const execute=vi.fn(async()=>{throw Error("ambiguous");});
  const work=(key:string)=>withApiUsageContext({workKey:key},()=>withAiWorkReceipt("legacy",execute,{logicalInput:"same logical work",enableProviderIndependent:true}));
- await expect(work('reply-poll:cron')).rejects.toThrow("unresolved");
- await expect(work('reply-poll:manual')).rejects.toThrow("unresolved");
- await expect(work('reply-poll:recovery')).rejects.toThrow("unresolved");
+ await expect(work('reply-poll:cron')).rejects.toThrow("has not settled");
+ await expect(work('reply-poll:manual')).rejects.toThrow("has not settled");
+ await expect(work('reply-poll:recovery')).rejects.toThrow("has not settled");
  expect(execute).toHaveBeenCalledOnce();
 });
 it.each([[402,"OpenAI","OpenAI reported an exhausted credit balance."],[529,"Anthropic","Anthropic temporarily refused this request because the API is overloaded."]])("retains a safe retryable receipt for known nonexecuted %s",async(status,provider,reason)=>{
  const execute=vi.fn().mockRejectedValueOnce(Object.assign(Error(reason as string),{name:"AiUnavailableError",status,provider,reason,handoffUncertain:false})).mockResolvedValue("result");
  await expect(run("known-refusal","input",execute)).rejects.toThrow(reason as string);
  expect(await run("known-refusal","input",execute)).toBe("result");
+});
+
+describe("receipt lease expiry",()=>{
+ it("refuses a replay while the lease runs, then runs the work once after it",async()=>{
+  const execute=vi.fn(async()=>{throw Error("worker died mid-call");});
+  await expect(run("score:record","input",execute)).rejects.toMatchObject({retryable:false,transientHold:true});
+  const again=vi.fn(async()=>"fresh answer");
+  await expect(run("score:record","input",again)).rejects.toThrow("has not settled");
+  expect(again).not.toHaveBeenCalled();
+  await state.db!.query("update ai_work_receipts set started_at=now()-interval '26 minutes' where org_id=$1",[state.org]);
+  expect(await run("score:record","input",again)).toBe("fresh answer");
+  expect(again).toHaveBeenCalledOnce();
+  const rows=(await state.db!.query<{state:string}>("select state from ai_work_receipts where org_id=$1",[state.org])).rows;
+  expect(rows).toEqual([{state:"complete"}]);
+  expect(await run("score:record","input",again)).toBe("fresh answer");
+  expect(again).toHaveBeenCalledOnce();
+ });
+ it("keeps a lease that is one minute short of expiry",async()=>{
+  await expect(run("score:record","input",async()=>{throw Error("lost");})).rejects.toThrow();
+  await state.db!.query("update ai_work_receipts set started_at=now()-interval '24 minutes' where org_id=$1",[state.org]);
+  const execute=vi.fn(async()=>"too soon");
+  await expect(run("score:record","input",execute)).rejects.toMatchObject({transientHold:true});
+  expect(execute).not.toHaveBeenCalled();
+ });
+ it("expires a stale tenant-wide v2 lease for every later caller, not only the same work",async()=>{
+  const independent=(key:string,fn:()=>Promise<unknown>)=>withApiUsageContext({workKey:key},()=>withAiWorkReceipt("input",fn,{logicalInput:"input",enableProviderIndependent:true}));
+  await expect(independent("reply-poll",async()=>{throw Error("ambiguous");})).rejects.toThrow("has not settled");
+  const other=vi.fn(async()=>"other work");
+  await expect(independent("scoring",other)).rejects.toThrow("has not settled");
+  await state.db!.query("update ai_work_receipts set started_at=now()-interval '30 minutes' where org_id=$1",[state.org]);
+  expect(await independent("scoring",other)).toBe("other work");
+  expect(other).toHaveBeenCalledOnce();
+ });
+ it("describes the hold as a short lease, never as work for a person",async()=>{
+  const {RECEIPT_HOLD_MESSAGE,receiptHoldError}=await import("../lib/ai/work-receipts");
+  expect(RECEIPT_HOLD_MESSAGE).toMatch(/25 minutes/);
+  expect(RECEIPT_HOLD_MESSAGE).not.toMatch(/reconcile|review/i);
+  expect(receiptHoldError()).toMatchObject({retryable:false,transientHold:true});
+ });
 });

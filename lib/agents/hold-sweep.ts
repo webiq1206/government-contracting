@@ -4,16 +4,24 @@
  * This runs inside the pursuit continuation job, so it shares that job's
  * pg-boss singleton. It does not call a model, send vendor mail, or enqueue
  * scoring. A finished 50-69 score is handed to the continuation backfill,
- * which already caps attempts. A pending work receipt still refuses a second
- * bill for the attempt that was abandoned.
+ * which already caps attempts. A work receipt inside its lease still refuses
+ * a second bill for an attempt that may be in flight; one past its lease is
+ * handed back to the schedule, and the Sent folder settles mail whose
+ * outcome was lost.
  */
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { deliverOutageAlert } from "../outage-alert";
 import { advance, IllegalTransition, openOrUpdateIncident } from "../incidents";
-import { reclaimStaleProviderAttempts, sweepMail, type HoldSweepResult } from "../domain/hold-sweep";
+import {
+  countUnresolvedScheduledMail,
+  reclaimStaleProviderAttempts,
+  sweepMail,
+  type HoldSweepResult,
+} from "../domain/hold-sweep";
 import { sweepActed, latchAlertDecision } from "../domain/hold-registry";
+import { reconcileUncertainScheduledMail } from "../scheduled-mail-reconcile";
 
 const UNRESOLVED_MAIL_CAUSE = "unresolved_scheduled_mail";
 
@@ -73,12 +81,12 @@ async function watchUnresolvedMail(count: number): Promise<{ alerts: number; cle
       detectionSource: "hold_sweep",
       failedCount: count,
       recommendedAction:
-        "Review the queued or attempting scheduled messages and Gmail Sent. They will not be sent again automatically.",
+        "The mailbox could not be read to settle these sends. Reconnect or wait for its quota; the next sweep settles them against Gmail Sent.",
     });
     if (!(await claimAlert(LEGACY_ORG_ID, opened.id, "start"))) return { alerts: 0, clears: 0 };
     await deliverOutageAlert({
       subject: "BrostCo has scheduled mail waiting on review",
-      text: `${count} scheduled message(s) are still queued, attempting, or unknown after the send lease. They were not retried.`,
+      text: `${count} scheduled message(s) are still attempting or unknown after the send lease because the mailbox could not be read. The sweep settles them against Gmail Sent as soon as it can.`,
     });
     return { alerts: 1, clears: 0 };
   }
@@ -108,6 +116,23 @@ async function incidentOpen(orgId: string, cause: string): Promise<boolean> {
 
 export async function runHoldSweepCycle(): Promise<HoldSweepResult> {
   const result = await reclaimStaleProviderAttempts();
+  // Sends whose outcome was never written are settled against the mailbox's
+  // own Sent folder: what left is recorded as sent, what did not is handed
+  // back to the next outreach run. Nothing is sent from here. A mailbox that
+  // cannot be read leaves its rows for the next sweep and the alert below.
+  if (result.unresolvedScheduledMail > 0) {
+    try {
+      const reconciled = await reconcileUncertainScheduledMail();
+      result.confirmedSentMail = reconciled.confirmedSent;
+      result.releasedUncertainMail = reconciled.releasedForRetry;
+      result.unresolvedScheduledMail = await countUnresolvedScheduledMail();
+    } catch (error) {
+      console.error(
+        "[hold-sweep] scheduled mail reconciliation failed:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
   const mailWatch = await runWithOrg(LEGACY_ORG_ID, () =>
     watchUnresolvedMail(result.unresolvedScheduledMail)
   );

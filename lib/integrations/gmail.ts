@@ -978,6 +978,67 @@ export const gmail = {
    * reply asks for the newest message from either side. Returns nulls rather
    * than throwing so the caller can hold or fall back with a visible reason.
    */
+  /**
+   * Did a message to this address with this subject leave this mailbox after
+   * the given moment? The Sent folder is the only authority on a send whose
+   * outcome was never recorded (a process that died between the provider
+   * call and the receipt write, or a mailbox call that timed out). The hold
+   * sweep uses the answer to settle that row without sending anything.
+   *
+   * "unavailable" is not "not found": a disconnected or throttled mailbox
+   * proves nothing either way, and the caller leaves the row alone.
+   */
+  async findSentMessage(
+    orgId: string,
+    match: { to: string; subject: string; afterEpochSec: number }
+  ): Promise<
+    | { status: "found"; messageId: string; threadId: string | null; rfc822MessageId: string | null }
+    | { status: "not_found" }
+    | { status: "unavailable"; reason: string }
+  > {
+    const client = await gmailClient(orgId);
+    if (!client) return { status: "unavailable", reason: "The mailbox is not connected." };
+    const address = match.to.trim().toLowerCase();
+    const subject = match.subject.trim();
+    if (!address || !subject) return { status: "not_found" };
+    try {
+      // The search is the coarse filter; the headers below are the proof.
+      // Quotes inside the subject would end the phrase early, so they become
+      // spaces and the exact subject is compared on the header instead.
+      const phrase = subject.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim();
+      const q = `in:sent to:${address} subject:"${phrase}" after:${Math.max(0, Math.floor(match.afterEpochSec))}`;
+      await reserveGmailQuota(orgId, 5);
+      const list = await client.users.messages.list({ userId: "me", q, maxResults: 5 });
+      const ids = (list.data.messages ?? []).flatMap((m) => (m.id ? [m.id] : []));
+      for (const id of ids) {
+        await reserveGmailQuota(orgId, 20);
+        const meta = await client.users.messages.get({
+          userId: "me",
+          id,
+          format: "metadata",
+          metadataHeaders: ["To", "Subject", "Message-ID"],
+        });
+        const header = (name: string) =>
+          meta.data.payload?.headers?.find((h) => (h.name ?? "").toLowerCase() === name)?.value ?? "";
+        const toHeader = header("to").toLowerCase();
+        const subjectHeader = header("subject").trim();
+        if (!toHeader.includes(address)) continue;
+        if (subjectHeader.toLowerCase() !== subject.toLowerCase()) continue;
+        return {
+          status: "found",
+          messageId: id,
+          threadId: meta.data.threadId ?? null,
+          rfc822MessageId: header("message-id") || null,
+        };
+      }
+      return { status: "not_found" };
+    } catch (err) {
+      const reason = (err as Error).message;
+      console.warn(`[gmail] could not read Sent for org ${orgId}: ${reason}`);
+      return { status: "unavailable", reason };
+    }
+  },
+
   async threadMessageId(
     threadId: string,
     orgId?: string,

@@ -138,7 +138,7 @@ export async function gatherPlatformFacts(
               (array_agg(message order by created_at desc))[1] as sample
          from agent_logs
         where status = 'error'
-          and coalesce(action, '') <> 'spending-held'
+          and coalesce(action, '') not in ('spending-held', 'completion-held')
           and created_at >= $1 and created_at < $2
         group by agent
         order by count(*) desc

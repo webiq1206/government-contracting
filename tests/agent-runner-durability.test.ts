@@ -62,6 +62,15 @@ beforeEach(() => {
 });
 
 describe("agent runner durable failure truth", () => {
+  it("treats a work receipt inside its lease as a short wait: no queue retry, nobody paged", async () => {
+    const { receiptHoldError } = await import("@/lib/ai/work-receipts");
+    mocks.handler.mockRejectedValueOnce(receiptHoldError());
+    const result = await runAgent(probe(), "queue", { orgId: ORG_ID });
+    expect(result).toMatchObject({ ok: false, retryable: false, humanActionRequired: false });
+    expect(shouldQueueRetry(result)).toBe(false);
+    expect(mocks.logAgent).toHaveBeenCalledWith(expect.objectContaining({ action: "completion-held", level: "warn", status: "error" }));
+  });
+
   it.each([401, 403])("preserves an Ahrefs %i refusal through the runner without another queue attempt", async (status) => {
     mocks.handler.mockRejectedValueOnce(new AhrefsProviderError("Ahrefs request refused", {
       cause: new HttpError(status, `${status} provider refusal`),

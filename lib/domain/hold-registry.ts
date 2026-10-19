@@ -6,14 +6,22 @@
  * (Anthropic maxRetries 0, OpenAI one abort timer). The hold TTL is that
  * hard timeout plus HOLD_MARGIN_MS, so when a lease expires the call cannot
  * still be on the wire. Expiry releases the account. It does not replay the
- * call. Work receipts and scheduled-mail claims stay unresolved on purpose:
- * replaying those is how a dead process gets billed twice.
+ * call. Work receipts and scheduled-mail claims have their own, longer leases:
+ * past them the attempt they guarded is over, so the work is handed back to
+ * its normal schedule under a fresh claim. An unbounded lease is not safety;
+ * it held one record forever after a single interrupted call.
  */
 
 export const AI_CALL_TIMEOUT_MS = 600_000;
 export const HOLD_MARGIN_MS = 5 * 60_000;
 /** 15 minutes. Longer than the 10 minute provider abort. */
 export const PROVIDER_ATTEMPT_TTL_MS = AI_CALL_TIMEOUT_MS + HOLD_MARGIN_MS;
+/**
+ * 25 minutes. A work receipt covers one logical completion, which is at most
+ * a primary call and one fallback call, each aborted at AI_CALL_TIMEOUT_MS.
+ * Past this, the receipt guards nothing that can still be billed.
+ */
+export const AI_RECEIPT_TTL_MS = 2 * AI_CALL_TIMEOUT_MS + HOLD_MARGIN_MS;
 /** Same bound as the attempt TTL, in minutes, for the usage ledger. */
 export const USAGE_ABANDON_MINUTES = PROVIDER_ATTEMPT_TTL_MS / 60_000;
 /**
@@ -73,10 +81,10 @@ export const HOLD_REGISTRY: readonly HoldRecord[] = [
   {
     name: "AI work receipt",
     where: "ai_work_receipts.state = pending",
-    currentExpiry: "none; pending means the same work must not be replayed",
-    ttl: "no transition to retryable. The receipt outlives the provider timeout on purpose.",
-    releasePath: "only a confirmed completion, or a definite local refusal that marks the row retryable. The sweep counts stale receipts and leaves them pending.",
-    replay: "never",
+    currentExpiry: "25 min (two 10 min provider aborts plus the 5 min margin)",
+    ttl: "25 min from started_at",
+    releasePath: "admission and the sweep mark a receipt past its lease retryable. The sweep itself never calls a provider; the next scheduled run of that work does, once, under a fresh receipt. Before this lease existed one interrupted call held its record forever.",
+    replay: "idempotent-new-work",
   },
   {
     name: "Usage ledger row",
@@ -137,10 +145,10 @@ export const HOLD_REGISTRY: readonly HoldRecord[] = [
   {
     name: "Scheduled email claim",
     where: "communications.delivery_state queued, attempting, or unknown for a scheduled request",
-    currentExpiry: "none, and a retry of those states is refused",
-    ttl: "no automatic release. The row is the lease and it outlives the SMTP timeout so the message cannot be sent twice.",
-    releasePath: "operator review of the communication and Gmail Sent. The sweep reports the count and does not change the row.",
-    replay: "never",
+    currentExpiry: "15 min, the mail claim TTL",
+    ttl: "15 min from the provider attempt, or from creation when no attempt was stamped",
+    releasePath: "a queued claim past its lease never reached the mailbox and becomes held, which the normal send path may claim again. An attempting or unknown claim is reconciled against the mailbox's Sent folder: found becomes sent with its message id, not found becomes held. A mailbox that cannot be read leaves the row as it is and the count is reported.",
+    replay: "idempotent-new-work",
   },
   {
     name: "Prospective dispatch claim",
@@ -219,6 +227,10 @@ export function sweepActed(result: {
   settledManualQueued: number;
   settledManualUncertain: number;
   expiredReverifications?: number;
+  releasedReceipts?: number;
+  releasedQueuedMail?: number;
+  confirmedSentMail?: number;
+  releasedUncertainMail?: number;
 }): boolean {
   return (
     result.reclaimedAttempts.length +
@@ -229,7 +241,11 @@ export function sweepActed(result: {
       result.heldPreviews +
       result.settledManualQueued +
       result.settledManualUncertain +
-      (result.expiredReverifications ?? 0) >
+      (result.expiredReverifications ?? 0) +
+      (result.releasedReceipts ?? 0) +
+      (result.releasedQueuedMail ?? 0) +
+      (result.confirmedSentMail ?? 0) +
+      (result.releasedUncertainMail ?? 0) >
     0
   );
 }
