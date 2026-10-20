@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetch = vi.hoisted(() => vi.fn());
 vi.mock("../lib/integrations/guarded-fetch", () => ({ guardedFetch: fetch }));
-import { extractPublishedEmails, linkedBusinessProfiles, scrapeWebsiteEmail } from "../lib/integrations/email-scrape";
+import { decodeCloudflareEmail, extractPublishedEmails, linkedBusinessProfiles, linkedContactPaths, scrapeWebsiteEmail } from "../lib/integrations/email-scrape";
+
+/** What Cloudflare's email protection publishes for an address. */
+function cloudflare(email: string, key = 0x5a): string {
+  return [key, ...Array.from(email, (c) => c.charCodeAt(0) ^ key)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 function page(body: string, finalUrl: string) {
   return { body: Buffer.from(body), finalUrl, contentType: "text/html", hops: [] };
@@ -46,6 +51,31 @@ describe("public business contact evidence", () => {
       ? page('<input type="password"> help@firm.test', "https://facebook.com/login")
       : page('<a href="https://facebook.com/firm">Our page</a>', url));
     expect(await scrapeWebsiteEmail("firm.test")).toBeNull();
+  });
+  it("reads addresses hidden by Cloudflare email protection and HTML entities", () => {
+    const hex = cloudflare("estimating@firm.test");
+    expect(decodeCloudflareEmail(hex)).toBe("estimating@firm.test");
+    expect(extractPublishedEmails(`<a class="__cf_email__" data-cfemail="${hex}">[email&#160;protected]</a>`, "firm.test"))
+      .toEqual([{ email: "estimating@firm.test", ownDomain: true }]);
+    expect(extractPublishedEmails(`<a href="/cdn-cgi/l/email-protection#${cloudflare("bids@firm.test", 0x13)}">Email</a>`, "firm.test"))
+      .toEqual([{ email: "bids@firm.test", ownDomain: true }]);
+    expect(extractPublishedEmails("office&#64;firm&#46;test", "firm.test")).toEqual([{ email: "office@firm.test", ownDomain: true }]);
+    expect(decodeCloudflareEmail("zz")).toBeNull();
+  });
+  it("never offers site-builder, placeholder or font-licence addresses as a contact", () => {
+    expect(extractPublishedEmails(`abc123@sentry-next.wixpress.com you@domain.com info@example.com
+      licensing@latofonts.com user@email.com estimates@firm.test`, "firm.test"))
+      .toEqual([{ email: "estimates@firm.test", ownDomain: true }]);
+  });
+  it("follows the site's own contact link when it is not a usual path", async () => {
+    expect(linkedContactPaths(`<a href="/get-in-touch">Get in touch</a><a href="https://other.test/contact">x</a>
+      <a href="/contact">Contact</a><a href="/pages/request-a-quote?x=1">Request a quote</a><a href="/blog">Blog</a>`,
+      "https://firm.test/", "firm.test")).toEqual(["/get-in-touch", "/pages/request-a-quote?x=1"]);
+    fetch.mockImplementation(async (url: string) => url.endsWith("/get-in-touch")
+      ? page("Write to bids@firm.test", url)
+      : page('<a href="/get-in-touch">Get in touch</a>', url));
+    expect(await scrapeWebsiteEmail("firm.test")).toMatchObject({ email: "bids@firm.test", sourceUrl: "https://firm.test/get-in-touch" });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
   it("keeps failures empty and bounds requests to five website pages and two profiles", async () => {
     fetch.mockImplementation(async (url: string) => url.includes("firm.test")

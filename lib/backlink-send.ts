@@ -206,7 +206,9 @@ export async function sendApprovedOutreach(
       subject: row.subject ?? "Hello",
       ...message,
       html: wrapLetter(message.html),
-      trackingId,
+      // No open pixel or redirected links: this leaves from the same mailbox
+      // as quote requests, and tracking is what marks a mailbox as bulk.
+      trackingId: undefined,
       orgId,
       ...sender.headers,
     });
@@ -382,7 +384,7 @@ export async function sendFollowUps(
         subject: `Re: ${r.subject ?? "Following up"}`,
         ...message,
         html: wrapLetter(message.html),
-        trackingId: r.tracking_id ?? undefined,
+        trackingId: undefined,
         orgId,
         ...sender.headers,
       });

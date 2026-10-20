@@ -27,8 +27,18 @@ import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
 import { guardedFetch, GuardedFetchError } from "./integrations/guarded-fetch";
 import { canonicalAttachmentUrl } from "./domain/attachment-identity";
 
-/** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
-const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
+/**
+ * What rides along on a first-contact email.
+ *
+ * Gmail accepts 25MB, but that is not the limit that matters: base64 adds a
+ * third, many company mail servers refuse anything over 10MB, and filters
+ * score a cold message carrying a stack of PDFs as bulk or worse. One quote
+ * request went out with 21 files. The most relevant few are attached (the
+ * gatherer ranks this trade's documents first); everything else goes behind
+ * the single package link.
+ */
+const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
+const MAX_ATTACHED_FILES = 5;
 
 export interface GatheredAttachments {
   files: OutreachAttachment[];
@@ -235,7 +245,7 @@ async function materializeDocs(
         d.mime,
         position
       );
-      if (total + bytes.length > MAX_TOTAL_BYTES) {
+      if (total + bytes.length > MAX_TOTAL_BYTES || files.length >= MAX_ATTACHED_FILES) {
         /*
          * Too big to attach. Held for the package link rather than linked on
          * its own: a solicitation with a full drawing set produced a wall of
@@ -312,7 +322,7 @@ async function materializeDocs(
           continue;
         }
         const meta = presentName(name, {}, bytes, a.mime, position);
-        if (total + bytes.length <= MAX_TOTAL_BYTES) {
+        if (total + bytes.length <= MAX_TOTAL_BYTES && files.length < MAX_ATTACHED_FILES) {
           total += bytes.length;
           files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
           continue;

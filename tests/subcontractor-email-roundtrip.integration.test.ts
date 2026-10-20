@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "crypto";
+import { rfqPacing } from "../lib/domain/rfq-reservation";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
@@ -152,6 +153,8 @@ d("the subcontractor email workflow, end to end (integration)", () => {
   }
 
   beforeAll(async () => {
+    // These send a batch in seconds; pacing has its own test.
+    rfqPacing.minGapSeconds = 0;
     ({ query, queryOne } = await import("../lib/db"));
     ({ outreach } = await import("../lib/agents/outreach"));
     const outcome = await import("../lib/domain/reply-outcome");

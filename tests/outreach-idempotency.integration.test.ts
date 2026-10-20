@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { randomUUID } from "crypto";
+import { rfqPacing } from "../lib/domain/rfq-reservation";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
@@ -78,6 +79,8 @@ d("outreach idempotency (integration)", () => {
     ))?.n ?? 0;
 
   beforeAll(async () => {
+    // These send a batch in seconds; pacing has its own test.
+    rfqPacing.minGapSeconds = 0;
     ({ query, queryOne } = await import("../lib/db"));
     ({ outreach } = await import("../lib/agents/outreach"));
     const o = await queryOne<{ id: string }>(`insert into organizations (name, subscription_status) values ($1,'active') returning id`, [`out-${randomUUID()}`]);

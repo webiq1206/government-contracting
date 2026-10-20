@@ -531,6 +531,19 @@ export const subVerify: AgentDefinition = {
       );
     }
 
+    // A miss is replaced, not accepted: most small firms publish no usable
+    // address, so verifying only the top few left most trades with nobody
+    // to email while ranked candidates sat unchecked.
+    let nextCandidate: string | null = null;
+    if (route !== "outreach queued") {
+      nextCandidate = await queueNextCandidate({
+        orgId, opportunityId, trade: trade ?? "", verifyTopN: std?.verify_top_n ?? 5,
+      }).catch((err) => {
+        console.error(`[sub-verify] could not queue the next candidate: ${(err as Error).message}`);
+        return null;
+      });
+    }
+
     const summary = `Verified ${sub.company_name}: email ${
       emailVerified ? `verified (${emailSource ?? "existing"})` : email ? "unverified" : website ? "not found" : "not found (no website)"
     }, phone ${phone ? "on file" : "missing"}, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus} → ${route}.`;
@@ -557,9 +570,57 @@ export const subVerify: AgentDefinition = {
         contactOk,
         route,
         unresolvedFailures,
+        nextCandidate,
       },
       enqueued,
       humanActionRequired: incomplete || (standardsOk && !contactOk),
     };
   },
 };
+
+/** Matches on the address and its verification, as outreach does. */
+const EMAILABLE_PAIR_SQL = `(e.verification_json->>'email_verified')::boolean is true
+  and coalesce(e.verification_json->>'email', '') <> ''`;
+
+/**
+ * Queue verification for the next-ranked unchecked candidate in this trade.
+ *
+ * The k-th miss in a trade checks the candidate ranked verify_top_n + k, so
+ * every miss is replaced once and concurrent misses ask for different
+ * candidates. Stops when the trade already has as many emailable firms as it
+ * may be sent, or when the ranked list runs out. Queued directly so a
+ * duplicate is simply ignored rather than reported as a refused step.
+ */
+export async function queueNextCandidate(input: {
+  orgId: string;
+  opportunityId: string;
+  trade: string;
+  verifyTopN: number;
+}): Promise<string | null> {
+  const { getAutomationRules } = await import("../app-settings");
+  const { normalizeRules } = await import("../domain/intake");
+  const perTradeCap = normalizeRules(await getAutomationRules()).rfq_subs_per_trade;
+  const row = await queryOne<{ emailable: number; misses: number }>(
+    `select count(*) filter (where ${EMAILABLE_PAIR_SQL})::int as emailable,
+            count(*) filter (where e.verification_json is not null and not (${EMAILABLE_PAIR_SQL}))::int as misses
+       from opportunity_subs e
+      where e.opportunity_id = $1 and coalesce(e.trade,'') = $2 and e.org_id = $3 and e.removed_at is null`,
+    [input.opportunityId, input.trade, input.orgId]
+  );
+  if (!row || row.emailable >= perTradeCap || row.misses < 1) return null;
+  const next = await queryOne<{ subcontractor_id: string }>(
+    `select subcontractor_id from opportunity_subs e
+      where e.opportunity_id = $1 and coalesce(e.trade,'') = $2 and e.org_id = $3 and e.removed_at is null
+      order by e.candidate_rank asc nulls last, e.created_at asc
+      offset $4 limit 1`,
+    [input.opportunityId, input.trade, input.orgId, Math.max(1, input.verifyTopN) + row.misses - 1]
+  );
+  if (!next) return null;
+  const { enqueue } = await import("../queue");
+  const queued = await enqueue(
+    "sub-verify",
+    { opportunityId: input.opportunityId, subcontractorId: next.subcontractor_id, trade: input.trade },
+    { singletonKey: `verify:${input.opportunityId}:${next.subcontractor_id}:${input.trade}`, singletonSeconds: 3600, orgId: input.orgId }
+  );
+  return queued ? next.subcontractor_id : null;
+}
