@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetch = vi.hoisted(() => vi.fn());
 vi.mock("../lib/integrations/guarded-fetch", () => ({ guardedFetch: fetch }));
-import { decodeCloudflareEmail, extractPublishedEmails, linkedBusinessProfiles, linkedContactPaths, scrapeWebsiteEmail } from "../lib/integrations/email-scrape";
+import { decodeCloudflareEmail, extractPublishedEmails, linkedBusinessProfiles, linkedContactPaths, scrapeWebsiteEmail, scrapeWebsiteEmailDetailed } from "../lib/integrations/email-scrape";
 
 /** What Cloudflare's email protection publishes for an address. */
 function cloudflare(email: string, key = 0x5a): string {
@@ -76,6 +76,13 @@ describe("public business contact evidence", () => {
       : page('<a href="/get-in-touch">Get in touch</a>', url));
     expect(await scrapeWebsiteEmail("firm.test")).toMatchObject({ email: "bids@firm.test", sourceUrl: "https://firm.test/get-in-touch" });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("tells a site that publishes no email apart from one that could not be read", async () => {
+    fetch.mockImplementation(async (url: string) => page("<p>Call us</p>", url));
+    expect(await scrapeWebsiteEmailDetailed("firm.test")).toEqual({ email: null, pagesRead: 5 });
+    fetch.mockReset();
+    fetch.mockRejectedValue(new Error("timeout"));
+    expect(await scrapeWebsiteEmailDetailed("firm.test")).toEqual({ email: null, pagesRead: 0 });
   });
   it("keeps failures empty and bounds requests to five website pages and two profiles", async () => {
     fetch.mockImplementation(async (url: string) => url.includes("firm.test")

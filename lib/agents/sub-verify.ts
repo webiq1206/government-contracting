@@ -13,7 +13,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { googleMaps } from "../integrations/googleMaps";
 import { hunter } from "../integrations/hunter";
-import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
+import { scrapeWebsiteEmailDetailed, domainHasMx } from "../integrations/email-scrape";
 import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
 import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
@@ -276,9 +276,10 @@ export const subVerify: AgentDefinition = {
 
     // Key-free fallback: the sub's own site usually publishes a contact email.
     if (!email && website) {
-      let scraped: Awaited<ReturnType<typeof scrapeWebsiteEmail>> = null;
+      let scraped: Awaited<ReturnType<typeof scrapeWebsiteEmailDetailed>>["email"] = null;
+      let pagesRead = 0;
       try {
-        scraped = await scrapeWebsiteEmail(website);
+        ({ email: scraped, pagesRead } = await scrapeWebsiteEmailDetailed(website));
       } catch (error) {
         const reason = error instanceof Error ? error.message : "unknown website crawl error";
         const message = `Website email crawl failed (${reason}); email discovery remains incomplete.`;
@@ -331,9 +332,13 @@ export const subVerify: AgentDefinition = {
           );
         }
         verification.email_own_domain = scraped.ownDomain;
+      } else if (pagesRead > 0) {
+        // The firm's own pages were read and publish no address. That is an
+        // answer, not a failure: another crawl reads the same pages.
+        notes.push(`The website was read (${pagesRead} page${pagesRead === 1 ? "" : "s"}) and publishes no usable email.`);
       } else if (!unresolvedFailures.some((failure) => failure.startsWith("Website email crawl failed"))) {
         const message =
-          "The website crawl returned no usable email. This is inconclusive because inaccessible pages and pages with no published email currently produce the same result.";
+          "The website crawl could not read any of the firm's pages, so whether it publishes an email is unknown.";
         notes.push(message);
         unresolvedFailures.push(message);
       }
@@ -371,9 +376,34 @@ export const subVerify: AgentDefinition = {
     // debarment false negative. (Column is NOT NULL default false, so the
     // stored value alone can't distinguish "checked clear" from "never checked".)
     let samConfirmed = false;
-    const excl = await sam.isExcluded(sub.company_name, orgId);
-    if (excl.disabled) {
+    let samBudgetSpent = false;
+    // One firm is paired with many solicitations. A confirmed result from the
+    // last 30 days answers the question; asking SAM again for every pairing
+    // spent the account's daily call budget and held every send behind it.
+    let recentSam: { excluded: boolean; checked_at: string } | null = null;
+    try {
+      recentSam = (await queryOne<{ excluded: boolean; checked_at: string }>(
+      `select (verification_json->>'sam_excluded')::boolean as excluded,
+              verification_json->>'sam_checked_at' as checked_at
+         from opportunity_subs
+        where subcontractor_id = $1 and org_id = $2
+          and verification_json->>'sam_confirmed' = 'true'
+          and (verification_json->>'sam_checked_at')::timestamptz > now() - interval '30 days'
+        order by (verification_json->>'sam_checked_at')::timestamptz desc
+        limit 1`,
+      [subcontractorId, orgId]
+    )) ?? null;
+    } catch {
+      // A lookup that cannot run just means asking SAM, as before.
+      recentSam = null;
+    }
+    if (typeof recentSam?.excluded !== "boolean" || !recentSam.checked_at) recentSam = null;
+    const excl = recentSam
+      ? { excluded: recentSam.excluded, reused: true as const }
+      : await sam.isExcluded(sub.company_name, orgId);
+    if ("disabled" in excl && excl.disabled) {
       if (excl.disabledReason === "quota_exhausted") {
+        samBudgetSpent = true;
         notes.push(
           "SAM exclusions check could not run because today's account call budget is exhausted. Outreach is held until a later verification confirms the result."
         );
@@ -382,7 +412,7 @@ export const subVerify: AgentDefinition = {
         notes.push("SAM exclusions check disabled because no account API key is connected.");
         samConfirmed = true; // operator explicitly runs without SAM checks
       }
-    } else if (excl.error) {
+    } else if ("error" in excl && excl.error) {
       notes.push(
         "SAM exclusions check errored, status unverified. Outreach held until the next verify run confirms."
       );
@@ -393,6 +423,10 @@ export const subVerify: AgentDefinition = {
     }
     verification.sam_excluded = samExcluded;
     verification.sam_confirmed = samConfirmed;
+    // The date of the actual lookup, so a reused answer never extends itself.
+    if (samConfirmed && !("disabled" in excl && excl.disabled)) {
+      verification.sam_checked_at = recentSam?.checked_at ?? new Date().toISOString();
+    }
 
     // --- Recorded Google signal; no optional LLM dependency ---
     // Rewording two stored numbers used to make an AI refusal abort the run
@@ -524,7 +558,25 @@ export const subVerify: AgentDefinition = {
       route = incomplete ? "held (verification incomplete)" : "held (failed standards)";
     }
 
-    if (incomplete) {
+    // Only waiting on SAM's daily allowance: nothing for a person to do, and
+    // retrying before it resets spends the next day's allowance too.
+    const waitingOnSamBudget = samBudgetSpent && unresolvedFailures.length === 1;
+    if (waitingOnSamBudget) {
+      const { secondsUntilNextUtcDay } = await import("../domain/rfq-volume");
+      enqueued.push({
+        agent: "sub-verify",
+        payload: { opportunityId, subcontractorId, trade },
+        opts: {
+          // Spread the morning's checks over half an hour after the reset.
+          startAfterSeconds: secondsUntilNextUtcDay(new Date()) + 300 + Math.floor(Math.random() * 1800),
+          singletonKey: `verify-after-sam-reset:${opportunityId}:${subcontractorId}:${trade ?? ""}`,
+          singletonSeconds: 86_400,
+        },
+      });
+      route = "waiting for SAM's daily allowance to reset";
+    }
+
+    if (incomplete && !waitingOnSamBudget) {
       await query(
         `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
         [opportunityId, orgId]
@@ -533,9 +585,10 @@ export const subVerify: AgentDefinition = {
 
     // A miss is replaced, not accepted: most small firms publish no usable
     // address, so verifying only the top few left most trades with nobody
-    // to email while ranked candidates sat unchecked.
+    // to email while ranked candidates sat unchecked. Not while SAM's
+    // allowance is spent: the next candidate would only wait as well.
     let nextCandidate: string | null = null;
-    if (route !== "outreach queued") {
+    if (route !== "outreach queued" && !waitingOnSamBudget) {
       nextCandidate = await queueNextCandidate({
         orgId, opportunityId, trade: trade ?? "", verifyTopN: std?.verify_top_n ?? 5,
       }).catch((err) => {
@@ -549,7 +602,7 @@ export const subVerify: AgentDefinition = {
     }, phone ${phone ? "on file" : "missing"}, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus} → ${route}.`;
 
     return {
-      ok: !incomplete,
+      ok: !incomplete || waitingOnSamBudget,
       summary: incomplete
         ? `${summary} Verification is incomplete: ${unresolvedFailures.join(" ")}`
         : summary,
@@ -573,7 +626,7 @@ export const subVerify: AgentDefinition = {
         nextCandidate,
       },
       enqueued,
-      humanActionRequired: incomplete || (standardsOk && !contactOk),
+      humanActionRequired: (incomplete && !waitingOnSamBudget) || (standardsOk && !contactOk),
     };
   },
 };
