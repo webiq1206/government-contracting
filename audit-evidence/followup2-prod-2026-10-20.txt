@@ -1,0 +1,17 @@
+          created_at           | delivery_state |        follow_up_at        | replied_at |                             subj                             
+-------------------------------+----------------+----------------------------+------------+--------------------------------------------------------------
+ 2026-10-20 16:50:24.304241+00 | sent           | 2026-10-22 16:50:24.101+00 |            | Pricing request: Cafeteria operations | California
+ 2026-10-20 16:50:15.332751+00 | sent           | 2026-10-22 16:50:15.136+00 |            | Pricing request: Cafeteria operations | California
+ 2026-10-20 16:48:56.351905+00 | sent           | 2026-10-22 16:48:56.162+00 |            | Pricing request: Food service management | California
+ 2026-10-20 16:44:59.498397+00 | delivered      | 2026-10-22 16:44:59.305+00 |            | Pricing request: Logistics management | Fort Stewart, Georgi
+ 2026-10-20 16:40:10.973932+00 | delivered      | 2026-10-22 16:40:10.79+00  |            | Pricing request: Supply chain and inventory management | For
+ 2026-10-20 16:34:28.961956+00 | sent           | 2026-10-22 16:34:28.773+00 |            | Pricing request: Equipment maintenance and repair | Fort Ste
+ 2026-10-20 16:30:16.724863+00 | delivered      | 2026-10-22 16:30:16.543+00 |            | Pricing request: Hazardous material handling | Fort Stewart,
+ 2026-10-20 16:30:07.641923+00 | delivered      | 2026-10-22 16:30:07.455+00 |            | Pricing request: Supply chain and inventory management | For
+ 2026-10-20 16:22:28.523025+00 | sent           | 2026-10-22 16:22:28.325+00 |            | Pricing request: Electronic Security Systems Maintenance | P
+ 2026-10-20 16:22:24.736757+00 | delivered      | 2026-10-22 16:22:24.538+00 |            | Pricing request: Electronic Security Systems Maintenance | P
+ 2026-10-20 16:19:08.735753+00 | delivered      | 2026-10-22 16:19:08.543+00 |            | Pricing request: Grounds Maintenance | California
+ 2026-10-20 16:19:02.928119+00 | deferred       | 2026-10-22 16:19:02.723+00 |            | Pricing request: Grounds Maintenance | California
+ 2026-10-20 16:17:32.096546+00 | delivered      | 2026-10-22 16:17:31.874+00 |            | Pricing request: Environmental Compliance | California
+(13 rows)
+
