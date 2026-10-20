@@ -1,0 +1,129 @@
+Pager usage is off.
+== V0 worker heartbeat and latest job
+           last_job            |            db_now             
+-------------------------------+-------------------------------
+ 2026-10-20 15:58:40.943513+00 | 2026-10-20 15:58:41.974954+00
+(1 row)
+
+== V1 job_runs since 15:30 UTC by agent/status
+           agent            | status  | count 
+----------------------------+---------+-------
+ ai-provider-recovery-probe | ok      |     4
+ backlink-outreach-sweep    | ok      |     1
+ call-prep                  | error   |     4
+ call-prep                  | ok      |     3
+ call-prep                  | running |     1
+ daily-recap                | ok      |     2
+ outreach                   | ok      |    11
+ outreach-followup          | ok      |     2
+ outreach-recovery-sweep    | ok      |     1
+ pricing-research           | ok      |     1
+ pursuit-continuation-sweep | ok      |     4
+ reply-poll                 | ok      |     2
+ review-expiry-sweep        | ok      |     3
+ scoring-engine             | ok      |    18
+ scoring-engine             | running |     2
+ scoring-recovery-sweep     | ok      |     2
+ service-sync               | ok      |     2
+ solicitation-analyst       | error   |     1
+ solicitation-analyst       | ok      |     6
+ solicitation-analyst       | running |     2
+ sub-finder                 | ok      |     5
+ sub-verify                 | error   |    66
+ sub-verify                 | ok      |    20
+ sub-verify                 | running |     2
+(24 rows)
+
+== V2 notable agent_logs since 15:30
+           agent            |       action        |  level  | count 
+----------------------------+---------------------+---------+-------
+ sub-verify                 | run                 | warn    |    66
+ sub-verify                 | run                 | success |    21
+ scoring-engine             | run                 | success |    12
+ outreach                   | blocked             | warn    |    11
+ outreach                   | run                 | warn    |    11
+ scoring-engine             | rule-dismissed      | info    |     7
+ scoring-engine             | run                 | warn    |     6
+ sub-finder                 | run                 | success |     5
+ scoring-engine             | score               | info    |     5
+ solicitation-analyst       | run                 | success |     5
+ pursuit-continuation-sweep | run                 | success |     4
+ ai-provider-recovery-probe | run                 | success |     4
+ review-expiry-sweep        | run                 | success |     3
+ call-prep                  | run                 | warn    |     3
+ daily-recap                | run                 | success |     2
+ outreach-followup          | run                 | success |     2
+ reply-poll                 | run                 | success |     2
+ call-prep                  | run                 | error   |     2
+ scoring-recovery-sweep     | requeue-analysis    | info    |     2
+ scoring-recovery-sweep     | requeue-scoring     | info    |     2
+ scoring-recovery-sweep     | run                 | success |     2
+ service-sync               | run                 | success |     2
+ call-prep                  | completion-held     | warn    |     2
+ backlink-outreach-sweep    | run                 | success |     1
+ solicitation-analyst       | run                 | error   |     1
+ scoring-engine             | auto-pursue         | success |     1
+ pricing-research           | run                 | success |     1
+ scoring-recovery-sweep     | requeue-final-score | info    |     1
+ solicitation-analyst       | run                 | warn    |     1
+ outreach-recovery-sweep    | run                 | success |     1
+(30 rows)
+
+== V3 errors since 15:30
+   agent    |                                                                          err                                                                           | count 
+------------+--------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ sub-verify | Verified SERVPRO of Vigo County and SERVPRO of Clay, Parke, Sullivan, Vermillion Counties: email not found, phone on file, SAM clear, license unknown  |     4
+ sub-verify | Verified Moffitt Services: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: Th |     4
+ sub-verify | Verified Pierce Aero: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: The web |     4
+ sub-verify | Verified Rise Aviation: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: The w |     4
+ sub-verify | Verified Comanche Gas Solutions, LLC: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is inc |     4
+ sub-verify | Verified Ricochet Fuel Distributors, Inc.: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification i |     4
+ sub-verify | Verified Culligan of Terre Haute: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incompl |     4
+ sub-verify | Verified Diesel Fuel Maintenance Inc: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is inc |     4
+ sub-verify | Verified Southwest Texas Aviation, Inc: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is i |     4
+ sub-verify | Verified Evolution Safety Training and Consulting: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verifi |     4
+ sub-verify | Verified Jet Maintenance: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: The |     4
+ sub-verify | Verified Protect Environmental Services: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is  |     4
+ sub-verify | Verified Liberty Shipping Solutions & More: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification  |     3
+ sub-verify | Verified ECS Environmental Solutions: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is inc |     3
+ sub-verify | Verified Mc Guire Logistics Inc: email not found (no website), phone on file, SAM clear, license unknown → held (verification incomplete). Verificatio |     3
+(15 rows)
+
+== V4 open live opps by stage/tier/human now
+    stage     |  tier   | h | count 
+--------------+---------+---+-------
+ analysis     |         | t |    85
+ scoring      |         | f |    56
+ scoring      | review  | t |    29
+ outreach     |         | t |    18
+ scoring      |         | t |    10
+ analysis     | pursue  | t |     2
+ analysis     |         | f |     2
+ outreach     | review  | t |     1
+ outreach     | dismiss | t |     1
+ sub_research | pursue  | t |     1
+(10 rows)
+
+== V5 opps moved since 15:30 by stage/tier
+    stage     |  tier   |  status  | count 
+--------------+---------+----------+-------
+ dismissed    | dismiss | archived |    11
+ scoring      | review  | open     |     4
+ sub_research |         | open     |     4
+ scoring      |         | open     |     3
+ sub_research | pursue  | open     |     1
+(5 rows)
+
+== V6 sub pairings created since 15:30
+ outreach_state | verified | count 
+----------------+----------+-------
+ pending        | t        |    12
+ pending        | f        |   107
+ no_email       | t        |     9
+(3 rows)
+
+== V7 outbound email since 15:30 by state
+ delivery_state | count 
+----------------+-------
+(0 rows)
+
