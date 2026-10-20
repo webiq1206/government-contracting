@@ -24,6 +24,7 @@ import {
 import { professionalStem, uniqueFilename } from "./domain/attachment-naming";
 import { amendmentNumber, readAmendmentNumber, classifyDocumentName } from "./domain/document-inventory";
 import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
+import { guardedFetch, GuardedFetchError } from "./integrations/guarded-fetch";
 import { canonicalAttachmentUrl } from "./domain/attachment-identity";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
@@ -375,17 +376,20 @@ async function materializeDocs(
      *
      * Checked by reading back the stored objects the package points at, which
      * is the part that actually fails: storage evicted the file, the path was
-     * wrong, the bucket moved. An upstream URL is deliberately not called
-     * reachable without a bounded preflight. This gatherer does not perform
-     * network requests, so an upstream-only package is explicitly unverified
-     * and the package assessment holds the email until the file is ingested.
+     * wrong, the bucket moved. An upstream URL (a file too large to store) is
+     * called reachable only after a bounded preflight reads its first bytes.
+     * Never preflighting held every quote request whose solicitation had one
+     * large drawing set, forever.
      */
     const stored = overflow.filter((o) => o.k === "s");
     const upstream = overflow.filter((o) => o.k === "u");
-    let reachable: boolean | undefined = upstream.length === 0 ? true : undefined;
-    if (upstream.length > 0) {
+    let reachable: boolean | undefined =
+      upstream.length === 0 ? true : await preflightUpstream(upstream.map((o) => o.v));
+    if (reachable !== true && upstream.length > 0) {
       console.error(
-        `[attachments] package link contains ${upstream.length} upstream document(s) that were not preflighted; holding outreach until they are stored`
+        `[attachments] package link has ${upstream.length} upstream document(s) that ${
+          reachable === false ? "no longer open" : "could not be checked"
+        }; holding outreach`
       );
     }
     for (const entry of stored) {
@@ -417,6 +421,57 @@ async function materializeDocs(
   }
 
   return { files, links, expected, undelivered, omitted };
+}
+
+const PREFLIGHT_BATCH = 6;
+const PREFLIGHT_MAX = 30;
+/**
+ * One check per file per hour, not one per subcontractor: every quote request
+ * on a solicitation links the same files, and SAM counts each request.
+ * Only definite answers are kept; an unchecked file is tried again next send.
+ */
+const PREFLIGHT_TTL_MS = 60 * 60_000;
+const preflightMemo = new Map<string, { at: number; ok: boolean }>();
+
+/** For tests. */
+export function clearUpstreamPreflightMemo(): void {
+  preflightMemo.clear();
+}
+
+/**
+ * Whether every upstream document behind a package link opens right now.
+ *
+ * Reads at most 1KB of each, so a 200MB drawing set costs nothing to check.
+ * true when every one answers, false when any is gone (a client error that
+ * will not change), undefined when any could not be checked (timeout, network,
+ * server error) or there are too many to check in one send. Only true lets the
+ * email promise the documents.
+ */
+async function preflightUpstream(urls: string[]): Promise<boolean | undefined> {
+  if (urls.length > PREFLIGHT_MAX) return undefined;
+  let verdict: boolean | undefined = true;
+  for (let i = 0; i < urls.length && verdict !== false; i += PREFLIGHT_BATCH) {
+    const batch = await Promise.all(
+      urls.slice(i, i + PREFLIGHT_BATCH).map(async (url): Promise<boolean | undefined> => {
+        const known = preflightMemo.get(url);
+        if (known && Date.now() - known.at < PREFLIGHT_TTL_MS) return known.ok;
+        let ok: boolean | undefined;
+        try {
+          await guardedFetch(url, { maxBytes: 1024, onOversize: "truncate", timeoutMs: 15_000, idleMs: 10_000 });
+          ok = true;
+        } catch (err) {
+          ok = err instanceof GuardedFetchError && err.kind === "http_error" && !err.retryable
+            ? false
+            : undefined;
+        }
+        if (ok !== undefined) preflightMemo.set(url, { at: Date.now(), ok });
+        return ok;
+      })
+    );
+    if (batch.includes(false)) verdict = false;
+    else if (batch.includes(undefined)) verdict = undefined;
+  }
+  return verdict;
 }
 
 /** All solicitation/SOW docs (legacy helper). */

@@ -80,3 +80,28 @@ it("re-scores only analyses that never got their final score and have what sourc
     expect(rows.rows.map(row => row.id).sort()).toEqual(["bid-gaps-only", "complete", "stale-score"]);
   } finally { await db.close(); }
 }, 30_000);
+
+it("re-reads only briefs a refresh invalidated on open, active, unheld records", async () => {
+  const source = readFileSync("lib/agents/maintenance.ts", "utf8");
+  const sql = source.match(/`(select id from opportunities[^`]*?coalesce\(analysis_input_hash, ''\) = ''[^`]*?limit 25)`/)?.[1];
+  expect(sql).toBeTruthy();
+  const db = new PGlite();
+  try {
+    await db.exec(`create table opportunities(id text,org_id text,status text,stage text,is_sources_sought boolean,
+        pursuit_state text,solicitation_analysis jsonb,analysis_input_hash text,risk_flags text[],
+        deadline timestamptz,updated_at timestamptz);
+      create table job_runs(org_id text,opportunity_id text,agent text,status text,started_at timestamptz,summary jsonb);
+      insert into opportunities values
+        ('invalidated','a','open','analysis',false,null,'{}','',null,now()+interval '9 days',now()-interval '1 hour'),
+        ('current','a','open','analysis',false,null,'{}','hash-1',null,now()+interval '9 days',now()-interval '1 hour'),
+        ('never-analyzed','a','open','analysis',false,null,null,null,null,now()+interval '9 days',now()-interval '1 hour'),
+        ('expired','a','open','analysis',false,null,'{}',null,null,now()-interval '1 day',now()-interval '1 hour'),
+        ('prime-blocked','a','open','analysis',false,null,'{}',null,'{prime_only_blocked}',now()+interval '9 days',now()-interval '1 hour'),
+        ('stopped','a','open','scoring',false,'stopped','{}',null,null,now()+interval '9 days',now()-interval '1 hour'),
+        ('advanced','a','open','outreach',false,null,'{}',null,null,now()+interval '9 days',now()-interval '1 hour'),
+        ('just-refreshed','a','open','scoring',false,null,'{}',null,null,now()+interval '9 days',now()-interval '5 minutes'),
+        ('other-tenant','b','open','analysis',false,null,'{}',null,null,now()+interval '9 days',now()-interval '1 hour');`);
+    const rows = await db.query<{ id: string }>(sql!, ["a"]);
+    expect(rows.rows.map(row => row.id)).toEqual(["invalidated"]);
+  } finally { await db.close(); }
+}, 30_000);

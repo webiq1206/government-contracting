@@ -152,6 +152,19 @@ request sent. Three gates were holding everything:
   re-queues the final score for an analyzed record that never got one, and
   the analyst for a record sent to analysis whose job was never created.
 
+After that fix went live, three more gates showed up in production:
+
+- **SAM's description link was written back over the fetched text on every
+  poll.** Each poll read as a material change, cleared the brief's input hash
+  and queued a paid re-read. The fetched text is now kept. Briefs a refresh
+  invalidated without a re-read are re-queued by the scoring recovery sweep.
+- **Package links to files too large to store were never checked,** so the
+  email was held as "not verified". The first 1KB of each is now fetched
+  once an hour; only a file that is gone blocks the send.
+- **A password-protected PDF held the whole quote request.** It is now left
+  out of the email (the recipient could not open it) and logged; if it was
+  the only document, the send is still held.
+
 Set-asides the company holds no certification for (SDVOSB, 8(a), WOSB,
 HUBZone) and due dates inside the minimum lead time are dismissed by company
 rules before any paid analysis, as final scoring always did. `npm run doctor`
