@@ -1,0 +1,72 @@
+Pager usage is off.
+== W1 outreach blocked messages since 15:30
+                                                                                                                                    msg                                                                                                                                     | count 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ Held outreach to Berg Compliance Solutions, LLC : OSHA Safety & Environmental Consultants: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                               |     1
+ Held outreach to FHG Diesel & Fuel Delivery: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                             |     1
+ Held outreach to Facility Construction Services: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                         |     1
+ Held outreach to Force Corporation: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                                      |     1
+ Held outreach to Frei Enterprises, Inc.: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                                 |     1
+ Held outreach to LC3 Solutions: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                                          |     1
+ Held outreach to North Texas Aeronautics LLC: The document link for "All 2 bid documents" was not verified, so the subcontractor could be promised documents they cannot reach.                                                                                            |     1
+ Held outreach to Project Freight LLC: "Att 0006 SF1408 Preaward Survey of Prospective Contractor Accounting System.pdf" is password protected. The subcontractor will be asked for a password nobody has given them.                                                       |     1
+ Held outreach to Reliable Maintenance Solutions: "Att 0006 SF1408 Preaward Survey of Prospective Contractor Accounting System.pdf" is password protected. The subcontractor will be asked for a password nobody has given them.                                            |     1
+ Held outreach to Battle Wrench LLC - Mobile Heavy Equipment Service and Repair and Welding: "Att 0006 SF1408 Preaward Survey of Prospective Contractor Accounting System.pdf" is password protected. The subcontractor will be asked for a password nobody has given them. |     1
+(10 rows)
+
+== W2 why analysis-stage records are not final-score candidates
+ has_analysis | brief_source | has_hash | needs_score | missing_type | sourcing_gap | prime_blocked | pursuit | settled | count 
+--------------+--------------+----------+-------------+--------------+--------------+---------------+---------+---------+-------
+ t            | model        | f        | f           | array        | f            | f             | active  | t       |    80
+ t            | model        | t        | t           | array        | f            | f             | active  | t       |    32
+ f            |              | f        | f           |              | f            | f             | active  | t       |    30
+ t            | model        | f        | f           | array        | f            | t             | active  | t       |    18
+ t            | model        | t        | t           | array        | f            | t             | active  | t       |    11
+ t            | model        | t        | f           | array        | f            | f             | active  | f       |     7
+ t            | model        | f        | f           | array        | t            | f             | active  | t       |     6
+ t            | model        | t        | t           | array        | t            | f             | active  | t       |     3
+ t            |              | f        | f           | array        | t            | f             | active  | t       |     2
+ t            | model        | t        | t           | array        | t            | t             | active  | t       |     1
+ t            |              | f        | f           | array        | f            | f             | active  | t       |     1
+(11 rows)
+
+== W3 scoring-recovery-sweep summaries since 15:30
+          started_at           |                                                                                 s                                                                                 
+-------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 2026-10-20 15:30:02.719326+00 | Re-queued scoring for 3 unscored opportunities; re-queued analysis for 1 opportunity missing a brief.
+ 2026-10-20 15:45:00.696634+00 | Re-queued scoring for 7 unscored opportunities; re-queued analysis for 24 opportunities missing a brief; re-queued the final score for 34 analyzed opportunities.
+(2 rows)
+
+== W4 sub-verify incomplete reasons sample
+                                                                                                                                                                                                                                       e                                                                                                                                                                                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Verified Southern Wise, Inc.: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: The website crawl returned no usable email. This is inconclusive because inaccessible pages and pages with no published email currently produce the same result.
+ Verified Staton Logistics Partners LLC: email unverified, phone on file, SAM clear, license unknown → call queued (phone only, no verified email). Required downstream work was not queued: call-prep: the queue refused this required step. Automation may be paused, the pursuit may be stopped, or its version may be unavailable. The completed parent step will not run again automatically. Resolve the queue or automation hold, then retry the named downstream step.
+ Verified Short's Equipment Services: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification is incomplete: The website crawl returned no usable email. This is inconclusive because inaccessible pages and pages with no published email currently produce the same result.
+(3 rows)
+
+== W5 sub-verify success summaries sample
+                                                                                         s                                                                                         | count 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ Verified Aqua-Tech: email unverified, phone on file, SAM clear, license unknown → call queued (phone only, no verified email).                                                    |     1
+ Verified Battle Wrench LLC - Mobile Heavy Equipment Service and Repair and Welding: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued. |     1
+ Verified Berg Compliance Solutions, LLC : OSHA Safety & Environmental Consultants: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued.  |     1
+ Verified Construction Safety Consultants LLC: email verified (website_scrape), phone on file, SAM EXCLUDED, license unknown → held (failed standards).                            |     1
+ Verified Construction Specialties, Inc.: email unverified, phone on file, SAM clear, license unknown → call queued (phone only, no verified email).                               |     1
+ Verified FHG Diesel & Fuel Delivery: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued.                                                |     1
+ Verified Facility Construction Services: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued.                                            |     1
+ Verified Force Corporation: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued.                                                         |     1
+ Verified Frei Enterprises, Inc.: email verified (website_scrape), phone on file, SAM clear, license unknown → outreach queued.                                                    |     1
+ Verified JT Aircraft Maintenance LLC: email unverified, phone on file, SAM clear, license unknown → call queued (phone only, no verified email).                                  |     1
+(10 rows)
+
+== W6 scoring-engine run warnings since 15:30
+                                                                                                  msg                                                                                                   | count 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ Paid document analysis held for review because the notice already triggers company rules: ineligible_set_aside. No analysis was billed. Review the notice or company rules before requesting analysis. |     3
+ Scored 58/100 → review                                                                                                                                                                                 |     3
+ Scored 60/100 → review                                                                                                                                                                                 |     2
+ Scored 56/100 → review                                                                                                                                                                                 |     1
+ Scored 67/100 → review                                                                                                                                                                                 |     1
+(5 rows)
+
