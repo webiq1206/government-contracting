@@ -1,0 +1,64 @@
+
+BROSTCO doctor — why the engine may be quiet
+====================================================
+  environment : workspace (development shell)
+  database    : DATABASE_URL → ep-tiny-star-atg1zti6.c-9.us-east-1.aws.neon.tech:5432/neondb
+  worker here : enabled
+====================================================
+(node:534) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  28 agents are on a schedule (discovery every 3h, follow-ups every 15m, reply-poll every 15m).
+
+  ── BROST CO (canceled) ──
+
+====================================================
+  ! WARN Running from the workspace, but reading the LIVE database
+         → The findings below are about production data. Note the split: the `worker here` line describes THIS shell (which deliberately runs no worker), while the heartbeat and job history are read from the database and so do describe the deployed worker.
+  ✓ PASS Database reachable
+  ✓ PASS AUTH_SECRET is set to a real value
+  ✓ PASS Automation is on
+  ✓ PASS AI provider key present (Anthropic, OpenAI)
+  ✓ PASS Worker alive and ready (beat 0 min ago)
+  ✓ PASS All 140 migrations are applied
+  ✓ PASS Jobs are running (most recent 5 min ago)
+  ✓ PASS 1 organization(s) the agents will work for
+  ! WARN 1 real organization(s) the agents will NOT work for
+         → No automation runs for them at all — no discovery, no outreach, no follow-ups: Bunkley Electric Company (trial_expired). To bring one back, comp it (Admin → Accounts → the account → "Comp this account"), restart its trial, or put it on a paid plan. Note a comped account works even while its Stripe status reads cancelled, so the status alone is not the thing to fix.
+  ✓ PASS [BROST CO] SAM.gov key present
+  ✓ PASS [BROST CO] Anthropic and OpenAI key present, no refusals in the last 6h
+  ✓ PASS [BROST CO] 206 opportunities discovered in the last 7 days
+  ✓ PASS [BROST CO] Google inbox connected
+  ✓ PASS [BROST CO] 14 outreach emails sent in the last 7 days
+
+====================================================
+  No blockers. 2 warning(s) worth a look.
+reading: DATABASE_URL (production)
+
+(node:582) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+┌─────────┬────────────────────────────┬─────────────────────┬────────────────┬──────────────────────────────┬──────────────┬────────────────────┐
+│ (index) │ name                       │ subscription_status │ billing_exempt │ trial_ends_at                │ suspended_at │ agents_work_for_it │
+├─────────┼────────────────────────────┼─────────────────────┼────────────────┼──────────────────────────────┼──────────────┼────────────────────┤
+│ 0       │ 'BROST CO'                 │ 'canceled'          │ true           │ '2026-08-13 17:02:45+00'     │ null         │ 'yes (comped)'     │
+│ 1       │ 'Bunkley Electric Company' │ 'trial_expired'     │ false          │ '2026-09-04 14:24:49.586+00' │ null         │ 'no'               │
+└─────────┴────────────────────────────┴─────────────────────┴────────────────┴──────────────────────────────┴──────────────┴────────────────────┘
+
+2 organization(s). "agents_work_for_it" is the same rule listActiveOrganizations applies.
+
+Bids marked ready by an audit that could not run:
+  none. Nothing to correct.
