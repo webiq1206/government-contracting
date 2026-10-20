@@ -1,0 +1,76 @@
+Pager usage is off.
+== X0 now
+              now              
+-------------------------------
+ 2026-10-20 16:31:55.327178+00
+(1 row)
+
+== X1 outbound email since 15:30 by state, channel and hour
+           h            | delivery_state | count 
+------------------------+----------------+-------
+ 2026-10-20 16:00:00+00 | deferred       |     1
+ 2026-10-20 16:00:00+00 | delivered      |     2
+ 2026-10-20 16:00:00+00 | sent           |     4
+(3 rows)
+
+== X2 outreach agent log messages since 16:30
+  level  |                                                                                                                                                     msg                                                                                                                                                      | count 
+---------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ info    | The bid deadline is close, so the quote deadline is tighter than usual. There is little room to chase a replacement if this quote does not work.                                                                                                                                                             |     2
+ info    | "Att 0006 SF1408 Preaward Survey of Prospective Contractor Accounting System.pdf" is password protected, so it was left out of the email: the subcontractor could not open it.                                                                                                                               |     2
+ info    | The scope carries no quantities or measurements, so any price returned will be an estimate rather than a quote.                                                                                                                                                                                              |     2
+ info    | [outreach] scope sanitised (1 contact(s) redacted), 21 file(s) attached [Att 0001 Performance Work Statement (Performance Work Statement) Stewart 9-24.pdf:application/pdf; B08 - Solicitation - W519TC26RA056 - Final.pdf:application/pdf; Att 0027 Annex D - Environmental Requirements.pdf:application/pd |     2
+ success | Sent outreach to Cowart Industrial Services LLC <info@cowartind.com>; follow-up in 48h, call card queued.                                                                                                                                                                                                    |     1
+ error   | Re-queued 14 stuck outreach email(s) now that sending works again. Required downstream work was not queued: outreach: the queue refused this required step. Automation may be paused, the pursuit may be stopped, or its version may be unavailable; outreach: the queue refused this required step. Automat |     1
+ success | Sent outreach to HSM Solutions <hs.credit@hsmsolutions.com>; follow-up in 48h, call card queued.                                                                                                                                                                                                             |     1
+ info    | The inbox is connected. Rechecking 14 unsent outreach item(s), including verified document holds, through the normal outreach checks.                                                                                                                                                                        |     1
+ success | No dropped pursue handoffs were waiting.                                                                                                                                                                                                                                                                     |     1
+ success | Re-queued 14 stuck outreach email(s) now that sending works again.                                                                                                                                                                                                                                           |     1
+(10 rows)
+
+== X3 job_runs since 16:30 by agent/status
+           agent            | status  | count 
+----------------------------+---------+-------
+ ai-provider-recovery-probe | ok      |     1
+ call-prep                  | error   |     2
+ daily-recap                | ok      |     1
+ outreach                   | ok      |     2
+ outreach-followup          | ok      |     1
+ outreach-recovery-sweep    | error   |     1
+ pursuit-continuation-sweep | ok      |     1
+ reply-poll                 | ok      |     1
+ review-expiry-sweep        | ok      |     1
+ scoring-engine             | ok      |     1
+ scoring-recovery-sweep     | ok      |     1
+ service-sync               | ok      |     1
+ sub-verify                 | error   |     7
+ sub-verify                 | running |     1
+(14 rows)
+
+== X4 pairings with a verified email, by outreach state
+ outreach_state | contact_status | count 
+----------------+----------------+-------
+ pending        | verified       |    15
+ sent           | verified       |     7
+ unresponsive   | verified       |     1
+(3 rows)
+
+== X5 outbound sent emails, latest 15
+          created_at           | delivery_state |                                            subj                                            |         recipient_email          
+-------------------------------+----------------+--------------------------------------------------------------------------------------------+----------------------------------
+ 2026-10-20 16:30:16.724863+00 | sent           | Pricing request: Hazardous material handling | Fort Stewart, Georgia                       | info@cowartind.com
+ 2026-10-20 16:30:07.641923+00 | sent           | Pricing request: Supply chain and inventory management | Fort Stewart, Georgia             | hs.credit@hsmsolutions.com
+ 2026-10-20 16:22:28.523025+00 | sent           | Pricing request: Electronic Security Systems Maintenance | Pennsylvania Ave NW, Washington | contact@jecoinc.com
+ 2026-10-20 16:22:24.736757+00 | delivered      | Pricing request: Electronic Security Systems Maintenance | Pennsylvania Ave NW, Washington | info@precisebuildingservices.com
+ 2026-10-20 16:19:08.735753+00 | sent           | Pricing request: Grounds Maintenance | California                                          | bernie@bernieslandscaping.com
+ 2026-10-20 16:17:32.096546+00 | delivered      | Pricing request: Environmental Compliance | California                                     | soar@soarhere.com
+ 2026-08-13 14:16:16.29162+00  | sent           | Re: Fuel systems operations and maintenance Quote Request, NM                              | 
+ 2026-08-11 14:09:01.548856+00 | sent           | Fuel systems operations and maintenance Quote Request — NM                                 | f.nunez@nmaeroservice.com
+(8 rows)
+
+== X6 rfq outbound rules and pause
+       key        |                                                  value_json                                                  
+------------------+--------------------------------------------------------------------------------------------------------------
+ automation_rules | {"lead_action": "review", "urgent_days": 3, "min_lead_days": 0, "retention_days": 30, "approaching_days": 7}
+(1 row)
+
