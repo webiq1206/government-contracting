@@ -1,0 +1,29 @@
+    day     | calls 
+------------+-------
+ 2026-10-20 |  1070
+ 2026-10-19 |   780
+ 2026-10-18 |   924
+ 2026-10-17 |  1012
+ 2026-10-16 |   484
+(5 rows)
+
+                                                          reason                                                          | count 
+--------------------------------------------------------------------------------------------------------------------------+-------
+ The website crawl returned no usable email. This is inconclusive because inaccessible pages and pages with no published  |   266
+ SAM exclusions check could not run because the account call budget is exhausted.                                         |   105
+ Google Maps Place Details was unavailable or empty, so missing website or phone data remains unverified. Web-search webs |    45
+ Web-search website lookup was inconclusive. No website was recorded, and this must not be treated as proof that no websi |    16
+                                                                                                                          |     6
+ Google Maps Place Details was unavailable or empty, so missing website or phone data remains unverified.                 |     4
+(6 rows)
+
+           h            | count 
+------------------------+-------
+ 2026-10-20 17:00:00+00 |     1
+ 2026-10-20 16:00:00+00 |     1
+ 2026-10-20 15:00:00+00 |     1
+ 2026-10-20 14:00:00+00 |     1
+ 2026-10-20 13:00:00+00 |     1
+ 2026-10-20 12:00:00+00 |     1
+(6 rows)
+
