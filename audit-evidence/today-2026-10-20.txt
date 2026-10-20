@@ -1,0 +1,50 @@
+              now              
+-------------------------------
+ 2026-10-20 17:21:08.277809+00
+(1 row)
+
+ sent_today | deferred | with_followup 
+------------+----------+---------------
+         25 |        2 |            22
+(1 row)
+
+     created_at      | delivery_state |                                  left                                  
+---------------------+----------------+------------------------------------------------------------------------
+ 2026-10-20 17:04:15 | sent           | Pricing request: Demolition contractor | District of Columbia
+ 2026-10-20 17:01:49 | delivered      | Pricing request: Demolition contractor | District of Columbia
+ 2026-10-20 17:00:29 | delivered      | Pricing request: SCADA/controls technician | District of Columbia
+ 2026-10-20 16:58:10 | sent           | Pricing request: SCADA/controls technician | District of Columbia
+ 2026-10-20 16:57:57 | delivered      | Pricing request: SCADA/controls technician | District of Columbia
+ 2026-10-20 16:56:29 | sent           | Pricing request: Roofing contractor | District of Columbia
+ 2026-10-20 16:56:21 | sent           | Pricing request: Structural steel contractor | District of Columbia
+ 2026-10-20 16:56:15 | delivered      | Pricing request: Structural steel contractor | District of Columbia
+ 2026-10-20 16:56:07 | sent           | Pricing request: Electrical contractor | District of Columbia
+ 2026-10-20 16:55:59 | deferred       | Pricing request: Electrical contractor | District of Columbia
+ 2026-10-20 16:55:50 | delivered      | Pricing request: Electrical contractor | District of Columbia
+ 2026-10-20 16:54:53 | sent           | Pricing request: Mobile food truck operations | California
+ 2026-10-20 16:54:44 | delivered      | Pricing request: Mobile food truck operations | California
+ 2026-10-20 16:54:36 | delivered      | Pricing request: Mobile food truck operations | California
+ 2026-10-20 16:50:24 | sent           | Pricing request: Cafeteria operations | California
+ 2026-10-20 16:50:15 | delivered      | Pricing request: Cafeteria operations | California
+ 2026-10-20 16:48:56 | sent           | Pricing request: Food service management | California
+ 2026-10-20 16:44:59 | delivered      | Pricing request: Logistics management | Fort Stewart, Georgia
+ 2026-10-20 16:40:11 | delivered      | Pricing request: Supply chain and inventory management | Fort Stewart,
+ 2026-10-20 16:34:29 | sent           | Pricing request: Equipment maintenance and repair | Fort Stewart, Geor
+(20 rows)
+
+                                                                      s                                                                       | count 
+----------------------------------------------------------------------------------------------------------------------------------------------+-------
+ Verified Maven Construction Group: email not found, phone on file, SAM UNVERIFIED, license unknown → held (verification incomplete). Verific |     9
+ Verified Golden Hammer Construction, Inc.: email verified (website_scrape), phone on file, SAM UNVERIFIED, license unknown → held (verificat |     9
+ Verified Finnegan Construction Group LLC: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verif |     7
+ Verified Wall to Wall Construction, INC: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verifi |     7
+ Verified Seanote Construction: email verified (website_scrape), phone on file, SAM UNVERIFIED, license unknown → held (verification incomple |     5
+ Verified Invoke Construction, LLC: email not found, phone on file, SAM UNVERIFIED, license unknown → held (verification incomplete). Verific |     5
+ Verified Cameron Fabrications: email not found, phone on file, SAM UNVERIFIED, license unknown → held (verification incomplete). Verificatio |     4
+ Verified Brothers Leon Roofing Services: email not found (no website), phone on file, SAM clear, license unknown → held (verification incomp |     4
+ Verified California Janitorial Services LLC: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Ve |     4
+ Verified All South Consulting Engineers LLC: email verified (website_scrape), phone on file, SAM UNVERIFIED, license unknown → held (verific |     4
+ Verified ACA Power and Mechanical: email not found, phone on file, SAM clear, license unknown → held (verification incomplete). Verification |     4
+ Verified Dann's Balius Welding & Iron: email not found, phone on file, SAM UNVERIFIED, license unknown → held (verification incomplete). Ver |     4
+(12 rows)
+
