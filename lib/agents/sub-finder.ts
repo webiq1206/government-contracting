@@ -13,6 +13,7 @@
 import { query, queryOne } from "../db";
 import { getWorkExecution } from "../app-settings";
 import { outreachAllowed } from "../domain/work-mode";
+import { sourcingReady } from "../domain/solicitation-completeness";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { runWithOrg } from "../tenant-context";
@@ -111,13 +112,13 @@ async function sourceSubs(
   // entry must not turn an incomplete brief into paid sourcing. Profile-wide
   // trades describe the company, not this solicitation's scope.
   let readinessProblem: string | null = null;
-  if (!analysis || !opp.analysis_input_hash || analysis.completeness?.ok !== true) {
-    readinessProblem = "A complete, current solicitation analysis is required. Resolve missing source documents and re-run analysis before sourcing.";
-  } else if (
-    (Array.isArray(analysis.verification_issues) && analysis.verification_issues.length > 0) ||
-    analysis.completeness.missing?.some((item) => item.critical)
-  ) {
-    readinessProblem = "The solicitation still has unresolved source-verification requirements. Resolve them and re-run analysis before sourcing.";
+  // Sourcing needs the scope, place, due date and notice identity. Gaps that
+  // only matter to the bid (unread forms, a reviewer's note, an unstated
+  // value) stay on the record and block bid readiness, not quote requests.
+  if (!analysis || !opp.analysis_input_hash || !analysis.completeness) {
+    readinessProblem = "A current solicitation analysis is required. Re-run analysis before sourcing.";
+  } else if (!sourcingReady(analysis.completeness)) {
+    readinessProblem = "The solicitation is missing what a quote request needs (scope, location, due date or notice identity). Resolve it and re-run analysis before sourcing.";
   } else if (analysis.past_perf_classification === "prime_only" && profile.decision_thresholds?.block_prime_only === true) {
     readinessProblem = "The current analysis requires prime-only past performance, which the company rules block. Review qualification before sourcing.";
   } else if (allTrades.length === 0) {

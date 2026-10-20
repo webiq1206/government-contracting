@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   evaluateSolicitationCompleteness,
+  sourcingReady,
   outreachDisplayName,
   isPlaceholderScope,
 } from "../lib/domain/solicitation-completeness";
@@ -32,9 +33,44 @@ describe("evaluateSolicitationCompleteness", () => {
     },
   };
 
+  it("keeps bid-only gaps critical for the bid without holding sourcing", () => {
+    const result = evaluateSolicitationCompleteness({
+      ...base,
+      attachmentOutcomes: [
+        ...base.attachmentOutcomes,
+        { name: "Pricing.xlsx", url: "https://example.com/p.xlsx", status: "unsupported" as const },
+      ],
+      analysis: { ...base.analysis, verification_issues: ["The matrix omits the letterhead requirement."] },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.sourcingOk).toBe(true);
+    expect(result.missing.filter((m) => m.critical).map((m) => m.key)).toEqual(
+      expect.arrayContaining(["analysis_verification_0", "unsupported_documents"])
+    );
+  });
+
+  it("holds sourcing when a quote request would have no scope, place or due date", () => {
+    for (const patch of [
+      { analysis: { ...base.analysis, scope_plain_language: "" } },
+      { locationState: null, locationText: null },
+      { deadline: null },
+    ]) {
+      const result = evaluateSolicitationCompleteness({ ...base, ...patch });
+      expect(result.sourcingOk).toBe(false);
+    }
+  });
+
+  it("reads analyses saved before the split from their gap keys", () => {
+    expect(sourcingReady({ ok: false, missing: [{ key: "drawings", critical: true }, { key: "value", critical: false }] })).toBe(true);
+    expect(sourcingReady({ ok: false, missing: [{ key: "location", critical: true }] })).toBe(false);
+    expect(sourcingReady({ ok: true })).toBe(true);
+    expect(sourcingReady(null)).toBe(false);
+  });
+
   it("is ok when critical fields and attachments are present", () => {
     const result = evaluateSolicitationCompleteness(base);
     expect(result.ok).toBe(true);
+    expect(result.sourcingOk).toBe(true);
     expect(result.missing.filter((m) => m.critical)).toHaveLength(0);
   });
 

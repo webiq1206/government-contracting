@@ -40,6 +40,8 @@ import {
 } from "../domain/analysis-routing";
 import {
   evaluateSolicitationCompleteness,
+  sourcingReady,
+  SOURCING_BLOCKER_KEYS,
   type AttachmentFetchOutcome,
   type AttachmentFetchStatus,
 } from "../domain/solicitation-completeness";
@@ -1255,7 +1257,7 @@ async function continuePursueFromExistingBrief(
   const blockedPrime =
     isPrimeOnly && profile.decision_thresholds.block_prime_only === true;
 
-  let blockedIncomplete = analysis.completeness ? !analysis.completeness.ok : false;
+  let blockedIncomplete = analysis.completeness ? !sourcingReady(analysis.completeness) : false;
   if (analysis.completeness == null) {
     const storedDocs = await queryOne<{ n: string }>(
       `select count(*)::text as n from documents
@@ -1277,7 +1279,7 @@ async function continuePursueFromExistingBrief(
       attachmentOutcomes: [],
       analysis,
     });
-    blockedIncomplete = !completeness.ok;
+    blockedIncomplete = !completeness.sourcingOk;
   }
 
   const live = await queryOne<
@@ -1931,7 +1933,9 @@ export const solicitationAnalyst: AgentDefinition = {
     }
 
     const enqueued: AgentResult["enqueued"] = [];
-    const blockedIncomplete = !completeness.ok;
+    // Bid-only gaps stay on the record (incomplete_solicitation, bid
+    // readiness, package validation) without holding scoring or sourcing.
+    const blockedIncomplete = !completeness.sourcingOk;
 
     // Re-read tier/stage. The operator may have pursued or passed while this
     // job was reading attachments; routing from the row we loaded at start
@@ -1980,7 +1984,7 @@ export const solicitationAnalyst: AgentDefinition = {
         message: blockedPrime
           ? "Prime-only past performance blocked progression (operator preference)."
           : `Solicitation incomplete (${completeness.missing
-              .filter((m) => m.critical)
+              .filter((m) => m.critical && SOURCING_BLOCKER_KEYS.has(m.key))
               .map((m) => m.key)
               .join(", ")}); held in analysis until resolved.`,
       });
@@ -2133,7 +2137,9 @@ export const solicitationAnalyst: AgentDefinition = {
     }
 
     if (blockedIncomplete) {
-      const critical = completeness.missing.filter((m) => m.critical).map((m) => m.what);
+      const critical = completeness.missing
+        .filter((m) => m.critical && SOURCING_BLOCKER_KEYS.has(m.key))
+        .map((m) => m.what);
       return {
         ok: true,
         summary: `Solicitation analyzed but held in analysis: missing ${critical.join(", ") || "required information"}. Resolve the gaps, then re-run Solicitation Analyst.`,

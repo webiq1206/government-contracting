@@ -298,7 +298,7 @@ async function monitorForOrg(orgId: string): Promise<{
                   level: "warn",
                   status: "skipped",
                   message:
-                    "SAM refreshed material solicitation data, but re-analysis was not queued because automation is paused or this pursuit is stopped. Restart automation or the pursuit, then re-run Solicitation Analyst before relying on the current brief.",
+                    "SAM refreshed material solicitation data, but re-analysis was not queued: automation is paused, the pursuit is stopped, AI work is on hold, or the same refresh is already queued. The next monitor run tries again; re-run Solicitation Analyst before relying on the current brief.",
                 });
               }
             }

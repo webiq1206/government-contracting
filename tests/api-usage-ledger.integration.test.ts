@@ -61,7 +61,7 @@ vi.mock("../lib/billing/stripe", () => ({
     },
   }),
 }));
-import { withProviderFacts, readProviderFacts } from "../lib/ai/provider-facts";
+import { withProviderFacts, readProviderFacts, providerBusyWait } from "../lib/ai/provider-facts";
 import { createUsageInvoice } from "../lib/api-usage/invoice";
 import {
   beginUsage,
@@ -114,6 +114,8 @@ afterAll(async () => {
   await state.db?.close();
 });
 beforeEach(async () => {
+  // A held credential fails at once here; waiting for a live call is tested in provider-facts.
+  providerBusyWait.maxMs = 0;
   state.failFinish = false; state.failFacts = false;
   state.failItem = false;
   state.stripeCalls = [];

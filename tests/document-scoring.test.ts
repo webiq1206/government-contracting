@@ -8,14 +8,14 @@ const ready = (over: Record<string, unknown> = {}) =>
     hasAnalysis: true,
     analysisInputHash: "current-hash",
     briefSource: "model",
-    completenessOk: true,
+    sourcingReady: true,
     ...over,
   });
 
 describe("document-first scoring readiness", () => {
   it("requires analysis when the notice links a source document", () => {
     expect(
-      ready({ hasAnalysis: false, analysisInputHash: null, briefSource: null, completenessOk: null })
+      ready({ hasAnalysis: false, analysisInputHash: null, briefSource: null, sourcingReady: null })
     ).toMatchObject({ documentsRequired: true, analysisComplete: false, next: "analyze" });
   });
 
@@ -27,13 +27,13 @@ describe("document-first scoring readiness", () => {
         hasAnalysis: false,
         analysisInputHash: null,
         briefSource: null,
-        completenessOk: null,
+        sourcingReady: null,
       })
     ).toMatchObject({ documentsRequired: true, next: "analyze" });
   });
 
   it("blocks when any document analysis is incomplete", () => {
-    expect(ready({ completenessOk: false })).toMatchObject({
+    expect(ready({ sourcingReady: false })).toMatchObject({
       analysisComplete: false,
       next: "blocked",
     });

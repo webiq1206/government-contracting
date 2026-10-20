@@ -17,13 +17,14 @@ export function documentScoringReadiness(input: {
   hasAnalysis: boolean;
   analysisInputHash?: string | null;
   briefSource?: string | null;
-  completenessOk?: boolean | null;
+  /** sourcingReady() of the saved brief: bid-only gaps do not block scoring. */
+  sourcingReady?: boolean | null;
 }): DocumentScoringReadiness {
   const documentsRequired = input.sourceAttachmentCount > 0 || input.activeDocumentCount > 0;
   const analysisComplete =
     Boolean(input.analysisInputHash) &&
     input.briefSource === "model" &&
-    input.completenessOk === true;
+    input.sourcingReady === true;
 
   if (!documentsRequired) {
     return {

@@ -482,8 +482,9 @@ export interface SolicitationAnalysis {
   compliance_matrix: ComplianceRequirement[];
 
   /**
-   * Snapshot from evaluateSolicitationCompleteness. When ok is false the
-   * opportunity must not advance into subcontractor sourcing.
+   * Snapshot from evaluateSolicitationCompleteness. When ok is false the bid
+   * is not ready to build or submit. Scoring and sourcing read sourcingReady()
+   * instead, which only holds on the gaps a quote request cannot do without.
    */
   completeness?: {
     ok: boolean;

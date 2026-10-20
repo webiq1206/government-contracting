@@ -4,6 +4,7 @@ import type { RequestIdentity } from "../api-usage/ledger";
 import { ENV_KEY_FOR, type AiProvider, type AiTier } from "./routing";
 import { eligibleForFailover, requiresRetryReview, retryTime, withRetryTime } from "./failover-policy";
 import { guardProspectiveProvider, lockProspectiveAdmission } from "../prospective-boundary";
+import { AI_CALL_TIMEOUT_MS } from "../domain/hold-registry";
 
 export interface ProviderFacts {
   pending_attempt?: string | null;
@@ -61,18 +62,36 @@ export function providerProblem(f: ProviderFacts | null): string | null {
     ? f.failure_reason : null;
 }
 
+/**
+ * A pending attempt that may still be on the wire, as opposed to one whose
+ * outcome is unresolved. Every call is aborted at AI_CALL_TIMEOUT_MS, so an
+ * attempt younger than that is another job's live request: the next job only
+ * has to wait its turn. Older than that, nobody is going to settle it and it
+ * holds the account until the hold sweep releases it.
+ */
+export function pendingAttemptLive(facts: Pick<ProviderFacts, "pending_attempt" | "pending_started_at"> | null,
+  now = Date.now()): boolean {
+  if (!facts?.pending_attempt || !facts.pending_started_at) return false;
+  return now - new Date(facts.pending_started_at).getTime() < AI_CALL_TIMEOUT_MS;
+}
+
 export async function providerRouteRefusal(orgId: string, tier: AiTier, includePending = false): Promise<ProviderRefusalError | null> {
   const { planRoute } = await import("./claude");
   const plan = await planRoute({ complexity: tier }, orgId);
   if (!plan) return null;
   const primary = await currentProviderFacts(plan.primary.provider, orgId);
+  // Only an unresolved attempt holds admission. Refusing to queue work while
+  // another job's call was merely running dropped that work outright, and
+  // with every call on one credential taking turns, most enqueues met one.
+  const unresolved = (facts: ProviderFacts | null) =>
+    includePending && Boolean(facts?.pending_attempt) && !pendingAttemptLive(facts);
   const held = (facts: ProviderFacts | null) => facts?.refusal_reason ||
     (facts?.failure_reason && (retryTime(facts.failure_reason) ?? 0) > Date.now() ? facts.failure_reason : null) ||
-    (includePending && facts?.pending_attempt ? providerProblem(facts) : null);
+    (unresolved(facts) ? providerProblem(facts) : null);
   const reason = held(primary);
   // Runtime cannot route around an unresolved primary request. Admission must
   // preserve that hold even when a healthy fallback exists.
-  if (includePending && primary?.pending_attempt)
+  if (unresolved(primary))
     return new ProviderRefusalError(plan.primary.provider, providerProblem(primary)!, null);
   if (!reason) return null;
   const status = primary?.refusal_reason ? primary.refusal_status : primary?.failure_status ?? null;
@@ -105,6 +124,15 @@ function rateLimitCooldownSeconds(e: {
 }
 
 /**
+ * How long a call waits for another job's live request on the same credential
+ * before giving up retryably. Calls on one credential take turns, so a busy
+ * credential is the normal case, not a failure: failing at once burned the
+ * queue's three retries inside one long analysis call and lost the job.
+ * Mutable so tests can make a busy credential fail fast.
+ */
+export const providerBusyWait = { maxMs: 4 * 60_000, pollMs: 5_000 };
+
+/**
  * Commit an attempt token before I/O, then release the database connection.
  * The token stays until this settlement write, including when the outcome is
  * uncertain, so a second call cannot overlap a request that may still be
@@ -117,16 +145,30 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
   execute: () => Promise<T>, recoveryTest = false): Promise<T> {
   const scope = providerScope(identity, provider);
   const attempt = randomUUID();
-  const busy = () => Object.assign(new Error(`AI_UNAVAILABLE: ${provider} has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.`),
-    { name: "ProviderAttemptBusyError", provider, retryable: true });
-  await transaction(async client => {
+  const busy = (live: boolean) => Object.assign(new Error(`AI_UNAVAILABLE: ${provider} has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.`),
+    { name: "ProviderAttemptBusyError", provider, retryable: true, live });
+  const waitUntil = Date.now() + providerBusyWait.maxMs;
+  for (;;) {
+    try {
+      await claimProviderAttempt();
+      break;
+    } catch (error) {
+      // Wait out another job's live call. An unresolved attempt is not going
+      // to finish, so waiting on it would only hold this worker.
+      const live = (error as { name?: string; live?: boolean } | null)?.name === "ProviderAttemptBusyError" &&
+        (error as { live?: boolean }).live === true;
+      if (!live || Date.now() + providerBusyWait.pollMs > waitUntil) throw error;
+      await new Promise((resolve) => setTimeout(resolve, providerBusyWait.pollMs));
+    }
+  }
+  async function claimProviderAttempt() { await transaction(async client => {
     await lockProspectiveAdmission(client);
     await guardProspectiveProvider(client, identity, provider, recoveryTest);
     const lock = await client.query("select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired", [JSON.stringify(scope)]);
-    if (!lock.rows[0]?.acquired) throw busy();
+    if (!lock.rows[0]?.acquired) throw busy(true);
     const row = (await client.query<ProviderFacts>(`select * from ai_provider_facts
       where account_scope=$1 and provider=$2 and credential_hash=$3`, scope)).rows[0];
-    if (row?.pending_attempt) throw busy();
+    if (row?.pending_attempt) throw busy(pendingAttemptLive(row));
     if (!recoveryTest && requiresRetryReview(row?.failure_reason ?? null)) {
       throw new ProviderRefusalError(provider, row!.failure_reason!, row!.failure_status);
     }
@@ -139,7 +181,7 @@ export async function withProviderFacts<T>(identity: RequestIdentity, provider: 
     await client.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
       values($1,$2,$3,$4,clock_timestamp()) on conflict(account_scope,provider,credential_hash) do update
       set pending_attempt=excluded.pending_attempt,pending_started_at=excluded.pending_started_at`, [...scope, attempt]);
-  });
+  }); }
 
   // Do not catch completion persistence errors as if they were provider errors.
   // An uncertain claim commit also never reaches execute().

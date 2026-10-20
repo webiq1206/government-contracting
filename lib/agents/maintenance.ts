@@ -68,7 +68,7 @@ import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
 import { storage, type StorageBackend } from "../integrations/storage";
-import { outreachDisplayName } from "../domain/solicitation-completeness";
+import { outreachDisplayName, SOURCING_BLOCKER_KEYS } from "../domain/solicitation-completeness";
 import {
   scrubInternalFailureCopy,
   renderOutreachBrief,
@@ -1853,6 +1853,12 @@ export const scoringRecoverySweep: AgentDefinition = {
               and attempts.status='error' and attempts.started_at > now()-interval '24 hours'
               -- A lease wait (an earlier attempt still inside its receipt lease) is not a failed attempt.
               and coalesce(attempts.summary->>'transientHold', '') <> 'true') < 3
+            -- Held for a person on a value limit: re-scoring returns the same
+            -- hold, so re-queuing it every hour only spent runs.
+            and not (coalesce(human_action_required, false) and exists (
+              select 1 from unnest(coalesce(risk_flags,'{}')) as flag
+              where flag in ('pre_analysis_value_below_min', 'pre_analysis_unrestricted_under_threshold')
+            ))
             and created_at < now() - interval '20 minutes'
           order by created_at asc
           limit 200`,
@@ -1936,6 +1942,86 @@ export const scoringRecoverySweep: AgentDefinition = {
       });
     }
 
+    /*
+     * Analyzed, but the final score was never taken.
+     *
+     * Only the analyst queues the document score, once. A lost job, a lease
+     * wait, or a brief held on gaps that no longer block sourcing left the
+     * record in analysis with no score and no route out. The score job is
+     * keyed to the exact analysis it reads, so this cannot score a stale one.
+     */
+    const unrescored: { id: string; hash: string; orgId: string }[] = [];
+    for (const org of orgs) {
+      const rows = await query<{ id: string; hash: string }>(
+        `select id, analysis_input_hash as hash from opportunities
+          where org_id = $1
+            and status='open'
+            and stage in ('scoring','analysis')
+            and is_sources_sought is not true
+            and coalesce(pursuit_state, 'active') = 'active'
+            and solicitation_analysis->>'brief_source' = 'model'
+            and coalesce(analysis_input_hash, '') <> ''
+            and score_breakdown->>'analysis_input_hash' is distinct from analysis_input_hash
+            and jsonb_typeof(solicitation_analysis->'completeness'->'missing') = 'array'
+            and not exists (
+              select 1 from jsonb_array_elements(solicitation_analysis->'completeness'->'missing') as gap
+               where gap->>'critical' = 'true' and gap->>'key' = any($2::text[])
+            )
+            and not ('prime_only_blocked' = any(coalesce(risk_flags, '{}')))
+            and not exists (select 1 from job_runs recent where recent.org_id=$1
+              and recent.opportunity_id=opportunities.id
+              and recent.agent in ('scoring-engine', 'solicitation-analyst')
+              and recent.started_at > now()-interval '1 hour')
+            and (select count(*) from job_runs attempts where attempts.org_id=$1
+              and attempts.opportunity_id=opportunities.id and attempts.agent='scoring-engine'
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours'
+              and coalesce(attempts.summary->>'transientHold', '') <> 'true') < 3
+            and updated_at < now() - interval '20 minutes'
+          order by deadline asc nulls last
+          limit 200`,
+        [org.id, [...SOURCING_BLOCKER_KEYS]]
+      );
+      unrescored.push(...rows.map((row) => ({ ...row, orgId: org.id })));
+    }
+    let rescoreQueued = 0;
+    for (const o of unrescored) {
+      try {
+        const queuedId = await runWithOrg(o.orgId, () =>
+          enqueue(
+            "scoring-engine",
+            { opportunityId: o.id, analysisComplete: true, analysisInputHash: o.hash, trigger: "recovery" },
+            { singletonKey: `score-analysis:${o.id}:${o.hash.slice(0, 24)}`, singletonSeconds: 3600 }
+          )
+        );
+        if (!queuedId) {
+          deferred++;
+          continue;
+        }
+        rescoreQueued++;
+      } catch (err) {
+        queueFailures++;
+        await runWithOrg(o.orgId, () =>
+          logAgent({
+            agent: "scoring-recovery-sweep",
+            action: "requeue-final-score",
+            opportunityId: o.id,
+            level: "error",
+            status: "error",
+            message: `Could not re-queue the final score for opportunity ${o.id} (${(err as Error).message}). It will be retried on the next sweep.`,
+          })
+        );
+      }
+    }
+    if (rescoreQueued > 0) {
+      await logAgent({
+        agent: "scoring-recovery-sweep",
+        action: "requeue-final-score",
+        level: "info",
+        message: `Re-queued the final score for ${rescoreQueued} analyzed opportunit${rescoreQueued === 1 ? "y" : "ies"} that never received one.`,
+        reasoning: "The analysis was saved but its one-shot scoring job was lost or held. The score reads the saved analysis; nothing is analyzed again.",
+      });
+    }
+
     // The analyst used to run only on auto-pursue. Review records, lost jobs,
     // and Claude outages left scored opportunities with no brief forever.
     const unbriefed: { id: string; orgId: string }[] = [];
@@ -1946,7 +2032,9 @@ export const scoringRecoverySweep: AgentDefinition = {
             and status='open'
             and stage in ('scoring','analysis')
             and is_sources_sought is not true
-            and score is not null
+            -- Unscored records in analysis were sent there for a document read
+            -- whose analyst job was never created; nothing else recovers them.
+            and (score is not null or stage = 'analysis')
             and solicitation_analysis is null
             and not exists (select 1 from job_runs recent where recent.org_id=$1
               and recent.opportunity_id=opportunities.id and recent.agent='solicitation-analyst'
@@ -2021,6 +2109,11 @@ export const scoringRecoverySweep: AgentDefinition = {
         `re-queued analysis for ${analysisQueued} opportunit${analysisQueued === 1 ? "y" : "ies"} missing a brief`
       );
     }
+    if (rescoreQueued > 0) {
+      parts.push(
+        `re-queued the final score for ${rescoreQueued} analyzed opportunit${rescoreQueued === 1 ? "y" : "ies"}`
+      );
+    }
     if (deferred > 0) parts.push(`${deferred} recovery jobs were already queued or deferred by a safety check; the next sweep will check them again`);
     if (queueFailures > 0) {
       parts.push(
@@ -2033,6 +2126,7 @@ export const scoringRecoverySweep: AgentDefinition = {
       data: {
         scoringQueued,
         analysisQueued,
+        rescoreQueued,
         queueFailures,
         deferred,
       },

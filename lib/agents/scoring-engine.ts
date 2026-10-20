@@ -38,6 +38,7 @@ import { scoringRiskFlags } from "../domain/scoring-flags";
 import { decideReviewBand } from "../ai/band-decision";
 import { decideSavedBand } from "./band-decision-pass";
 import { documentScoringReadiness } from "../domain/document-scoring";
+import { sourcingReady } from "../domain/solicitation-completeness";
 import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
@@ -184,7 +185,7 @@ async function scoreOpportunity(
     hasAnalysis: Boolean(opp.solicitation_analysis),
     analysisInputHash: opp.analysis_input_hash,
     briefSource: opp.solicitation_analysis?.brief_source,
-    completenessOk: opp.solicitation_analysis?.completeness?.ok,
+    sourcingReady: sourcingReady(opp.solicitation_analysis?.completeness),
   });
   const { analysisComplete: completedAnalysis, documentsRequired } = documentReadiness;
 
@@ -291,6 +292,31 @@ async function scoreOpportunity(
     ["ineligible_set_aside", "deadline_too_soon", "value_below_min", "unrestricted_under_threshold"].includes(key));
   if (preliminaryExclusions.length && !opts.preserveLifecycle && !opts.analysisComplete &&
       ["monitoring", "scoring", "analysis"].includes(opp.stage) && documentReadiness.next === "analyze") {
+    // A set-aside the company holds no certification for, and a due date
+    // inside the minimum lead time, come from structured notice fields, and
+    // final scoring dismisses both as hard exclusions anyway. Parking them for
+    // a person only left them unscored, re-queued every hour, forever.
+    // Value limits read an estimate, so those still wait for review.
+    if (preliminaryExclusions.every((key) => key === "ineligible_set_aside" || key === "deadline_too_soon")) {
+      await query(
+        `update opportunities
+            set stage='dismissed', status='archived', tier='dismiss', human_action_required=false,
+                risk_flags=(select array(select distinct flag
+                  from unnest(coalesce(risk_flags,'{}') || $2::text[]) as flag
+                  where flag not like 'pre_analysis_%'))
+          where id=$1 and org_id=$3`,
+        [opportunityId, preliminaryExclusions, orgId]);
+      const reasons = preliminaryExclusions.map((key) => key.replace(/_/g, " ")).join(", ");
+      await logAgent({
+        agent: "scoring-engine",
+        action: "rule-dismissed",
+        opportunityId,
+        level: "info",
+        message: `Dismissed by company rules before any paid analysis: ${reasons}. Restore it from the archive if the notice is wrong.`,
+      });
+      return { ok: true,
+        summary: `Dismissed by company rules before paid analysis: ${reasons}. No analysis was billed.` };
+    }
     await query(
       `update opportunities set human_action_required=true,
         risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || $2::text[])))
