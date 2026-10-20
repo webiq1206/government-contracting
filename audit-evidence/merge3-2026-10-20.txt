@@ -1,0 +1,22 @@
+From https://github.com/webiq1206/government-contracting
+ * branch              main       -> FETCH_HEAD
+   b8d2bfad..dc6ca92a  main       -> origin/main
+Merge made by the 'ort' strategy.
+ lib/agents/outreach.ts                             | 18 ++++++
+ lib/agents/sub-verify.ts                           | 61 ++++++++++++++++++++
+ lib/backlink-send.ts                               |  6 +-
+ lib/domain/rfq-reservation.ts                      | 26 ++++++++-
+ lib/integrations/email-scrape.ts                   | 65 ++++++++++++++++++++--
+ lib/integrations/email-transport.ts                |  7 ++-
+ lib/opportunity-attachments.ts                     | 18 ++++--
+ tests/email-scrape.test.ts                         | 32 ++++++++++-
+ tests/opportunity-attachments-safety.test.ts       |  7 ++-
+ tests/outreach-idempotency.integration.test.ts     |  3 +
+ tests/rfq-reservation-sql.test.ts                  | 15 +++++
+ tests/sub-verify-next-candidate.test.ts            | 44 +++++++++++++++
+ ...bcontractor-email-roundtrip.integration.test.ts |  3 +
+ 13 files changed, 290 insertions(+), 15 deletions(-)
+ create mode 100644 tests/sub-verify-next-candidate.test.ts
+7c313bbd Merge remote-tracking branch 'origin/main'
+dc6ca92a Raise RFQ volume and give every quote request its best chance at the inbox (#227)
+2
