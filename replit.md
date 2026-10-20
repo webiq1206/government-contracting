@@ -171,6 +171,23 @@ rules before any paid analysis, as final scoring always did. `npm run doctor`
 now counts only mail that actually left the inbox and warns when discovery
 works but nothing reaches pursue.
 
+## Keeping it working
+
+Two alarms email the digest address so a silent outage cannot last:
+
+- **Results, not just runs.** The continuation sweep raises
+  "Opportunities are arriving but no quote requests are going out" when 10 or
+  more notices arrived in 3 days and none reached sourcing, or when a
+  subcontractor with a verified email has waited over 6 hours and no quote
+  request went out in 24 hours (outbound not paused). Records parked for a
+  person count toward the alarm, since parking is how the October outage hid.
+- **Stale publish.** Production builds from this workspace, not from GitHub.
+  The build records how many commits on GitHub main it is missing, and the
+  worker emails "Production is running an out-of-date build" once per build
+  when that is not zero. `npm run doctor` fails on the same condition before
+  you publish. Always run `git fetch origin main && git merge origin/main`
+  in the workspace before publishing.
+
 ## User preferences
 
 - No em dashes in user-visible strings.

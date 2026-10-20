@@ -15,6 +15,7 @@
  * It reads only. It changes nothing.
  */
 import "../lib/env";
+import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../lib/config";
@@ -112,6 +113,28 @@ async function main() {
       "Running from the workspace, but reading the LIVE database",
       "The findings below are about production data. Note the split: the `worker here` line describes THIS shell (which deliberately runs no worker), while the heartbeat and job history are read from the database and so do describe the deployed worker."
     );
+  }
+
+  // Production is built from this workspace, not from GitHub. A workspace
+  // behind main publishes older code and rolls back whatever merged since.
+  if (!deployed) {
+    try {
+      const git = (...args: string[]) =>
+        execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20_000 }).trim();
+      try { git("fetch", "--quiet", "origin", "main"); } catch { /* compare with the last fetched main */ }
+      const missing = Number(git("rev-list", "--count", "HEAD..origin/main"));
+      if (missing > 0) {
+        check(
+          "FAIL",
+          `This workspace is missing ${missing} commit(s) already merged to GitHub main`,
+          "Publishing now would roll those changes back. Run `git fetch origin main && git merge origin/main`, then publish."
+        );
+      } else {
+        check("PASS", "Workspace includes everything on GitHub main");
+      }
+    } catch {
+      check("WARN", "Could not compare this workspace with GitHub main", "Check that git and the origin remote are available in this shell.");
+    }
   }
 
   // ---- 1. Database ----

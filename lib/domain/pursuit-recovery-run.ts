@@ -36,6 +36,15 @@ import {
   pipelineStallText,
   type PipelineStallCounts,
 } from "./pipeline-stall";
+import {
+  EMAILABLE_WAIT_HOURS,
+  OUTCOME_STALL_CAUSE,
+  RFQ_OUTCOME_HOURS,
+  SOURCING_OUTCOME_HOURS,
+  outcomeStallEligible,
+  outcomeStallText,
+  type OutcomeCounts,
+} from "./outcome-watch";
 
 export interface PursuitGapResult {
   bandQueued: number;
@@ -513,6 +522,9 @@ async function recoverOrgGaps(orgId: string): Promise<PursuitGapResult> {
   const watched = await watchPipeline(orgId, rules.rfq_outbound_enabled);
   result.alerted += watched.alerted;
   result.resolved += watched.resolved;
+  const outcomes = await watchOutcomes(orgId, rules.rfq_outbound_enabled);
+  result.alerted += outcomes.alerted;
+  result.resolved += outcomes.resolved;
 
   const moved = result.bandQueued + result.sourcingQueued + result.verifyQueued + result.outreachQueued;
   if (moved > 0) {
@@ -746,6 +758,113 @@ async function watchPipeline(
   }
   await markRecovered(orgId, open.id, note);
   return { alerted: 0, resolved: 1 };
+}
+
+/**
+ * The result-side alert: work arriving but nothing sourced, or verified
+ * emails waiting while nothing is sent. Same incident lifecycle, cooldown and
+ * single-alert claim as the stall alert above, under its own cause, so the two
+ * never silence each other.
+ */
+async function watchOutcomes(
+  orgId: string,
+  outboundEnabled: boolean
+): Promise<{ alerted: number; resolved: number }> {
+  const counts = await outcomeCounts(orgId, outboundEnabled);
+  const incident = await queryOne<{
+    id: string;
+    state: string | null;
+    start_alert_at: string | null;
+    end_alert_at: string | null;
+  }>(
+    `-- outcome-stall-incident
+     select id, state, start_alert_at, end_alert_at
+       from automation_incidents
+      where org_id = $1 and cause = $2
+      order by created_at desc
+      limit 1`,
+    [orgId, OUTCOME_STALL_CAUSE]
+  );
+  const open = incident && incident.state !== "recovered" && incident.state !== "retired" ? incident : null;
+  const decision = pipelineStallDecision({
+    eligible: outcomeStallEligible(counts),
+    incidentOpen: Boolean(open),
+    lastAlertAt: latestAlert(incident?.start_alert_at, incident?.end_alert_at),
+    now: new Date(),
+  });
+  if (decision === "quiet") return { alerted: 0, resolved: 0 };
+  if (decision === "alert") {
+    const created = open ?? (await openOrUpdateIncident({
+      orgId,
+      cause: OUTCOME_STALL_CAUSE,
+      severity: "blocking",
+      startedAt: new Date(),
+      detectionSource: "pursuit_continuation_sweep",
+      failedCount: 1,
+      recommendedAction: "Read the latest Automation Log entries for scoring, the solicitation analyst and outreach on the waiting records: each hold names its gate.",
+    }));
+    if (!(await claimAlert(orgId, created.id, "start"))) return { alerted: 0, resolved: 0 };
+    const text = outcomeStallText(counts);
+    await deliverOutageAlert({ subject: "Opportunities are arriving but no quote requests are going out", text });
+    await logAgent({ agent: SWEEP_AGENT, action: "outcome-stall-alert", level: "warn", message: text });
+    return { alerted: 1, resolved: 0 };
+  }
+  if (!open) return { alerted: 0, resolved: 0 };
+  const note = "Opportunities are reaching subcontractor sourcing and quote requests are going out again.";
+  if (await claimAlert(orgId, open.id, "end")) {
+    await deliverOutageAlert({ subject: "Quote requests are going out again", text: note });
+  }
+  await markRecovered(orgId, open.id, note);
+  return { alerted: 0, resolved: 1 };
+}
+
+async function outcomeCounts(orgId: string, outboundEnabled: boolean): Promise<OutcomeCounts> {
+  const row = await queryOne<{
+    discovered: number;
+    sourced: number;
+    parked: number;
+    emailable_waiting: number;
+    rfq_sent: number;
+  }>(
+    `-- outcome-stall-counts
+     select
+       (select count(*)::int from opportunities o
+         where o.org_id = $1 and o.is_sources_sought is not true
+           and o.created_at > now() - ($2::text || ' hours')::interval) as discovered,
+       (select count(distinct os.opportunity_id)::int from opportunity_subs os
+         where os.org_id = $1
+           and os.created_at > now() - ($2::text || ' hours')::interval) as sourced,
+       (select count(*)::int from opportunities o
+         where o.org_id = $1 and o.status = 'open'
+           and (o.deadline is null or o.deadline > now())
+           and o.stage in ('scoring', 'analysis')
+           and coalesce(o.human_action_required, false)) as parked,
+       -- Parked records count here on purpose: parking is how the outage hid.
+       (select count(*)::int from opportunity_subs os
+          join opportunities o on o.id = os.opportunity_id and o.org_id = $1
+         where os.org_id = $1 and o.status = 'open'
+           and (o.deadline is null or o.deadline > now())
+           and coalesce(o.pursuit_state, 'active') = 'active'
+           and os.removed_at is null
+           and os.outreach_state in ('pending', 'draft')
+           and (os.verification_json->>'email_verified')::boolean is true
+           and coalesce(os.verification_json->>'email', '') <> ''
+           and os.created_at < now() - ($3::text || ' hours')::interval) as emailable_waiting,
+       (select count(*)::int from communications c
+         where c.org_id = $1 and c.channel = 'email' and c.direction = 'outbound'
+           and c.delivery_state in ('sent', 'delivered')
+           and coalesce(c.meta->>'kind', 'outreach') = 'outreach'
+           and c.created_at > now() - ($4::text || ' hours')::interval) as rfq_sent`,
+    [orgId, String(SOURCING_OUTCOME_HOURS), String(EMAILABLE_WAIT_HOURS), String(RFQ_OUTCOME_HOURS)]
+  );
+  return {
+    discovered: Number(row?.discovered ?? 0),
+    sourced: Number(row?.sourced ?? 0),
+    parkedForPerson: Number(row?.parked ?? 0),
+    emailableWaiting: Number(row?.emailable_waiting ?? 0),
+    rfqSent: Number(row?.rfq_sent ?? 0),
+    outboundPaused: !outboundEnabled,
+  };
 }
 
 function latestAlert(start: string | null | undefined, end: string | null | undefined): Date | null {
