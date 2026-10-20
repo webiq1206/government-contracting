@@ -1,0 +1,13 @@
+   name   |        env_key        |       last_validated_at       |                                    last_error                                    
+----------+-----------------------+-------------------------------+----------------------------------------------------------------------------------
+ BROST CO | AHREFS_API_KEY        | 2026-08-06 19:11:20.661245+00 | Ahrefs request failed: Ahrefs provider refusal (HTTP 403). Review saved diagnost
+ BROST CO | ANTHROPIC_API_KEY     | 2026-10-11 16:31:02.402707+00 | 
+ BROST CO | DIGEST_EMAIL_TO       | 2026-08-13 13:00:34.213886+00 | 
+ BROST CO | GMAIL_SENDER          |                               | 
+ BROST CO | GOOGLE_MAPS_API_KEY   | 2026-08-14 02:43:40.36386+00  | 
+ BROST CO | RESEND_API_KEY        | 2026-08-13 13:00:34.197111+00 | 
+ BROST CO | RESEND_WEBHOOK_SECRET | 2026-08-13 13:00:34.24797+00  | 
+ BROST CO | SAM_API_KEY           | 2026-08-22 04:01:17.899625+00 | 
+(8 rows)
+
+env HUNTER_API_KEY: not set
