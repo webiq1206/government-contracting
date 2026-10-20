@@ -10,10 +10,11 @@ vi.mock("../lib/queue", () => ({ enqueue: mocks.enqueue }));
 vi.mock("../lib/logger", () => ({ logAgent: mocks.log }));
 vi.mock("../lib/organizations", () => ({ listActiveOrganizations: async () => [{ id: "tenant-a" }] }));
 import { scoringRecoverySweep } from "../lib/agents/maintenance";
+const FINAL_SCORE_SQL = "score_breakdown->>'analysis_input_hash' is distinct from analysis_input_hash";
 describe("recovery sweep admission outcomes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.query.mockImplementation(async (sql: string) => sql.includes("sub_search_intents") ? [] : sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
+    mocks.query.mockImplementation(async (sql: string) => sql.includes("sub_search_intents") || sql.includes(FINAL_SCORE_SQL) ? [] : sql.includes("solicitation_analysis is null") ? [{ id: "analysis-1" }] : [{ id: "score-1", title: "Unscored" }]);
   });
   const run = () => scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
   it("leaves duplicate or safety-deferred jobs pending without inventing a queue outage", async () => {
@@ -49,7 +50,7 @@ describe("recovery sweep admission outcomes", () => {
 it("does not count a lease wait toward the three failures a day that pause re-queueing", () => {
   const src = readFileSync("lib/agents/maintenance.ts", "utf8");
   const caps = src.match(/attempts\.status='error' and attempts\.started_at > now\(\)-interval '24 hours'[\s\S]{0,200}?< 3/g) ?? [];
-  expect(caps).toHaveLength(2);
+  expect(caps).toHaveLength(3);
   for (const cap of caps) expect(cap).toContain("coalesce(attempts.summary->>'transientHold', '') <> 'true'");
 });
 
@@ -60,4 +61,24 @@ it("does not recreate analysis work on repeated provider-refused sweeps, while f
   for (let i = 0; i < 3; i++) await scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
   expect(mocks.enqueue).not.toHaveBeenCalled();
   expect(mocks.spending).not.toHaveBeenCalled();
+});
+
+it("re-queues the final score for an analysis whose one-shot score job never ran", async () => {
+  vi.resetAllMocks();
+  mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+    if (!sql.includes(FINAL_SCORE_SQL)) return [];
+    // Only the gaps a quote request needs may keep a brief from its score.
+    expect(params?.[1]).toEqual(expect.arrayContaining(["scope", "location", "deadline"]));
+    expect(params?.[1]).not.toContain("unsupported_documents");
+    return [{ id: "analyzed-1", hash: "0123456789abcdef0123456789abcdef" }];
+  });
+  mocks.enqueue.mockResolvedValue("job-1");
+  const result = await scoringRecoverySweep.handler({ runId: "test", trigger: "cron", payload: {} });
+  expect(mocks.enqueue).toHaveBeenCalledWith(
+    "scoring-engine",
+    { opportunityId: "analyzed-1", analysisComplete: true, analysisInputHash: "0123456789abcdef0123456789abcdef", trigger: "recovery" },
+    { singletonKey: "score-analysis:analyzed-1:0123456789abcdef01234567", singletonSeconds: 3600 },
+  );
+  expect(result.data).toMatchObject({ rescoreQueued: 1, queueFailures: 0 });
+  expect(result.summary).toContain("final score");
 });

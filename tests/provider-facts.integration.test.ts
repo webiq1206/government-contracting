@@ -55,7 +55,7 @@ import { complete, probeProviderRecovery } from "../lib/ai/claude";
 import { currentOrgId, runWithOrg } from "../lib/tenant-context";
 import { withApiUsageContext } from "../lib/api-usage/context";
 import { config } from "../lib/config";
-import { currentProviderFacts, providerProblem, providerEnqueueHold, providerScope } from "../lib/ai/provider-facts";
+import { currentProviderFacts, providerProblem, providerEnqueueHold, providerScope, providerBusyWait } from "../lib/ai/provider-facts";
 import { recentAiTrouble, lastProviderSuccess, troubleSummary } from "../lib/integration-health";
 import { integrationState } from "../lib/domain/integration-state";
 import { VALIDATORS } from "../lib/integration-validators";
@@ -73,6 +73,8 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await state.db.close(); vi.unstubAllGlobals(); });
 beforeEach(async () => {
+  // A busy credential fails at once here; the wait has its own test.
+  providerBusyWait.maxMs = 0;
   await state.db.exec("truncate ai_provider_facts,ai_work_receipts,prospective_fence");
   state.org = "tenant-a"; state.source = "tenant"; state.attempts = 0; state.budgetHeld = false; state.busy = false; state.meteringError = null; state.failSettlement = false; state.failClaimAck = false; state.failSettlementAck = false; state.failSettlementProvider = null; state.transactions = 0;
   state.keys = { OPENAI_API_KEY: "synthetic-openai", ANTHROPIC_API_KEY: "synthetic-anthropic" };
@@ -296,7 +298,7 @@ it("persists Anthropic account allowance refusals independently", async () => {
 
 
 describe("short durable provider claims", () => {
-  it("releases its transaction before provider I/O and makes pending health and admission non-green", async () => {
+  it("releases its transaction before provider I/O, keeps pending health non-green, and still admits queued work", async () => {
     state.openai.mockRejectedValueOnce({ status: 429, type: "rate_limit_error", message: "rate limited" });
     await expect(call()).rejects.toThrow();
     advanceCooldown();
@@ -310,7 +312,9 @@ describe("short durable provider claims", () => {
     try {
       expect(state.transactions).toBe(0);
       expect((await state.db.query("select 1 as available")).rows[0].available).toBe(1);
-      expect(await providerEnqueueHold(state.org, "routine")).toContain("unresolved outcome");
+      // A live call is a turn being taken, not an unresolved outcome: new work
+      // may be queued behind it. The call itself still cannot overlap.
+      expect(await providerEnqueueHold(state.org, "routine")).toBeNull();
       expect(providerProblem(await currentProviderFacts("OpenAI"))).toContain("unresolved outcome");
       await expect(call()).rejects.toMatchObject({ retryable: true });
       expect(troubleSummary(await recentAiTrouble(state.org, "OpenAI"))).toContain("unresolved outcome");
@@ -379,10 +383,47 @@ describe("pending primary admission",()=>{
  it("keeps an unresolved primary held even with a healthy fallback",async()=>{
   config.ai.fallback=true;
   const identity={orgId:state.org,envKey:"OPENAI_API_KEY",value:state.keys.OPENAI_API_KEY,source:state.source,accepted:false};
+  // Older than the provider abort: nothing can still settle it.
   await state.db.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
-    values($1,$2,$3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now())`,providerScope(identity,"OpenAI"));
+    values($1,$2,$3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()-interval '11 minutes')`,providerScope(identity,"OpenAI"));
   expect(await providerEnqueueHold(state.org,"routine")).toContain("unresolved");
   expect(state.anthropic).not.toHaveBeenCalled();expect(state.openai).not.toHaveBeenCalled();
+ });
+ it("queues work behind another job's live call instead of dropping it",async()=>{
+  const identity={orgId:state.org,envKey:"OPENAI_API_KEY",value:state.keys.OPENAI_API_KEY,source:state.source,accepted:false};
+  await state.db.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
+    values($1,$2,$3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()-interval '2 minutes')`,providerScope(identity,"OpenAI"));
+  expect(await providerEnqueueHold(state.org,"routine")).toBeNull();
+ });
+ it("waits for another job's live call to settle, then makes its own",async()=>{
+  providerBusyWait.maxMs=10_000; providerBusyWait.pollMs=20;
+  try {
+   let started!: () => void; let release!: () => void;
+   const entered = new Promise<void>(resolve => { started = resolve; });
+   const gate = new Promise<void>(resolve => { release = resolve; });
+   state.openai.mockImplementationOnce(async () => { started(); await gate; return ok; });
+   const first = call();
+   await entered;
+   const second = call();
+   await new Promise(resolve => setTimeout(resolve, 100));
+   expect(state.openai).toHaveBeenCalledTimes(1);
+   release();
+   await expect(first).resolves.toMatchObject({ text: "synthetic" });
+   await expect(second).resolves.toMatchObject({ text: "synthetic" });
+   expect(state.openai).toHaveBeenCalledTimes(2);
+  } finally { providerBusyWait.maxMs=0; providerBusyWait.pollMs=5_000; }
+ });
+ it("does not wait on an attempt whose outcome is unresolved",async()=>{
+  providerBusyWait.maxMs=60_000; providerBusyWait.pollMs=20;
+  try {
+   const identity={orgId:state.org,envKey:"OPENAI_API_KEY",value:state.keys.OPENAI_API_KEY,source:state.source,accepted:false};
+   await state.db.query(`insert into ai_provider_facts(account_scope,provider,credential_hash,pending_attempt,pending_started_at)
+     values($1,$2,$3,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',now()-interval '11 minutes')`,providerScope(identity,"OpenAI"));
+   const startedAt = Date.now();
+   await expect(call()).rejects.toMatchObject({ retryable: true });
+   expect(Date.now() - startedAt).toBeLessThan(5_000);
+   expect(state.openai).not.toHaveBeenCalled();
+  } finally { providerBusyWait.maxMs=0; providerBusyWait.pollMs=5_000; }
  });
 });
 

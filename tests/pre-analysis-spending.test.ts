@@ -29,7 +29,19 @@ beforeEach(() => {
   m.rules.mockResolvedValue(DEFAULT_RULES);
 });
 describe("paid analysis admission", () => {
-  it.each([{ set_aside_type: "HUBZone Set Aside", expected: "ineligible_set_aside" }, { value_estimated: 5000, expected: "value_below_min" }])("holds known disqualification $expected before paid analysis", async ({ expected, ...patch }) => {
+  it.each([{ set_aside_type: "HUBZone Set Aside", expected: "ineligible_set_aside" }, { deadline: new Date(Date.now() + 2 * 86400000).toISOString(), expected: "deadline_too_soon" }])("dismisses structured disqualification $expected before paid analysis", async ({ expected, ...patch }) => {
+    opp = { ...opp, ...patch };
+    const result = await scoringEngine.handler(ctx);
+    expect(result.ok).toBe(true);
+    expect(result.humanActionRequired).toBeFalsy();
+    expect(result.summary).toContain(expected.replace(/_/g, " "));
+    expect(result.enqueued).toBeUndefined();
+    expect(m.ai).not.toHaveBeenCalled();
+    // Archived as final scoring would, not parked for a person to be re-queued hourly.
+    expect(m.query).toHaveBeenCalledWith(expect.stringContaining("status='archived', tier='dismiss', human_action_required=false"),
+      ["opp", expect.arrayContaining([expected]), orgId]);
+  });
+  it.each([{ value_estimated: 5000, expected: "value_below_min" }])("holds estimate-based disqualification $expected before paid analysis", async ({ expected, ...patch }) => {
     opp = { ...opp, ...patch };
     const result = await scoringEngine.handler(ctx);
     expect(result.humanActionRequired).toBe(true);

@@ -31,11 +31,11 @@ describe("discovery rechecks the opportunity before spending or pairing", () => 
   it.each([
     { name: "missing analysis", extra: { solicitation_analysis: null } },
     { name: "missing completeness snapshot", extra: { solicitation_analysis: { required_trades: ["HVAC"] } } },
-    { name: "incomplete current source", extra: { solicitation_analysis: { ...readyAnalysis(), completeness: { ok: false, missing: [{ what: "PWS", critical: true }] } } } },
+    { name: "no scope to brief a sub on", extra: { solicitation_analysis: { ...readyAnalysis(), completeness: { ok: false, missing: [{ key: "scope", what: "Scope of work", critical: true }] } } } },
+    { name: "no place of performance", extra: { solicitation_analysis: { ...readyAnalysis(), completeness: { ok: false, missing: [{ key: "location", what: "Place of performance", critical: true }] } } } },
     { name: "invalidated analysis after amendment", extra: { analysis_input_hash: null } },
     { name: "no source-derived trades", extra: { solicitation_analysis: { ...readyAnalysis(), required_trades: [] } } },
     { name: "prime-only company rule", extra: { solicitation_analysis: { ...readyAnalysis(), past_perf_classification: "prime_only" } } },
-    { name: "unresolved verification despite inconsistent complete flag", extra: { solicitation_analysis: { ...readyAnalysis(), verification_issues: ["Current PWS was not read"] } } },
   ])("holds $name without discovering, pairing or moving the lifecycle", async ({ extra }) => {
     m.queryOne.mockResolvedValue(opportunity({ stage: "call_queue", ...extra }));
     const result = await run();
@@ -47,6 +47,19 @@ describe("discovery rechecks the opportunity before spending or pairing", () => 
     expect(pairWrites()).toEqual([]);
     expect(m.query.mock.calls.some(([sql]) => String(sql).includes("set stage="))).toBe(false);
     expect(m.log).toHaveBeenCalledWith(expect.objectContaining({ status: "skipped", action: "readiness-held" }));
+  });
+
+  it("sources on gaps that only matter to the bid, which stay on the record", async () => {
+    m.queryOne.mockResolvedValue(opportunity({ solicitation_analysis: { ...readyAnalysis(),
+      verification_issues: ["The compliance matrix omits the letterhead requirement."],
+      completeness: { ok: false, missing: [
+        { key: "analysis_verification_0", what: "Source verification needs review", critical: true },
+        { key: "unsupported_documents", what: "Documents in a format Brost Co could not read", critical: true },
+        { key: "wage_determination", what: "Wage determination", critical: true },
+      ] } } }));
+    const result = await run();
+    expect(result.data).toMatchObject({ searchCompleted: true, candidates: 1 });
+    expect(pairWrites()).toHaveLength(1);
   });
 
   it("does not let a payload invent an extra trade outside the analyzed scope", async () => {

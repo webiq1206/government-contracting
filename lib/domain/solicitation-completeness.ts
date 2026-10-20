@@ -68,7 +68,10 @@ export interface AttachmentFetchOutcome {
 }
 
 export interface SolicitationCompleteness {
+  /** No critical gap: the brief is complete enough to build and submit a bid. */
   ok: boolean;
+  /** No sourcing gap: the brief is complete enough to score and request sub quotes. */
+  sourcingOk: boolean;
   missing: MissingInfoItem[];
   /** Risk-flag keys to merge onto the opportunity when not ok. */
   riskFlags: string[];
@@ -76,6 +79,42 @@ export interface SolicitationCompleteness {
 }
 
 const NA_RE = /^not specified/i;
+
+/**
+ * The gaps that stop scoring and subcontractor sourcing.
+ *
+ * Every other critical gap (an unread spreadsheet, a missing wage
+ * determination, an unstated value, a reviewer's note on the compliance
+ * matrix) is critical to the BID: it stays on the record and blocks bid
+ * readiness and the package validator. It does not stop Brost Co from asking
+ * subcontractors what the work costs, which needs only to know what the job
+ * is, where it is, when it is due and which notice it belongs to. Holding
+ * sourcing on bid-only gaps parked nearly every real solicitation for a
+ * person, so nothing was ever scored and no quote request ever went out.
+ */
+export const SOURCING_BLOCKER_KEYS: ReadonlySet<string> = new Set([
+  "solicitation_number",
+  "agency",
+  "deadline",
+  "location",
+  "scope",
+]);
+
+/**
+ * Whether a saved completeness result allows scoring and sourcing. Derived
+ * from the saved gap keys, so analyses saved before the split are read the
+ * same way as new ones without paying for a fresh read.
+ */
+export function sourcingReady(
+  completeness:
+    | { ok?: boolean | null; missing?: readonly { key: string; critical?: boolean | null }[] | null }
+    | null
+    | undefined
+): boolean {
+  if (!completeness) return false;
+  if (!Array.isArray(completeness.missing)) return completeness.ok === true;
+  return !completeness.missing.some((m) => m.critical === true && SOURCING_BLOCKER_KEYS.has(m.key));
+}
 
 function blank(v: unknown): boolean {
   if (v == null) return true;
@@ -472,6 +511,7 @@ export function evaluateSolicitationCompleteness(
   const criticalMissing = missing.filter((m) => m.critical);
   return {
     ok: criticalMissing.length === 0,
+    sourcingOk: sourcingReady({ missing }),
     missing,
     riskFlags: [...new Set(riskFlags)],
     attachmentOutcomes: input.attachmentOutcomes,

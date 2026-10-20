@@ -130,6 +130,34 @@ If the recap shows the same record held for more than an hour, the worker is
 being interrupted mid-call repeatedly; check the deployment's restarts rather
 than the record.
 
+## Why nothing reached outreach in October 2026
+
+Production showed 206 opportunities found in a week, none pursued and no quote
+request sent. Three gates were holding everything:
+
+- **The completeness gate held sourcing on bid-only gaps.** A spreadsheet the
+  analyzer cannot read, a missing wage determination, an unstated value, or a
+  second reviewer's note on the compliance matrix are critical to the bid, and
+  still block bid readiness and the package validator. They no longer stop
+  scoring or sourcing. Only a missing scope, place of performance, due date,
+  solicitation number or agency does (`SOURCING_BLOCKER_KEYS` in
+  `lib/domain/solicitation-completeness.ts`).
+- **One live AI call refused every other AI job at enqueue.** Calls on one
+  provider credential take turns by design. The queue used to refuse to even
+  create AI work while any call was running, and most callers treated the
+  refusal as done. Now only an unresolved attempt (older than the 10 minute
+  provider abort) holds the queue, and a call that finds the credential busy
+  waits up to 4 minutes for its turn.
+- **Lost hand-offs had no recovery.** The scoring recovery sweep now also
+  re-queues the final score for an analyzed record that never got one, and
+  the analyst for a record sent to analysis whose job was never created.
+
+Set-asides the company holds no certification for (SDVOSB, 8(a), WOSB,
+HUBZone) and due dates inside the minimum lead time are dismissed by company
+rules before any paid analysis, as final scoring always did. `npm run doctor`
+now counts only mail that actually left the inbox and warns when discovery
+works but nothing reaches pursue.
+
 ## User preferences
 
 - No em dashes in user-visible strings.

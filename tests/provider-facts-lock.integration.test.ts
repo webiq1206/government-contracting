@@ -3,14 +3,14 @@
  */
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { withProviderFacts, readProviderFacts, providerScope } from "../lib/ai/provider-facts";
+import { withProviderFacts, readProviderFacts, providerScope, providerBusyWait } from "../lib/ai/provider-facts";
 import { query, closePool } from "../lib/db";
 import type { RequestIdentity } from "../lib/api-usage/ledger";
 const d = process.env.DATABASE_URL ? describe : describe.skip;
 d("provider refusal across PostgreSQL worker connections", () => {
   const identity: RequestIdentity = { orgId: randomUUID(), envKey: "OPENAI_API_KEY", value: "synthetic-only", source: "tenant", accepted: false };
   const previousPoolMax = process.env.PG_POOL_MAX;
-  beforeAll(async () => { await closePool(); process.env.PG_POOL_MAX = "1"; });
+  beforeAll(async () => { await closePool(); process.env.PG_POOL_MAX = "1"; providerBusyWait.maxMs = 0; });
   afterAll(async () => {
     await query("delete from ai_provider_facts where account_scope=$1", [`tenant:${identity.orgId}`]);
     await closePool();

@@ -534,17 +534,44 @@ async function main() {
       check("PASS", `[${org.name}] Google inbox connected`);
     }
 
-    const sent = await queryOne<{ n: number }>(
-      `select count(*)::int as n from communications
+    // Only mail that left the inbox counts. A draft waiting for a person is a
+    // communications row too, and counting it reported "14 sent" in a week
+    // when not one quote request had gone out.
+    const sent = await queryOne<{ n: number; drafts: number }>(
+      `select count(*) filter (where delivery_state in ('sent','delivered'))::int as n,
+              count(*) filter (where delivery_state = 'draft')::int as drafts
+         from communications
         where org_id=$1 and direction='outbound' and channel='email'
           and created_at > now() - interval '7 days'`,
       [org.id]
     ).catch(() => null);
+    const drafts = sent?.drafts ? ` (${sent.drafts} more saved as drafts, not sent)` : "";
     check(
       (sent?.n ?? 0) > 0 ? "PASS" : "WARN",
-      `[${org.name}] ${sent?.n ?? 0} outreach emails sent in the last 7 days`,
-      (sent?.n ?? 0) > 0 ? undefined : "Zero usually chains from a failure above (no discovery, no inbox, or automation paused). Fix those first."
+      `[${org.name}] ${sent?.n ?? 0} emails actually sent in the last 7 days${drafts}`,
+      (sent?.n ?? 0) > 0 ? undefined : "Zero usually chains from a failure above (no discovery, no inbox, or automation paused), or from the funnel check below. Fix those first."
     );
+
+    // Discovery working while nothing reaches pursue means a gate between
+    // them is holding everything. Name where the records are waiting.
+    const funnel = await queryOne<{ pursued: number; parked: number; unscored: number }>(
+      `select count(*) filter (where tier = 'pursue' and updated_at > now() - interval '7 days')::int as pursued,
+              count(*) filter (where stage in ('scoring','analysis') and human_action_required)::int as parked,
+              count(*) filter (where stage in ('monitoring','scoring','analysis') and score is null
+                               and created_at < now() - interval '1 hour')::int as unscored
+         from opportunities
+        where org_id=$1 and status='open' and (deadline is null or deadline > now())`,
+      [org.id]
+    ).catch(() => null);
+    if (funnel && (discovered?.n ?? 0) > 0 && funnel.pursued === 0) {
+      check(
+        "WARN",
+        `[${org.name}] Nothing reached pursue in 7 days: ${funnel.parked} open record(s) parked in scoring/analysis for a person, ${funnel.unscored} still unscored`,
+        "Open Automation health, or read agent_logs for scoring-engine and solicitation-analyst on those records: the hold reason on each one names the gate."
+      );
+    } else if (funnel) {
+      check("PASS", `[${org.name}] ${funnel.pursued} record(s) reached pursue in the last 7 days`);
+    }
   }
 
   finish();
