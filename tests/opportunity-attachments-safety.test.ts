@@ -75,8 +75,11 @@ describe("opportunity attachment tenant and completeness safety", () => {
 
     const [sql] = mocks.query.mock.calls[0] as [string];
     expect(sql).not.toMatch(/\blimit\s+40\b/i);
-    expect(gathered.files).toHaveLength(41);
-    expect(mocks.download).toHaveBeenCalledTimes(41);
+    // Every document is accounted for: the most relevant few ride along and
+    // the rest are reachable through the single package link.
+    expect(gathered.files).toHaveLength(5);
+    expect(gathered.links).toEqual([expect.objectContaining({ name: "All 36 bid documents", reachable: true })]);
+    expect(mocks.download).toHaveBeenCalledTimes(41 + 36);
   });
 
   const upstreamOpp = {

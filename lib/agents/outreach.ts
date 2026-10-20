@@ -84,6 +84,24 @@ async function holdOutboundRfq(input: {
     perTradeCap: rules.rfq_subs_per_trade,
   });
   if (slot.ok) return { claimId: slot.claimId };
+  if (slot.reason === "pace") {
+    // Not a hold: this request simply waits its turn, with a little jitter so
+    // queued requests do not leave on an exact clock.
+    const wait = slot.waitSeconds + Math.floor(Math.random() * 60);
+    return {
+      ok: true,
+      summary: `Spaced out the quote request to ${input.companyName}: it goes in about ${Math.ceil(wait / 60)} minute(s), after the previous one.`,
+      enqueued: [{
+        agent: "outreach",
+        payload: input.payload,
+        opts: {
+          startAfterSeconds: wait,
+          singletonKey: `rfq-paced:${input.opportunityId}:${input.subcontractorId}:${input.trade}:${Math.floor(Date.now() / 60_000)}`,
+          singletonSeconds: 120,
+        },
+      }],
+    };
+  }
   const decision = decideRfqVolume({
     outboundEnabled: true,
     dailyCap: rules.rfq_daily_cap,

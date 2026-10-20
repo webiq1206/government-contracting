@@ -10,9 +10,12 @@ import { guardedFetch } from "./guarded-fetch";
 
 const CONTACT_PATHS = ["", "/contact", "/contact-us", "/about", "/about-us"];
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-// Addresses that are clearly not a business contact (tracking, packagers, images).
+// Addresses that are clearly not a business contact (tracking, packagers,
+// images, template placeholders, font and site-builder licences). Mailing one
+// of these bounces or reaches a vendor, and bounces are what a mailbox's
+// reputation is judged on.
 const JUNK_RE =
-  /\.(png|jpe?g|gif|webp|svg|css|js)$|@(example|sentry|wixpress|godaddy|placeholder)\.|^(noreply|no-reply|donotreply)@/i;
+  /\.(png|jpe?g|gif|webp|svg|css|js)$|@(?:[a-z0-9-]+\.)*(example|sentry|sentry-next|wixpress|godaddy|placeholder|domain|yourdomain|email|website|mysite|latofonts|fontawesome|typekit|squarespace|weebly)\.|^(noreply|no-reply|donotreply|user|name|you|your|username|example)@/i;
 
 export interface ScrapedEmail {
   email: string;
@@ -75,7 +78,36 @@ async function fetchPublicPage(rawUrl: string): Promise<{ html: string; url: str
   }
 }
 
-export function extractPublishedEmails(html: string, siteDomain: string | null): ScrapedEmail[] {
+/**
+ * An address Cloudflare's email protection hid: the first byte is a key and
+ * every following byte is a character XORed with it. A large share of small
+ * contractor sites publish their only address this way, and it reads as no
+ * email at all to anything that does not decode it.
+ */
+export function decodeCloudflareEmail(hex: string): string | null {
+  if (!/^(?:[0-9a-f]{2}){2,}$/i.test(hex)) return null;
+  const key = parseInt(hex.slice(0, 2), 16);
+  let out = "";
+  for (let i = 2; i < hex.length; i += 2) out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+  return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(out) ? out : null;
+}
+
+/** Undo the encodings sites use to hide an address from scrapers but not people. */
+function revealEmails(html: string): string {
+  const cloudflare = [
+    ...html.matchAll(/data-cfemail\s*=\s*["']([0-9a-f]+)["']/gi),
+    ...html.matchAll(/\/cdn-cgi\/l\/email-protection#([0-9a-f]+)/gi),
+  ].map((m) => decodeCloudflareEmail(m[1])).filter((e): e is string => Boolean(e));
+  const entities = html
+    .replace(/&#(\d{2,3});/g, (m, d) => (Number(d) < 128 ? String.fromCharCode(Number(d)) : m))
+    .replace(/&#x([0-9a-f]{2});/gi, (m, h) => (parseInt(h, 16) < 128 ? String.fromCharCode(parseInt(h, 16)) : m))
+    .replace(/&commat;/gi, "@")
+    .replace(/&period;/gi, ".");
+  return cloudflare.length ? `${entities}\n${cloudflare.map((e) => `mailto:${e}`).join("\n")}` : entities;
+}
+
+export function extractPublishedEmails(rawHtml: string, siteDomain: string | null): ScrapedEmail[] {
+  const html = revealEmails(rawHtml);
   const found = new Map<string, ScrapedEmail>();
   // mailto: links first — they're deliberate contact addresses.
   for (const m of html.matchAll(/mailto:([^"'?\s>]+)/gi)) {
@@ -122,18 +154,43 @@ export function linkedBusinessProfiles(html: string): string[] {
  * Scrape the site's homepage + common contact pages for a published email.
  * Prefers mailto/own-domain addresses. Returns null when nothing is found.
  */
+/**
+ * The site's own contact page, when it is not one of the usual paths:
+ * "/contact.html", "/pages/contact", "/get-in-touch". Same domain only, and
+ * at most two, so a lookup still reads a bounded number of pages.
+ */
+export function linkedContactPaths(html: string, pageUrl: string, domain: string): string[] {
+  const paths = new Set<string>();
+  for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]{0,120}?)<\/a>/gi)) {
+    if (!/contact|get[\s-]?in[\s-]?touch|reach[\s-]?us|quote|estimate/i.test(`${m[1]} ${m[2]}`)) continue;
+    try {
+      const url = new URL(m[1].replace(/&amp;/g, "&"), pageUrl);
+      if (!/^https?:$/.test(url.protocol) || normalizeDomain(url.href) !== domain) continue;
+      const path = url.pathname.replace(/\/$/, "") || "/";
+      if (path === "/" || CONTACT_PATHS.includes(path)) continue;
+      paths.add(path + url.search);
+      if (paths.size === 2) break;
+    } catch { /* Not a usable link. */ }
+  }
+  return [...paths];
+}
+
 export async function scrapeWebsiteEmail(website: string): Promise<ScrapedEmail | null> {
   const domain = normalizeDomain(website);
   if (!domain) return null;
   const base = `https://${domain}`;
   const all: ScrapedEmail[] = [];
   const social = new Set<string>();
-  for (const path of CONTACT_PATHS) {
+  const paths = [...CONTACT_PATHS];
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
     const page = await fetchPublicPage(base + path);
     if (!page) continue;
     const { html } = page;
     // A redirected directory or social page cannot establish site ownership.
     if (normalizeDomain(page.url) !== domain) continue;
+    // The homepage names the real contact page when it is not a usual path.
+    if (i === 0) for (const extra of linkedContactPaths(html, page.url, domain)) paths.splice(1, 0, extra);
     all.push(...extractPublishedEmails(html, domain).map((candidate) => ({
       ...candidate, sourceUrl: page.url, sourceType: "website" as const, checkedAt: new Date().toISOString(),
     })));

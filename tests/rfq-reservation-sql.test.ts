@@ -80,10 +80,25 @@ describe("quote-request slot SQL", () => {
         dailyCap: 2,
         perTradeCap: 5,
       }));
+      // Past the pacing gap, so only the cap decides.
+      await state.db!.query("update rfq_send_claims set created_at = created_at - interval '10 minutes' where org_id = $1", [orgId]);
     }
     expect(results.map((result) => result.ok)).toEqual([true, true, false]);
     expect(results[2]).toMatchObject({ ok: false, reason: "daily_cap" });
     const claims = await state.db!.query("select state from rfq_send_claims where org_id = $1", [orgId]);
     expect(claims.rows).toHaveLength(2);
+  });
+
+  it("spaces quote requests out instead of sending them in a burst", async () => {
+    const reserve = () => reserveRfqSendSlot({
+      orgId, opportunityId, subcontractorId: randomUUID(), trade: "electrical", dailyCap: 100, perTradeCap: 5,
+    });
+    expect(await reserve()).toMatchObject({ ok: true });
+    const paced = await reserve();
+    expect(paced).toMatchObject({ ok: false, reason: "pace" });
+    expect((paced as { waitSeconds: number }).waitSeconds).toBeGreaterThan(0);
+    expect((paced as { waitSeconds: number }).waitSeconds).toBeLessThanOrEqual(180);
+    await state.db!.query("update rfq_send_claims set created_at = created_at - interval '4 minutes' where org_id = $1", [orgId]);
+    expect(await reserve()).toMatchObject({ ok: true });
   });
 });

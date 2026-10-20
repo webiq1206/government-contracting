@@ -74,9 +74,28 @@ export interface RfqSlotInput {
   perTradeCap: number;
 }
 
+/**
+ * The least time between two quote requests from one account.
+ *
+ * A mailbox that sends a burst of near-identical messages to strangers in a
+ * few minutes looks like a bulk sender, and that is what moves one-to-one
+ * mail into Promotions or spam for every later recipient. Three minutes
+ * still clears fifty requests in under three hours. Mutable so end-to-end
+ * tests that send a batch can turn it off.
+ */
+export const rfqPacing = { minGapSeconds: 180 };
+
+/** Seconds since this account's most recent quote-request claim, or null. */
+export const RFQ_SLOT_LAST_SQL = `select extract(epoch from (now() - max(created_at)))::int as since
+  from rfq_send_claims
+ where org_id = $1::uuid
+   and state in ('reserved','sent')
+   and created_at > now() - interval '1 day'`;
+
 export type RfqSlotResult =
   | { ok: true; claimId: string }
-  | { ok: false; reason: "daily_cap" | "trade_cap" };
+  | { ok: false; reason: "daily_cap" | "trade_cap" }
+  | { ok: false; reason: "pace"; waitSeconds: number };
 
 async function rows<T extends Record<string, unknown>>(
   client: PoolClient,
@@ -101,6 +120,11 @@ export async function reserveRfqSendSlot(input: RfqSlotInput): Promise<RfqSlotRe
     const sentForTrade = Number(counted[0]?.sent_for_trade ?? 0);
     if (sentToday >= input.dailyCap) return { ok: false, reason: "daily_cap" };
     if (sentForTrade >= input.perTradeCap) return { ok: false, reason: "trade_cap" };
+    const last = await rows<{ since: number | null }>(client, RFQ_SLOT_LAST_SQL, [input.orgId]);
+    const since = last[0]?.since;
+    if (since != null && since < rfqPacing.minGapSeconds) {
+      return { ok: false, reason: "pace", waitSeconds: rfqPacing.minGapSeconds - Math.max(0, since) };
+    }
     const claimed = await rows<{ id: string }>(client, RFQ_SLOT_CLAIM_SQL, [
       input.orgId,
       input.opportunityId,

@@ -467,7 +467,12 @@ export async function sendOutreachEmail(
       // agent composed it. Idempotent, so a caller that already wrapped is fine.
       html: wrapLetter(params.html),
       text: params.text,
-      trackingId: params.trackingId,
+      // No open pixel and no redirected links. A hidden image and every link
+      // rewritten through another domain are the clearest signals that a
+      // message is bulk mail, which is what sends a one-to-one quote request
+      // to Promotions or spam. Replies are matched through the Gmail thread,
+      // not this id, which stays on the record.
+      trackingId: undefined,
       from,
       replyTo,
       attachments,
