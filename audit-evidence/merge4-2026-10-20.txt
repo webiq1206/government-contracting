@@ -1,0 +1,15 @@
+From https://github.com/webiq1206/government-contracting
+ * branch              main       -> FETCH_HEAD
+   66444617..286c46eb  main       -> origin/main
+Merge made by the 'ort' strategy.
+ lib/agents/sub-verify.ts                       |  77 ++++++++++++++---
+ lib/integrations/email-scrape.ts               |  21 +++++
+ tests/email-scrape.test.ts                     |   9 +-
+ tests/sub-verify-continuity.test.ts            |   3 +-
+ tests/sub-verify-sam-budget.test.ts            | 111 +++++++++++++++++++++++++
+ tests/verification-agent-failure-truth.test.ts |   1 +
+ 6 files changed, 208 insertions(+), 14 deletions(-)
+ create mode 100644 tests/sub-verify-sam-budget.test.ts
+5c047764 Merge remote-tracking branch 'origin/main'
+286c46eb Stop verification from spending SAM's daily allowance on retries (#228)
+3
