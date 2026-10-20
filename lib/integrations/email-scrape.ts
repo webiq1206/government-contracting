@@ -176,6 +176,26 @@ export function linkedContactPaths(html: string, pageUrl: string, domain: string
 }
 
 export async function scrapeWebsiteEmail(website: string): Promise<ScrapedEmail | null> {
+  return (await scrapeWebsiteEmailDetailed(website)).email;
+}
+
+/**
+ * The same lookup, saying how many of the firm's own pages were actually read.
+ *
+ * "No address" means two different things: the site could not be read, or it
+ * was read and simply publishes none. Only the first is worth trying again;
+ * treating the second as a failure re-ran the whole check three more times
+ * for every small firm without a published address.
+ */
+export async function scrapeWebsiteEmailDetailed(
+  website: string
+): Promise<{ email: ScrapedEmail | null; pagesRead: number }> {
+  let pagesRead = 0;
+  const email = await scrapeSite(website, () => { pagesRead++; });
+  return { email, pagesRead };
+}
+
+async function scrapeSite(website: string, onPageRead: () => void): Promise<ScrapedEmail | null> {
   const domain = normalizeDomain(website);
   if (!domain) return null;
   const base = `https://${domain}`;
@@ -189,6 +209,7 @@ export async function scrapeWebsiteEmail(website: string): Promise<ScrapedEmail 
     const { html } = page;
     // A redirected directory or social page cannot establish site ownership.
     if (normalizeDomain(page.url) !== domain) continue;
+    onPageRead();
     // The homepage names the real contact page when it is not a usual path.
     if (i === 0) for (const extra of linkedContactPaths(html, page.url, domain)) paths.splice(1, 0, extra);
     all.push(...extractPublishedEmails(html, domain).map((candidate) => ({

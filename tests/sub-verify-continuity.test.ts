@@ -18,7 +18,8 @@ vi.mock("../lib/integrations/googleMaps", () => ({ googleMaps: { placeDetails: m
 vi.mock("../lib/integrations/hunter", () => ({ hunter: {
   domainSearch: mocks.hunterSearch, findEmail: mocks.hunterFind, verifyEmail: mocks.hunterVerify,
 } }));
-vi.mock("../lib/integrations/email-scrape", () => ({ scrapeWebsiteEmail: mocks.scrape, domainHasMx: mocks.mx }));
+vi.mock("../lib/integrations/email-scrape", () => ({ scrapeWebsiteEmail: mocks.scrape, domainHasMx: mocks.mx,
+  scrapeWebsiteEmailDetailed: async (site: string) => ({ email: await mocks.scrape(site), pagesRead: 1 }) }));
 vi.mock("../lib/integrations/website-finder", () => ({ findWebsiteBysearch: mocks.websiteSearch }));
 vi.mock("../lib/app-settings", () => ({ getWorkExecution: async () => "sub", areCallsEnabled: mocks.callsEnabled }));
 vi.mock("../lib/tenant-context", () => ({ currentOrgId: () => "org-synthetic" }));

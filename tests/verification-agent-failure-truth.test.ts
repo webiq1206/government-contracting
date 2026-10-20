@@ -41,6 +41,7 @@ vi.mock("../lib/integrations/hunter", () => ({
 }));
 vi.mock("../lib/integrations/email-scrape", () => ({
   scrapeWebsiteEmail: mocks.scrapeWebsiteEmail,
+  scrapeWebsiteEmailDetailed: async (site: string) => ({ email: await mocks.scrapeWebsiteEmail(site), pagesRead: 1 }),
   domainHasMx: mocks.domainHasMx,
 }));
 vi.mock("../lib/integrations/website-finder", () => ({
