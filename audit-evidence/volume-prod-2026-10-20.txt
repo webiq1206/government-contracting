@@ -1,0 +1,92 @@
+Pager usage is off.
+== Y1 subs paired in last 3 days by contact_status and email_status
+    contact_status    |       email_status       | has_site | count 
+----------------------+--------------------------+----------+-------
+                      |                          | t        |   307
+ discovery_incomplete |                          | t        |    36
+                      |                          | f        |    27
+ verified             | scraped_own_domain_mx_ok | t        |    23
+ unverified           | mx_ok_unverified         | t        |    15
+ discovery_incomplete |                          | f        |    11
+ unverified           |                          | t        |     5
+ verified             |                          | t        |     3
+ unverified           | mx_missing               | t        |     3
+(9 rows)
+
+== Y2 email domains of unverified scraped emails
+             dom              | count 
+------------------------------+-------
+ gmail.com                    |     5
+ sentry-next.wixpress.com     |     4
+ s-sgroup.com                 |     3
+ domain.com                   |     2
+ chemicalsouthtransport.com   |     1
+ northtexasenvironmental.com  |     1
+ outlool.com                  |     1
+ portfolioproperties.com      |     1
+ regencypoolsinc.com          |     1
+ latofonts.com                |     1
+ frontier.com                 |     1
+ hotmail.com                  |     1
+ jtaircraftmaintenancellc.com |     1
+(13 rows)
+
+== Y3 pairings per opportunity and trade (last 3 days)
+                                            title                                             |             trade             | pairs | verified | emailable 
+----------------------------------------------------------------------------------------------+-------------------------------+-------+----------+-----------
+ EAGLE Fort Stewart, GA W519TC-26-R-A056                                                      | Hazardous material handling   |    10 |        4 |         1
+ Cooling Tower, Roofing, and Structural Construction                                          | SCADA/controls technician     |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Hazardous Materials Abatement |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Flooring                      |    10 |        0 |         0
+ Z2DA--FY27 NRM  558-24-160, Domestic Water, Chilled Water  and Steam Piping (VA-26-00066009) | HVAC                          |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Demolition                    |    10 |        0 |         0
+ EAGLE Fort Stewart, GA W519TC-26-R-A056                                                      | Logistics management          |    10 |        4 |         3
+ Solicitation - Fort Hood GOCO Aircraft & Ground Fuel Services                                | Aircraft Refueling            |    10 |        2 |         1
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Low Voltage/Technology        |    10 |        0 |         0
+ Y1PZ--Project 629-25-104 ED Suicide Risk Mitigation Fence                                    | Structural Engineer           |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Painting                      |    10 |        0 |         0
+ Z2DA--FY27 NRM  558-24-160, Domestic Water, Chilled Water  and Steam Piping (VA-26-00066009) | Insulation                    |    10 |        0 |         0
+ Cooling Tower, Roofing, and Structural Construction                                          | Structural steel contractor   |    10 |        0 |         0
+ Solicitation - Fort Hood GOCO Aircraft & Ground Fuel Services                                | Environmental Compliance      |    10 |        3 |         2
+ Cafeteria & Food Truck Concession Services – Tracy, CA                                       | Food service management       |    10 |        0 |         0
+ Z2DZ--520-27-102 Install Catwalks and Safety  Railings for Aboveground Fuel Tanks            | General Construction          |    10 |        0 |         0
+ Cafeteria & Food Truck Concession Services – Tracy, CA                                       | Cafeteria operations          |    10 |        0 |         0
+ Z2DA--FY27 NRM  558-24-160, Domestic Water, Chilled Water  and Steam Piping (VA-26-00066009) | Plumbing                      |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Carpentry/Interior Finishes   |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Plumbing                      |    10 |        0 |         0
+ Cooling Tower, Roofing, and Structural Construction                                          | Demolition contractor         |    10 |        0 |         0
+ Cooling Tower, Roofing, and Structural Construction                                          | Roofing contractor            |    10 |        0 |         0
+ Cafeteria & Food Truck Concession Services – Tracy, CA                                       | Mobile food truck operations  |    10 |        0 |         0
+ Y1PZ--Project 629-25-104 ED Suicide Risk Mitigation Fence                                    | Fencing Contractor            |    10 |        0 |         0
+ Y1PZ--Project 629-25-104 ED Suicide Risk Mitigation Fence                                    | General Contractor            |    10 |        0 |         0
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Electrical                    |    10 |        0 |         0
+ Cooling Tower, Roofing, and Structural Construction                                          | Electrical contractor         |    10 |        0 |         2
+ Solicitation - Fort Hood GOCO Aircraft & Ground Fuel Services                                | Fuel Facility Maintenance     |    10 |        3 |         3
+ 5680--FY27 NRM (PROJ 573-24-110) BB - Expand Cardiology Service                              | Fire Protection               |    10 |        0 |         0
+ Cafeteria & Food Truck Concession Services – Tracy, CA                                       | Food safety and sanitation    |    10 |        0 |         0
+(30 rows)
+
+== Y4 opportunities reaching sub_research or later per day (14d)
+     d      | count 
+------------+-------
+ 2026-10-20 |    11
+(1 row)
+
+== Y5 open live opps by tier and score band
+  tier   | band  | count 
+---------+-------+-------
+ dismiss | <50   |     1
+ pursue  | 60-69 |     1
+ pursue  | 70+   |    10
+ review  | 50-59 |    50
+ review  | 60-69 |    13
+ review  | 70+   |     1
+         | none  |   187
+(7 rows)
+
+== Y6 company sub standards
+                                                                                          ?column?                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"min_reviews": 5, "verify_top_n": 5, "min_google_rating": 3.8, "candidates_per_trade": 10, "min_reliability_score": 50, "require_active_license": true, "require_not_sam_excluded": true}
+(1 row)
+
