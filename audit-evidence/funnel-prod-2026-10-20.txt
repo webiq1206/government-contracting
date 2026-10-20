@@ -1,0 +1,182 @@
+Pager usage is off.
+== Q1 open opps by stage/tier/human (created 21d)
+  stage   |  tier   | h | count | live 
+----------+---------+---+-------+------
+ analysis |         | t |    98 |   93
+ scoring  |         | f |    56 |   56
+ scoring  | review  | t |    31 |   27
+ scoring  |         | t |    17 |   11
+ outreach |         | t |    17 |   16
+ analysis |         | f |     3 |    3
+ analysis | pursue  | t |     2 |    2
+ outreach | dismiss | t |     1 |    1
+ analysis | review  | t |     1 |    1
+ outreach | review  | t |     1 |    1
+(10 rows)
+
+== Q2 pursue/review live opps: analysis/score/hash state by stage
+   stage    |  tier  | analyzed | scored | rescore_missing | h | count 
+------------+--------+----------+--------+-----------------+---+-------
+ scoring    | review | t        | t      | f               | t |    25
+ scoring    | review | t        | t      | t               | t |    12
+ analysis   | pursue | t        | t      | f               | t |     9
+ analysis   | review | t        | t      | f               | t |     3
+ call_queue | pursue | t        | t      | t               | t |     1
+ outreach   | review | f        | t      | f               | t |     1
+(6 rows)
+
+== Q3 job_runs 48h by agent/status
+           agent            | status | count |             last              
+----------------------------+--------+-------+-------------------------------
+ account-deletion-sweep     | ok     |     2 | 2026-10-20 04:50:02.280134+00
+ ai-provider-recovery-probe | ok     |   286 | 2026-10-20 14:50:02.206842+00
+ analytics-engine           | ok     |     2 | 2026-10-20 07:00:01.942646+00
+ backlink-outreach-sweep    | ok     |   144 | 2026-10-20 14:40:01.93295+00
+ backlink-scout             | ok     |     2 | 2026-10-20 07:00:02.170293+00
+ compliance-monitor         | ok     |     2 | 2026-10-20 08:00:02.422944+00
+ compliance-sweep           | ok     |     2 | 2026-10-20 06:20:02.646141+00
+ concession-sweep           | ok     |     2 | 2026-10-20 09:40:03.930177+00
+ contact-recheck-sweep      | ok     |    47 | 2026-10-20 14:05:00.730117+00
+ daily-recap                | ok     |   192 | 2026-10-20 14:45:02.683595+00
+ deadline-monitor           | ok     |     8 | 2026-10-20 12:00:03.805621+00
+ expired-opportunity-sweep  | ok     |    48 | 2026-10-20 14:15:01.034408+00
+ learning-loop              | ok     |     1 | 2026-10-19 09:00:08.517273+00
+ log-retention-sweep        | ok     |     2 | 2026-10-20 03:30:02.148143+00
+ notice-description-sweep   | ok     |    48 | 2026-10-20 14:17:01.177099+00
+ opportunity-monitor        | ok     |    16 | 2026-10-20 12:00:02.948706+00
+ outreach-followup          | ok     |   192 | 2026-10-20 14:45:02.247895+00
+ outreach-recovery-sweep    | ok     |    96 | 2026-10-20 14:30:01.709399+00
+ pursuit-continuation-sweep | ok     |   286 | 2026-10-20 14:50:02.256059+00
+ reply-poll                 | ok     |   192 | 2026-10-20 14:45:02.149645+00
+ retention-sweep            | ok     |     2 | 2026-10-20 03:45:02.020011+00
+ review-expiry-sweep        | ok     |   287 | 2026-10-20 14:50:02.069073+00
+ scoring-engine             | error  |     2 | 2026-10-20 00:00:43.553081+00
+ scoring-engine             | ok     |   816 | 2026-10-20 14:30:15.681383+00
+ scoring-recovery-sweep     | ok     |   192 | 2026-10-20 14:45:02.016381+00
+ service-sync               | ok     |   192 | 2026-10-20 14:45:02.197409+00
+ solicitation-analyst       | error  |    41 | 2026-10-20 12:08:04.974655+00
+ solicitation-analyst       | ok     |   204 | 2026-10-20 12:39:46.940464+00
+ sources-sought-responder   | error  |    31 | 2026-10-20 03:03:30.527492+00
+ sources-sought-responder   | ok     |    24 | 2026-10-20 03:06:47.825293+00
+ stalled-pipeline-sweep     | ok     |    24 | 2026-10-20 14:00:02.579212+00
+ sub-onboarding             | ok     |     2 | 2026-10-20 06:35:00.728997+00
+ trial-sweep                | ok     |    46 | 2026-10-20 14:10:01.467915+00
+ unresponsive-sweep         | ok     |    48 | 2026-10-20 14:20:01.477231+00
+(34 rows)
+
+== Q4 top job_run errors 48h
+          agent           |                                                                               err                                                                                | count 
+--------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------
+ sources-sought-responder | AI_UNAVAILABLE: OpenAI has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.                                       |    31
+ solicitation-analyst     | AI_UNAVAILABLE: OpenAI has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.                                       |    26
+ solicitation-analyst     | Interrupted: the worker stopped while this run was in flight.                                                                                                    |     9
+ solicitation-analyst     | AI work has an unresolved completion. Reconcile its saved output before retrying; no paid replay is allowed.                                                     |     3
+ solicitation-analyst     | AI work for this record is waiting on an earlier attempt that has not settled. It was not replayed. The lease on that attempt ends about 25 minutes after it sta |     2
+ scoring-engine           | Document analysis is required before final scoring. The solicitation is queued for a full read; pricing and subcontractor work have not started. Required downst |     1
+ solicitation-analyst     | completeJson failed after 1 attempts: AI response was not complete (max_tokens); no partial result was accepted                                                  |     1
+ scoring-engine           | Scored 59/100 → review Required downstream work was not queued: solicitation-analyst: the queue refused this required step. Automation may be paused, the pursui |     1
+(8 rows)
+
+== Q5 agent_logs warn/error 48h
+          agent           |            action             | level |                                                                     msg                                                                      | count 
+--------------------------+-------------------------------+-------+----------------------------------------------------------------------------------------------------------------------------------------------+-------
+ scoring-engine           | run                           | warn  | Paid document analysis held for review because the notice already triggers company rules: ineligible_set_aside. No analysis was billed. Revi |   755
+ opportunity-monitor      | amendment-analysis-not-queued | warn  | SAM refreshed material solicitation data, but re-analysis was not queued because automation is paused or this pursuit is stopped. Restart au |   627
+ solicitation-analyst     | run                           | warn  | Solicitation analyzed but held in analysis: missing Source verification needs review, Source verification needs review, Source verification  |   156
+ solicitation-analyst     | gate                          | warn  | Solicitation incomplete (analysis_verification_0, analysis_verification_1, analysis_verification_2, analysis_verification_3, analysis_verifi |   152
+ sources-sought-responder | run                           | error | AI_UNAVAILABLE: OpenAI has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.                   |    31
+ solicitation-analyst     | run                           | error | AI_UNAVAILABLE: OpenAI has a request in progress or an unresolved outcome. Retry only after it completes or is reconciled.                   |    26
+ solicitation-analyst     | attachments                   | warn  | 0 attachment(s) on the notice, 0 processed, 0 chars extracted. Coverage: No source documents on this opportunity.. Outcomes: none            |    26
+ solicitation-analyst     | run                           | warn  | Solicitation analyzed (past-perf: not_required). Brief saved; this opportunity stays in review until you pursue or pass.                     |    23
+ sources-sought-responder | run                           | warn  | Drafted Sources Sought response + capability statement PDF; queued for human review and send within 24 hours.                                |    14
+ solicitation-analyst     | attachments                   | warn  | 1 attachment(s) on the notice, 1 processed, 0 chars extracted. Coverage: 0 of 1 document(s) read in full; 1 stored but not read.. Outcomes:  |    12
+ scoring-engine           | run                           | warn  | Paid document analysis held for review because the notice already triggers company rules: deadline_too_soon. No analysis was billed. Review  |    12
+ solicitation-analyst     | attachments                   | warn  | 2 attachment(s) on the notice, 2 processed, 0 chars extracted. Coverage: 0 of 2 document(s) read in full; 2 stored but not read.. Outcomes:  |    12
+ sources-sought-responder | response-held                 | warn  | Sources Sought response held: the response deadline has passed. No response was published or sent.                                           |    10
+ solicitation-analyst     | run                           | warn  | Solicitation analyzed (past-perf: team_accepted). Brief saved; this opportunity stays in review until you pursue or pass.                    |    10
+ scoring-engine           | run                           | warn  | Final scoring is blocked because one or more solicitation documents were not fully analyzed. Resolve the document blockers, then re-run Soli |     9
+ solicitation-analyst     | gate                          | warn  | Prime-only past performance blocked progression (operator preference).                                                                       |     9
+ hold-sweep               | released                      | warn  | The hold sweep released work that had outlived its lease. Nothing here was replayed by the sweep itself; work handed back to its schedule ru |     9
+ solicitation-analyst     | run                           | warn  | Past performance is prime-only, BLOCKED and flagged for human review (block_prime_only is on). No downstream work triggered.                 |     9
+ scoring-engine           | downstream-held               | warn  | solicitation-analyst was not queued: A provider request is in progress or has an unresolved outcome. Recovery requires reconciliation if its |     8
+ solicitation-analyst     | attachments                   | warn  | 6 attachment(s) on the notice, 6 processed, 493250 chars extracted. Coverage: 1 of 6 document(s) read in full; 4 stored but not read, 1 only |     8
+ solicitation-analyst     | attachments                   | warn  | 2 attachment(s) on the notice, 2 processed, 110506 chars extracted. Coverage: 1 of 2 document(s) read in full; 1 stored but not read.. Outco |     7
+ solicitation-analyst     | attachments                   | warn  | 3 attachment(s) on the notice, 3 processed, 115866 chars extracted. Coverage: 2 of 3 document(s) read in full; 1 stored but not read.. Outco |     6
+ solicitation-analyst     | attachments                   | warn  | 7 attachment(s) on the notice, 7 processed, 130079 chars extracted. Coverage: 4 of 7 document(s) read in full; 3 stored but not read.. Outco |     5
+ solicitation-analyst     | attachments                   | warn  | 5 attachment(s) on the notice, 5 processed, 115156 chars extracted. Coverage: 2 of 5 document(s) read in full; 1 could not be collected, 2 s |     5
+ solicitation-analyst     | attachments                   | warn  | 2 attachment(s) on the notice, 2 processed, 109197 chars extracted. Coverage: 1 of 2 document(s) read in full; 1 stored but not read.. Outco |     5
+ solicitation-analyst     | run                           | warn  | Solicitation analyzed (past-perf: prime_only). Brief saved; this opportunity stays in review until you pursue or pass.                       |     5
+ solicitation-analyst     | attachments                   | warn  | 3 attachment(s) on the notice, 3 processed, 10358 chars extracted. Coverage: 1 of 3 document(s) read in full; 1 could not be collected, 1 st |     4
+ solicitation-analyst     | attachments                   | warn  | 12 attachment(s) on the notice, 12 processed, 754934 chars extracted. Coverage: 2 of 12 document(s) read in full; 6 could not be collected,  |     3
+ solicitation-analyst     | attachments                   | warn  | 9 attachment(s) on the notice, 9 processed, 972839 chars extracted. Coverage: 3 of 9 document(s) read in full; 1 could not be collected, 1 s |     3
+ solicitation-analyst     | attachments                   | warn  | 1 attachment(s) on the notice, 1 processed, 0 chars extracted. Coverage: 0 of 1 document(s) read in full; 1 unreadable.. Outcomes: Site_Visi |     3
+ solicitation-analyst     | attachments                   | warn  | 3 attachment(s) on the notice, 3 processed, 105005 chars extracted. Coverage: 2 of 3 document(s) read in full; 1 could not be collected, 1 n |     3
+ solicitation-analyst     | run                           | error | AI work has an unresolved completion. Reconcile its saved output before retrying; no paid replay is allowed.                                 |     3
+ solicitation-analyst     | attachments                   | warn  | 14 attachment(s) on the notice, 14 processed, 641289 chars extracted. Coverage: 11 of 14 document(s) read in full; 1 could not be collected, |     3
+ scoring-engine           | run                           | warn  | Paid document analysis held for review because the notice already triggers company rules: ineligible_set_aside, deadline_too_soon. No analys |     3
+ solicitation-analyst     | attachments                   | warn  | 2 attachment(s) on the notice, 2 processed, 207396 chars extracted. Coverage: 1 of 2 document(s) read in full; 1 stored but not read.. Outco |     3
+ solicitation-analyst     | attachments                   | warn  | 3 attachment(s) on the notice, 3 processed, 28557 chars extracted. Coverage: 1 of 3 document(s) read in full; 1 could not be collected, 1 st |     3
+ solicitation-analyst     | attachments                   | warn  | 9 attachment(s) on the notice, 9 processed, 65124 chars extracted. Coverage: 1 of 9 document(s) read in full; 4 could not be collected, 4 st |     2
+ reply-poll               | bounce-unmatched              | warn  | An email delivery failure for an unknown recipient could not be matched to an outbound message. Delivery was temporarily deferred. Open the  |     2
+ solicitation-analyst     | attachments                   | warn  | 5 attachment(s) on the notice, 5 processed, 158736 chars extracted. Coverage: 3 of 5 document(s) read in full; 2 unreadable.. Outcomes: SCA_ |     2
+ solicitation-analyst     | attachments                   | warn  | 5 attachment(s) on the notice, 5 processed, 539628 chars extracted. Coverage: 2 of 5 document(s) read in full; 1 could not be collected, 2 o |     2
+(40 rows)
+
+== Q6 outbound email by day/state 14d
+     d      | delivery_state | count 
+------------+----------------+-------
+ 2026-10-20 | draft          |     3
+ 2026-10-19 | draft          |    11
+ 2026-10-06 | draft          |     1
+(3 rows)
+
+== Q7 inbound email by day 14d
+ d | count 
+---+-------
+(0 rows)
+
+== Q8 opportunity_subs on live opps
+   stage    | outreach_state | verified | contact_status | has_email | count 
+------------+----------------+----------+----------------+-----------+-------
+ call_queue | no_email       | t        | no_email_found | f         |     9
+ call_queue | pending        | t        | no_email_found | f         |     4
+ call_queue | pending        | f        | no_email_found | f         |     3
+ call_queue | no_email       | t        | no_website     | f         |     2
+ call_queue | unresponsive   | t        | verified       | t         |     1
+(5 rows)
+
+== Q9 live pursue opps with zero outbound email, by stage
+  stage   | h | work_mode | count 
+----------+---+-----------+-------
+ analysis | t |           |     9
+(1 row)
+
+== Q10 automation rules and pause flags
+       key        |                                                  value_json                                                  
+------------------+--------------------------------------------------------------------------------------------------------------
+ automation_rules | {"lead_action": "review", "urgent_days": 3, "min_lead_days": 0, "retention_days": 30, "approaching_days": 7}
+(1 row)
+
+== Q11 non-terminal mail claims
+ delivery_state | count | oldest 
+----------------+-------+--------
+(0 rows)
+
+== Q12 ai receipts by state
+   state   | count |            oldest             
+-----------+-------+-------------------------------
+ retryable |   340 | 2026-10-05 15:01:05.530055+00
+ complete  |  1166 | 2026-10-05 15:03:19.21654+00
+(2 rows)
+
+== Q13 pg-boss queue backlog
+         name         | state  | count 
+----------------------+--------+-------
+ solicitation-analyst | failed |     2
+(1 row)
+
+== Q14 pursue opps last 10d
+ t | score | stage | h | analyzed | upd 
+---+-------+-------+---+----------+-----
+(0 rows)
+
