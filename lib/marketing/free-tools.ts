@@ -46,9 +46,9 @@ export function matrixCsv(rows: MatrixRow[]) {
   return "\uFEFF" + [["Requirement", "Source / page / amendment", "Owner", "Response location", "Review status"], ...rows.map(r => [r.requirement, r.source, r.owner, r.response, r.status])].map(row => row.map(csvCell).join(",")).join("\r\n");
 }
 /** The day the tools last changed in a way a visitor would notice. */
-export const TOOLS_UPDATED_ON = "2026-09-27";
+export const TOOLS_UPDATED_ON = "2026-10-20";
 export const FREE_TOOLS = [
-  { slug: "bid-no-bid", title: "Bid/no-bid scorecard", description: "Check seven practical criteria and download a decision worksheet before committing time to a government bid." },
-  { slug: "capability-statement", title: "Capability statement builder", description: "Turn your verified company information into an editable capability statement. No account or email required." },
-  { slug: "compliance-matrix", title: "Proposal compliance matrix", description: "Map requirements to source pages, owners and response locations, then export a spreadsheet-ready CSV." },
+  { slug: "bid-no-bid", title: "Bid/no-bid scorecard", description: "Check seven practical criteria and download a decision worksheet before committing time to a government bid.", updatedOn: "2026-09-27" },
+  { slug: "capability-statement", title: "Capability statement builder", description: "Turn your verified company information into an editable capability statement. No account or email required.", updatedOn: "2026-09-27" },
+  { slug: "compliance-matrix", title: "Free proposal compliance matrix: 5 fields", description: "BrostCo's free proposal compliance matrix tracks 5 fields per requirement: requirement text, source, owner, response location and review status. Export up to 100 rows as CSV without an account.", updatedOn: "2026-10-20" },
 ] as const;

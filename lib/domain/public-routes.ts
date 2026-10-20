@@ -59,7 +59,7 @@ export interface PublicRoute {
  */
 export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/tools", label: "Free contractor tools", summary: "Free bid decision, capability statement and proposal compliance worksheets with local downloads and no signup.", changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: TOOLS_UPDATED_ON },
-  ...FREE_TOOLS.map((tool): PublicRoute => ({ path: `/tools/${tool.slug}`, label: tool.title, summary: tool.description, changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: TOOLS_UPDATED_ON })),
+  ...FREE_TOOLS.map((tool): PublicRoute => ({ path: `/tools/${tool.slug}`, label: tool.title, summary: tool.description, changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: tool.updatedOn })),
   { path: "/contract-opportunities", label: "Contract opportunity sources", summary: "Find official construction, cleaning and IT contracting sources and check whether an opportunity fits your business.", changeFrequency: "monthly", priority: 0.8, group: "Reference", lastModified: SECTORS_UPDATED_ON },
   ...OPPORTUNITY_SECTORS.map((sector): PublicRoute => ({ path: `/contract-opportunities/${sector.slug}`, label: sector.title, summary: sector.description, changeFrequency: "monthly", priority: 0.7, group: "Reference", lastModified: SECTORS_UPDATED_ON })),
   { path: "/resources", label: "Contractor resources", summary: "Official-source Idaho and Boise contracting guides and practical checklists for preparing government bids.", changeFrequency: "monthly", priority: 0.8, group: "Reference" },
