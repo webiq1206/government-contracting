@@ -1,0 +1,32 @@
+Merge made by the 'ort' strategy.
+ app/(marketing)/tools/compliance-matrix/page.tsx |  2 +-
+ docs/growth/execution-log.md                     | 10 +++
+ lib/agents/maintenance.ts                        | 98 +++++++++++++++++++++++-
+ lib/agents/opportunity-monitor.ts                |  2 +-
+ lib/agents/scoring-engine.ts                     | 28 ++++++-
+ lib/agents/solicitation-analyst.ts               | 16 ++--
+ lib/agents/sub-finder.ts                         | 15 ++--
+ lib/ai/provider-facts.ts                         | 58 ++++++++++++--
+ lib/domain/document-scoring.ts                   |  5 +-
+ lib/domain/public-routes.ts                      |  2 +-
+ lib/domain/solicitation-completeness.ts          | 40 ++++++++++
+ lib/marketing/free-tools.ts                      |  8 +-
+ lib/types.ts                                     |  5 +-
+ replit.md                                        | 28 +++++++
+ scripts/doctor.ts                                | 35 ++++++++-
+ tests/api-usage-ledger.integration.test.ts       |  4 +-
+ tests/compliance-matrix-tool-page.test.tsx       | 41 ++++++++++
+ tests/document-scoring.test.ts                   |  8 +-
+ tests/pre-analysis-spending.test.ts              | 14 +++-
+ tests/provider-facts-lock.integration.test.ts    |  4 +-
+ tests/provider-facts.integration.test.ts         | 49 +++++++++++-
+ tests/recovery-sweep-bounds.test.ts              | 48 +++++++++++-
+ tests/scoring-recovery-admission.test.ts         | 25 +++++-
+ tests/solicitation-completeness.test.ts          | 36 +++++++++
+ tests/sub-finder-readiness.test.ts               | 17 +++-
+ 25 files changed, 541 insertions(+), 57 deletions(-)
+ create mode 100644 tests/compliance-matrix-tool-page.test.tsx
+10951df4 Merge remote-tracking branch 'origin/main'
+352c994c Archive local commit evidence for 2026-10-20
+c47f7e1b Add audit evidence from pull request 2026-10-20
+2
