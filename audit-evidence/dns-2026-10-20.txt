@@ -1,0 +1,7 @@
+brostco.com TXT [["v=spf1 include:_spf.google.com ~all"],["replit-verify=2fcd16f4-edbe-4d58-b3aa-0988df8c05d5"],["google-site-verification=iHOoiEbYr1Dsvehkc_ZnNIAgtiYZ9COfj_LO51smlgE"]]
+_dmarc.brostco.com TXT [["v=DMARC1; p=none;"]]
+google._domainkey.brostco.com TXT [["v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv1XgcRpNzSc9wkWmhcWj5zc2bhzpbBTjxI9DETatDFuCCQRYs3684h06cv56JOPCOu6CXK6HFmzQ1VNV9rDDGH3t8qZbaMERpZOFaCKUzKUzl/oXWb1rARXqqQAr4/QyWlAzMbTzvVDVCsXw289QB+t564PkJWLFeFTvJYgvKA2bZ1nEGOAwtmJiw5IRABFmMmg","Jw9LsbqT+Pt0yVzcREJNvv6nyMnqZHmToLmbPNE3CdNRkwmUuXnRun+zl80RptU5wMu/zidveOgj3aD2AuRvVubh3J/bkHzr3mroCYl3Gs+VJxa9igQt+Gqu2RjI1K/LhkO7X+wbzOD
+brostco.com MX [{"exchange":"smtp.google.com","priority":1}]
+resend._domainkey.brostco.com TXT [["p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2Ns4df5c6RKJnX5vCJUWoJbFKVkEEx1fihRJpXKgHUH3APg9zJIgxBkuI77uHMhKWU0Ou2p1mySzqJyqEiafozNnE4FS7V60k2x/Znj/yWJHokbtOw7js7NlKs8V2nofcIXQD24pf+gsbc8mmpFmUKVyH6mfgL7w3WLD4P7x8zQIDAQAB"]]
+send.brostco.com TXT [["v=spf1 include:amazonses.com ~all"]]
+send.brostco.com MX [{"exchange":"feedback-smtp.us-east-1.amazonses.com","priority":10}]
