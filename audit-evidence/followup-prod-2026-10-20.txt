@@ -1,0 +1,66 @@
+Pager usage is off.
+== F1 sender addresses used for outbound email (90d)
+         sender_email         | count |              max              
+------------------------------+-------+-------------------------------
+                              |   125 | 2026-10-20 15:03:19.035107+00
+ BROST CO <hello@brostco.com> |    13 | 2026-10-20 16:50:24.304241+00
+(2 rows)
+
+== F2 follow-up schedule on sent outreach
+psql:audit-evidence/followup.sql:5: ERROR:  column "follow_up_sent" does not exist
+LINE 1: ...()) due, replied_at is not null replied, coalesce(follow_up_...
+                                                             ^
+HINT:  Perhaps you meant to reference the column "communications.follow_up_at".
+== F3 follow-up emails sent (90d)
+     d      |          kind           | delivery_state | count 
+------------+-------------------------+----------------+-------
+ 2026-10-20 | sources_sought_response | draft          |     5
+ 2026-10-19 | sources_sought_response | draft          |    11
+ 2026-10-06 | sources_sought_response | draft          |     2
+ 2026-10-05 | sources_sought_response | draft          |     9
+ 2026-10-01 | sources_sought_response | draft          |     5
+ 2026-09-29 | sources_sought_response | draft          |     1
+ 2026-09-28 | sources_sought_response | draft          |     4
+ 2026-09-26 | sources_sought_response | draft          |     6
+ 2026-09-25 | sources_sought_response | draft          |     9
+ 2026-09-24 | sources_sought_response | draft          |     6
+ 2026-09-23 | sources_sought_response | draft          |     4
+ 2026-09-22 | sources_sought_response | draft          |    13
+ 2026-09-21 | sources_sought_response | draft          |     3
+ 2026-09-19 | sources_sought_response | draft          |     4
+ 2026-09-18 | sources_sought_response | draft          |     6
+ 2026-09-17 | sources_sought_response | draft          |     9
+ 2026-09-16 | sources_sought_response | draft          |     5
+ 2026-09-15 | sources_sought_response | draft          |     2
+ 2026-09-11 | sources_sought_response | draft          |     6
+ 2026-09-10 | sources_sought_response | draft          |     4
+ 2026-09-08 | sources_sought_response | draft          |     1
+ 2026-09-02 | sources_sought_response | draft          |     2
+ 2026-09-01 | sources_sought_response | draft          |     1
+ 2026-08-27 | sources_sought_response | draft          |     4
+ 2026-08-25 | sources_sought_response | draft          |     1
+(25 rows)
+
+== F4 outreach-followup run summaries (last 6)
+          started_at           | status |               s               
+-------------------------------+--------+-------------------------------
+ 2026-10-20 16:45:01.315167+00 | ok     | Sent 0 follow-up(s) of 0 due.
+ 2026-10-20 16:30:00.875319+00 | ok     | Sent 0 follow-up(s) of 0 due.
+ 2026-10-20 16:15:13.887896+00 | ok     | Sent 0 follow-up(s) of 0 due.
+ 2026-10-20 16:00:03.057921+00 | ok     | Sent 0 follow-up(s) of 0 due.
+ 2026-10-20 15:45:00.884233+00 | ok     | Sent 0 follow-up(s) of 0 due.
+ 2026-10-20 15:30:01.718347+00 | ok     | Sent 0 follow-up(s) of 0 due.
+(6 rows)
+
+== F5 follow-up rule settings
+ fu_hours | max_fu |                                                  value_json                                                  
+----------+--------+--------------------------------------------------------------------------------------------------------------
+          |        | {"lead_action": "review", "urgent_days": 3, "min_lead_days": 0, "retention_days": 30, "approaching_days": 7}
+(1 row)
+
+== F6 bounces and deferrals (30d)
+ delivery_state |               detail               | count 
+----------------+------------------------------------+-------
+ deferred       | Delivery was temporarily deferred. |     1
+(1 row)
+
