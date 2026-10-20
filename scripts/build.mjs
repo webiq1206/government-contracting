@@ -11,12 +11,36 @@ function source() {
     return { commit:git('rev-parse','HEAD'),tree:git('rev-parse','HEAD^{tree}'),status:git('status','--porcelain') };
   } catch { return null; }
 }
+/**
+ * Is this build missing anything already merged to GitHub main?
+ *
+ * Production is published from the Replit workspace, not from GitHub, and in
+ * October 2026 the workspace sat behind main three times in one day. A publish
+ * from it then would have quietly rolled the fixes back. This never blocks the
+ * build (an emergency deploy must still work); the worker reads the answer at
+ * boot and alerts, and the doctor and health check report it.
+ */
+function mainFreshness() {
+  const git = (...args) => execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','ignore'],timeout:20_000}).trim();
+  let fetched = false;
+  try { git('fetch','--quiet','origin','main'); fetched = true; } catch { /* use the last fetched ref */ }
+  try {
+    const originMain = git('rev-parse','origin/main');
+    const missing = Number(git('rev-list','--count','HEAD..origin/main'));
+    return { originMain, fetched, missingCommits: missing, upToDate: missing === 0, checkedAt: new Date().toISOString() };
+  } catch { return { originMain: null, fetched, missingCommits: null, upToDate: null, checkedAt: new Date().toISOString() }; }
+}
+const mainEvidence=mainFreshness();
+if (mainEvidence.upToDate === false) {
+  console.warn(`\n[build] WARNING: this workspace is missing ${mainEvidence.missingCommits} commit(s) already on GitHub main. ` +
+    'Merge origin/main into the workspace and publish again, or this deploy rolls those changes back.\n');
+}
 const before=source();
 const verified=Boolean(before && !before.status);
 const inputs=sourceInputEvidence();
 const stamp={ schema:2,sourceCommit:verified?before.commit:null,sourceTree:verified?before.tree:null,
   buildId:randomUUID(),builtAt:new Date().toISOString(),verified,
-  gitEvidence:verified?'verified':before?'dirty':'unavailable', ...inputs,
+  gitEvidence:verified?'verified':before?'dirty':'unavailable', mainEvidence, ...inputs,
   dependencyLockSha256:createHash('sha256').update(readFileSync('package-lock.json')).digest('hex') };
 const result=spawnSync(process.execPath,['node_modules/next/dist/bin/next','build'],{
   stdio:'inherit',env:{...process.env,BROSTCO_COMPILED_BUILD:JSON.stringify(stamp)},

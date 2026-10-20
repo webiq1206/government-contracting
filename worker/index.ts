@@ -273,6 +273,10 @@ async function main() {
 
   setPhase(READY_PHASE);
   console.log("[worker] ready");
+  // A publish from a workspace behind GitHub main undoes merged fixes. Say so.
+  void import("../lib/stale-build-alert")
+    .then(({ alertIfStaleBuild }) => alertIfStaleBuild())
+    .catch((err) => console.error("[worker] stale-build check failed:", err instanceof Error ? err.message : err));
 
   // "The process is alive" is not "the queue is being served". pg-boss can stop
   // or lose its connection long after boot while this process keeps checking in

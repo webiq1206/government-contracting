@@ -30,9 +30,30 @@ export function parseBuildEvidence(raw:string|undefined) {
       dependencyLockSha256:/^[0-9a-f]{64}$/.test(item.dependencyLockSha256??'')?item.dependencyLockSha256 as string:null };
   } catch { return null; }
 }
+/** Whether the build contained everything already merged to GitHub main. */
+export interface MainFreshness {
+  upToDate: boolean | null;
+  missingCommits: number | null;
+  originMain: string | null;
+  fetched: boolean;
+  checkedAt: string;
+}
+
+export function parseMainFreshness(raw:string|undefined):MainFreshness|null {
+  try {
+    const m=JSON.parse(raw??'')?.mainEvidence;
+    if (!m || typeof m!=='object' || typeof m.checkedAt!=='string' || !Number.isFinite(Date.parse(m.checkedAt))) return null;
+    const missing=Number.isSafeInteger(m.missingCommits) && m.missingCommits>=0 ? m.missingCommits as number : null;
+    return { upToDate: typeof m.upToDate==='boolean' && missing!==null ? m.upToDate : null, missingCommits: missing,
+      originMain: /^[0-9a-f]{40}$/.test(m.originMain??'') ? m.originMain as string : null,
+      fetched: m.fetched===true, checkedAt: m.checkedAt };
+  } catch { return null; }
+}
+
 // Next replaces this reference with the literal supplied to the build. The
 // bundled worker embeds the same literal; source workers have no build proof.
 export const runtimeBuild = parseBuildEvidence(typeof __BROSTCO_COMPILED_BUILD__==='string'?__BROSTCO_COMPILED_BUILD__:undefined);
+export const buildMainFreshness = parseMainFreshness(typeof __BROSTCO_COMPILED_BUILD__==='string'?__BROSTCO_COMPILED_BUILD__:undefined);
 export const workerSourceRevision = typeof __BROSTCO_WORKER_SOURCE_REVISION__==='string' && /^[0-9a-f]{40}$/.test(__BROSTCO_WORKER_SOURCE_REVISION__)
   ? __BROSTCO_WORKER_SOURCE_REVISION__ : null;
 export const workerArtifact=typeof __BROSTCO_WORKER_ARTIFACT__==='string' && __BROSTCO_WORKER_ARTIFACT__ ? __BROSTCO_WORKER_ARTIFACT__ : null;
