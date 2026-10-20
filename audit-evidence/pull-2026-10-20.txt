@@ -1,0 +1,14 @@
+From https://github.com/webiq1206/government-contracting
+ * branch              main       -> FETCH_HEAD
+   8c173259..2119ec0d  main       -> origin/main
+hint: Diverging branches can't be fast-forwarded, you need to either:
+hint:
+hint: 	git merge --no-ff
+hint:
+hint: or:
+hint:
+hint: 	git rebase
+hint:
+hint: Disable this message with "git config set advice.diverging false"
+fatal: Not possible to fast-forward, aborting.
+1adc8953 Add production key evidence file
