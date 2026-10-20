@@ -1,0 +1,20 @@
+From https://github.com/webiq1206/government-contracting
+ * branch              main       -> FETCH_HEAD
+   2119ec0d..b8d2bfad  main       -> origin/main
+Merge made by the 'ort' strategy.
+ lib/agents/maintenance.ts                    | 87 +++++++++++++++++++++++++++-
+ lib/agents/outreach.ts                       |  3 +
+ lib/domain/attachment-package.ts             | 24 ++++++--
+ lib/domain/opportunity-ingest.ts             | 10 +++-
+ lib/opportunity-attachments.ts               | 69 +++++++++++++++++++---
+ lib/outreach-test.ts                         |  2 +-
+ replit.md                                    | 13 +++++
+ tests/attachment-package.test.ts             | 12 +++-
+ tests/opportunity-attachments-safety.test.ts | 39 +++++++++++++
+ tests/opportunity-ingest.logic.test.ts       | 19 ++++++
+ tests/recovery-sweep-bounds.test.ts          | 25 ++++++++
+ tests/scoring-recovery-admission.test.ts     | 21 ++++++-
+ 12 files changed, 303 insertions(+), 21 deletions(-)
+92e5bc20 Merge remote-tracking branch 'origin/main'
+b8d2bfad Send quote requests the package checks were holding, and stop refresh churn (#226)
+1
