@@ -1,0 +1,199 @@
+Pager usage is off.
+== R1 critical blocker keys on open live opps in analysis/scoring
+  stage   |            k            | count 
+----------+-------------------------+-------
+ analysis | analysis_verification   |   123
+ analysis | unsupported_documents   |    79
+ analysis | value                   |    63
+ analysis | documents_partly_read   |    49
+ analysis | drawings                |    40
+ scoring  | attachments             |    34
+ analysis | wage_determination      |    33
+ scoring  | analysis_verification   |    33
+ analysis | amendments              |    32
+ analysis | attachments_partial     |    32
+ analysis | set_aside               |    32
+ analysis | submission_requirements |    25
+ scoring  | submission_requirements |    25
+ scoring  | value                   |    18
+ scoring  | set_aside               |    12
+ analysis | attachments             |     6
+ analysis | unreadable_documents    |     6
+ scoring  | drawings                |     5
+ scoring  | amendments              |     5
+ analysis | location                |     4
+ scoring  | location                |     3
+ scoring  | documents_partly_read   |     3
+ scoring  | scope                   |     3
+ analysis | scope                   |     2
+ scoring  | unsupported_documents   |     2
+ scoring  | wage_determination      |     1
+ analysis | documents_not_read      |     1
+ analysis | unopened_archives       |     1
+(28 rows)
+
+== R2 blocker combos (excluding verification) per opp
+  stage   |                                       other_blockers                                        | count 
+----------+---------------------------------------------------------------------------------------------+-------
+ scoring  | attachments,submission_requirements                                                         |     8
+ analysis | submission_requirements,unsupported_documents                                               |     6
+ analysis | documents_partly_read,unsupported_documents,value                                           |     5
+ analysis | value                                                                                       |     4
+ scoring  | attachments,set_aside,submission_requirements,value                                         |     4
+ analysis | amendments,drawings,unsupported_documents                                                   |     4
+ analysis | set_aside,value                                                                             |     4
+ analysis | (only verification)                                                                         |     4
+ scoring  | attachments,set_aside,submission_requirements                                               |     3
+ analysis | attachments_partial,documents_partly_read,unsupported_documents,wage_determination          |     3
+ analysis | unsupported_documents                                                                       |     3
+ analysis | documents_partly_read,unsupported_documents,value,wage_determination                        |     3
+ scoring  | attachments,submission_requirements,value                                                   |     3
+ analysis | attachments_partial,documents_partly_read,drawings,unsupported_documents,wage_determination |     3
+ analysis | attachments_partial,documents_partly_read,drawings,unsupported_documents                    |     3
+ analysis | amendments,value                                                                            |     3
+ analysis | wage_determination                                                                          |     2
+ analysis | unsupported_documents,value                                                                 |     2
+ analysis | amendments,unsupported_documents,value                                                      |     2
+ analysis | submission_requirements,unsupported_documents,value                                         |     2
+ analysis | unsupported_documents,wage_determination                                                    |     2
+ analysis | amendments,unsupported_documents                                                            |     2
+ analysis | drawings,set_aside,wage_determination                                                       |     2
+ analysis | drawings,value                                                                              |     2
+ analysis | drawings,set_aside,value                                                                    |     2
+ analysis | set_aside,submission_requirements                                                           |     2
+ analysis | attachments_partial,unsupported_documents,value                                             |     2
+ analysis | attachments,submission_requirements                                                         |     2
+ analysis | documents_partly_read                                                                       |     2
+ scoring  | attachments,value                                                                           |     2
+(30 rows)
+
+== R3 sample verification issues
+                                                                                                            issue                                                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Verify the source evidence for required item: Indian Economic Enterprise Representation Form.
+ Verify the source evidence for required item: Technical Capability Narrative.
+ Verify the source evidence for required item: Management Approach Narrative.
+ The due date in the extraction is 'November 6, 2026 12:00 pm CT', but the current portal deadline is 'Fri Nov 06 2026 18:00:00 GMT+0000 (Coordinated Universal Time)'. 12:00 pm CT is 18:00 UTC, so these match. Source: Pro
+ The extraction omits the requirement for a statement specifying the extent of agreement with all solicitation terms, conditions, and requirements. Source: A statement specifying the extent of agreement with all solicitat
+ The extraction omits the requirement for company legal business name, address, telephone number, and email address of the point of contact in the proposal. Source: Offeror legal business name, address, telephone number, 
+ The extraction omits the requirement to provide Unique Entity Identifier (UEI) and applicable SAM registration information in the proposal. Source: Unique Entity Identifier (UEI) and applicable SAM registration informati
+ The extraction omits the requirement for a Taxpayer Identification Number (TIN) in the proposal. Source: Offerors must have: • A valid Unique Entity Identifier (UEI); • A Taxpayer Identification Number (TIN); and • An ac
+ The extraction omits the requirement that no contract award shall be made to any vendor listed on the HHS Office of Inspector General Exclusions List at the time of award. Source: No contract award shall be made to any v
+ The extraction omits the requirement that if the contractor believes use of IPP would be unduly burdensome, they must include an explanation with the proposal. Source: If the Contractor believes use of IPP would be undul
+ The extraction omits the requirement to submit proposals on company letterhead, signed and dated by an authorized representative. Source: Proposals shall be submitted on company letterhead, signed and dated by an authori
+ The extraction omits the requirement to include any additional information requested within the solicitation. Source: Any additional information requested within this solicitation. [Combined_Synopsis_RSU_CNM_Final.pdf p.
+ The source review could not confirm coverage of all critical requirements.
+ Verify the source evidence for required item: Facility Access Request Form.
+ The due date in the extraction is 'November 6, 2026, 10:00 AM EDT', but the current portal deadline is 'Fri Nov 06 2026 15:00:00 GMT+0000 (Coordinated Universal Time)'. The extraction does not account for the timezone co
+ The compliance matrix omits several mandatory submission requirements stated in the solicitation, including the requirement for two separate proposal volumes (Technical and Business), the technical proposal page limit an
+ The compliance matrix does not list the requirement to acknowledge all amendments, which is mandatory for a responsive bid. Source: Acknowledge all amendments (A28_RFQ_-_15DDHQ26R00000008.pdf, p.8 and A29_15DDHQ26R000000
+ The compliance matrix does not include the requirement to provide resumes for all key personnel as specified under Factor 2. Source: The Offeror must provide resumes to reflect the qualifications listed below for each po
+ The compliance matrix omits the requirement to include any changes or updates to the representations and certifications on file in the System for Award Management as required by paragraph (b) of FAR 52.212-3. Source: Any
+ The compliance matrix does not include the requirement to provide a business proposal with unit price for each CLIN and a completed Schedule of Supplies/Services. Source: The Offeror must propose a single loaded price pe
+ The compliance matrix does not include the requirement to submit company name, address, point of contact, UEI Number, Cage Code, GSA Schedule Number, SIN Number, and business size in the business proposal. Source: Busine
+ The effective amended deadline and current notice deadline need reconciliation, including time and timezone.
+ The source review could not confirm coverage of all critical requirements.
+ The bid schedule (CLIN table) is not included in the extraction; the Pricing Matrix (Attachment 0001) is referenced as required, but its actual line items are not transcribed, as the file is not text-parseable. Source: P
+ No evidence of a required pre-bid meeting or site visit is found in the source documents, and the extraction correctly sets these to null.
+ No insurance or bonding requirements are specified in the provided documents, and the extraction correctly notes this.
+ The period of performance is correctly stated as 'One (1) year: Date of Award through 365 calendar days' in both the extraction and the source. Source: Period of Performance is for one (1) year: Date of Award through 365
+ The offer acceptance period is correctly stated as '60 days after the RFQ closes' in both the extraction and the source. Source: All quotes shall be valid for 60 days after the close of the RFQ.
+ The submission method is correctly stated as email to the listed POCs, with file format and naming conventions as specified. Source: Quotes shall be submitted electronically to the POCs identified above, in response to t
+ The compliance matrix only includes the Pricing Matrix (Attachment 0001), which is the only explicitly required submission item in the instructions. No other forms, certifications, or attachments are specifically require
+ The extraction correctly notes that past performance is not required, as the solicitation states technical and past performance will not be evaluated. Source: Technical and past performance will not be evaluated as this 
+ The extraction correctly identifies all key dates, including RFQ release, questions due, quotes due, and period of performance. Source: Quotes are due NLT: Wednesday, 28 October 2026, 10am(CT)
+ The extraction correctly notes that all items in the Pricing Matrix must be quoted and that award is all or none. Source: Award is all or none, failure to quote all required items may render vendor non-compliant and inel
+ The extraction correctly identifies the set-aside as 100% Small Business Set Aside. Source: 100% Small Business Set Aside
+ The extraction correctly notes that the estimated value is not specified in the provided documents.
+ The extraction correctly lists all required certifications, licenses, and experience as stated in the PWS and solicitation. Source: The Contractor shall perform certified non-destructive helium leak testing and inspectio
+ The extraction correctly notes that all contractor and subcontractor labor hours must be reported in SAM.gov Service Contract Report. Source: The Contractor shall report ALL Contractor labor hours (including subcontracto
+ The effective amended deadline and current notice deadline need reconciliation, including time and timezone.
+ The source review could not confirm coverage of all critical requirements.
+ Verify the source evidence for required item: Signed SF-1442 offer form.
+(40 rows)
+
+== R4 attachment outcome statuses on analysis-stage opps
+     st      | count 
+-------------+-------
+ fetched     |   523
+ unsupported |   284
+ partial     |   248
+ not_read    |    93
+ too_large   |    33
+ failed      |    30
+ no_text     |     7
+ archive     |     1
+(8 rows)
+
+== R5 analysis-stage opps: score/tier/past_perf/risk flags
+ scored |  tier  |      pp       |                                                                   flags                                                                    | count 
+--------+--------+---------------+--------------------------------------------------------------------------------------------------------------------------------------------+-------
+ f      |        | team_accepted | incomplete_solicitation,unverified_analysis                                                                                                |    31
+ f      |        | not_required  | incomplete_solicitation,unverified_analysis                                                                                                |    27
+ f      |        |               |                                                                                                                                            |    26
+ f      |        | not_required  | incomplete_solicitation,pre_analysis_ineligible_set_aside,unverified_analysis                                                              |    11
+ f      |        | prime_only    | incomplete_solicitation,prime_only,prime_only_blocked,unverified_analysis                                                                  |    10
+ f      |        | not_required  | incomplete_solicitation,missing_attachments,unverified_analysis                                                                            |     9
+ f      |        | team_accepted | incomplete_solicitation,pre_analysis_ineligible_set_aside,unverified_analysis                                                              |     6
+ f      |        | team_accepted | incomplete_solicitation,missing_attachments,pre_analysis_ineligible_set_aside,unverified_analysis                                          |     5
+ f      |        | team_accepted | incomplete_solicitation,missing_attachments,unverified_analysis                                                                            |     4
+ f      |        | prime_only    | incomplete_solicitation,pre_analysis_ineligible_set_aside,prime_only,prime_only_blocked,unverified_analysis                                |     3
+ f      |        | prime_only    | incomplete_solicitation,missing_attachments,prime_only,prime_only_blocked,unverified_analysis                                              |     3
+ t      | pursue | not_required  | incomplete_solicitation,missing_attachments                                                                                                |     3
+ f      |        | prime_only    | incomplete_solicitation,prime_only,prime_only_blocked                                                                                      |     2
+ t      | pursue | not_required  | incomplete_solicitation,missing_attachments,unverified_analysis                                                                            |     2
+ f      |        | not_required  | incomplete_solicitation,missing_attachments                                                                                                |     2
+ f      |        | not_required  | incomplete_solicitation                                                                                                                    |     2
+ f      |        | team_accepted | incomplete_solicitation                                                                                                                    |     1
+ t      | review | not_required  | incomplete_solicitation,unverified_analysis                                                                                                |     1
+ t      | pursue | team_accepted | incomplete_solicitation                                                                                                                    |     1
+ f      |        | not_required  | incomplete_solicitation,missing_attachments,pre_analysis_deadline_too_soon,unverified_analysis                                             |     1
+ f      |        | team_accepted | incomplete_solicitation,missing_attachments                                                                                                |     1
+ f      |        | not_required  | incomplete_solicitation,missing_attachments,pre_analysis_unrestricted_under_threshold,pre_analysis_value_below_min,unverified_analysis     |     1
+ t      | pursue | team_accepted | incomplete_solicitation,missing_attachments                                                                                                |     1
+ f      |        | prime_only    | incomplete_solicitation,missing_attachments,pre_analysis_ineligible_set_aside,prime_only,prime_only_blocked,unverified_analysis            |     1
+ f      |        | prime_only    | incomplete_solicitation,pre_analysis_deadline_too_soon,pre_analysis_ineligible_set_aside,prime_only,prime_only_blocked,unverified_analysis |     1
+ t      | pursue | prime_only    | incomplete_solicitation,prime_only,prime_only_blocked,unverified_analysis                                                                  |     1
+ t      | review | not_required  | incomplete_solicitation                                                                                                                    |     1
+ f      |        | team_accepted | incomplete_solicitation,pre_analysis_ineligible_set_aside,prime_only,prime_only_blocked,unverified_analysis                                |     1
+ f      |        | not_required  | incomplete_solicitation,missing_attachments,prime_only,prime_only_blocked,unverified_analysis                                              |     1
+ f      |        | team_accepted | incomplete_solicitation,prime_only,prime_only_blocked,unverified_analysis                                                                  |     1
+(30 rows)
+
+== R6 scoring-stage tier-null opps: last scoring log action
+ action |                                                           msg                                                            | count 
+--------+--------------------------------------------------------------------------------------------------------------------------+-------
+ run    | Paid document analysis held for review because the notice already triggers company rules: ineligible_set_aside. No analy |    11
+(1 row)
+
+== R7 set-asides on held pre_analysis_ineligible records
+                                set_aside_type                                 | count 
+-------------------------------------------------------------------------------+-------
+ Service-Disabled Veteran-Owned Small Business (SDVOSB) Set-Aside (FAR 19.14)  |    34
+ 8(a) Set-Aside (FAR 19.8)                                                     |     5
+ SBA Certified Women-Owned Small Business (WOSB) Program Set-Aside (FAR 19.15) |     2
+(3 rows)
+
+== R8 company certifications in profile
+                org_id                |       certs        |                                                                                                                                                                                                                                     thresholds                                                                                                                                                                                                                                     | trades |                                                                                                                                                                                                                naics                                                                                                                                                                                                                 
+--------------------------------------+--------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 7abeb216-096d-4d67-a7b9-610b1e797e22 | []                 | {"value_max": 500000, "value_min": 25000, "non_ss_cap_pct": 50, "sam_alert_days": [90, 30, 7], "cert_alert_days": [90, 30, 7], "block_prime_only": false, "non_ss_alert_pct": 45, "pursue_min_score": 70, "review_min_score": 50, "deadline_min_days": 7, "submit_lead_hours": 2, "min_subs_per_trade": 2, "insurance_alert_days": [60, 30, 7], "state_llc_alert_days": [60, 30, 7], "unrestricted_min_value": 150000, "review_auto_dismiss_hours": 72}                            |        | []
+ 00000000-0000-4000-8000-000000000001 | ["Small Business"] | {"value_max": 10000000, "value_min": 50000, "non_ss_cap_pct": 50, "sam_alert_days": [90, 30, 7], "cert_alert_days": [90, 30, 7], "block_prime_only": true, "non_ss_alert_pct": 45, "pursue_min_score": 70, "review_min_score": 50, "deadline_min_days": 7, "submit_lead_hours": 8, "min_subs_per_trade": 1, "insurance_alert_days": [60, 30, 7], "pricing_gap_flag_pct": 20, "state_llc_alert_days": [60, 30, 7], "unrestricted_min_value": 50000, "review_auto_dismiss_hours": 4} |        | ["561730", "561720", "561210", "561790", "561710", "561612", "561621", "238320", "238910", "238990", "562111", "562112", "562910", "562998", "562119", "722320", "722310", "722330", "488991", "484110", "484121", "492110", "493110", "493190", "811490", "811412", "811198", "531311", "531312", "561110", "561499", "561990", "561320", "561330", "541380", "541350", "541922", "512110", "236210", "236115", "236220", "236116"]
+(2 rows)
+
+== R9 tier distribution of opps created in last 14d
+  tier   | count | avg_score | max_score 
+---------+-------+-----------+-----------
+         |   166 |           |          
+ dismiss |   113 |        21 |        59
+ review  |    23 |        59 |        72
+(3 rows)
+
+== R10 outreach/call_queue opps last log
+        agent         |            action             |                                                                     msg                                                                      | count 
+----------------------+-------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------+-------
+ opportunity-monitor  | amendment-analysis-not-queued | SAM refreshed material solicitation data, but re-analysis was not queued because automation is paused or this pursuit is stopped. Restart au |    17
+ deadline-monitor     | deadline-warning              | Bid due in 43h: "Fort Yates Pharmacy USP Renovation" is still in outreach. Submit or dismiss before the deadline.                            |     1
+ solicitation-analyst | run                           | Solicitation analyzed but held in analysis: missing Source verification needs review, Source verification needs review, Source verification  |     1
+(3 rows)
+
