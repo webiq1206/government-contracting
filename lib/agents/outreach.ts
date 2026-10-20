@@ -450,6 +450,9 @@ export const outreach: AgentDefinition = {
           .join("; ")}.`,
       });
     }
+    // Only what the recipient can open is attached; what was left out is
+    // logged above with the other soft problems.
+    gathered.files = pkg.sendableFiles;
     if (!pkg.ok) {
       const why = describePackageProblems(pkg.problems);
       await query(

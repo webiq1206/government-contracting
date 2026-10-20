@@ -7,17 +7,24 @@ const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n");
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   download: vi.fn(),
+  fetch: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ query: mocks.query }));
 vi.mock("@/lib/integrations/storage", () => ({
   storage: { download: mocks.download },
 }));
+vi.mock("@/lib/integrations/guarded-fetch", async (original) => ({
+  ...(await original<typeof import("@/lib/integrations/guarded-fetch")>()),
+  guardedFetch: mocks.fetch,
+}));
 
 import {
+  clearUpstreamPreflightMemo,
   gatherOpportunityAttachments,
   gatherTradeAttachments,
 } from "@/lib/opportunity-attachments";
+import { GuardedFetchError } from "@/lib/integrations/guarded-fetch";
 import { assessAttachmentPackage } from "@/lib/domain/attachment-package";
 
 function doc(index: number) {
@@ -39,6 +46,9 @@ describe("opportunity attachment tenant and completeness safety", () => {
     process.env.AUTH_SECRET = "attachment-safety-test-secret";
     process.env.APP_URL = "https://brostco.test";
     mocks.download.mockResolvedValue(PDF);
+    clearUpstreamPreflightMemo();
+    // An upstream file that cannot be checked right now (network down).
+    mocks.fetch.mockRejectedValue(new GuardedFetchError("network", "Could not reach it.", { retryable: true }));
   });
 
   it("requires an explicit organization before reading documents", async () => {
@@ -67,6 +77,35 @@ describe("opportunity attachment tenant and completeness safety", () => {
     expect(sql).not.toMatch(/\blimit\s+40\b/i);
     expect(gathered.files).toHaveLength(41);
     expect(mocks.download).toHaveBeenCalledTimes(41);
+  });
+
+  const upstreamOpp = {
+    id: OPP_ID,
+    title: "Test opportunity",
+    attachments_json: [
+      { name: "Mechanical drawings.pdf", url: "https://sam.gov/api/prod/opps/v3/opportunities/resources/files/example" },
+    ],
+  };
+
+  it("promises an upstream package once its files answer a bounded preflight", async () => {
+    mocks.query.mockResolvedValueOnce([]);
+    mocks.fetch.mockResolvedValue({ body: Buffer.from("%PDF-"), contentType: "application/pdf" });
+    const gathered = await gatherOpportunityAttachments(ORG_ID, upstreamOpp);
+    expect(gathered.links[0]?.reachable).toBe(true);
+    expect(mocks.fetch).toHaveBeenCalledWith(upstreamOpp.attachments_json[0].url, expect.objectContaining({ maxBytes: 1024 }));
+    expect(assessAttachmentPackage(gathered).ok).toBe(true);
+    // Every subcontractor on the solicitation links the same file: checked once.
+    mocks.query.mockResolvedValueOnce([]);
+    await gatherOpportunityAttachments(ORG_ID, upstreamOpp);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls an upstream package dead when a file is gone", async () => {
+    mocks.query.mockResolvedValueOnce([]);
+    mocks.fetch.mockRejectedValue(new GuardedFetchError("http_error", "HTTP 404.", { status: 404 }));
+    const gathered = await gatherOpportunityAttachments(ORG_ID, upstreamOpp);
+    expect(gathered.links[0]?.reachable).toBe(false);
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
   });
 
   it("marks an unpreflighted upstream package as blocking", async () => {

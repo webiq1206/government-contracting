@@ -143,6 +143,25 @@ describe("ingestOpportunity (mocked db)", () => {
     expect(res.dedupedBy).toBe("source_id");
   });
 
+  it("does not put SAM's description link back over the fetched text", async () => {
+    queryOne
+      .mockResolvedValueOnce({ id: "existing-1" })
+      .mockResolvedValueOnce(stored({ description: "Provide janitorial services at the base clinic, five days a week." }));
+
+    const res = await ingestOpportunity({
+      orgId: "org-1",
+      source: "sam_federal",
+      source_id: "notice-1",
+      solicitation_number: "SOL-1",
+      title: "Job",
+      description: "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=notice-1",
+    });
+
+    // Every poll used to read this as a change, clear the analysis and queue a paid re-read.
+    expect(res.materialChanged).toBe(false);
+    expect(res.refreshed).toBe(false);
+  });
+
   it("reports a material refresh and merges a new amendment link", async () => {
     queryOne
       .mockResolvedValueOnce({ id: "existing-1" })

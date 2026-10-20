@@ -10,6 +10,7 @@ import {
   attachmentReferences,
   mergeAttachmentReferences,
 } from "./attachment-identity";
+import { isDescriptionPlaceholder, usableDescription } from "./solicitation-import";
 import {
   normalizeSolicitationNumber,
   normalizeSourceId,
@@ -126,7 +127,14 @@ async function refreshExisting(
     source_id: current.source_id ?? sourceId,
     solicitation_number: current.solicitation_number ?? solicitationNumber,
     title: payload.title ?? current.title,
-    description: payload.description ?? current.description,
+    // SAM search returns the description as a link to fetch. Once the
+    // description sweep has stored the text, a later poll must not put the
+    // link back: that read as a material change on every run, cleared the
+    // analysis, and queued a paid re-read of the same solicitation each time.
+    description:
+      isDescriptionPlaceholder(payload.description) && usableDescription(current.description as string | null)
+        ? current.description
+        : payload.description ?? current.description,
     naics_code: payload.naics_code ?? current.naics_code,
     psc_code: payload.psc_code ?? current.psc_code,
     set_aside_type: payload.set_aside_type ?? current.set_aside_type,

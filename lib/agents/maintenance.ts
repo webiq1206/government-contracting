@@ -948,8 +948,8 @@ async function followUpForOrg(
         continue;
       }
 
-      attachments = fallbackGathered.files;
-      attachedNames = fallbackGathered.files.map((file) => file.filename);
+      attachments = packageAssessment.sendableFiles;
+      attachedNames = packageAssessment.sendableFiles.map((file) => file.filename);
     }
 
     if (chosen) {
@@ -2098,6 +2098,83 @@ export const scoringRecoverySweep: AgentDefinition = {
       });
     }
 
+    /*
+     * Analyzed once, then invalidated by a refresh, and never read again.
+     *
+     * A material SAM refresh clears analysis_input_hash and queues one
+     * re-analysis. When that one enqueue was refused or lost, the record kept
+     * a brief nothing would score, source from, or replace. The re-read is
+     * paid, so it goes through the same spending check as a missing brief,
+     * most urgent deadlines first, and never for a pursuit the company rules
+     * already hold.
+     */
+    const invalidated: { id: string; orgId: string }[] = [];
+    for (const org of orgs) {
+      const rows = await query<{ id: string }>(
+        `select id from opportunities
+          where org_id = $1
+            and status='open'
+            and stage in ('scoring','analysis')
+            and is_sources_sought is not true
+            and coalesce(pursuit_state, 'active') = 'active'
+            and solicitation_analysis is not null
+            and coalesce(analysis_input_hash, '') = ''
+            and (deadline is null or deadline > now())
+            and not ('prime_only_blocked' = any(coalesce(risk_flags, '{}')))
+            and not exists (select 1 from job_runs recent where recent.org_id=$1
+              and recent.opportunity_id=opportunities.id and recent.agent='solicitation-analyst'
+              and recent.started_at > now()-interval '1 hour')
+            and (select count(*) from job_runs attempts where attempts.org_id=$1
+              and attempts.opportunity_id=opportunities.id and attempts.agent='solicitation-analyst'
+              and attempts.status='error' and attempts.started_at > now()-interval '24 hours'
+              and coalesce(attempts.summary->>'transientHold', '') <> 'true') < 3
+            and updated_at < now() - interval '20 minutes'
+          order by deadline asc nulls last
+          limit 25`,
+        [org.id]
+      );
+      invalidated.push(...rows.map((row) => ({ ...row, orgId: org.id })));
+    }
+    let reanalysisQueued = 0;
+    for (const o of invalidated) {
+      try {
+        if (!(await canRecover(o.orgId, "complex", "solicitation-analyst"))) { deferred++; continue; }
+        const queuedId = await runWithOrg(o.orgId, () =>
+          enqueue(
+            "solicitation-analyst",
+            { opportunityId: o.id, force: "always", rescoreAfterAnalysis: true, trigger: "recovery" },
+            { singletonKey: `analyze-refresh:${o.id}:recovery`, singletonSeconds: 3600 }
+          )
+        );
+        if (!queuedId) {
+          deferred++;
+          continue;
+        }
+        reanalysisQueued++;
+      } catch (err) {
+        queueFailures++;
+        await runWithOrg(o.orgId, () =>
+          logAgent({
+            agent: "scoring-recovery-sweep",
+            action: "requeue-reanalysis",
+            opportunityId: o.id,
+            level: "error",
+            status: "error",
+            message: `Could not re-queue the re-analysis for opportunity ${o.id} (${(err as Error).message}). It will be retried on the next sweep.`,
+          })
+        );
+      }
+    }
+    if (reanalysisQueued > 0) {
+      await logAgent({
+        agent: "scoring-recovery-sweep",
+        action: "requeue-reanalysis",
+        level: "info",
+        message: `Re-queued the solicitation analyst for ${reanalysisQueued} opportunit${reanalysisQueued === 1 ? "y" : "ies"} whose brief a refresh invalidated.`,
+        reasoning: "A SAM refresh cleared the brief's input hash and its re-analysis never ran, so nothing could score or source from it.",
+      });
+    }
+
     const parts: string[] = [];
     if (scoringQueued > 0) {
       parts.push(
@@ -2114,6 +2191,11 @@ export const scoringRecoverySweep: AgentDefinition = {
         `re-queued the final score for ${rescoreQueued} analyzed opportunit${rescoreQueued === 1 ? "y" : "ies"}`
       );
     }
+    if (reanalysisQueued > 0) {
+      parts.push(
+        `re-queued analysis for ${reanalysisQueued} opportunit${reanalysisQueued === 1 ? "y" : "ies"} whose brief a refresh invalidated`
+      );
+    }
     if (deferred > 0) parts.push(`${deferred} recovery jobs were already queued or deferred by a safety check; the next sweep will check them again`);
     if (queueFailures > 0) {
       parts.push(
@@ -2127,6 +2209,7 @@ export const scoringRecoverySweep: AgentDefinition = {
         scoringQueued,
         analysisQueued,
         rescoreQueued,
+        reanalysisQueued,
         queueFailures,
         deferred,
       },

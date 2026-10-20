@@ -31,7 +31,7 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
       trade, description: opp.description });
     const scrub = (s: string) => scrubInternalFailureCopy(scrubGovtContacts(rewriteSamUrls(s)).sanitised);
     vars = Object.fromEntries(Object.entries(resolved.vars).map(([k, v]) => [k, scrub(v)]));
-    attachments = gathered.files;
+    attachments = pkg.sendableFiles;
     sections = buildOutreachSections({ vars, scopeBoundary: scrub(resolved.scopeBoundary),
       attachedNames: attachments.map(f => f.filename), links: gathered.links,
       pricingScheduleRequired: resolved.requirements.subRequirements.some(r => /pricing schedule|quote format/i.test(r.text)) });

@@ -150,14 +150,24 @@ describe("assessAttachmentPackage", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("blocks on a password-protected file", () => {
+  it("blocks when the only document is password protected", () => {
     const r = assessAttachmentPackage({
       files: [{ filename: "SOW.pdf", content: pdf("/Encrypt 4 0 R"), mime: "application/pdf" }],
       links: [],
       expected: true,
     });
     expect(r.problems[0].kind).toBe("password_protected");
+    expect(r.problems.some((p) => p.kind === "nothing_delivered" && p.blocking)).toBe(true);
     expect(r.ok).toBe(false);
+  });
+
+  it("leaves a password-protected file out and sends the rest", () => {
+    const locked = { filename: "SF1408 Preaward Survey.pdf", content: pdf("/Encrypt 4 0 R"), mime: "application/pdf" };
+    const r = assessAttachmentPackage({ files: [...OK_FILES, locked], links: [], expected: true });
+    expect(r.ok).toBe(true);
+    expect(r.problems).toContainEqual(expect.objectContaining({ kind: "password_protected", blocking: false }));
+    expect(r.sendableFiles).toEqual(OK_FILES);
+    expect(r.deliveredNames).not.toContain(locked.filename);
   });
 
   it("blocks on the same document attached twice", () => {

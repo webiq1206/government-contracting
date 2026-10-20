@@ -148,16 +148,18 @@ export function amendmentOf(
   return { base: base || nameKey(filename), number: m[2] ? Number(m[2]) : 1 };
 }
 
-export interface PackageAssessment {
+export interface PackageAssessment<F extends PackageFile = PackageFile> {
   problems: PackageProblem[];
   /** False when anything blocking was found. */
   ok: boolean;
   /** Names as the recipient will see them, for the Documents section. */
   deliveredNames: string[];
+  /** The files to attach: every input file except ones the recipient could not open. */
+  sendableFiles: F[];
 }
 
-export function assessAttachmentPackage(input: {
-  files: PackageFile[];
+export function assessAttachmentPackage<F extends PackageFile>(input: {
+  files: F[];
   links: PackageLink[];
   /** True when this solicitation has documents that ought to be included. */
   expected: boolean;
@@ -169,9 +171,10 @@ export function assessAttachmentPackage(input: {
    * way to know they exist.
    */
   undelivered?: { name: string; reason: string }[];
-}): PackageAssessment {
+}): PackageAssessment<F> {
   const problems: PackageProblem[] = [];
   const deliveredNames: string[] = [];
+  const unopenable = new Set<F>();
 
   const seenNames = new Set<string>();
   for (const file of input.files) {
@@ -215,11 +218,19 @@ export function assessAttachmentPackage(input: {
       continue;
     }
     if (looksPasswordProtected(file)) {
+      /*
+       * Left out, not blocking. Nobody can give the subcontractor its
+       * password, so attaching it helps no one, and holding the whole quote
+       * request over it stopped every send on solicitations that carry one
+       * locked agency form. If it was the only document, nothing_delivered
+       * below still holds the send.
+       */
+      unopenable.add(file);
       problems.push({
         kind: "password_protected",
         filename: name,
-        message: `"${name}" is password protected. The subcontractor will be asked for a password nobody has given them.`,
-        blocking: true,
+        message: `"${name}" is password protected, so it was left out of the email: the subcontractor could not open it.`,
+        blocking: false,
       });
       continue;
     }
@@ -320,6 +331,7 @@ export function assessAttachmentPackage(input: {
     problems,
     ok: !problems.some((p) => p.blocking),
     deliveredNames,
+    sendableFiles: input.files.filter((file) => !unopenable.has(file)),
   };
 }
 
