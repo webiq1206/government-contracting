@@ -1,0 +1,17 @@
+c47f7e1b Add audit evidence from pull request 2026-10-20
+1adc8953 Add production key evidence file
+5b316c27 Add audit evidence for funnel2 prod
+efc3a7b3 Add production funnel audit evidence and SQL scripts
+885d17f8 Add doctor production audit evidence for 2026-10-20
+8834b6f1 Published your App
+6dad460c Published your App
+546b4b6e Published your App
+---
+ audit-evidence/doctor-prod-2026-10-20.txt  |  64 ++++++++++
+ audit-evidence/funnel-prod-2026-10-20.txt  | 182 ++++++++++++++++++++++++++
+ audit-evidence/funnel.sql                  |  29 +++++
+ audit-evidence/funnel2-prod-2026-10-20.txt | 199 +++++++++++++++++++++++++++++
+ audit-evidence/funnel2.sql                 |  21 +++
+ audit-evidence/keys-prod-2026-10-20.txt    |  13 ++
+ audit-evidence/pull-2026-10-20.txt         |  14 ++
+ 7 files changed, 522 insertions(+)
