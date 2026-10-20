@@ -1,5 +1,15 @@
 # BrostCo growth execution log
 
+## October 20, 2026, America/Boise: Tuesday compliance tool answer update
+
+- Reverified the production mapping as `webiq1206/government-contracting`, branch `main`, BrostCo project `2fcd16f4-edbe-4d58-b3aa-0988df8c05d5`, production `https://brostco.com`, Search Console `sc-domain:brostco.com` and GA4 `properties/556607163`.
+- Finalized Search Console data for October 10 through 16 recorded 24 impressions, zero clicks and average position 53.50. The equal prior period recorded 54 impressions, zero clicks and average position 44.44. Search visibility remains small and volatile, with no qualified traffic or customer outcome established.
+- The compliance cluster accounted for 18 of the 24 current impressions: 9 for `/resources/proposal-compliance-matrix` and 9 for `/tools/compliance-matrix`. The returned query rows were `compliance matrix template`, `proposal compliance matrix` and `proposal compliance matrix template`. GA4 returned no rows for either equal window.
+- The guide improvement from pull request 201 is live. The tool page still opened with generic copy that did not state what the worksheet contains. This change gives the existing tool one answer-first intent: five fields per requirement and an export limit of 100 rows, both already enforced by the worksheet. The title, meta description, WebApplication schema, breadcrumb, sitemap date and `llms.txt` inventory are aligned. No URL, pricing, legal page, account page, private route or tool behavior changed.
+- Baseline: 9 tool-page impressions, zero clicks and average position 64.44 for October 10 through 16. Qualified KPI: organic visits that reach the tool and completed exports, reviewed after 14 and 28 days with equal finalized windows. Guardrails: preserve the stable URL, local-only entries, no-signup access, CSV safety and current conversion event semantics. Rollback is the single content commit if the page becomes misleading or its qualified outcomes worsen after an adequate sample.
+- Validation before release: 18 focused tests passed, TypeScript checking passed, all 6,013 runnable repository tests passed with 758 skips, and the production build generated all 36 static pages. Live release evidence is recorded on the pull request after the exact merged revision is published and read back.
+- No social post, Reddit action, listing submission, email, direct message, sitemap resubmission, IndexNow submission, provider credit, checkout or spend.
+
 ## October 12, 2026, America/Boise: Monday search and activation review
 
 - Reverified the production mapping as `webiq1206/government-contracting`, branch `main`, BrostCo project `2fcd16f4-edbe-4d58-b3aa-0988df8c05d5`, and `https://brostco.com`. The Replit deployment remained successful under deployment `bb9257ca-8a6b-41b5-b3a1-2ffec6d8140e`.
