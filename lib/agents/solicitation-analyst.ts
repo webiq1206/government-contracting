@@ -1,5 +1,6 @@
 import { attachmentReadingCoverage, extractionStateFor } from "../domain/attachment-reading";
 import { sourceEvidenceMatches, verifiedSourcePage } from "../domain/source-evidence";
+import { RequirementApplicabilitySchema, groundRequirementApplicability } from "../domain/outreach-applicability";
 import { reviewAnalysis } from "../ai/analysis-review";
 /**
  * SOLICITATION ANALYST, triggered after scoring (pursue or review) and again
@@ -243,6 +244,7 @@ const MatrixRowSchema = z.object({
 });
 
 export const AnalysisSchema = z.object({
+  requirement_applicability: z.array(RequirementApplicabilitySchema).catch([]).default([]),
   project_overview: z.string().default(NA),
   scope_plain_language: z.string().default(NA),
   location: z.string().default(NA),
@@ -1119,6 +1121,7 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "qualifications": {                        // everything the bidder must hold/prove',
     '     "certifications": string[], "licenses": string[], "insurance": string[],',
     '     "bonding": string[], "experience": string[], "other": string[] },',
+    '  "requirement_applicability": [{ "requirement": string, "source": "qualifications"|"special_requirements"|"submission", "applies_to": "prime"|"subcontractor"|"shared"|"unknown", "trades": string[], "all_trades": boolean, "mandatory": boolean, "condition": string, "source_document": string, "source_page": number, "source_quote": string }], // For every qualification and condition affecting outreach, repeat the EXACT requirement from the corresponding array. Use a verbatim source sentence for that array item and source_quote, not a paraphrase. Identify the obligated party and explicitly named trades; all_trades only when the source expressly covers all subcontractors/trades. Cite the actual document and page (omit document/page for notice text). Preserve any condition or package restriction; never presume it is satisfied. Prime set-aside eligibility, bid guarantees and prime LOS duties are not automatically subcontractor obligations. Unknown applicability remains unknown; never infer eligibility or waive an obligation. Do not output evidence_verified: the server verifies quotations. A specific sourced subcontract/package obligation must remain distinct from a prime duty.',
     '  "prebid_meeting": { "required": boolean, "details": string } | null,   // date/time/location/registration if any',
     '  "site_visit": { "required": boolean, "details": string } | null,',
     '  "submission_method": string,              // how/where to submit: portal, email, hand-delivery, mailing address',
@@ -1681,6 +1684,14 @@ export const solicitationAnalyst: AgentDefinition = {
         .map((p) => ({ id: p.documentId!, name: p.outcome.name, pageCount: p.pages }));
       let unresolvedCitations = 0;
       const evidenceIssues: string[] = [];
+      analysis.requirement_applicability = groundRequirementApplicability(
+        analysis.requirement_applicability ?? [],
+        processed.filter(p => p.documentId).map(p => ({
+          id: p.documentId!, name: p.outcome.name, text: p.context,
+          pageCount: p.pages, pageTexts: p.pageTexts,
+        })),
+        opp.description ?? "",
+      );
       analysis.compliance_matrix = (analysis.compliance_matrix ?? [])
         .filter((r) => r.title?.trim())
         .map((r, i) => {

@@ -1,3 +1,4 @@
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 /**
  * The whole subcontractor email workflow, once, against a real database.
  *
@@ -131,7 +132,8 @@ d("the subcontractor email workflow, end to end (integration)", () => {
           trade_scopes: [
             { trade: "HVAC", work: "Remove and replace 12 rooftop units in Buildings 3 and 4." },
           ],
-          qualifications: { licenses: ["State mechanical contractor license"] },
+          qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor license."] },
+          requirement_applicability: [scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor license.", "qualifications", { allTrades: false })],
         }),
       ]
     );

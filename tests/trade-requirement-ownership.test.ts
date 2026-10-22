@@ -20,9 +20,16 @@
  * directions rather than only the leak.
  */
 import { describe, it, expect } from "vitest";
+import { groundRequirementApplicability } from "@/lib/domain/outreach-applicability";
 import { buildOutreachRequirements } from "../lib/domain/outreach-requirements";
 
+const electrical = "The Electrical subcontractor shall provide a licensed master electrician.";
+const wage = "All subcontractors must comply with the Davis-Bacon prevailing wage determination.";
 const ANALYSIS = {
+  requirement_applicability: groundRequirementApplicability([
+    { requirement: electrical, source: "special_requirements", applies_to: "subcontractor", trades: ["Electrical"], all_trades: false, mandatory: true, source_quote: electrical },
+    { requirement: wage, source: "special_requirements", applies_to: "shared", trades: [], all_trades: true, mandatory: true, source_quote: wage },
+  ], [], `${electrical}\n${wage}`),
   trade_scopes: [
     { trade: "Roofing", work: "Remove and replace the built-up roof on Building 402." },
     { trade: "Electrical", work: "Install new branch circuits and panels." },
@@ -38,9 +45,9 @@ const ANALYSIS = {
     "All work areas shall be cleaned at the end of each shift.",
     // Condition-shaped and names another trade. Must not reach the roofer.
     // "licen" matches CONDITION_RE, so this lands in subRequirements.
-    "Electrical work shall be performed by a licensed master electrician.",
+    "The Electrical subcontractor shall provide a licensed master electrician.",
     // Condition-shaped and names nobody. Must reach everyone.
-    "Davis-Bacon prevailing wage determination applies to all site labor.",
+    "All subcontractors must comply with the Davis-Bacon prevailing wage determination.",
   ],
 };
 

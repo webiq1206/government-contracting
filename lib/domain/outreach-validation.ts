@@ -147,7 +147,8 @@ export interface SendProblem {
     | "sample_data"
     | "deadline_order"
     | "no_attachments"
-    | "trade_scope_not_ready";
+    | "trade_scope_not_ready"
+    | "requirement_applicability";
   message: string;
 }
 
@@ -187,8 +188,16 @@ export function validateOutboundEmail(input: {
    * it used. Every one of those describes the WHOLE project.
    */
   tradeSpecific?: boolean;
+  /** Unresolved obligations must not become requirements or be silently waived. */
+  requirementReviewRequired?: readonly { text: string; reason: string }[];
 }): SendProblem[] {
   const problems: SendProblem[] = [];
+  if (input.requirementReviewRequired?.length) {
+    problems.push({
+      kind: "requirement_applicability",
+      message: `Review requirement applicability before sending: ${input.requirementReviewRequired.map(r => `${r.text}: ${r.reason}`).join(" ")}`,
+    });
+  }
   const whole = `${input.subject}\n${input.body}`;
 
   // A token that survived substitution is about to be read by a person.

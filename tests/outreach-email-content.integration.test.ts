@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "crypto";
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
@@ -129,9 +130,13 @@ d("the assembled outreach email (integration)", () => {
             },
             { trade: "Electrical", work: "Pull new feeders to the roof curbs." },
           ],
-          qualifications: { licenses: ["State mechanical contractor licence"] },
+          qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor licence."] },
+          requirement_applicability: [
+            scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor licence.", "qualifications", { allTrades: false }),
+            scopedNoticeRequirement("Davis-Bacon prevailing wage rates shall apply to all trades.", "special_requirements"),
+          ],
           site_visit: { required: true, details: "in 10 days, 9:00 AM, Building 3 lobby" },
-          special_requirements: ["Davis-Bacon prevailing wage rates apply to all trades."],
+          special_requirements: ["Davis-Bacon prevailing wage rates shall apply to all trades."],
           questions_for_subs: ["Can your crew work the 7:00 AM to 3:30 PM window?"],
           period_of_performance: "180 calendar days from notice to proceed",
           offer_acceptance_period: "60 days",
@@ -273,4 +278,30 @@ d("the assembled outreach email (integration)", () => {
     // The manifest, so a fallback into a new thread sends the same package.
     expect(row?.attachments).toContain("Statement of Work.pdf");
   });
+  it("holds a queued invitation with legacy prime qualifications before the mail provider", async () => {
+    const held = await queryOne<{ id: string }>(
+      `insert into opportunities (org_id, source, title, stage, status, location_state, location_text,
+         deadline, solicitation_number, agency, solicitation_analysis)
+       values ($1,'test','Synthetic applicability hold','sub_research','open','VA','Richmond, VA',
+         now() + interval '30 days', 'SYNTHETIC-PRIME-HOLD', 'Synthetic agency', $2::jsonb) returning id`,
+      [org.id, JSON.stringify({
+        location: "Richmond, VA",
+        trade_scopes: [{ trade: "HVAC", work: "Replace 2 synthetic test units." }],
+        qualifications: { certifications: ["Prime offeror must be certified SDVOSB."] },
+      })],
+    );
+    await query(`insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state, verified)
+      values ($1,$2,$3,'pending',true)`, [held!.id, sub.id, trade]);
+    const sentBefore = sendSpy.mock.calls.length;
+    const result = await outreach.handler({ runId: randomUUID(), trigger: "queue",
+      payload: { opportunityId: held!.id, subcontractorId: sub.id, trade } });
+    expect(result.humanActionRequired, result.summary).toBe(true);
+    expect(result.data?.problems).toContain("requirement_applicability");
+    expect(sendSpy.mock.calls.length).toBe(sentBefore);
+    const communications = await queryOne<{ count: string }>(
+      `select count(*)::text as count from communications where opportunity_id=$1`, [held!.id]);
+    expect(communications?.count).toBe("0");
+    await query(`delete from opportunity_subs where opportunity_id=$1`, [held!.id]);
+  });
+
 });

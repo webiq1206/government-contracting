@@ -840,6 +840,22 @@ async function followUpForOrg(
       description: row.description,
     });
 
+    if (resolved.requirements.reviewRequired.length) {
+      held++;
+      await query(`update communications set follow_up_at = now() + interval '6 hours'
+        where id=$1 and org_id=$2`, [row.id, orgId]);
+      await query(`update opportunities set human_action_required=true,
+        risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete'])))
+        where id=$1 and org_id=$2`, [row.opportunity_id, orgId]);
+      await logAgent({ agent: "outreach-followup", action: "requirement-applicability-held",
+        level: "warn", status: "skipped", opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: "The follow-up is held until requirement applicability is resolved. Nothing was sent.",
+        reasoning: resolved.requirements.reviewRequired.map(r => `${r.text}: ${r.reason}`).join(" "),
+      });
+      continue;
+    }
+
     const vars: Record<string, string> = Object.fromEntries(
       Object.entries(resolved.vars).map(([k, v]) => [
         k,

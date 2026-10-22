@@ -43,6 +43,7 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
       documentsExpected: gathered.expected, quoteDueAt: resolved.quote.at, deadlineAt: opp.deadline,
       sampleValues: OUTREACH_VAR_SAMPLES, trade,
       tradeSpecific: resolved.requirements.tradeSpecific,
+      requirementReviewRequired: resolved.requirements.reviewRequired,
     }).map(p => describeProblems([p]));
     if (problems.length) throw new Error(`The actual quote request is not sendable: ${problems.join(" ")} Nothing was sent.`);
   }

@@ -694,6 +694,7 @@ export const outreach: AgentDefinition = {
       // project's; until now that answer only reached a gap note.
       trade: trade || null,
       tradeSpecific: resolved.requirements.tradeSpecific,
+      requirementReviewRequired: resolved.requirements.reviewRequired,
     });
     if (sendProblems.length) {
       const why = describeProblems(sendProblems);

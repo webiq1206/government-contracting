@@ -25,6 +25,7 @@
 
 import { toScannable } from "./scannable";
 import { resolveSubWork } from "./sub-work";
+import { decideRequirementApplicability, namesPrimeDuty, type RequirementApplicability } from "./outreach-applicability";
 
 /** Where an item came from, so an operator can go and check it. */
 export type RequirementSource =
@@ -56,9 +57,14 @@ export interface OutreachRequirements {
   tradeSpecific: boolean;
   /** Plain-English notes for the operator about what could not be found. */
   gaps: string[];
+  /** Retained for the prime checklist/operator, never reassigned to the trade. */
+  primeRequirements: RequirementItem[];
+  /** Blocking uncertainty. The original obligation remains visible for review. */
+  reviewRequired: (RequirementItem & { reason: string })[];
 }
 
 interface AnalysisLike {
+  requirement_applicability?: RequirementApplicability[] | null;
   trade_scopes?: { trade: string; work: string }[] | null;
   draft_sow?: string | null;
   scope_plain_language?: string | null;
@@ -108,7 +114,7 @@ const MANDATORY_RE = /\b(mandatory|required|must|shall|non-?negotiable|prior to 
 
 /** Conditions on being allowed to do the work, rather than the work itself. */
 const CONDITION_RE =
-  /\b(licen[cs]|certif|insur|bond|wage determination|davis-?bacon|prevailing wage|background check|clearance|badg|safety|osha|permit|submittal|warrant|payment term|invoic|quote (?:format|validity)|pricing schedule|working hours|hours of work|hours of \d|restricted to hours|after hours|escort|drug test|e-?verify|apprentice|union|travel|per diem|mobiliz)/i;
+  /\b(licen[cs]|certif|insur|bond|limitations? on subcontracting|set.aside|SDVOSB|VOSB|bid guarantee|SF[- ]?24|wage determination|davis-?bacon|prevailing wage|background check|clearance|badg|safety|osha|permit|submittal|warrant|payment term|invoic|quote (?:format|validity)|pricing schedule|working hours|hours of work|hours of \d|restricted to hours|after hours|escort|drug test|e-?verify|apprentice|union|travel|per diem|mobiliz)/i;
 
 /** Work: things done on site, with hands and equipment. */
 const SCOPE_RE =
@@ -184,6 +190,20 @@ export function buildOutreachRequirements(input: {
   const a = input.analysis ?? {};
   const trade = clean(input.trade);
   const gaps: string[] = [];
+  const primeRequirements: RequirementItem[] = [];
+  const reviewRequired: OutreachRequirements["reviewRequired"] = [];
+  const scopedRequirement = (text: string, source: RequirementApplicability["source"], label = ""): RequirementItem | null => {
+    const decision = decideRequirementApplicability({ text, source, trade, records: a.requirement_applicability });
+    const entry = item(label ? `${label}: ${text}` : text, source, false);
+    if (!entry) return null;
+    if (decision.kind === "include") return { ...entry, mandatory: decision.mandatory };
+    if (decision.kind === "prime") primeRequirements.push({ ...entry, mandatory: decision.mandatory });
+    if (decision.kind === "review") {
+      reviewRequired.push({ ...entry, reason: decision.reason });
+      gaps.push(`${decision.reason} Source item: ${text}`);
+    }
+    return null;
+  };
   /*
    * The other trades this solicitation needs, from the analyst's own list.
    * Without it "belongs to another trade" has nothing to compare against and
@@ -251,6 +271,7 @@ export function buildOutreachRequirements(input: {
   for (const raw of a.special_requirements ?? []) {
     const text = clean(raw);
     if (!text || text.length > 300) continue;
+    if (namesPrimeDuty(text)) continue; // party applicability is checked below
     if (CONDITION_RE.test(text)) continue; // that is a condition, handled below
     if (!SCOPE_RE.test(text)) continue;
     if (belongsToAnotherTrade(text, trade, otherTrades)) continue;
@@ -285,12 +306,7 @@ export function buildOutreachRequirements(input: {
     for (const raw of list ?? []) {
       const text = clean(raw);
       if (!text) continue;
-      /*
-       * Qualifications are prerequisites by definition: the solicitation is
-       * listing what a bidder has to hold. Labelling them mandatory is
-       * reporting the field's meaning, not inferring one.
-       */
-      const it = item(label ? `${label}: ${text}` : text, "qualifications", true);
+      const it = scopedRequirement(text, "qualifications", label);
       if (it) subRequirements.push(it);
     }
   }
@@ -320,30 +336,23 @@ export function buildOutreachRequirements(input: {
   /*
    * Condition-shaped special requirements: wages, clearances, hours, permits.
    *
-   * Same ownership test as the scope loop above, and it was missing here
-   * entirely rather than merely unreachable. Most conditions are genuinely
-   * site-wide (a wage determination, badging, working hours) and must reach
-   * everybody, which is why the test is "names another trade and not mine"
-   * rather than "names mine". But a licence condition written as "electrical
-   * work shall be performed by a licensed master electrician" is not the
-   * roofer's to satisfy, and telling them it is invites them to price a
-   * qualification they do not need or to decline work they could do.
+   * A condition needs sourced party and trade applicability, not just a
+   * lexical trade match. Shared obligations remain when their source names
+   * all subcontractors; prime and unresolved conditions are retained separately.
    */
   for (const raw of a.special_requirements ?? []) {
     const text = clean(raw);
-    if (!text || text.length > 300) continue;
-    if (!CONDITION_RE.test(text)) continue;
-    if (belongsToAnotherTrade(text, trade, otherTrades)) continue;
-    const it = item(text, "special_requirements");
+    if (!text) continue;
+    if (!CONDITION_RE.test(text) && !namesPrimeDuty(text) && SCOPE_RE.test(text)) continue;
+    const it = scopedRequirement(text, "special_requirements");
     if (it) subRequirements.push(it);
   }
 
   // Submission requirements only when they bear on what the SUB sends us.
   for (const raw of a.submission_requirements ?? []) {
     const text = clean(raw);
-    if (!text || text.length > 300) continue;
-    if (!CONDITION_RE.test(text)) continue;
-    const it = item(text, "submission");
+    if (!text) continue;
+    const it = scopedRequirement(text, "submission");
     if (it) subRequirements.push(it);
   }
 
@@ -371,6 +380,8 @@ export function buildOutreachRequirements(input: {
     subRequirements: dedupe(subRequirements),
     tradeSpecific: subWork.tradeSpecific,
     gaps,
+    primeRequirements: dedupe(primeRequirements),
+    reviewRequired,
   };
 }
 

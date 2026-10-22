@@ -8,6 +8,7 @@
  * firm that holds one trade.
  */
 import { describe, it, expect } from "vitest";
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 import {
   OUTREACH_VARS,
   OUTREACH_VAR_KEYS,
@@ -42,7 +43,8 @@ const BASE = {
           "Test and balance all air distribution before closeout.",
       },
     ],
-    qualifications: { licenses: ["State mechanical contractor licence"] },
+    qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor licence."] },
+    requirement_applicability: [scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor licence.", "qualifications", { allTrades: false })],
     site_visit: { required: true, details: "August 14, 2026, 9:00 AM" },
     questions_for_subs: ["Can your crew work the 7:00 AM to 3:30 PM window?"],
     key_dates: [
@@ -269,7 +271,7 @@ describe("resolveOutreachVars", () => {
   it("renders the scope and requirement lists as bullets", () => {
     const r = resolveOutreachVars(BASE);
     expect(r.vars.trade_scope_requirements.split("\n").every((l) => l.startsWith("- "))).toBe(true);
-    expect(r.vars.subcontractor_requirements).toMatch(/- License: State mechanical contractor licence \(required\)/);
+    expect(r.vars.subcontractor_requirements).toMatch(/- License: The HVAC subcontractor must hold a state mechanical contractor licence\. \(required\)/);
     expect(r.vars.subcontractor_requirements).toMatch(/Site visit.*\(required\)/);
   });
 

@@ -7,12 +7,20 @@
  * down being helpfully invented.
  */
 import { describe, it, expect } from "vitest";
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 import {
   buildOutreachRequirements,
   renderRequirementLines,
 } from "@/lib/domain/outreach-requirements";
 
 const ANALYSIS = {
+  requirement_applicability: [
+    scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor licence.", "qualifications", { allTrades: false }),
+    scopedNoticeRequirement("All subcontractors must carry general liability insurance of $2,000,000 per occurrence.", "qualifications"),
+    scopedNoticeRequirement("Davis-Bacon prevailing wage rates shall apply to all trades.", "special_requirements"),
+    scopedNoticeRequirement("All subcontractors must limit working hours to 7:00 AM to 3:30 PM, Monday through Friday.", "special_requirements"),
+    scopedNoticeRequirement("All subcontractors must submit their quote on the attached pricing schedule.", "submission"),
+  ],
   trade_scopes: [
     {
       trade: "HVAC",
@@ -28,18 +36,18 @@ const ANALYSIS = {
     { clin: "0002", description: "Interior painting", quantity: "4000", unit: "SF" },
   ],
   qualifications: {
-    licenses: ["State mechanical contractor licence"],
-    insurance: ["General liability, $2,000,000 per occurrence"],
+    licenses: ["The HVAC subcontractor must hold a state mechanical contractor licence."],
+    insurance: ["All subcontractors must carry general liability insurance of $2,000,000 per occurrence."],
     bonding: [],
   },
   site_visit: { required: true, details: "August 14, 2026, 9:00 AM, Building 3 lobby" },
   prebid_meeting: { required: false },
   special_requirements: [
-    "Davis-Bacon prevailing wage rates apply to all trades.",
+    "Davis-Bacon prevailing wage rates shall apply to all trades.",
     "All debris must be removed and disposed of off site daily.",
-    "Work restricted to hours of 7:00 AM to 3:30 PM, Monday through Friday.",
+    "All subcontractors must limit working hours to 7:00 AM to 3:30 PM, Monday through Friday.",
   ],
-  submission_requirements: ["Quote must be submitted on the attached pricing schedule."],
+  submission_requirements: ["All subcontractors must submit their quote on the attached pricing schedule."],
   period_of_performance: "180 calendar days from notice to proceed",
   offer_acceptance_period: "60 days",
 };
@@ -125,7 +133,7 @@ describe("subcontractor requirements", () => {
     expect(r.gaps.join(" ")).toMatch(/no date or location/i);
   });
 
-  it("treats qualifications as prerequisites, because that is what they are", () => {
+  it("retains a sourced mandatory trade license", () => {
     const r = buildOutreachRequirements({ trade: "HVAC", analysis: ANALYSIS });
     const licence = r.subRequirements.find((i) => i.text.startsWith("License:"));
     expect(licence?.mandatory).toBe(true);
@@ -173,7 +181,8 @@ describe("never inventing", () => {
     // Over-promising on a sub's behalf is how a quote gets withdrawn.
     const r = buildOutreachRequirements({
       trade: "HVAC",
-      analysis: { special_requirements: ["Contractors may wish to carry additional insurance."] },
+      analysis: { special_requirements: ["All subcontractors may carry additional insurance."],
+        requirement_applicability: [scopedNoticeRequirement("All subcontractors may carry additional insurance.", "special_requirements", { mandatory: false })] },
     });
     expect(r.subRequirements[0]?.mandatory).toBe(false);
   });
@@ -182,8 +191,12 @@ describe("never inventing", () => {
     const r = buildOutreachRequirements({
       trade: "HVAC",
       analysis: {
-        special_requirements: ["Quote must be submitted on the attached pricing schedule."],
-        submission_requirements: ["Quote must be submitted on the attached pricing schedule."],
+        requirement_applicability: [
+          scopedNoticeRequirement("All subcontractors must submit their quote on the attached pricing schedule.", "special_requirements"),
+          scopedNoticeRequirement("All subcontractors must submit their quote on the attached pricing schedule.", "submission"),
+        ],
+        special_requirements: ["All subcontractors must submit their quote on the attached pricing schedule."],
+        submission_requirements: ["All subcontractors must submit their quote on the attached pricing schedule."],
       },
     });
     expect(r.subRequirements.length).toBe(1);
