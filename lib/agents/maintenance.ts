@@ -358,14 +358,13 @@ export async function recordBounce(input: {
     where org_id=$1 and direction='inbound' and gmail_message_id=$2
       and meta->>'delivery_report_complete'='true'`,[orgId,input.messageId]);
   if (recorded) return true;
-  const terminal = report.permanent || report.disposition === "failed" || report.disposition === "unknown";
+  const positive = report.disposition === "positive";
+  const terminal = !positive && (report.permanent || report.disposition === "failed" || report.disposition === "unknown");
   const state = terminal ? "bounced" : "deferred";
 
   const updated = await query<{ id: string; recipient_email: string | null; subcontractor_id:string|null; opportunity_id:string|null }>(
-    `update communications
-        set delivery_state = $2, delivery_detail = $3, delivery_updated_at = now()
-      where id = (
-        select c.id from communications c
+    `with matched as (
+        select c.id, c.recipient_email, c.subcontractor_id, c.opportunity_id from communications c
          where c.org_id = $1
            and c.direction = 'outbound'
            and (
@@ -380,8 +379,12 @@ export async function recordBounce(input: {
                  else 2 end),
            c.created_at desc
          limit 1
+      ), changed as (
+        update communications set delivery_state=$2, delivery_detail=$3, delivery_updated_at=now()
+        where id in (select id from matched) and not $7::boolean
+        returning id
       )
-      returning id, recipient_email, subcontractor_id, opportunity_id`,
+      select id, recipient_email, subcontractor_id, opportunity_id from matched`,
     [
       orgId,
       state,
@@ -389,6 +392,7 @@ export async function recordBounce(input: {
       report.originalMessageId,
       threadId ?? "",
       report.recipient,
+      positive,
     ]
   );
 
@@ -414,8 +418,8 @@ export async function recordBounce(input: {
       status: "skipped",
       input: { messageId: input.messageId, threadId, report },
       message:
-        `An email delivery failure for ${report.recipient ?? "an unknown recipient"} could not be matched to an outbound message. ` +
-        `${report.reason} Open the connected inbox and correct the affected contact before sending again.`,
+        `An email delivery notice for ${report.recipient ?? "an unknown recipient"} could not be matched to an outbound message. ` +
+        `${report.reason} Review the original notice; no contact state was changed.`,
     }, { requirePersistence: true });
     await query(`update communications set meta=meta || '{"delivery_report_complete":true}'::jsonb
       where org_id=$1 and direction='inbound' and gmail_message_id=$2`,[orgId,input.messageId]);
@@ -485,6 +489,7 @@ export async function recordBounce(input: {
     level: terminal ? "warn" : "info",
     message: terminal
       ? `Email to ${address ?? "a subcontractor"} was rejected and further sends to the address are held. ${report.reason}`
+      : positive ? `A positive delivery-status notice was recorded for ${address ?? "a subcontractor"}. ${report.reason}`
       : `Email to ${address ?? "a subcontractor"} was delayed. ${report.reason}`,
   }, {requirePersistence:true});
   await query(`update communications set meta=meta || '{"delivery_report_complete":true}'::jsonb
@@ -3118,6 +3123,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           attachmentNames: (r.attachments ?? []).map((attachment) => attachment.filename),
           unreadableAttachments: unmatchedDocs.unreadable,
           originalDateHeader: r.date || null,
+          autoSubmitted: r.autoSubmitted,
           receivedAt: r.date && Number.isFinite(Date.parse(r.date)) ? new Date(r.date) : null,
           subcontractorId: known?.id ?? null,
         });

@@ -25,6 +25,11 @@ describe("reply polling keeps durable progress", () => {
     m.record.mockResolvedValue("saved-reply");
     m.fetch.mockResolvedValue({replies:[notice]});
   });
+  it("passes automatic-message provenance into the unmatched inbox", async()=>{
+    m.fetch.mockResolvedValue({replies:[{...notice,from:"sub@example.test",subject:"Re: Pricing request",body:"We are not interested.",deliveryReport:"",autoSubmitted:"auto-replied"}]});
+    expect((await replyPoll.handler({})).ok).toBe(true);
+    expect(m.record).toHaveBeenCalledWith(expect.objectContaining({autoSubmitted:"auto-replied"}));
+  });
   it("saves an unmatched delivery notice, processes the next email, and advances the page", async()=>{
     m.fetch.mockResolvedValue({replies:[notice,{...notice,messageId:"reply",from:"sub@example.test",subject:"Quote",body:"Our price is $42000",deliveryReport:""}],truncated:true,nextPageToken:"next-page"});
     const result = await replyPoll.handler({});

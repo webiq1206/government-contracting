@@ -402,4 +402,22 @@ d("reply capture pipeline (Resend inbound path)", () => {
     );
     expect(notes?.notes ?? "").toMatch(/cannot fulfill|electrical|plumbing/i);
   });
+  it("does not persist a price when the trade declines during extraction", async () => {
+    await query(`delete from trade_pricing_rows where opportunity_id=$1`,[ids.opp]);
+    await query(`delete from quotes where opportunity_id=$1`,[ids.opp]);
+    await query(`update opportunity_subs set outreach_state='sent' where opportunity_id=$1`,[ids.opp]);
+    await query(`update opportunities set stage='outreach',status='open',pursuit_state='active' where id=$1`,[ids.opp]);
+    const {comm,strongMatch}=await cap.matchInboundReply({orgId:ids.org,trackingToken:ids.tracking,fromEmail:ids.subEmail});
+    const result=await cap.captureReply({orgId:ids.org,comm:comm!,strongMatch,fromEmail:ids.subEmail,
+      replyText:"Our price is $98,765 net 30.",messageId:"synthetic-concurrent-decline",
+      extract:async()=>{
+        await query(`update opportunity_subs set outreach_state='declined' where opportunity_id=$1`,[ids.opp]);
+        return fakeExtract();
+      }});
+    expect(result).toMatchObject({quoteSaved:false,decision:{act:false,needsReview:true}});
+    expect(await query(`select id from quotes where opportunity_id=$1`,[ids.opp])).toHaveLength(0);
+    expect(await query(`select id from trade_pricing_rows where opportunity_id=$1`,[ids.opp])).toHaveLength(0);
+    expect(await queryOne(`select outreach_state from opportunity_subs where opportunity_id=$1`,[ids.opp])).toEqual({outreach_state:"declined"});
+  });
+
 });

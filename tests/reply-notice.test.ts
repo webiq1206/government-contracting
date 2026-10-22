@@ -13,6 +13,26 @@ describe("deterministic reply notices",()=>{
     expect(classifyReplyNotice({body}).kind).toBe("human");
   });
   it("does not close a reply carrying an attachment",()=>expect(classifyReplyNotice({body:"We will pass.",attachmentNames:["alternate.pdf"]}).kind).toBe("human"));
+  it.each([
+    "We will pass your request to our estimating team.",
+    "If the schedule slips, we will pass.",
+    "We are not interested in the optional roof work. We will bid the plumbing.",
+    "We are not interested in the optional roof work.",
+    "No thanks required, we will send our bid tomorrow.",
+    "No thanks, we already have the plans and are preparing a bid.",
+    "No thanks, please send the drawings first.",
+  ])("keeps forwarding, conditional and partial answers open: %s",body=>{
+    expect(classifyReplyNotice({body}).kind).toBe("human");
+  });
+  it.each(["I'm no longer employed here. Contact Pat at pat@example.test.",
+    "I’m no longer employed here. Contact Pat at pat@example.test.",
+    "Joe is no longer with Example Construction. Please contact Pat."])("recognizes an explicit automatic departure: %s",body=>{
+    expect(classifyReplyNotice({body,autoSubmitted:"auto-replied"}).kind).toBe("departed");
+  });
+  it.each(["Joe is no longer working on this project. Please contact Pat for this scope.",
+    "I am no longer working weekends. I respond Monday through Friday."])("does not infer employment departure from changed work: %s",body=>{
+    expect(classifyReplyNotice({body,autoSubmitted:"auto-replied"})).toMatchObject({kind:"automatic",needsReview:true});
+  });
   it("records the departed contact separately from a temporary absence",()=>{
     expect(classifyReplyNotice({subject:"Automatic reply: scope",body:"Please note that Joe is no longer working at Example Construction. Contact Pat at pat@example.test."}).kind).toBe("departed");
     expect(classifyReplyNotice({autoSubmitted:"auto-replied",body:"I am out of the office Thursday and will respond upon my return."}).kind).toBe("away");
@@ -41,4 +61,10 @@ describe("delivery causes without invented retries",()=>{
     expect(r.reason).not.toMatch(/temporar|deferred/);
   });
   it("honors an explicit delayed action",()=>expect(parseBounce("Action: delayed\nStatus: 5.2.2")).toMatchObject({permanent:false,disposition:"delayed"}));
+  it.each(["delivered","relayed","expanded"])("never turns a positive %s DSN into a failure",action=>{
+    expect(parseBounce(`Action: ${action}\nStatus: 2.0.0`)).toMatchObject({permanent:false,disposition:"positive"});
+  });
+  it("holds an explicitly failed attempt whose last diagnostic was transient",()=>{
+    expect(parseBounce("Action: failed\nStatus: 4.4.7\nDiagnostic-Code: smtp; Delivery time expired")).toMatchObject({permanent:false,disposition:"failed"});
+  });
 });

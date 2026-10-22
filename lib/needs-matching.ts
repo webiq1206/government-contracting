@@ -56,6 +56,7 @@ export interface RecordUnmatchedInput {
   unreadableAttachments?: string[];
   receivedAt?: Date | null;
   originalDateHeader?: string | null;
+  autoSubmitted?: string | null;
   subcontractorId?: string | null;
 }
 
@@ -76,9 +77,9 @@ export async function recordUnmatched(input: RecordUnmatchedInput): Promise<stri
     `insert into unmatched_inbound
        (org_id, from_email, from_name, subject, snippet, gmail_thread_id, message_id,
         rfc822_message_id, rfc822_references, to_addresses, cc_addresses,
-        attachment_names, unreadable_attachments, received_at, subcontractor_id,original_date_header)
+        attachment_names, unreadable_attachments, received_at, subcontractor_id,original_date_header,auto_submitted)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13::jsonb,
-             coalesce($14, now()),$15,$16)
+             coalesce($14, now()),$15,$16,$17)
      on conflict (org_id, message_id) where message_id is not null do nothing
      returning id`,
     [
@@ -98,6 +99,7 @@ export async function recordUnmatched(input: RecordUnmatchedInput): Promise<stri
       input.receivedAt ?? null,
       input.subcontractorId ?? null,
       input.originalDateHeader?.slice(0,500) ?? null,
+      input.autoSubmitted?.slice(0,500) ?? null,
     ]
   );
   return row?.id ?? null;
@@ -167,6 +169,7 @@ export async function matchMessage(
     gmail_thread_id: string | null;
     received_at: Date;
     original_date_header: string | null;
+    auto_submitted: string | null;
     subcontractor_id: string | null;
     message_id: string | null;
     rfc822_message_id: string | null;
@@ -180,7 +183,7 @@ export async function matchMessage(
     `select id, from_email, subject, snippet, gmail_thread_id, received_at,original_date_header,
             subcontractor_id, message_id, rfc822_message_id,
             rfc822_references, to_addresses, cc_addresses, from_name,
-            attachment_names, unreadable_attachments
+            attachment_names, unreadable_attachments, auto_submitted
        from unmatched_inbound
       where id = $1 and org_id = $2 and state = 'needs_matching'`,
     [id, orgId]
@@ -281,6 +284,7 @@ export async function matchMessage(
       ? msg.unreadable_attachments.filter((value): value is string => typeof value === "string")
       : [],
     sentAt: msg.original_date_header,
+    autoSubmitted: msg.auto_submitted,
     sourceDateUnknown: !msg.original_date_header || !Number.isFinite(Date.parse(msg.original_date_header)),
   });
   if (captured.bounce) {
@@ -292,7 +296,7 @@ export async function matchMessage(
     return null;
   }
 
-  if (captured.subId && !captured.duplicate) {
+  if (captured.subId && !captured.duplicate && !captured.noticeKind) {
     const gaps = blockingGaps(captured.extracted, captured.decision.outcome);
     await recordReplyEvent({
       orgId,

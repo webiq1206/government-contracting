@@ -65,6 +65,18 @@ async function fixture(){
  return {org,opp,sub,out,input,send};
 }
 describe("synthetic reply through capture, history, closeout and actual transport gates",()=>{
+ it.each(["delivered","relayed","expanded"])("stores a positive %s delivery notice without suppressing or cancelling outreach",async(action)=>{
+  const f=await fixture(),id=randomUUID();
+  const body=`Final-Recipient: rfc822; supplier@example.test\nAction: ${action}\nStatus: 2.0.0`;
+  const input={orgId:f.org,messageId:id,threadId:"dsn-thread",body,report:parseBounce(body)};
+  await recordBounce(input);await recordBounce(input);
+  expect(await q("select * from communications where org_id=$1 and gmail_message_id=$2",[f.org,id])).toHaveLength(1);
+  expect(await isSuppressed(f.org,"supplier@example.test")).toBe(false);
+  const [out]=await q("select delivery_state,follow_up_at from communications where id=$1",[f.out]);
+  expect(out.delivery_state).toBe("sent");expect(out.follow_up_at).not.toBeNull();
+  expect((await q("select outreach_state from opportunity_subs where opportunity_id=$1",[f.opp])).every(x=>x.outreach_state==="sent")).toBe(true);
+  expect(state.attempts).toHaveLength(0);
+ });
  it("saves an unmatched DSN once without suppressing an unverified address",async()=>{
   const org=randomUUID(),id=randomUUID(),body="Final-Recipient: rfc822; unknown@example.test\nAction: failed\nStatus: 5.1.1";
   const input={orgId:org,messageId:id,threadId:"unknown-thread",body,report:parseBounce(body)};
@@ -125,6 +137,12 @@ describe("synthetic reply through capture, history, closeout and actual transpor
   expect(await isSuppressed(f.org,"pat@example.test")).toBe(false);
   expect(await sendOutreachEmail({...f.send,trade:"Electrical"})).toMatchObject({blocked:true});
   expect(state.attempts).toHaveLength(0);
+ });
+ it.each(["Joe is no longer working on this project. Please contact Pat for this scope.",
+   "I am no longer working weekends. I respond Monday through Friday."])("reviews changed work without a contact hold: %s",async(replyText)=>{
+  const f=await fixture();const r=await captureReply({...f.input,autoSubmitted:"auto-replied",replyText});
+  expect(r).toMatchObject({noticeKind:"automatic",contactHeld:false,decision:{act:false,needsReview:true}});
+  expect(await isSuppressed(f.org,f.input.fromEmail)).toBe(false);expect(state.attempts).toHaveLength(0);
  });
  it("records ordinary absence without decisions, coverage or mail",async()=>{
   const f=await fixture();const r=await captureReply({...f.input,subject:"Automatic reply",replyText:"I am out of the office Thursday and will respond upon my return."});

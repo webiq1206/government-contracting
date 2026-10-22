@@ -567,8 +567,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     }
     const needsReview = notice.kind === "departed" ||
       ((notice.kind === "opt_out") && !hold) ||
-      (notice.kind === "automatic" && (input.attachmentNames?.length ?? 0) > 0) ||
-      (notice.kind === "automatic" && /substantive/.test(notice.reason));
+      (notice.kind === "automatic" && notice.needsReview === true);
     const reason = hold ? `${notice.reason} Email to this address is held; any replacement requires review.`
       : trusted ? notice.reason : `${notice.reason} Attribution must be verified before changing contact eligibility.`;
     await query(`update communications set meta=meta || $3::jsonb where id=$1 and org_id=$2`,

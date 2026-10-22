@@ -90,6 +90,23 @@ d("the Needs matching inbox", () => {
     expect(msg.fromEmail).toBe("estimating@acme-electric.invalid");
   });
 
+  it("preserves an automatic reply through manual matching without decline or decision", async () => {
+    await query(`insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state)
+      values($1,$2,'Electrical','sent')`,[oppA,subA]);
+    try {
+      const id = await file({body:"We are not interested.",autoSubmitted:"auto-replied",subcontractorId:subA});
+      const result = await inbox.matchMessage(id!,orgA,oppA,"synthetic-reviewer",subA);
+      expect(result).not.toBeNull();
+      const inbound = await queryOne<{meta:Record<string,any>}>(`select meta from communications where id=$1`,[result!.communicationId]);
+      expect(inbound?.meta).toMatchObject({notice_kind:"automatic",envelope:{autoSubmitted:"auto-replied"}});
+      expect(await queryOne(`select outreach_state from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,[oppA,subA])).toEqual({outreach_state:"sent"});
+      expect(await query(`select intent,needs_review,extracted->>'deterministicKind' as notice from subcontractor_reply_events where org_id=$1`,[orgA]))
+        .toEqual([{intent:"other",needs_review:false,notice:"automatic"}]);
+    } finally {
+      await query(`delete from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,[oppA,subA]);
+    }
+  });
+
   it("is idempotent when the mailbox is polled twice", async () => {
     /*
      * A poll that restarts mid-batch re-reads messages it already handled. Two
