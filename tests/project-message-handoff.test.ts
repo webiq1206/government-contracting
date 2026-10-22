@@ -28,7 +28,7 @@ beforeAll(async () => {
   state.db = new PGlite(); await state.db.exec(`
     create table opportunities(id uuid primary key,org_id uuid,title text,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer,is_sources_sought boolean not null default false);
     create table subcontractors(id uuid primary key,org_id uuid,company_name text,email text,email_verified boolean,archived_at timestamptz);
-    create table opportunity_subs(id uuid default gen_random_uuid(),opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz);
+    create table opportunity_subs(id uuid default gen_random_uuid(),opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz,outreach_state text default 'sent');
     create table communications(id uuid primary key default gen_random_uuid(),org_id uuid,subcontractor_id uuid,opportunity_id uuid,
       channel text,direction text,subject text,body text,recipient_email text,gmail_thread_id text,gmail_message_id text,
       rfc822_message_id text,delivery_state text,request_key uuid,request_fingerprint text,meta jsonb,

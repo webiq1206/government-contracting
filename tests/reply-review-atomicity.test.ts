@@ -51,7 +51,7 @@ beforeEach(() => {
 
 describe("reply review transaction-aware domain writes", () => {
   it("writes outcome and partial-scope flags through the supplied client and defers automation", async () => {
-    const clientQuery = vi.fn(async () => ({ rows: [] }));
+    const clientQuery = vi.fn(async () => ({ rows: [{id:"pair-1"}] }));
     const { applyOutcomeToSolicitation } =
       await import("@/lib/domain/reply-outcome");
 
@@ -155,7 +155,7 @@ describe("reply review transaction-aware domain writes", () => {
       },
     );
 
-    expect(clientQuery).toHaveBeenCalledTimes(5);
+    expect(clientQuery.mock.calls.some(([sql])=>String(sql).includes("update communications set follow_up_at=null"))).toBe(true);
     expect(
       clientQuery.mock.calls.map(([sql]) => String(sql)).join("\n"),
     ).toMatch(

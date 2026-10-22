@@ -18,7 +18,7 @@ vi.mock("../lib/suppressions",()=>({suppressionBlocking:async()=>state.stopped?{
 vi.mock("../lib/domain/suppression",()=>({describeSuppression:()=>"stopped"}));
 vi.mock("../lib/billing/trial-limits",()=>({checkTrialQuota:async()=>({allowed:true})}));
 vi.mock("../lib/domain/sender-identity",()=>({resolveOutreachSender:async()=>({connected:true,from:"owner@example.test",replyTo:"owner@example.test"})}));
-vi.mock("../lib/integrations/gmail",()=>({gmail:{isConnected:async()=>true,send:vi.fn(async(p:any)=>{await p.beforeProviderSend?.("owner@example.test");return {messageId:"receipt",outcome:"accepted"};})}}));
+vi.mock("../lib/integrations/gmail",()=>({gmail:{isConnected:async()=>true,declineThreadUnchanged:async()=>true,send:vi.fn(async(p:any)=>{await p.beforeProviderSend?.("owner@example.test");return {messageId:"receipt",outcome:"accepted"};})}}));
 import {sendOutreachEmail, type OutreachSendParams} from "../lib/integrations/email-transport";
 import {gmail} from "../lib/integrations/gmail";
 import {runWithPursuitVersion} from "../lib/pursuit-job-context";
@@ -57,11 +57,14 @@ beforeEach(async()=>{state.paused=state.suppressed=state.stopped=state.support=f
 describe("scheduled caller recovery",()=>{
  for(const kind of ["clarification","decline_thank_you","final_nudge"]){
   it.each(["held","failed","unknown","sent"])(`${kind} handles a prior %s receipt through the actual caller`,async status=>{
-   const key=JSON.stringify(kind!=="decline_thank_you"?[kind,params.opportunityId,params.subcontractorId]:[kind,params.opportunityId,params.subcontractorId,"HVAC"]);
+   const key=JSON.stringify(kind!=="decline_thank_you"?[kind,params.opportunityId,params.subcontractorId]:[kind,"synthetic-human-decline"]);
    await state.db!.query(`insert into communications(org_id,opportunity_id,subcontractor_id,direction,channel,meta,request_key,delivery_state,gmail_message_id)
     values($1,$2,$3,'outbound','email',$4::jsonb,$5,$6,$7)`,[params.orgId,params.opportunityId,params.subcontractorId,JSON.stringify({kind,trade:"HVAC"}),scheduledRequestKey(key),status,status==="sent"?"old-receipt":null]);
+   if(kind==="decline_thank_you") await state.db!.query(`insert into communications(org_id,opportunity_id,subcontractor_id,direction,gmail_message_id,gmail_thread_id,rfc822_message_id,recipient_email,meta)
+     values($1,$2,$3,'inbound','synthetic-human-decline','synthetic-thread','<decline@example.test>','sub@example.test',$4::jsonb)`,
+     [params.orgId,params.opportunityId,params.subcontractorId,JSON.stringify({notice_kind:"decline",reply_sender_verified:true,reply_strong_match:true,reply_action_allowed:true,trade:"HVAC"})]);
    const invoke=()=>kind==="clarification"?requestClarification({orgId:params.orgId!,opportunityId:params.opportunityId!,subcontractorId:params.subcontractorId!,trade:"HVAC",toEmail:params.to,companyName:"Sub Co",opportunityTitle:"Job",gaps:["price"],outcome:"interested"})
-    :kind==="decline_thank_you"?closeOutDeclinedSub({orgId:params.orgId!,opportunityId:params.opportunityId!,subcontractorId:params.subcontractorId!,trade:"HVAC",source:"email_reply",sendThankYou:true})
+    :kind==="decline_thank_you"?closeOutDeclinedSub({orgId:params.orgId!,opportunityId:params.opportunityId!,subcontractorId:params.subcontractorId!,trade:"HVAC",source:"email_reply",sendThankYou:true,inboundMessageId:"synthetic-human-decline",threadId:"synthetic-thread",inReplyTo:"<decline@example.test>"})
     :lastCallForOrg(params.orgId!);
    await invoke();await invoke();
    expect(gmail.send).toHaveBeenCalledTimes(["held","failed"].includes(status)?1:0);

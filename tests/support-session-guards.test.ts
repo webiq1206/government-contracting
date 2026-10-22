@@ -1,3 +1,4 @@
+vi.mock("../lib/db", () => ({queryOne:vi.fn(async()=>null),query:vi.fn(async()=>[])}));
 /**
  * What a support session is NOT allowed to do.
  *

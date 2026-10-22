@@ -1,7 +1,7 @@
 /**
  * A scheduled send whose outcome was never written is settled against the
  * mailbox's Sent folder, the only authority on what left. Found becomes
- * sent with its ids; not found becomes held for the next outreach run; a
+ * sent with its ids; not found stays uncertain without replay; a
  * mailbox that cannot be read leaves the row alone. Nothing is sent here.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,9 +37,9 @@ vi.mock("../lib/app-settings", () => ({
 import { reconcileUncertainScheduledMail } from "../lib/scheduled-mail-reconcile";
 
 describe("reconcileUncertainMail decision", () => {
-  it("records a found send, releases a missing automatic one, and leaves the rest", () => {
+  it("records a found send, preserves a missing automatic one, and leaves the rest", () => {
     expect(reconcileUncertainMail({ deliveryState: "attempting", kind: "outreach", lookup: "found" })).toBe("record_sent");
-    expect(reconcileUncertainMail({ deliveryState: "unknown", kind: "outreach", lookup: "not_found" })).toBe("release_for_retry");
+    expect(reconcileUncertainMail({ deliveryState: "unknown", kind: "outreach", lookup: "not_found" })).toBe("leave");
     expect(reconcileUncertainMail({ deliveryState: "unknown", kind: "manual", lookup: "found" })).toBe("record_sent");
     expect(reconcileUncertainMail({ deliveryState: "unknown", kind: "manual", lookup: "not_found" })).toBe("leave");
     expect(reconcileUncertainMail({ deliveryState: "attempting", kind: "outreach", lookup: "unavailable" })).toBe("leave");
@@ -101,13 +101,13 @@ describe("reconcileUncertainScheduledMail", () => {
     expect(accepted - state.lookups[0].afterEpochSec * 1000).toBeLessThanOrEqual(6 * 60_000);
   });
 
-  it("hands a send that never appeared in Sent back to the next outreach run", async () => {
+  it("keeps a send uncertain when the Sent lookup is empty", async () => {
     const id = await insert({ delivery_state: "unknown" });
     const result = await reconcileUncertainScheduledMail();
-    expect(result).toEqual({ confirmedSent: 0, releasedForRetry: 1, leftUnresolved: 0 });
+    expect(result).toEqual({ confirmedSent: 0, releasedForRetry: 0, leftUnresolved: 1 });
     const row = await read(id);
-    expect(row.delivery_state).toBe("held");
-    expect(String(row.delivery_detail)).toContain("not found in the mailbox's Sent folder");
+    expect(row.delivery_state).toBe("unknown");
+    expect(row.delivery_detail).toBeNull();
     expect(row.follow_up_at).toBeNull();
   });
 
@@ -133,11 +133,12 @@ describe("reconcileUncertainScheduledMail", () => {
     expect((await read(missing)).delivery_state).toBe("sent");
   });
 
-  it("treats a row with nobody to search for as never sent, without asking the mailbox", async () => {
+  it("preserves an uncertain row with missing correlation, without asking the mailbox", async () => {
     const id = await insert({ recipient_email: null });
     await state.db!.query("update communications set recipient_email=null where id=$1", [id]);
     const result = await reconcileUncertainScheduledMail();
-    expect(result.releasedForRetry).toBe(1);
+    expect(result.releasedForRetry).toBe(0);
+    expect((await read(id)).delivery_state).toBe("attempting");
     expect(state.lookups).toHaveLength(0);
   });
 

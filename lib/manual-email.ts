@@ -39,7 +39,7 @@ export async function sendManualEmail({ requestKey, actorId, params }: ManualEma
   }
   let attempted = false;
   try {
-    const result = await sendOutreachEmail({ ...params,
+    const result = await sendOutreachEmail({ ...params, sendIntentId:claim.id,
       beforeProviderSend: async (from,identity) => {
         await params.beforeProviderSend?.(from,identity);
         const stamped = await queryOne<{ id: string }>(`update communications set

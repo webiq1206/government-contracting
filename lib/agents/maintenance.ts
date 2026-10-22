@@ -13,6 +13,7 @@ async function queryOne<T extends QueryResultRow=QueryResultRow>(sql:string,para
 import { recordUnmatched } from "../needs-matching";
 import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
+import { classifyReplyNotice } from "../domain/reply-notice";
 import { captureReply, matchInboundReply } from "../reply-capture";
 import { sms } from "../integrations/twilio";
 import { systemMail } from "../integrations/system-mail";
@@ -343,16 +344,24 @@ export async function lastCallForOrg(
  * failure (full mailbox, greylisting) never suppresses -- it would lose a
  * live subcontractor over one bad afternoon.
  */
-async function recordBounce(input: {
+export async function recordBounce(input: {
   orgId: string;
   threadId: string;
   messageId: string;
   report: BounceReport;
+  body?: string;
+  subject?: string;
+  sentAt?: string;
 }): Promise<boolean> {
   const { orgId, threadId, report } = input;
-  const state = report.permanent ? "bounced" : "deferred";
+  const recorded = await queryOne<{id:string}>(`select id from communications
+    where org_id=$1 and direction='inbound' and gmail_message_id=$2
+      and meta->>'delivery_report_complete'='true'`,[orgId,input.messageId]);
+  if (recorded) return true;
+  const terminal = report.permanent || report.disposition === "failed" || report.disposition === "unknown";
+  const state = terminal ? "bounced" : "deferred";
 
-  const updated = await query<{ id: string; recipient_email: string | null }>(
+  const updated = await query<{ id: string; recipient_email: string | null; subcontractor_id:string|null; opportunity_id:string|null }>(
     `update communications
         set delivery_state = $2, delivery_detail = $3, delivery_updated_at = now()
       where id = (
@@ -372,7 +381,7 @@ async function recordBounce(input: {
            c.created_at desc
          limit 1
       )
-      returning id, recipient_email`,
+      returning id, recipient_email, subcontractor_id, opportunity_id`,
     [
       orgId,
       state,
@@ -382,6 +391,17 @@ async function recordBounce(input: {
       report.recipient,
     ]
   );
+
+  // A DSN is an incoming message too. Store it under the same tenant/message uniqueness,
+  // without making it a substantive supplier reply or positive delivery evidence.
+  await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,
+      subject,body,gmail_thread_id,gmail_message_id,recipient_email,meta)
+    values($1,$2,$3,'email','inbound',$4,$5,$6,$7,$8,$9::jsonb)
+    on conflict (org_id,gmail_message_id) where direction='inbound' and gmail_message_id is not null and org_id is not null
+    do nothing`,[orgId,updated[0]?.subcontractor_id,updated[0]?.opportunity_id,
+      input.subject ?? "Delivery status notice",(input.body ?? JSON.stringify(report)).slice(0,20000),
+      threadId,input.messageId,report.recipient,JSON.stringify({auto:true,delivery_report:report,
+        original_communication_id:updated[0]?.id,envelope:{sentAt:input.sentAt ?? null},delivery_report_complete:false})]);
 
   if (updated.length === 0) {
     // Saving an unmatched notice is completed inbox work needing human review.
@@ -397,17 +417,25 @@ async function recordBounce(input: {
         `An email delivery failure for ${report.recipient ?? "an unknown recipient"} could not be matched to an outbound message. ` +
         `${report.reason} Open the connected inbox and correct the affected contact before sending again.`,
     }, { requirePersistence: true });
+    await query(`update communications set meta=meta || '{"delivery_report_complete":true}'::jsonb
+      where org_id=$1 and direction='inbound' and gmail_message_id=$2`,[orgId,input.messageId]);
     return false;
   }
 
   const address = report.recipient ?? updated[0].recipient_email;
-  if (report.permanent && address) {
+  if (terminal && address) {
     await suppressEmail({
       orgId,
       email: address,
-      reason: `Hard bounce: ${report.reason}`,
+      reason: `Delivery hold (${report.cause ?? "unknown"}): ${report.reason}`,
       source: "bounce",
     });
+
+    await query(`update communications set follow_up_at=null,
+      delivery_state=case when delivery_state in ('draft','queued','held') and provider_attempted_at is null then 'held' else delivery_state end,
+      meta=coalesce(meta,'{}'::jsonb) || jsonb_build_object('reply_contact_hold',$3::text)
+      where org_id=$1 and direction='outbound' and lower(recipient_email)=$2`,
+      [orgId,address.toLowerCase(),input.messageId]);
 
     /*
      * A dead address is not a verified one.
@@ -454,11 +482,13 @@ async function recordBounce(input: {
   await logAgent({
     agent: "maintenance",
     action: "email-bounce",
-    level: report.permanent ? "warn" : "info",
-    message: report.permanent
-      ? `Email to ${address ?? "a subcontractor"} bounced permanently and the address was suppressed. ${report.reason}`
+    level: terminal ? "warn" : "info",
+    message: terminal
+      ? `Email to ${address ?? "a subcontractor"} was rejected and further sends to the address are held. ${report.reason}`
       : `Email to ${address ?? "a subcontractor"} was delayed. ${report.reason}`,
-  });
+  }, {requirePersistence:true});
+  await query(`update communications set meta=meta || '{"delivery_report_complete":true}'::jsonb
+    where org_id=$1 and direction='inbound' and gmail_message_id=$2`,[orgId,input.messageId]);
   return true;
 }
 
@@ -2978,6 +3008,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
     const pendingReplyCompletions = new Set<string>();
     const opportunityTitles = new Map<string, string>();
     for (const r of replies) {
+      try {
       // Match reply to an outbound communication by thread id (reliable), else
       // by sender email (weaker: an unrelated email from a known sub would also
       // match, so email-matched replies never auto-save quotes).
@@ -3003,6 +3034,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           threadId: r.threadId,
           messageId: r.messageId,
           report: parseBounce(r.deliveryReport || r.body || r.snippet),
+          body:[r.body,r.deliveryReport].filter(Boolean).join("\n"),subject:r.subject,sentAt:r.date,
         });
         if (!recorded) unmatchedBounces++;
         continue;
@@ -3019,6 +3051,8 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         ...[...r.references].reverse(),
       ].filter(Boolean);
 
+      const notice = classifyReplyNotice({body:r.body || r.snippet,subject:r.subject,
+        autoSubmitted:r.autoSubmitted,attachmentNames:(r.attachments ?? []).map(a=>a.filename)});
       const { comm, strongMatch } = await matchInboundReply({
         orgId,
         threadId: r.threadId,
@@ -3059,13 +3093,13 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         // Preserve the same attachment reading the automatic path would use.
         // A person who places an ambiguous "see attached" reply must not lose
         // the quote merely because the message waited in Needs matching first.
-        const unmatchedDocs = await readReplyAttachments({
+        const unmatchedDocs = notice.kind === "human" ? await readReplyAttachments({
           messageId: r.messageId,
           attachments: r.attachments ?? [],
           orgId,
-        });
+        }) : {text:"",read:[],unreadable:[]};
         const unmatchedText = combineReplyText(r.body || r.snippet, unmatchedDocs.text);
-        if (known && fromEmail && readsAsOptOut(unmatchedText)) {
+        if (known && fromEmail && notice.kind === "opt_out" && readsAsOptOut(unmatchedText)) {
           await suppressEmail({ orgId, email: fromEmail,
             reason: "Asked to be removed in an unmatched email reply.", source: "reply" });
         }
@@ -3106,11 +3140,9 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
       }
       // Many subs attach the quote and write "see attached". Read the
       // documents first so extraction sees the numbers, not just the note.
-      const docs = await readReplyAttachments({
-        messageId: r.messageId,
-        attachments: r.attachments ?? [],
-        orgId,
-      });
+      const docs = notice.kind === "human" ? await readReplyAttachments({
+        messageId: r.messageId, attachments: r.attachments ?? [], orgId,
+      }) : {text:"",unreadable:[]};
       const replyText = combineReplyText(r.body || r.snippet, docs.text);
 
       /**
@@ -3123,7 +3155,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
        * narrow -- an ordinary "not interested in this one" is a decline, not
        * an opt-out, and they should still hear about the next job.
        */
-      if (fromEmail && readsAsOptOut(replyText)) {
+      if (fromEmail && notice.kind === "opt_out" && readsAsOptOut(replyText)) {
         await suppressEmail({
           orgId,
           email: fromEmail,
@@ -3148,6 +3180,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         // check above, so it needs the same evidence that check had.
         subject: r.subject,
         contentType: r.contentType,
+        autoSubmitted: r.autoSubmitted,
         // The envelope, so the stored reply is the message and not a précis.
         fromAddress: r.from,
         toAddresses: r.to,
@@ -3168,6 +3201,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           messageId: r.messageId,
           threadId: r.threadId,
           report: parseBounce(r.deliveryReport || r.body || r.snippet),
+          body:[r.body,r.deliveryReport].filter(Boolean).join("\n"),subject:r.subject,sentAt:r.date,
         });
         if (!recorded) unmatchedBounces++;
         continue;
@@ -3189,11 +3223,23 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         thankYouSent,
       } = result;
       matched++;
-      if (comm.opportunity_id) {
+      if (comm.opportunity_id && (!result.noticeKind || result.declined)) {
         touchedOpportunities.add(comm.opportunity_id);
         if (comm.opportunity_title) {
           opportunityTitles.set(comm.opportunity_id, comm.opportunity_title);
         }
+      }
+      if (result.noticeKind) {
+        if (decision.needsReview) reviewCount++;
+        await logAgent({agent:"reply-poll",action:"reply-notice",level:decision.needsReview?"warn":"info",
+          opportunityId:comm.opportunity_id,subcontractorId:subId ?? undefined,
+          message:extracted.notes ?? "Automatic notice saved.",
+          input:{messageId:r.messageId,noticeKind:result.noticeKind,contactHeld:result.contactHeld}});
+        if (decision.needsReview || result.contactHeld) notifyLines.push({
+          title:companyName ?? fromEmail,tag:result.contactHeld ? "Contact held" : "Review contact",
+          detail:decision.reviewReason ?? extracted.notes ?? "The notice was saved.",
+          snippet:r.snippet.slice(0,200),tone:decision.needsReview?"critical":undefined});
+        continue;
       }
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
 
@@ -3248,6 +3294,16 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
            * nobody knows. Raising it here is what turns "we could not tell
            * which trade" into somebody deciding.
            */
+          if (!applied.applied && applied.refused === "closed_or_missing_request") {
+            reviewCount++;
+            const reason="This request closed or changed while the reply was being processed. The reply is saved; review it without automatically reopening outreach.";
+            await query(`update subcontractor_reply_events set needs_review=true,review_reason=$3
+              where org_id=$1 and gmail_message_id=$2 and reviewed_at is null`,[orgId,r.messageId,reason]);
+            await logAgent({agent:"reply-poll",action:"reply-request-closed",level:"warn",status:"skipped",
+              opportunityId:comm.opportunity_id,subcontractorId:subId,message:reason});
+            notifyLines.push({title:companyName ?? fromEmail,tag:"Review closed request",detail:reason,snippet:r.snippet.slice(0,200)});
+            continue;
+          }
           if (!applied.applied && applied.refused === "ambiguous_trade") {
             reviewCount++;
             await query(
@@ -3421,6 +3477,15 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         tone: quoteSkippedExisting ? "warning" : quoteSaved ? "good" : "normal",
         tag: quoteSaved ? "Quote saved" : quoteSkippedExisting ? "Check quote" : "Replied",
       });
+      } catch (error) {
+        processingFailures++;
+        // One unavailable interpretation must not prevent a later decline,
+        // departure or opt-out in this same page from taking effect.
+        await logAgent({agent:"reply-poll",action:"message-incomplete",level:"error",status:"error",
+          input:{messageId:r.messageId,threadId:r.threadId},
+          message:`This incoming message could not finish processing: ${error instanceof Error ? error.message : String(error)}. Mailbox progress is preserved; other messages in this batch will still be checked.`},
+          {requirePersistence:true});
+      }
     }
 
     // Once every reply in this batch is recorded, see whether any of the
@@ -3469,8 +3534,8 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
      */
     if (processingFailures > 0) {
       await logAgent({ agent: "reply-poll", action: "capture-incomplete", level: "error", status: "error",
-        message: "Some inbox delivery records could not be saved. Captured replies were kept and the same mailbox page will be retried." });
-      return { ok: false, summary: `${matched} matched; ${processingFailures} delivery records need another attempt. Mailbox progress was preserved.`,
+        message: "Some inbox messages could not finish processing. Captured replies were kept and the same mailbox page will be retried." });
+      return { ok: false, summary: `${matched} matched; ${processingFailures} messages need another processing attempt. Mailbox progress was preserved.`,
         enqueued, humanActionRequired: true };
     }
     // Queue downstream work before marking a reply processed or moving the

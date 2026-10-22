@@ -178,7 +178,7 @@ export function decideReply(
   );
   const unread = opts.unreadableAttachments ?? [];
 
-  if (extracted.method !== "ai") {
+  if (extracted.method !== "ai" && !(extracted.method === "deterministic" && extracted.deterministicKind === "decline" && extracted.intent === "decline")) {
     return {
       // Pattern matching produced a word, not an understanding of the reply.
       outcome: "unclear",
@@ -288,7 +288,7 @@ export function blockingGaps(
 export interface OutcomeApplied {
   applied: boolean;
   /** Why nothing was written, when nothing was. */
-  refused: "no_state_for_outcome" | "ambiguous_trade" | null;
+  refused: "no_state_for_outcome" | "ambiguous_trade" | "closed_or_missing_request" | null;
   /** The trades that would have been stamped, for the review task. */
   candidateTrades: string[];
   /**
@@ -368,14 +368,18 @@ export async function applyOutcomeToSolicitation(
       return { applied: false, refused: "ambiguous_trade", candidateTrades };
     }
   }
-  await outcomeQuery(
+  const changed = await outcomeQuery(
     client,
     `update opportunity_subs
         set outreach_state = $4, responded_at = now()
       where opportunity_id = $1 and subcontractor_id = $2
-        and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
+        and removed_at is null
+        and (outreach_state not in ('declined','not_a_fit','unavailable') or outreach_state=$4)
+        and ($3::text is null or coalesce(trade, '') = coalesce($3, '')) returning id`,
     [input.opportunityId, input.subcontractorId, trade, state],
   );
+
+  if (!changed.length) return {applied:false,refused:"closed_or_missing_request",candidateTrades};
 
   /*
    * A partly-covered trade still needs covering.

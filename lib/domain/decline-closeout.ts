@@ -87,7 +87,7 @@ export function buildDeclineThankYouEmail(
     "",
     `Thank you for getting back to us about ${title}${tradeBit}. We appreciate you taking the time to respond.`,
     "",
-    "We will close out this request on our side and keep your note on file for future fits.",
+    "We have closed this request and will not follow up on it.",
     "",
     "Best regards,",
     ...signature,
@@ -111,9 +111,12 @@ export interface CloseOutDeclinedSubInput {
   inReplyTo?: string | null;
   references?: string[];
   originalSubject?: string | null;
+  /** Stable provider ID of the human decline; required for automatic email acknowledgments. */
+  inboundMessageId?: string | null;
   /** Injectable for tests; defaults to sendOutreachEmail. */
   sendEmail?: (params: {
     scheduled?: import("../scheduled-email").ScheduledEmail;
+    declineAcknowledgment?: {inboundMessageId:string};
     to: string;
     subject: string;
     html: string;
@@ -234,6 +237,16 @@ export async function closeOutDeclinedSub(
     [opportunityId, subcontractorId, trade],
   );
 
+  // End only the schedules for this request/trade. Preserve accepted and uncertain receipts.
+  await closeoutQuery(execution.client, `update communications set follow_up_at=null,
+    delivery_state=case when delivery_state in ('draft','queued','held','failed') and provider_attempted_at is null
+      then 'held' else delivery_state end,
+    meta=coalesce(meta,'{}'::jsonb) || jsonb_build_object('reply_terminal','declined')
+    where org_id=$1 and opportunity_id=$2 and subcontractor_id=$3 and direction='outbound'
+      and coalesce(meta->>'trade','')=coalesce($4::text,'')
+      and coalesce(meta->>'kind','') not in ('decline_thank_you','compliance-chase')`,
+    [orgId,opportunityId,subcontractorId,trade]);
+
   const skipReason =
     source === "email_reply" ? "email_declined" : "call_declined";
   await closeoutQuery(
@@ -267,18 +280,19 @@ export async function closeOutDeclinedSub(
   let thankYouPaused = false;
   let thankYouFailure: string | null = null;
 
-  if (sendThankYou) {
-    const prior = await queryOne<{ id: string; delivery_state?: string }>(
-      `select id, delivery_state from communications
+  if (sendThankYou && source === "email_reply" && input.inboundMessageId) {
+    const prior = await queryOne<{ id: string; delivery_state?: string; gmail_message_id?: string }>(
+      `select id, delivery_state, gmail_message_id from communications
         where org_id=$3 and opportunity_id=$1 and subcontractor_id=$2
           and direction='outbound'
           and meta->>'kind' = 'decline_thank_you'
+          and coalesce(meta->>'trade','')=coalesce($4::text,'')
           and (request_key is null or delivery_state not in ('held','failed'))
         limit 1`,
-      [opportunityId, subcontractorId, orgId],
+      [opportunityId, subcontractorId, orgId, trade],
     );
     if (prior) {
-      if (["queued","attempting","unknown"].includes(prior.delivery_state ?? "")) {
+      if (!["sent","delivered"].includes(prior.delivery_state ?? "") || !prior.gmail_message_id) {
         thankYouFailure = "The previous acknowledgment has uncertain delivery. Review its receipt before another send.";
       } else alreadyThanked = true;
     } else {
@@ -334,8 +348,9 @@ export async function closeOutDeclinedSub(
           ? `Re: ${input.originalSubject.trim().replace(/^re:\s*/i, "")}`
           : mail.subject;
         const res = await sendEmail({
-          scheduled: { key: JSON.stringify(["decline_thank_you", opportunityId, subcontractorId, trade ?? ""]),
-            meta: { kind: "decline_thank_you", source, trade, in_reply_to: input.inReplyTo } },
+          declineAcknowledgment: {inboundMessageId:input.inboundMessageId},
+          scheduled: { key: JSON.stringify(["decline_thank_you", input.inboundMessageId]),
+            meta: { kind: "decline_thank_you", source, trade, inbound_message_id:input.inboundMessageId, in_reply_to: input.inReplyTo } },
           to,
           subject,
           html: mail.html,
@@ -348,7 +363,7 @@ export async function closeOutDeclinedSub(
           inReplyTo: input.inReplyTo ?? undefined,
           references: input.references ?? [],
         });
-        if (!res.error && !res.disabled && !res.blocked) {
+        if (res.messageId && !res.error && !res.disabled && !res.blocked) {
           thankYouSent = !res.replayed;
           alreadyThanked = !!res.replayed;
           if (!res.communicationId) await query(
@@ -401,7 +416,7 @@ export async function closeOutDeclinedSub(
             ? `Sub declined / cannot fulfill. Closed out on this solicitation. The thank-you email was not sent because outbound quote requests are paused.`
             : `Sub declined / cannot fulfill. Closed out on this solicitation.${
                 sendThankYou
-                  ? ` Thank-you email was not sent (${thankYouFailure ?? "delivery failed"}); open the conversation to send it after the email issue is corrected.`
+                  ? ` No acknowledgment was sent (${thankYouFailure ?? "no eligible human email reply with a stable message identifier"}). Verify the conversation and delivery state before any send.`
                   : ""
               }`,
       reasoning: capabilityNotes?.trim() || undefined,

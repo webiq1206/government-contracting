@@ -167,7 +167,8 @@ describe("outreach with calling off", () => {
   beforeEach(() => {
     query.mockClear();
     query.mockResolvedValue([]);
-    queryOne.mockClear();
+    queryOne.mockReset();
+    queryOne.mockImplementation(async (sql:string)=>sql.includes("select os.outreach_state")?{outreach_state:"pending"}:null);
     logAgent.mockClear();
     advancePastCallStep.mockClear();
     areCallsEnabled.mockResolvedValue(false);

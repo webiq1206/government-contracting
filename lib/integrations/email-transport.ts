@@ -36,6 +36,9 @@ export interface OutreachAttachment {
 export interface OutreachSendParams {
   /** Transactional paperwork only; the active award and named recipient are revalidated. */
   postAwardCompliance?: { contractId: string };
+  /** Internal durable intent; excludes only this attempt from the uncertainty check. */
+  sendIntentId?: string;
+  declineAcknowledgment?: {inboundMessageId:string};
   scheduled?: import("../scheduled-email").ScheduledEmail;
   /** Commit durable attempt evidence before Gmail may send. Failure prevents sending. */
   beforeProviderSend?: (from: string, identity?: import("./gmail").MailboxSendEvidence) => Promise<void>;
@@ -309,26 +312,12 @@ export async function sendOutreachEmail(
     }
   }
 
-  if (suppressionOrg && params.to) {
-    const { isSuppressed } = await import("../domain/email-suppression");
-    let suppressed: boolean;
-    try {
-      suppressed = await isSuppressed(suppressionOrg, params.to);
-    } catch {
-      return {
-        provider: null,
-        blocked: true,
-        error:
-          "The do-not-contact list could not be checked, so nothing was sent. Try again after the database connection recovers.",
-      };
-    }
-    if (suppressed) {
-      return {
-        provider: null,
-        blocked: true,
-        error: `${params.to} asked not to be contacted, so nothing was sent.`,
-      };
-    }
+  const { replySendBlock } = await import("../outreach-eligibility");
+  try {
+    const blocked = await replySendBlock(params, suppressionOrg);
+    if (blocked) return {provider:null,blocked:true,outcome:"not_attempted",error:blocked};
+  } catch {
+    return {provider:null,blocked:true,outcome:"not_attempted",error:"Current reply and contact eligibility could not be read. Nothing was sent."};
   }
 
   /*
@@ -458,9 +447,40 @@ export async function sendOutreachEmail(
     });
 
   let res: Awaited<ReturnType<typeof gmail.send>>;
+  let finalBlock: string | null = null;
   try {
     res = await gmail.send({
-      beforeProviderSend: params.beforeProviderSend,
+      dispatchIntentId:params.sendIntentId,
+      beforeProviderSend: async (from, identity) => {
+        try {
+          if (params.declineAcknowledgment) {
+            const clear = await gmail.declineThreadUnchanged(orgId, {
+              threadId:params.threadId ?? "", messageId:params.declineAcknowledgment.inboundMessageId,
+              rfc822MessageId:params.inReplyTo ?? "", sender:params.to,
+            });
+            if (!clear) throw new Error("The decline thread changed or could not be checked. Review it before acknowledging.");
+          }
+          await params.beforeProviderSend?.(from,identity);
+          const stopped = await import("../tenant-context").then(({runWithOrg})=>runWithOrg(orgId,()=>isAutomationStopped()));
+          if (stopped) throw new Error(AUTOMATION_PAUSED_ERROR);
+          if (params.opportunityId && !params.postAwardCompliance) {
+            const pursuit = await pursuitStatus(params.opportunityId);
+            if (!pursuit.mayAct || !(await opportunityOutreachAllowed(params.opportunityId)))
+              throw new Error(pursuit.reason ?? "Outreach is no longer permitted for this request.");
+          }
+          if (params.subcontractorId) {
+            const {suppressionBlocking} = await import("../suppressions");
+            if (await suppressionBlocking({subcontractorId:params.subcontractorId,
+              opportunityId:params.opportunityId ?? null,trade:params.trade ?? null,channel:"email"},orgId))
+              throw new Error("Outreach to this contact is stopped.");
+          }
+          const blocked = await replySendBlock(params,orgId);
+          if (blocked) throw new Error(blocked);
+        } catch (error) {
+          finalBlock = error instanceof Error ? error.message : "Current reply eligibility could not be verified.";
+          throw new Error(finalBlock);
+        }
+      },
       to: params.to,
       subject: params.subject,
       // One outer layout for every message a subcontractor receives, whichever
@@ -482,6 +502,7 @@ export async function sendOutreachEmail(
       orgId,
     });
   } catch (err) {
+    if (finalBlock) return {provider:null,blocked:true,outcome:"not_attempted",error:finalBlock};
     console.error("[email-transport] Gmail send did not return a result:", err);
     return {
       provider: null,
@@ -489,6 +510,8 @@ export async function sendOutreachEmail(
         "Gmail delivery could not be confirmed. Check the Gmail Sent folder before retrying to avoid a duplicate.",
     };
   }
+
+  if (finalBlock) return {provider:null,blocked:true,outcome:"not_attempted",error:finalBlock};
 
   if (res.disabled) {
     return {

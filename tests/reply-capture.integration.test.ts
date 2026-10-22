@@ -317,7 +317,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
     await query(`delete from subcontractors where email='someone-else@another-company.test'`);
   });
 
-  it("soft-closes on cant_fulfill, skips quote save, and records thank-you outbound", async () => {
+  it("soft-closes on cant_fulfill without an automatic acknowledgment for an unverified email thread", async () => {
     // A decline needs the exact conversation, not just a matching sender.
     const declineTracking = randomUUID();
     const outbound = await queryOne<{ id: string }>(
@@ -371,7 +371,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
     expect(result.declined).toBe(true);
     expect(result.quoteSaved).toBe(false);
-    expect(result.thankYouSent).toBe(true);
+    expect(result.thankYouSent).toBe(false);
     expect(closeOutCalls).toHaveLength(1);
 
     const os = await queryOne<{ outreach_state: string }>(
@@ -394,8 +394,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
         order by created_at desc limit 1`,
       [ids.opp, ids.sub]
     );
-    expect(thankYou?.meta?.kind).toBe("decline_thank_you");
-    expect(thankYou?.subject).toMatch(/Thank you/i);
+    expect(thankYou).toBeNull();
 
     const notes = await queryOne<{ notes: string | null }>(
       `select notes from subcontractors where id=$1`,

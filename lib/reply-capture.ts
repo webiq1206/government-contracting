@@ -37,9 +37,11 @@ import {
   shouldAutoDecline,
   normalizeEmail,
 } from "./reply-matching";
-import { closeOutDeclinedSub } from "./domain/decline-closeout";
+import { closeOutDeclinedSub, isClosedOutreach } from "./domain/decline-closeout";
 import { blockingGaps, decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
 import { looksLikeBounce } from "./domain/email-delivery";
+import { classifyReplyNotice, type ReplyNoticeKind } from "./domain/reply-notice";
+import { suppressEmail } from "./domain/email-suppression";
 import { enqueue } from "./queue";
 import { logAgent } from "./logger";
 import { proposeRow, type Refusal } from "./domain/quote-fields";
@@ -83,6 +85,7 @@ export interface CaptureReplyInput {
    */
   subject?: string | null;
   contentType?: string | null;
+  autoSubmitted?: string | null;
   /**
    * The message envelope, stored verbatim on the recorded reply so the history
    * is the email rather than our summary of it.
@@ -144,6 +147,8 @@ export interface CaptureReplyResult {
    * was written. The caller should record the bounce instead.
    */
   bounce?: boolean;
+  noticeKind?: ReplyNoticeKind;
+  contactHeld?: boolean;
 }
 
 function emptyExtracted(): ExtractedReply {
@@ -483,14 +488,45 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     }
   }
 
+  // Durable envelope first: interpretation/provider failure must not lose the incoming message.
+  const inbound = resume ?? await queryOne<{ id: string }>(
+    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
+     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
+     on conflict (org_id, gmail_message_id)
+       where direction = 'inbound' and gmail_message_id is not null and org_id is not null
+     do nothing
+     returning id`,
+    [
+      comm.subcontractor_id,
+      comm.opportunity_id,
+      // The real subject, not a placeholder. "Re: outreach" was written on
+      // every inbound row alike, so the conversation view could not tell one
+      // solicitation's thread from another's at a glance.
+      (input.subject ?? "").trim() || "Re: outreach",
+      replyText.slice(0, 20_000),
+      input.threadId ?? null,
+      input.messageId ?? null,
+      // Stored so OUR next message in this conversation can cite theirs, and
+      // so a later reply naming it can be matched straight back here.
+      input.rfc822MessageId ?? null,
+      input.fromAddress ?? fromEmail,
+      orgId,
+      JSON.stringify({ capture_version: 1, reply_processing_complete: false,
+        capture_stage: "received", envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
+        cc: input.ccAddresses ?? null, sentAt: input.sentAt ?? null, subject: input.subject ?? null,
+        attachments: input.attachmentNames ?? [], autoSubmitted: input.autoSubmitted ?? null} }),
+    ]
+  );
+  if (!inbound) throw new Error("Reply capture is already in progress; retry this mailbox page after it completes.");
+
   // Trade context (from the opportunity_subs link when we know the sub).
   // The trade this reply is about: the outbound email's own trade first (it
   // is stamped in the comm's meta at send time), then the pairing row, but
   // only when the pair has exactly ONE trade. An unordered `limit 1` over a
   // multi-trade pair picked an arbitrary trade and the outcome landed on it.
   let pairTrades = comm.subcontractor_id
-    ? await query<{ trade: string | null }>(
-        `select distinct trade from opportunity_subs
+    ? await query<{ trade: string | null; outreach_state?: string }>(
+        `select distinct trade, outreach_state from opportunity_subs
           where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
         [comm.opportunity_id, comm.subcontractor_id]
       )
@@ -498,14 +534,55 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   const commTradeIsActive = Boolean(
     comm.trade && pairTrades.some((p) => (p.trade ?? "") === comm.trade)
   );
-  let osRow: { trade: string | null } | null = commTradeIsActive
-    ? { trade: comm.trade }
+  let osRow: { trade: string | null; outreach_state?: string } | null = commTradeIsActive
+    ? pairTrades.find((p) => p.trade === comm.trade)!
     : !comm.trade && pairTrades.length === 1
       ? pairTrades[0]
       : null;
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
-  const extractOnce = () => extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
+  const notice = classifyReplyNotice({body: replyText, subject: input.subject,
+    autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames});
+  const noticeSenderVerified = senderMatchesSub(fromEmail, comm.sub_email);
+  if (!["human", "decline"].includes(notice.kind)) {
+    const trusted = strongMatch && noticeSenderVerified;
+    const hold = trusted && ["departed", "opt_out"].includes(notice.kind);
+    const extracted: ExtractedReply = {...emptyExtracted(), method:"deterministic",
+      deterministicKind:notice.kind, notes:notice.reason, confidence:1};
+    if (hold) {
+      await suppressEmail({orgId, email:fromEmail, source:"reply", reason:
+        `${notice.kind === "departed" ? "Contact departed" : "Explicit opt-out"}; message ${input.messageId ?? input.rfc822MessageId ?? inbound.id}; ${input.sentAt ?? "source date unknown"}.`});
+      // Cancel future schedules on this address, across duplicate contact/trade records.
+      // An attempted/uncertain send keeps its evidence and is never re-labelled as unsent.
+      await query(`update communications set follow_up_at=null,
+        delivery_state=case when delivery_state in ('draft','queued','held') and provider_attempted_at is null
+          then 'held' else delivery_state end,
+        meta=coalesce(meta,'{}'::jsonb) || jsonb_build_object('reply_contact_hold',$3::text)
+        where org_id=$1 and direction='outbound' and lower(recipient_email)=$2`,
+        [orgId,normalizeEmail(fromEmail),input.messageId ?? inbound.id]);
+    }
+    if (hold && notice.kind === "opt_out" && comm.subcontractor_id && linkedPair) {
+      await closeOut({orgId,opportunityId:comm.opportunity_id,subcontractorId:comm.subcontractor_id,
+        trade:osRow?.trade,source:"email_reply",sendThankYou:false});
+    }
+    const needsReview = notice.kind === "departed" ||
+      ((notice.kind === "opt_out") && !hold) ||
+      (notice.kind === "automatic" && (input.attachmentNames?.length ?? 0) > 0) ||
+      (notice.kind === "automatic" && /substantive/.test(notice.reason));
+    const reason = hold ? `${notice.reason} Email to this address is held; any replacement requires review.`
+      : trusted ? notice.reason : `${notice.reason} Attribution must be verified before changing contact eligibility.`;
+    await query(`update communications set meta=meta || $3::jsonb where id=$1 and org_id=$2`,
+      [inbound.id,orgId,JSON.stringify({capture_extracted:extracted,notice_kind:notice.kind,
+        auto:notice.kind !== "opt_out",contact_held:hold,notice_reason:reason})]);
+    return {inboundId:inbound.id,subId:comm.subcontractor_id,companyName:comm.company_name,
+      extracted,decision:{outcome:"none",proposed:null,act:false,needsReview,reviewReason:needsReview?reason:null},
+      quoteSaved:false,quoteSkippedExisting:false,senderVerified:noticeSenderVerified,trade:osRow?.trade ?? null,
+      duplicate:false,declined:hold && notice.kind === "opt_out",thankYouSent:false,noticeKind:notice.kind,contactHeld:hold};
+  }
+  const extractOnce = () => notice.kind === "decline"
+    ? Promise.resolve<ExtractedReply>({...emptyExtracted(),intent:"decline",canPerform:false,
+        notes:notice.reason,confidence:1,method:"deterministic",deterministicKind:"decline"})
+    : extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
   const extracted = resume?.meta?.capture_extracted ?? deepInboundText(await (input.messageId
     ? withApiUsageContext({workKey:`reply-extract:${orgId}:${input.messageId}`,relatedId:input.messageId},extractOnce)
     : extractOnce()));
@@ -611,8 +688,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
           )`,
         [comm.opportunity_id, subId, osRow?.trade ?? comm.trade ?? null]
       );
-      pairTrades = await query<{ trade: string | null }>(
-        `select distinct trade from opportunity_subs
+      pairTrades = await query<{ trade: string | null; outreach_state?: string }>(
+        `select distinct trade, outreach_state from opportunity_subs
           where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
         [comm.opportunity_id, subId]
       );
@@ -648,12 +725,16 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     decision = holdForReview(
       "The sender address differs from the contact that received the request. Confirm who sent it before applying the answer."
     );
+  } else if (isClosedOutreach(osRow?.outreach_state) && notice.kind !== "decline") {
+    decision = holdForReview("This request is already closed. The new reply was saved for review without reopening it or scheduling outreach.");
   } else if (extracted.isQuote && input.sourceDateUnknown) {
     decision = holdForReview("The original message date is unavailable. Verify the quote date and validity before applying this price; ingestion time cannot establish quote freshness.");
   }
 
   const meta = {
     capture_version: 1, capture_extracted: extracted, reply_processing_complete: false,
+    notice_kind: notice.kind, trade: osRow?.trade ?? null,
+    reply_sender_verified:senderVerified,reply_strong_match:strongMatch,reply_action_allowed:decision.act,
     intent: extracted.intent,
     method: extracted.method,
     canPerform: extracted.canPerform,
@@ -681,42 +762,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     },
   };
 
-  // Record the inbound reply and mark the outbound as replied. The partial
-  // unique index (migration 022) makes this race-safe under concurrent
-  // webhook retries.
-  const inbound = resume ?? await queryOne<{ id: string }>(
-    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
-     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
-     on conflict (org_id, gmail_message_id)
-       where direction = 'inbound' and gmail_message_id is not null and org_id is not null
-     do nothing
-     returning id`,
-    [
-      subId,
-      comm.opportunity_id,
-      // The real subject, not a placeholder. "Re: outreach" was written on
-      // every inbound row alike, so the conversation view could not tell one
-      // solicitation's thread from another's at a glance.
-      (input.subject ?? "").trim() || "Re: outreach",
-      replyText.slice(0, 20_000),
-      input.threadId ?? null,
-      input.messageId ?? null,
-      // Stored so OUR next message in this conversation can cite theirs, and
-      // so a later reply naming it can be matched straight back here.
-      input.rfc822MessageId ?? null,
-      input.fromAddress ?? fromEmail,
-      orgId,
-      JSON.stringify(meta),
-    ]
-  );
-  // The pre-read above makes ordinary retries cheap; RETURNING is what makes
-  // concurrent webhook and poller deliveries safe. Only the transaction that
-  // won the unique insert may update status, save a quote, or send a closeout.
-  if (!inbound) {
-    // A concurrent insert won. It may still be processing, so do not advance
-    // the mailbox cursor or claim completion on its behalf.
-    throw new Error("Reply capture is already in progress; retry this mailbox page after it completes.");
-  }
+  await query(`update communications set subcontractor_id=$3, meta=meta || $4::jsonb
+    where id=$1 and org_id=$2`, [inbound.id, orgId, subId, JSON.stringify(meta)]);
   // A reply is the strongest proof of delivery there is, so the stored state
   // follows the evidence. Nothing else ever wrote `delivered`, which left the
   // "confirmed delivered" count at zero on every surface that showed it.
@@ -757,7 +804,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       trade: osRow?.trade ?? null,
       source: "email_reply",
       capabilityNotes: capabilityNotes || null,
-      sendThankYou: true,
+      sendThankYou: notice.kind === "decline" && Boolean(input.messageId && input.rfc822MessageId && input.threadId),
+      inboundMessageId: input.messageId ?? null,
       recipientEmail: fromEmail,
       threadId: input.rfc822MessageId ? input.threadId ?? null : null,
       inReplyTo: input.rfc822MessageId ?? null,
@@ -785,6 +833,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     await query(
       `update opportunity_subs set outreach_state='responsive', responded_at=now()
         where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null
+          and outreach_state not in ('declined','not_a_fit','unavailable')
           and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
       [comm.opportunity_id, subId, osRow?.trade ?? null]
     );

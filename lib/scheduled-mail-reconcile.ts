@@ -5,9 +5,8 @@
  * for each attempting or unknown scheduled send past its lease and records
  * what it finds: a message that left becomes `sent` with its ids, so the
  * follow-up and reply matching work as if the send had settled normally; a
- * message that is not there becomes `held`, the one state the ordinary send
- * path may claim again. It never sends anything. A mailbox it cannot read
- * leaves the row alone for the next sweep and the operator alert.
+ * message that is absent or cannot be checked remains uncertain. A bounded
+ * search cannot authorize a retry. This process never sends anything.
  */
 import { query, queryOne } from "./db";
 import { gmail } from "./integrations/gmail";
@@ -15,7 +14,6 @@ import { runWithOrg } from "./tenant-context";
 import { MAIL_CLAIM_TTL_MS } from "./domain/hold-registry";
 import {
   UNCERTAIN_MAIL_CONFIRMED_DETAIL,
-  UNCERTAIN_MAIL_RELEASE_DETAIL,
   reconcileUncertainMail,
   type SentLookup,
 } from "./domain/mail-reconcile";
@@ -62,13 +60,12 @@ export async function reconcileUncertainScheduledMail(limit = BATCH): Promise<Ma
       return "leave" as const;
     });
     if (outcome === "record_sent") result.confirmedSent++;
-    else if (outcome === "release_for_retry") result.releasedForRetry++;
     else result.leftUnresolved++;
   }
   return result;
 }
 
-async function reconcileOne(row: UncertainSend): Promise<"record_sent" | "release_for_retry" | "leave"> {
+async function reconcileOne(row: UncertainSend): Promise<"record_sent" | "leave"> {
   return runWithOrg(row.org_id, async () => {
     let lookup: SentLookup = "unavailable";
     let found: { messageId: string; threadId: string | null; rfc822MessageId: string | null } | null = null;
@@ -78,13 +75,13 @@ async function reconcileOne(row: UncertainSend): Promise<"record_sent" | "releas
         to: row.recipient_email,
         subject: row.subject,
         afterEpochSec: after,
+        intentId:row.id,
       });
       lookup = answer.status === "found" ? "found" : answer.status === "not_found" ? "not_found" : "unavailable";
       if (answer.status === "found") found = answer;
     } else {
-      // Without an address and a subject there is nothing to search for, and
-      // nothing can have been addressed to nobody: treat it as not sent.
-      lookup = "not_found";
+      // Missing correlation is unknown, never evidence that no send occurred.
+      lookup = "unavailable";
     }
     const decision = reconcileUncertainMail({ deliveryState: row.delivery_state, kind: row.kind, lookup });
     if (decision === "record_sent" && found) {
@@ -106,19 +103,6 @@ async function reconcileOne(row: UncertainSend): Promise<"record_sent" | "releas
         [row.id, row.org_id, found.messageId, found.threadId, found.rfc822MessageId, followUpAt, UNCERTAIN_MAIL_CONFIRMED_DETAIL]
       );
       return "record_sent";
-    }
-    if (decision === "release_for_retry") {
-      await queryOne(
-        `update communications
-            set delivery_state = 'held',
-                delivery_detail = $3,
-                delivery_updated_at = clock_timestamp(),
-                meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object('reconciled', 'gmail_not_found')
-          where id = $1 and org_id = $2 and delivery_state in ('attempting', 'unknown')
-          returning id`,
-        [row.id, row.org_id, UNCERTAIN_MAIL_RELEASE_DETAIL]
-      );
-      return "release_for_retry";
     }
     return "leave";
   });

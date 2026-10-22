@@ -305,6 +305,7 @@ describe("interrupted inbound processing",()=>{
     query.mockImplementation(async(sql:string,args:unknown[])=>{
       if(sql.includes("select distinct trade")) return [{trade:"Electrical"}];
       if(sql.includes(fault) && !sql.includes("select") && fail){fail=false;throw Error("interrupted write");}
+      if(sql.includes("set subcontractor_id=$3, meta=meta || $4::jsonb")) saved.meta={...saved.meta,...JSON.parse(args[3] as string)};
       if(sql.includes("'capture_result'")){saved.meta.capture_result=JSON.parse(args[2] as string);saved.meta.reply_processing_complete=args[3];}
       return [];
     });

@@ -79,6 +79,7 @@ describe("decline closeout email", () => {
       trade: "HVAC",
       source: "email_reply",
       sendThankYou: true,
+      inboundMessageId: "inbound-human-1",
       recipientEmail: "replying-person@example.test",
       threadId: "thread-1",
       inReplyTo: "<theirs-1@example.test>",
@@ -123,6 +124,7 @@ describe("decline closeout email", () => {
       trade: "HVAC",
       source: "email_reply",
       sendThankYou: true,
+      inboundMessageId: "inbound-human-1",
       recipientEmail: "replying-person@example.test",
       sendEmail,
     });
@@ -154,6 +156,7 @@ describe("decline closeout email", () => {
         trade: "HVAC",
         source: "email_reply",
         sendThankYou: true,
+      inboundMessageId: "inbound-human-1",
         sendEmail,
       })
     ).rejects.toThrow(/no longer active/i);
