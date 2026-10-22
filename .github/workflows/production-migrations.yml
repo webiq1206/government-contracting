@@ -37,7 +37,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - name: Install without production credentials or lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Inspect or migrate the verified production target
