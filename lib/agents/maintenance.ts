@@ -3258,7 +3258,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           message:extracted.notes ?? "Automatic notice saved.",
           input:{messageId:r.messageId,noticeKind:result.noticeKind,contactHeld:result.contactHeld}});
         if (decision.needsReview || result.contactHeld) notifyLines.push({
-          title:companyName ?? fromEmail,tag:result.contactHeld ? "Contact held" : "Review contact",
+          title:companyName ?? fromEmail,tag:result.contactHeld ? "Contact held" : result.noticeKind === "prior_submission" ? "Review prior submission" : "Review contact",
           detail:decision.reviewReason ?? extracted.notes ?? "The notice was saved.",
           snippet:r.snippet.slice(0,200),tone:decision.needsReview?"critical":undefined});
         continue;

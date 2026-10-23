@@ -114,7 +114,7 @@ export function slugGuidance(
       when: "Sent once, when a subcontractor clears verification for a trade on a solicitation.",
       subject: "Yours, as written below.",
       attachments:
-        "Every bid document for this trade is attached. The project, scope, requirements, questions, quote checklist and document list are added automatically beneath your text.",
+        "No solicitation PDFs are attached by default. A checked, scoped document link, project details, trade scope, applicable requirements and one interest/coverage question are added beneath your introduction. Keep your introduction short; avoid repeating those sections.",
     };
   }
   if (slug === "template_2_followup") {
@@ -131,7 +131,7 @@ export function slugGuidance(
       when: "Used only when the original thread cannot be replied to, so this arrives as a separate email.",
       subject: "Yours, as written below, because there is no thread to inherit one from.",
       attachments:
-        "The full document package and all generated sections, because the recipient has nothing above this message to refer back to.",
+        "A checked, scoped document link and the project details are included. Solicitation PDFs are not attached automatically.",
     };
   }
   return null;
@@ -537,6 +537,7 @@ export function EmailTemplateEditor({
     missingRequired: string[];
     warnings: string[];
     attachedNames: string[];
+    linkedDocumentNames?: string[];
   };
   const [pairings, setPairings] = useState<Pairing[]>([]);
   const [pairKey, setPairKey] = useState("");
@@ -1392,9 +1393,11 @@ export function EmailTemplateEditor({
                     </p>
                   ) : (
                     <p className="text-xs text-pursue">
-                      This record has everything the email needs. It would send as
-                      shown, with {realCtx.attachedNames.length} document
-                      {realCtx.attachedNames.length === 1 ? "" : "s"} attached.
+                      The required display fields are present. No solicitation
+                      PDFs are attached automatically. {realCtx.linkedDocumentNames?.length ?? 0} selected
+                      document(s) would be offered by a scoped link after its
+                      availability checks. This preview does not verify fit,
+                      contact eligibility, document access or spending controls.
                     </p>
                   )}
                   {realCtx.warnings.length > 0 && (

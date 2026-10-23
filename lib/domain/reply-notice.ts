@@ -1,5 +1,5 @@
 /** Conservative, free classification of newly authored reply text. */
-export type ReplyNoticeKind = "human" | "decline" | "opt_out" | "departed" | "away" | "automatic";
+export type ReplyNoticeKind = "human" | "decline" | "opt_out" | "departed" | "away" | "automatic" | "prior_submission";
 
 export function authoredReplyText(body: string): string {
   return (body ?? "").replace(/\r\n/g, "\n")
@@ -16,6 +16,7 @@ export function explicitOptOut(text: string): boolean {
 export function classifyReplyNotice(input: {
   body: string; subject?: string | null; autoSubmitted?: string | null;
   attachmentNames?: string[];
+  requestedTrade?: string | null;
 }): { kind: ReplyNoticeKind; authoredText: string; reason: string; needsReview?: boolean } {
   const text = authoredReplyText(input.body);
   const automatic = Boolean(input.autoSubmitted && input.autoSubmitted.toLowerCase() !== "no") ||
@@ -34,6 +35,10 @@ export function classifyReplyNotice(input: {
     ? "An automatic message contains possible substantive content or attachments. Review it; no automatic reply or bid decision was made."
     : possibleContactChange ? "An automatic message mentions a possible role or work change. Review the wording; employment departure and contact eligibility have not been established."
     : "An automatic notice was saved. It is not a supplier decision."};
+  if (/\b(?:we|i) (?:have )?already (?:submitted|sent|provided) (?:our|my|a|the) (?:quote|bid|proposal)\b/i.test(text)) {
+    return {kind:"prior_submission",authoredText:text,needsReview:true,
+      reason:"The supplier reports a prior submission. Verify its receipt, destination and scope with the opportunity owner before requesting pricing again; no quote or commitment was inferred."};
+  }
   // A conditional/partial rejection, question, price or attachment needs the normal review path.
   const conflict = substantive || /\?|\b(?:if|unless|however|although|instead|except|but we can|but i can|(?<!not )interested in|can (?:offer|provide|quote)|(?:we|i) will (?:bid|quote|send)|unable to (?:confirm|decide))\b/i.test(text);
   // Match a complete refusal clause. "Pass your request to estimating" and
@@ -43,7 +48,14 @@ export function classifyReplyNotice(input: {
   // Bare courtesy words can reject an offer of help while retaining the bid.
   // Only the entire minimal response is an unambiguous "No thanks" decline.
   const courtesyDecline = /^no (?:thank you|thanks)[.!]?$/i.test(text);
-  const decline = courtesyDecline || new RegExp(`\\b(?:(?:we(?:'re| are)|i(?:'m| am)) not interested(?: in ${target})?|we (?:will|must|have to) pass(?: on ${target})?|we (?:are unable to|cannot|can't) (?:bid|quote) ${target})\\s*${end}`,"i").test(text);
+  const wholeServiceRefusal = /\b(?:we|i) (?:do not|don't|cannot|can't) (?:provide|perform|offer|handle) (?:(?:this|that|the requested) (?:service|work|scope)|these services)\s*(?=[.!\n]|$)/i.test(text);
+  const normalize = (value:string) => value.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  // An explicit negative capability clause can close the exact requested
+  // trade, never an unrelated optional portion or a category keyword alone.
+  const excluded = text.match(/\b(?:we|i) (?:only )?(?:provide|perform|offer|handle|do) [^.!?\n]{1,100}?[,;]?\s+(?:not|rather than) ([^.!?\n]+)/i)?.[1];
+  const exactTradeRefusal = Boolean(excluded && input.requestedTrade &&
+    normalize(excluded) === normalize(input.requestedTrade));
+  const decline = courtesyDecline || wholeServiceRefusal || exactTradeRefusal || new RegExp(`\\b(?:(?:we(?:'re| are)|i(?:'m| am)) not interested(?: in ${target})?|we (?:will|must|have to) (?:pass|decline)(?: on ${target})?|we (?:are unable to|cannot|can't) (?:bid|quote) ${target})\\s*${end}`,"i").test(text);
   if (decline && !conflict) return {kind:"decline",authoredText:text,reason:"The person explicitly declined this request."};
   return {kind:"human",authoredText:text,reason:"Requires normal reply interpretation."};
 }

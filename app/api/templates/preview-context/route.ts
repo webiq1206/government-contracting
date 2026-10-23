@@ -117,10 +117,10 @@ export async function GET(req: Request) {
   }>(
     `select name, document_class, amendment_number, trade_relevance, relevant_to_all, mime
        from documents
-      where opportunity_id = $1 and kind in ('solicitation','sow')
+      where opportunity_id = $1 and org_id=$2 and kind in ('solicitation','sow')
         and superseded_by is null and disposition <> 'excluded'
       order by created_at asc`,
-    [opportunityId]
+    [opportunityId,orgId]
   );
   const selection = selectDocumentsForTrade(
     docs.map((d) => ({
@@ -134,7 +134,7 @@ export async function GET(req: Request) {
     trade
   );
   const taken = new Set<string>();
-  const attachedNames = selection.included.map((d, i) =>
+  const linkedDocumentNames = selection.included.map((d, i) =>
     uniqueFilename(
       normalizeAttachmentMeta({
         filename: professionalStem(d.name, {
@@ -154,7 +154,8 @@ export async function GET(req: Request) {
     scopeBoundary: resolved.scopeBoundary,
     missingRequired: resolved.missingRequired,
     warnings: resolved.warnings,
-    attachedNames,
+    attachedNames: [],
+    linkedDocumentNames,
     omittedDocuments: selection.omitted.map((o) => ({
       name: o.doc.name,
       reason: o.reason,

@@ -18,6 +18,9 @@ import { SubActions } from "@/components/sub-actions";
 import { isEmailable } from "@/lib/domain/sub-contactability";
 import { OpportunityMessageHistory } from "./opportunity-message-history";
 import { ContactDiscoveryEvidence } from "./contact-discovery-evidence";
+import { SubcontractorFitReview } from "./subcontractor-fit-review";
+import { fitContext, fitSendBlock } from "@/lib/domain/subcontractor-fit";
+import { isClosedOutreach } from "@/lib/domain/decline-closeout";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -67,6 +70,8 @@ export function OpportunitySubsPanel({
   callsEnabled = true,
   researchOnly = false,
   unavailableSubLinks = 0,
+  locationState = null,
+  locationText = null,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
@@ -83,6 +88,8 @@ export function OpportunitySubsPanel({
   /** Solicitation analysis — used for per-trade "what we need them to do". */
   analysis?: Record<string, unknown> | null;
   description?: string | null;
+  locationState?: string | null;
+  locationText?: string | null;
 }) {
   const bySub = new Map<string, OppSubCommRow[]>();
   const foundCount = new Set(subs.map(sub => sub.subcontractor_id)).size;
@@ -281,6 +288,14 @@ export function OpportunitySubsPanel({
                         )}
 
                         <ContactDiscoveryEvidence verification={s.verification_json} />
+                        {opportunityId && (()=>{
+                          const contextKey=fitContext({id:opportunityId,location_state:locationState,
+                            location_text:locationText,solicitation_analysis:analysis,description},s.subcontractor_id,s.trade);
+                          return <SubcontractorFitReview opportunityId={opportunityId} pairingId={s.id}
+                            contextKey={contextKey} verification={s.verification_json}
+                            canReview={canDecide && !researchOnly && !s.removed_at && !isClosedOutreach(s.outreach_state)}
+                            block={fitSendBlock(s.verification_json,contextKey)}/>;
+                        })()}
                         <OpportunityMessageHistory messages={history} />
 
                       </li>

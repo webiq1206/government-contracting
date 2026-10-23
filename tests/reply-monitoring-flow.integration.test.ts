@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import {beforeAll,afterAll,beforeEach,describe,it,expect,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 import {randomUUID} from "node:crypto";
@@ -42,21 +43,27 @@ beforeAll(async()=>{state.db=new PGlite();await state.db.exec(`
  gmail_thread_id text,gmail_message_id text,rfc822_message_id text,recipient_email text,replied_at timestamptz,meta jsonb default '{}',created_at timestamptz default now(),
  tracking_id uuid,delivery_state text,request_key uuid,request_fingerprint text,sender_email text,provider_attempted_at timestamptz,provider_accepted_at timestamptz,
  delivery_updated_at timestamptz,delivery_detail text,provider text,follow_up_at timestamptz);
- create unique index inbound_unique on communications(org_id,gmail_message_id) where direction='inbound' and gmail_message_id is not null and org_id is not null;
+ alter table opportunities add column location_text text, add column location_state text,
+      add column solicitation_analysis jsonb, add column description text;
+    alter table opportunity_subs add column verification_json jsonb;
+    create unique index inbound_unique on communications(org_id,gmail_message_id) where direction='inbound' and gmail_message_id is not null and org_id is not null;
  create unique index intent_unique on communications(org_id,request_key) where request_key is not null;
  create table email_suppressions(id uuid default gen_random_uuid(),org_id uuid,email text,reason text,source text,created_at timestamptz default now());
  create unique index email_stop on email_suppressions(org_id,lower(email));
  create table outreach_suppressions(id uuid,org_id uuid,subcontractor_id uuid,opportunity_id uuid,trade text,channel text,reason text,note text,actor text,created_at timestamptz,lifted_at timestamptz,lifted_by text);
- create table subcontractor_reply_events(org_id uuid,subcontractor_id uuid,opportunity_id uuid,trade text,intent text,reason text,original_message text,gmail_message_id text,gmail_thread_id text,extracted jsonb,confidence numeric,needs_review boolean,review_reason text);
+ create table subcontractor_reply_events(org_id uuid,subcontractor_id uuid,opportunity_id uuid,trade text,intent text,reason text,original_message text,gmail_message_id text,gmail_thread_id text,extracted jsonb,confidence numeric,needs_review boolean,review_reason text,reviewed_at timestamptz);
  create unique index reply_event_unique on subcontractor_reply_events(org_id,gmail_message_id) where gmail_message_id is not null and org_id is not null;
  `);},60000);
 afterAll(async()=>{await state.db?.close();});
 beforeEach(()=>{state.attempts=[];state.logs=[];state.threadClear=true;state.paused=false;state.beforeSend=null;});
 async function fixture(){
  const org=randomUUID(),opp=randomUUID(),sub=randomUUID(),out=randomUUID();
- await q("insert into opportunities values($1,$2,'Synthetic scope')",[opp,org]);
+ await q("insert into opportunities(id,org_id,title) values($1,$2,'Synthetic scope')",[opp,org]);
  await q("insert into subcontractors(id,org_id,email,company_name,owner_name,notes) values($1,$2,'supplier@example.test','Synthetic Firm','Sam',null)",[sub,org]);
  await q("insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,'Hydro Jetting','sent'),($1,$2,'Electrical','sent')",[opp,sub]);
+ const fitOpp={id:opp,location_state:"CO",solicitation_analysis:{trade_scopes:[{trade:"Hydro Jetting",work:"Clean the synthetic drains using hydro jetting."},{trade:"Electrical",work:"Install and test the synthetic electrical scope."}]}};
+ await q("update opportunities set location_state='CO',solicitation_analysis=$2::jsonb where id=$1",[opp,JSON.stringify(fitOpp.solicitation_analysis)]);
+ for(const trade of ["Hydro Jetting","Electrical"]) await q("update opportunity_subs set verification_json=$3::jsonb where opportunity_id=$1 and trade=$2",[opp,trade,JSON.stringify(syntheticFit(fitOpp,sub,trade))]);
  await q("insert into communications(id,org_id,subcontractor_id,opportunity_id,direction,channel,recipient_email,delivery_state,follow_up_at,meta) values($1,$2,$3,$4,'outbound','email','supplier@example.test','sent',now(),'{\"trade\":\"Hydro Jetting\",\"kind\":\"outreach\"}')",[out,org,sub,opp]);
  const input={orgId:org,comm:{id:out,subcontractor_id:sub,opportunity_id:opp,company_name:"Synthetic Firm",sub_email:"supplier@example.test",opportunity_title:"Synthetic scope",trade:"Hydro Jetting"},
   strongMatch:true,fromEmail:"supplier@example.test",fromAddress:"Sam <supplier@example.test>",replyText:"Thank you for considering us but we are not interested.",
@@ -65,6 +72,39 @@ async function fixture(){
  return {org,opp,sub,out,input,send};
 }
 describe("synthetic reply through capture, history, closeout and actual transport gates",()=>{
+ it("closes a clear service refusal while paused, logs one event and blocks queued follow-up",async()=>{
+  const f=await fixture();state.paused=true;
+  const extract=vi.fn(async()=>{throw Error("Paid interpretation must not run");});
+  const input={...f.input,replyText:"Thank you. We do not provide this service.",extract};
+  expect(await captureReply(input)).toMatchObject({declined:true,thankYouSent:false});
+  expect(extract).not.toHaveBeenCalled();
+  expect((await captureReply(input)).duplicate).toBe(true);
+  expect(await q("select * from subcontractor_reply_events where org_id=$1",[f.org])).toHaveLength(1);
+  expect((await q("select follow_up_at from communications where id=$1",[f.out]))[0].follow_up_at).toBeNull();
+  state.paused=false;expect(await sendOutreachEmail(f.send)).toMatchObject({blocked:true});
+  expect(state.attempts).toHaveLength(0);
+ });
+ it("holds pricing chases for a prior-submission claim until its saved review is resolved",async()=>{
+  const f=await fixture();const extract=vi.fn(async()=>{throw Error("No paid inference");});
+  const r=await captureReply({...f.input,replyText:"We already submitted our quote.",extract});
+  expect(r).toMatchObject({noticeKind:"prior_submission",quoteSaved:false,decision:{act:false,needsReview:true}});
+  expect(extract).not.toHaveBeenCalled();expect(await isSuppressed(f.org,f.send.to)).toBe(false);
+  expect(await sendOutreachEmail(f.send)).toMatchObject({blocked:true,error:expect.stringContaining("incoming reply")});
+  expect(state.attempts).toHaveLength(0);
+  await q("update subcontractor_reply_events set reviewed_at=now() where org_id=$1",[f.org]);
+  expect(await sendOutreachEmail(f.send)).toMatchObject({messageId:expect.any(String)});
+  expect(state.attempts).toHaveLength(1);
+ });
+ it("rechecks reviewed fit after composition and refuses legacy initial attachments",async()=>{
+  const f=await fixture();state.beforeSend=async()=>{await q("update opportunities set location_state='WA' where id=$1",[f.opp]);};
+  expect(await sendOutreachEmail(f.send)).toMatchObject({blocked:true,outcome:"not_attempted"});
+  expect(state.attempts).toHaveLength(0);state.beforeSend=null;
+  const g=await fixture();
+  const oldInvitation={...g.send,scheduled:{key:"fixture-initial-attachment",meta:{kind:"outreach"}},
+    attachments:[{filename:"Synthetic solicitation.pdf",mime:"application/pdf",content:Buffer.from("%PDF-1.7\n")} ]};
+  expect(await sendOutreachEmail(oldInvitation)).toMatchObject({blocked:true,error:expect.stringContaining("do not include solicitation attachments")});
+  expect(state.attempts).toHaveLength(0);
+ });
  it.each(["delivered","relayed","expanded"])("stores a positive %s delivery notice without suppressing or cancelling outreach",async(action)=>{
   const f=await fixture(),id=randomUUID();
   const body=`Final-Recipient: rfc822; supplier@example.test\nAction: ${action}\nStatus: 2.0.0`;

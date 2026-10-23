@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import { beforeAll, afterAll, beforeEach, it, expect, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
@@ -34,6 +35,10 @@ beforeAll(async () => {
       rfc822_message_id text,delivery_state text,request_key uuid,request_fingerprint text,meta jsonb,
       sender_email text,provider text,delivery_detail text,provider_attempted_at timestamptz,provider_accepted_at timestamptz,
       delivery_updated_at timestamptz,created_at timestamptz default now());
+    create table subcontractor_reply_events(org_id uuid,gmail_message_id text,needs_review boolean,reviewed_at timestamptz);
+    alter table opportunities add column location_text text, add column location_state text,
+      add column solicitation_analysis jsonb, add column description text;
+    alter table opportunity_subs add column verification_json jsonb;
     create unique index communications_request_key_unique on communications(org_id,request_key) where request_key is not null;
   `);
 }, 30000);
@@ -46,6 +51,9 @@ beforeEach(async () => {
   await state.db!.query("insert into opportunities(id,org_id,title,stage,status,pursuit_state,pursuit_reason,pursuit_version) values($1,$2,'Station','outreach','open','active',null,1)", [body.opportunityId,state.org]);
   await state.db!.query("insert into subcontractors values($1,$2,'Acme',$3,true,null)", [body.subcontractorId,state.org,body.recipient]);
   await state.db!.query("insert into opportunity_subs(opportunity_id,subcontractor_id,trade) values($1,$2,'Paint')", [body.opportunityId,body.subcontractorId]);
+  const fitOpp={id:body.opportunityId,location_state:"CO",solicitation_analysis:{trade_scopes:[{trade:"Paint",work:"Paint all surfaces in the synthetic station scope."}]}};
+  await state.db!.query("update opportunities set location_state=$2,solicitation_analysis=$3::jsonb where id=$1",[fitOpp.id,fitOpp.location_state,JSON.stringify(fitOpp.solicitation_analysis)]);
+  await state.db!.query("update opportunity_subs set verification_json=$2::jsonb where opportunity_id=$1",[fitOpp.id,JSON.stringify(syntheticFit(fitOpp,body.subcontractorId,"Paint"))]);
 });
 it("real route, relationship query, durable claim and guarded transport send only once", async () => {
   const results = await Promise.all([POST(request()), POST(request())]);
@@ -143,6 +151,10 @@ it.each(["held", "refused", "accepted", "unknown"])("reconciles a null-trade %s 
   await state.db!.query("update opportunity_subs set trade=null where opportunity_id=$1", [body.opportunityId]);
   state.paused = outcome === "held"; state.outcome = outcome === "held" ? "accepted" : outcome;
   await POST(request()); // Caller loses the original response.
+  // Preserve historical null-trade receipts from an older revision. The new
+  // fit gate refuses a fresh unscoped invitation; it must still reconcile
+  // an already attempted/accepted legacy claim without overwriting it.
+  if(outcome!=="held")await state.db!.query("update communications set delivery_state=$2,gmail_message_id=$3,provider_attempted_at=now() where org_id=$1",[state.org,outcome==="accepted"?"sent":outcome==="refused"?"failed":"unknown",outcome==="accepted"?"receipt":null]);
   const rows = async () => (await state.db!.query<any>("select request_key,delivery_state,meta,provider_attempted_at,gmail_message_id from communications where org_id=$1", [state.org])).rows;
   const before = await rows(); expect(before).toHaveLength(1); expect(before[0].meta.trade).toBeNull();
   const attempts = state.deliveries;

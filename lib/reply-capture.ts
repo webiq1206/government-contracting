@@ -542,7 +542,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
   const notice = classifyReplyNotice({body: replyText, subject: input.subject,
-    autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames});
+    autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames,requestedTrade:osRow?.trade});
   const noticeSenderVerified = senderMatchesSub(fromEmail, comm.sub_email);
   if (!["human", "decline"].includes(notice.kind)) {
     const trusted = strongMatch && noticeSenderVerified;
@@ -565,14 +565,15 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       await closeOut({orgId,opportunityId:comm.opportunity_id,subcontractorId:comm.subcontractor_id,
         trade:osRow?.trade,source:"email_reply",sendThankYou:false});
     }
-    const needsReview = notice.kind === "departed" ||
+    const needsReview = notice.kind === "departed" || notice.kind === "prior_submission" ||
       ((notice.kind === "opt_out") && !hold) ||
       (notice.kind === "automatic" && notice.needsReview === true);
     const reason = hold ? `${notice.reason} Email to this address is held; any replacement requires review.`
       : trusted ? notice.reason : `${notice.reason} Attribution must be verified before changing contact eligibility.`;
     await query(`update communications set meta=meta || $3::jsonb where id=$1 and org_id=$2`,
       [inbound.id,orgId,JSON.stringify({capture_extracted:extracted,notice_kind:notice.kind,
-        auto:notice.kind !== "opt_out",contact_held:hold,notice_reason:reason})]);
+        auto:!["opt_out","prior_submission"].includes(notice.kind),contact_held:hold,notice_reason:reason,
+        trade:osRow?.trade ?? null,reply_action_allowed:false,reply_sender_verified:noticeSenderVerified,reply_strong_match:strongMatch})]);
     return {inboundId:inbound.id,subId:comm.subcontractor_id,companyName:comm.company_name,
       extracted,decision:{outcome:"none",proposed:null,act:false,needsReview,reviewReason:needsReview?reason:null},
       quoteSaved:false,quoteSkippedExisting:false,senderVerified:noticeSenderVerified,trade:osRow?.trade ?? null,

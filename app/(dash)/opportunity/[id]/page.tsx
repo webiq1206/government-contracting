@@ -1037,6 +1037,8 @@ export default async function OpportunityPage(props: { params: Promise<{ id: str
                   communications={subComms}
                   analysis={analysis as unknown as Record<string, unknown> | null}
                   description={opp.description}
+                  locationState={opp.location_state}
+                  locationText={opp.location_text}
                   opportunityId={opp.id}
                   canStopOutreach={!opp.is_sources_sought && can(viewer?.orgRole, "outreach")}
                   canDecide={!opp.is_sources_sought && can(viewer?.orgRole, "decide")}

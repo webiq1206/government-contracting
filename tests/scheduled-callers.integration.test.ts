@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import {beforeAll,afterAll,beforeEach,describe,it,expect,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 import {randomUUID} from "node:crypto";
@@ -41,14 +42,21 @@ create table communications(id uuid primary key default gen_random_uuid(),org_id
  rfc822_message_id text,tracking_id uuid,delivery_state text,request_key uuid,request_fingerprint text,meta jsonb,
  sender_email text,provider text,delivery_detail text,provider_attempted_at timestamptz,provider_accepted_at timestamptz,
  delivery_updated_at timestamptz,created_at timestamptz default now(),follow_up_at timestamptz);
-create unique index communications_request_key_unique on communications(org_id,request_key) where request_key is not null;`);},60000);
+create table subcontractor_reply_events(org_id uuid,gmail_message_id text,needs_review boolean,reviewed_at timestamptz);
+    alter table opportunities add column location_text text, add column location_state text,
+      add column solicitation_analysis jsonb, add column description text;
+    alter table opportunity_subs add column verification_json jsonb;
+    create unique index communications_request_key_unique on communications(org_id,request_key) where request_key is not null;`);},60000);
 afterAll(async()=>{await state.db?.close();});
 beforeEach(async()=>{state.paused=state.suppressed=state.stopped=state.support=false;vi.mocked(gmail.send).mockClear();
  const org=randomUUID(),opp=randomUUID(),sub=randomUUID(),contract=randomUUID();
- await state.db!.query("insert into opportunities values($1,$2,'outreach','open','active',null,1,'Job',now()+interval '2 days',false,false)",[opp,org]);
+ await state.db!.query("insert into opportunities(id,org_id,stage,status,pursuit_state,pursuit_reason,pursuit_version,title,deadline,human_action_required,is_sources_sought) values($1,$2,'outreach','open','active',null,1,'Job',now()+interval '2 days',false,false)",[opp,org]);
  await state.db!.query("insert into subcontractors values($1,$2,'sub@example.test',true,'Builder','Sub Co')",[sub,org]);
  await state.db!.query("insert into contracts values($1,$2,'active',$3,null)",[contract,opp,sub]);
  await state.db!.query("insert into opportunity_subs(org_id,opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,$3,'HVAC','followed_up')",[org,opp,sub]);
+ const fitOpp={id:opp,location_state:"CO",solicitation_analysis:{trade_scopes:[{trade:"HVAC",work:"Install and test the synthetic HVAC scope."}]}};
+ await state.db!.query("update opportunities set location_state='CO',solicitation_analysis=$2::jsonb where id=$1",[opp,JSON.stringify(fitOpp.solicitation_analysis)]);
+ await state.db!.query("update opportunity_subs set verification_json=$2::jsonb where opportunity_id=$1",[opp,JSON.stringify(syntheticFit(fitOpp,sub,"HVAC"))]);
  params={orgId:org,opportunityId:opp,subcontractorId:sub,postAwardCompliance:{contractId:contract},to:"sub@example.test",
  subject:"Your paperwork",text:"Please provide your insurance documents.",html:"<p>Please provide your insurance documents.</p>",
  scheduled:{key:randomUUID(),meta:{kind:"compliance-chase"}}};

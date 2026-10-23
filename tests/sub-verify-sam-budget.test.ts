@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -28,22 +29,24 @@ const context = { runId: "synthetic-run", trigger: "queue" as const,
   payload: { opportunityId: "opp-synthetic", subcontractorId: "sub-synthetic", trade: "Electrical" } };
 const SAM_REUSE = "verification_json->>'sam_checked_at'";
 
+const fitOpp={id:"opp-synthetic",org_id:"org-synthetic",location_state:"TX",solicitation_analysis:{trade_scopes:[{trade:"Electrical",work:"Install and test the synthetic electrical scope."}]}};
 function records(sub: Record<string, unknown>, recentSam: unknown = null) {
   mocks.queryOne.mockImplementation(async (sql: string) => {
+    if(String(sql).includes("select verification_json,outreach_state"))return {verification_json:syntheticFit(fitOpp,"sub-synthetic","Electrical")};
     if (String(sql).includes(SAM_REUSE)) return recentSam;
     if (String(sql).includes("count(*) filter")) return { emailable: 0, misses: 1 };
     if (String(sql).includes("offset $4")) return null;
     return undefined;
   });
   mocks.queryOne
-    .mockResolvedValueOnce({ org_id: "org-synthetic", location_state: "TX" })
+    .mockResolvedValueOnce(fitOpp)
     .mockResolvedValueOnce({ id: "sub-synthetic", org_id: "org-synthetic", company_name: "Synthetic contractor",
       state: "TX", service_area_states: null, phone: "5125550100", website: "https://firm.invalid",
       license_status: "active", sam_excluded: false, google_rating: null, review_count: 0,
       reviews_summary: null, project_history: [], ...sub });
 }
 const verification = () => {
-  const call = mocks.query.mock.calls.find(([sql]) => String(sql).includes("verification_json=$3"));
+  const call = mocks.query.mock.calls.find(([sql]) => String(sql).includes("set verified=$6"));
   return call ? JSON.parse(call[1][2]) : null;
 };
 const parked = () => mocks.query.mock.calls.some(([sql]) => String(sql).includes("set human_action_required = true"));

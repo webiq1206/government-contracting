@@ -68,7 +68,7 @@ describe("buildOutreachDetailsBlock", () => {
     });
     // The mail client lists the files; the email says what they are FOR.
     expect(block.plain).toMatch(/2 attached documents/);
-    expect(block.plain).toMatch(/review them before preparing your quote/i);
+    expect(block.plain).toMatch(/review (?:them before preparing your quote|the project documents)/i);
     expect(block.plain).not.toContain("Statement of Work.pdf");
     expect(block.html).not.toContain("Statement of Work.pdf");
     expect(block.plain).not.toMatch(FAILURE_RE);
@@ -82,7 +82,7 @@ describe("buildOutreachDetailsBlock", () => {
     });
     expect(block.plain).toContain("Documents:");
     expect(block.plain).toContain("https://example.com/file");
-    expect(block.plain).toMatch(/review them before preparing your quote/i);
+    expect(block.plain).toMatch(/review (?:them before preparing your quote|the project documents)/i);
     expect(block.plain).not.toMatch(FAILURE_RE);
   });
 });
@@ -102,12 +102,13 @@ describe("seed Template 1 render", () => {
     // Sample preview has no real files; do not invent a validated attachment count.
     expect(html).not.toMatch(/The 2 attached documents/);
     expect(html).not.toContain("Statement of Work.pdf");
-    expect(html).toContain("Scope to price");
-    expect(html).toContain("What to include with your quote");
+    expect(html).toContain("Scope");
+    expect(html).toContain("Next step");
+    expect(html).not.toContain("What to include with your quote");
     // Both dates, each labelled as whose it is. The preview has to show this
     // because it is the pair an operator most needs to sanity-check.
-    expect(html).toContain("Your quote is due:");
-    expect(html).toContain("Our bid to the agency is due:");
+    expect(html).toContain("Quote requested by");
+    expect(html).toContain("agency bid due");
     expect(html).not.toMatch(FAILURE_RE);
   });
 
@@ -131,7 +132,8 @@ describe("seed Template 1 render", () => {
     expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
     expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.scope_summary);
     expect(brief).toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
-    expect(brief).toMatch(/payment terms/i);
+    expect(brief).not.toMatch(/payment terms/i);
+    expect(brief).toContain("Can you cover this scope");
   });
 });
 

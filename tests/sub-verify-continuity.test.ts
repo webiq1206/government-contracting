@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -32,16 +33,18 @@ import { subVerify } from "../lib/agents/sub-verify";
 
 const context = { runId: "synthetic-run", trigger: "queue" as const,
   payload: { opportunityId: "opp-synthetic", subcontractorId: "sub-synthetic", trade: "Electrical" } };
-function records(overrides: Record<string, unknown> = {}) {
+const fitOpp={id:"opp-synthetic",org_id:"org-synthetic",location_state:"TX",solicitation_analysis:{trade_scopes:[{trade:"Electrical",work:"Install and test the synthetic electrical scope."}]}};
+function records(overrides: Record<string, unknown> = {}, withFit=true) {
   mocks.queryOne
-    .mockResolvedValueOnce({ org_id: "org-synthetic", location_state: "TX" })
+    .mockResolvedValueOnce(fitOpp)
     .mockResolvedValueOnce({ id: "sub-synthetic", org_id: "org-synthetic", company_name: "Synthetic contractor",
       state: "TX", service_area_states: null, email: "estimates@example.invalid", email_verified: true,
       phone: "5125550100", website: "https://example.invalid", license_status: "active", sam_excluded: false,
-      google_rating: null, review_count: 0, reviews_summary: null, project_history: [], ...overrides });
+      google_rating: null, review_count: 0, reviews_summary: null, project_history: [], ...overrides })
+    .mockResolvedValueOnce({verification_json:withFit?syntheticFit(fitOpp,"sub-synthetic","Electrical"):null});
 }
 function verificationWrite() {
-  const call = mocks.query.mock.calls.find(([sql]) => String(sql).includes("verification_json=$3"));
+  const call = mocks.query.mock.calls.find(([sql]) => String(sql).includes("set verified=$6"));
   return call ? { sql: call[0], params: call[1], evidence: JSON.parse(call[1][2]) } : null;
 }
 
@@ -68,10 +71,10 @@ describe("subcontractor verification continuity", () => {
     expect(verificationWrite()?.params[4]).toBe("org-synthetic");
   });
 
-  it.each([{ areas: null }, { areas: [] }, { areas: ["NM", "AZ"] }, { areas: ["*"] }, { areas: [null, 123] }])("still rejects an out-of-state firm without explicit coverage: $areas", async ({ areas }) => {
-    records({ state: "NM", service_area_states: areas });
+  it.each([{ areas: null }, { areas: [] }, { areas: ["NM", "AZ"] }, { areas: ["*"] }, { areas: [null, 123] }])("holds unreviewed area data without declaring the firm unsuitable: $areas", async ({ areas }) => {
+    records({ state: "NM", service_area_states: areas },false);
     const result = await subVerify.handler(context);
-    expect(result.summary).toContain("ruled out");
+    expect(result.data?.route).toBe("held (fit review required)");
     expect(result.enqueued ?? []).toEqual([]);
     expect(mocks.sam).not.toHaveBeenCalled();
     expect(mocks.maps).not.toHaveBeenCalled();

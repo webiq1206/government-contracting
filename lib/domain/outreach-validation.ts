@@ -147,6 +147,7 @@ export interface SendProblem {
     | "sample_data"
     | "deadline_order"
     | "no_attachments"
+    | "false_attachment_claim"
     | "trade_scope_not_ready"
     | "requirement_applicability";
   message: string;
@@ -307,6 +308,10 @@ export function validateOutboundEmail(input: {
     });
   }
 
+  if (input.attachedNames.length === 0 &&
+      /\b(?:(?:the|these|our|an?) attached (?:pdf|document|file|plan|drawing|solicitation)|(?:see|review|find|check) (?:the )?attach(?:ed|ment)|(?:i|we)(?:'ve| have)? attached)\b/i.test(input.body)) {
+    problems.push({kind:"false_attachment_claim",message:"The email claims files are attached, but none are attached. Update the introduction to refer to the checked document link."});
+  }
   if (
     input.documentsExpected &&
     input.attachedNames.length === 0 &&

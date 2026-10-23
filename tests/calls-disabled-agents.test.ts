@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 /**
  * The two guarantees that matter when calling is turned off: no call card is
  * ever written, and the opportunity does not sit still waiting for one.
@@ -168,7 +169,8 @@ describe("outreach with calling off", () => {
     query.mockClear();
     query.mockResolvedValue([]);
     queryOne.mockReset();
-    queryOne.mockImplementation(async (sql:string)=>sql.includes("select os.outreach_state")?{outreach_state:"pending"}:null);
+    const fitOpp={id:"opp-1",location_state:"CO",solicitation_analysis:{trade_scopes:[{trade:"HVAC",work:"Install and test the synthetic HVAC scope."}]}};
+    queryOne.mockImplementation(async (sql:string)=>sql.includes("select os.outreach_state")?{...fitOpp,outreach_state:"pending",verification_json:syntheticFit(fitOpp,"sub-1","HVAC")}:null);
     logAgent.mockClear();
     advancePastCallStep.mockClear();
     areCallsEnabled.mockResolvedValue(false);
