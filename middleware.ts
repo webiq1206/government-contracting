@@ -52,9 +52,6 @@ const PUBLIC_PREFIXES = [
   // expiring token in the URL, checked inside the route.
   "/vendor",
   "/api/vendor",
-  // Recipient document access is authorized by the signed, expiring token in
-  // the route. A crawler exclusion is not a requirement for an app session.
-  "/d",
   "/api/auth",
   "/api/billing",
   "/api/health",

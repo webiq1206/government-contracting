@@ -18,6 +18,8 @@ import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
 
+const fixtureDocuments=vi.hoisted(()=>({pending:false}));
+
 const sendSpy = vi.fn(async () => ({
   messageId: "gmail-1",
   threadId: "thread-1",
@@ -43,8 +45,9 @@ vi.mock("../lib/ai/companyProfile", () => ({
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
     files: [],
-    links: [{name:"Synthetic scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
-    expected: true,
+    // The ordinary positive case has no source documents; the separate pending case does.
+    links: fixtureDocuments.pending?[{name:"Synthetic scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}]:[],
+    expected: fixtureDocuments.pending,
     undelivered: [],
     omitted: [],
   }),
@@ -241,8 +244,8 @@ d("the assembled outreach email (integration)", () => {
     expect(body).not.toMatch(/What to include with your quote/i);
   });
 
-  it("offers a checked document link without solicitation PDF attachments", () => {
-    expect(body).toMatch(/Review the project documents/);
+  it("does not invent document delivery for a self-contained scope", () => {
+    expect(body).not.toMatch(/Review the project documents/);
     expect((sendSpy.mock.calls as unknown as [{attachments:unknown[]}[]])[0]?.[0]?.attachments).toEqual([]);
     expect(body).not.toMatch(/Statement of Work\.pdf \(attached\)/);
   });
@@ -259,7 +262,7 @@ d("the assembled outreach email (integration)", () => {
       recipient_email: string;
       sender_email: string;
       attachments: string;
-      document_links: string;
+      document_links: string|null;
     }>(
       `select gmail_thread_id, rfc822_message_id, recipient_email,
               meta->>'sender_email' as sender_email,
@@ -273,7 +276,7 @@ d("the assembled outreach email (integration)", () => {
     expect(row?.sender_email).toBe("pat@prime.invalid");
     // The manifest, so a fallback into a new thread sends the same package.
     expect(row?.attachments).toBe("[]");
-    expect(row?.document_links).toContain("https://example.invalid/d/synthetic-package");
+    expect(row?.document_links).toBeNull();
   });
   it("holds a queued invitation with legacy prime qualifications before the mail provider", async () => {
     const held = await queryOne<{ id: string }>(
@@ -300,6 +303,22 @@ d("the assembled outreach email (integration)", () => {
       `select count(*)::text as count from communications where opportunity_id=$1`, [held!.id]);
     expect(communications?.count).toBe("0");
     await query(`delete from opportunity_subs where opportunity_id=$1`, [held!.id]);
+  });
+
+  it("holds document-dependent outreach even when source files were readable",async()=>{
+    const supplier=(await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,email,email_verified)
+      values($1,'Synthetic document-dependent firm','documents@synthetic.invalid',true) returning id`,[org.id]))!;
+    await query(`insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state,verified)
+      values($1,$2,$3,'pending',true)`,[opp.id,supplier.id,trade]);
+    await seedSyntheticFit(org.id,opp.id,supplier.id,trade);
+    const prior=sendSpy.mock.calls.length;fixtureDocuments.pending=true;
+    try {
+      const result=await outreach.handler({runId:randomUUID(),trigger:"queue",payload:{opportunityId:opp.id,subcontractorId:supplier.id,trade}});
+      expect(result.humanActionRequired).toBe(true);
+      expect(result.summary).toMatch(/pending review/i);
+      expect(sendSpy.mock.calls).toHaveLength(prior);
+      expect(await query("select id from communications where opportunity_id=$1 and subcontractor_id=$2",[opp.id,supplier.id])).toHaveLength(0);
+    }finally{fixtureDocuments.pending=false;}
   });
 
 });

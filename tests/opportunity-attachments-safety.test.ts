@@ -96,13 +96,14 @@ describe("opportunity attachment tenant and completeness safety", () => {
     ],
   };
 
-  it("promises an upstream package once its files answer a bounded preflight", async () => {
+  it("verifies upstream source bytes without promising recipient access", async () => {
     mocks.query.mockResolvedValueOnce([]);
     mocks.fetch.mockResolvedValue({ body: Buffer.from("%PDF-"), contentType: "application/pdf" });
     const gathered = await gatherOpportunityAttachments(ORG_ID, upstreamOpp);
     expect(gathered.links[0]?.reachable).toBe(true);
     expect(mocks.fetch).toHaveBeenCalledWith(upstreamOpp.attachments_json[0].url, expect.objectContaining({ maxBytes: 1024 }));
-    expect(assessAttachmentPackage(gathered).ok).toBe(true);
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
+    expect(assessAttachmentPackage(gathered).problems).toContainEqual(expect.objectContaining({kind:"recipient_access_pending",blocking:true}));
     // Every subcontractor on the solicitation links the same file: checked once.
     mocks.query.mockResolvedValueOnce([]);
     await gatherOpportunityAttachments(ORG_ID, upstreamOpp);
@@ -153,7 +154,8 @@ describe("opportunity attachment tenant and completeness safety", () => {
     }, "HVAC");
     expect(gathered.files).toHaveLength(0);
     expect(gathered.links).toEqual([expect.objectContaining({reachable:true})]);
-    expect(assessAttachmentPackage(gathered).ok).toBe(true);
+    expect(assessAttachmentPackage(gathered).ok).toBe(false);
+    expect(assessAttachmentPackage(gathered).problems).toContainEqual(expect.objectContaining({kind:"recipient_access_pending",blocking:true}));
   });
 
   it("does not reintroduce another trade's stored document through its raw URL", async () => {

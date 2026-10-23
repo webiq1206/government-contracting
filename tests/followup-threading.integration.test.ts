@@ -43,8 +43,9 @@ vi.mock("../lib/ai/companyProfile", () => ({
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
     files: [],
-    links: [{name:"Scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
-    expected: true,
+    // This positive fixture has a self-contained synthetic scope and no source documents.
+    links: [],
+    expected: false,
     undelivered: [],
     omitted: [],
   }),

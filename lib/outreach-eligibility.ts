@@ -5,6 +5,7 @@ const mailbox = (value:string)=>(value.match(/<([^>]+)>/)?.[1] ?? value).trim().
 import type { OutreachSendParams } from "./integrations/email-transport";
 import { fitContext, fitSendBlock, type FitContextInput } from "./domain/subcontractor-fit";
 import {automaticMessageSql,AUTOMATIC_SUBJECT_SQL} from "./domain/message-state";
+import {DOCUMENT_LINK_DELIVERY_HOLD,messageHasPendingDocumentLink} from "./domain/document-delivery-readiness";
 
 /** Read again during execution and immediately before dispatch. Never infer eligibility on failure. */
 export async function replySendBlock(params: OutreachSendParams, orgId: string,
@@ -18,6 +19,7 @@ export async function replySendBlock(params: OutreachSendParams, orgId: string,
     [orgId,mailbox(params.to),params.sendIntentId ?? null]);
   if (uncertain) return "A previous send to this address is uncertain. Verify its receipt before sending again.";
   if (!params.opportunityId || !params.subcontractorId || params.postAwardCompliance) return null;
+  if(!options.receiptRecoveryOnly && messageHasPendingDocumentLink(params.text,params.html))return DOCUMENT_LINK_DELIVERY_HOLD;
   const pair = await queryOne<FitContextInput & {outreach_state:string; verification_json:unknown}>(`select os.outreach_state,os.verification_json,
       o.id,o.location_text,o.location_state,o.solicitation_analysis,o.description from opportunity_subs os
     join opportunities o on o.id=os.opportunity_id

@@ -64,8 +64,9 @@ vi.mock("../lib/ai/companyProfile", () => ({
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
     files: [],
-    links: [{name:"Scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
-    expected: true,
+    // This positive fixture has a self-contained synthetic scope and no source documents.
+    links: [],
+    expected: false,
     undelivered: [],
     omitted: [],
   }),
@@ -210,10 +211,9 @@ d("the subcontractor email workflow, end to end (integration)", () => {
     for (const msg of sent) {
       expect(msg.html).toMatch(/rooftop units/i);
       expect(msg.html).toMatch(/Quote requested by/);
-      // The document rides as an attachment; the body says to review it
-      // rather than inventorying filenames the mail client already shows.
+      // The fixture has no documents: no attachment or link delivery is invented.
       expect(msg.attachments).toEqual([]);
-      expect(msg.html).toMatch(/Review the project documents/i);
+      expect(msg.html).not.toMatch(/Review the project documents/i);
       expect(msg.html).not.toMatch(/Statement of Work\.pdf/);
       expect(msg.html).not.toMatch(/\{\{/);
     }

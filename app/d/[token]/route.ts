@@ -208,15 +208,6 @@ async function pointerIsActive(pointer: DocPointer): Promise<boolean> {
     const fileOwner = await orgIdForStorageKey(pointer.v, { failOnError: true });
     return fileOwner === opportunity.org_id;
   }
-  if (pointer.k === "p") {
-    // A package must not disclose even filenames from another tenant. Its
-    // children repeat these checks before streaming; opening never extends TTL.
-    for (const entry of pointer.d ?? []) {
-      if (entry.k === "s" && await orgIdForStorageKey(entry.v, { failOnError: true }) !== opportunity.org_id) {
-        return false;
-      }
-    }
-  }
   return true;
 }
 

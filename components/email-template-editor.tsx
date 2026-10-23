@@ -1398,9 +1398,10 @@ export function EmailTemplateEditor({
                     <p className="text-xs text-pursue">
                       The required display fields are present. No solicitation
                       PDFs are attached automatically. {realCtx.linkedDocumentNames?.length ?? 0} selected
-                      document(s) would be offered by a scoped link after its
-                      availability checks. This preview does not verify fit,
-                      contact eligibility, document access or spending controls.
+                      document(s) are listed for preview. Recipient document-link
+                      delivery is pending review; outreach containing those links
+                      is held. This preview does not verify fit, contact eligibility
+                      or spending controls.
                     </p>
                   )}
                   {realCtx.warnings.length > 0 && (

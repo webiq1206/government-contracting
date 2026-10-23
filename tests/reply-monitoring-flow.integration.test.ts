@@ -72,6 +72,12 @@ async function fixture(){
  return {org,opp,sub,out,input,send};
 }
 describe("synthetic reply through capture, history, closeout and actual transport gates",()=>{
+ it("holds already composed document-link outreach without contacting the provider",async()=>{
+  const f=await fixture();
+  const result=await sendOutreachEmail({...f.send,html:'<p>Scope: <a href="https://brostco.test/d/synthetic.invalid">documents</a></p>'});
+  expect(result).toMatchObject({blocked:true,error:expect.stringContaining("pending review")});
+  expect(state.attempts).toHaveLength(0);
+ });
  it("closes a clear service refusal while paused, logs one event and blocks queued follow-up",async()=>{
   const f=await fixture();state.paused=true;
   const extract=vi.fn(async()=>{throw Error("Paid interpretation must not run");});

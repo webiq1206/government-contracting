@@ -8,6 +8,7 @@ import { professionalStem, uniqueFilename } from "@/lib/domain/attachment-naming
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { loadOutreachPreviewPair, OutreachPreviewUnavailable } from "@/lib/outreach-preview";
+import {DOCUMENT_LINK_DELIVERY_HOLD} from "@/lib/domain/document-delivery-readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -153,7 +154,7 @@ export async function GET(req: Request) {
     vars: resolved.vars,
     scopeBoundary: resolved.scopeBoundary,
     missingRequired: resolved.missingRequired,
-    warnings: resolved.warnings,
+    warnings: [...resolved.warnings,...(linkedDocumentNames.length?[DOCUMENT_LINK_DELIVERY_HOLD]:[])],
     attachedNames: [],
     linkedDocumentNames,
     omittedDocuments: selection.omitted.map((o) => ({
