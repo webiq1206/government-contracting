@@ -4,6 +4,7 @@ import { isClosedOutreach } from "./domain/decline-closeout";
 const mailbox = (value:string)=>(value.match(/<([^>]+)>/)?.[1] ?? value).trim().toLowerCase();
 import type { OutreachSendParams } from "./integrations/email-transport";
 import { fitContext, fitSendBlock, type FitContextInput } from "./domain/subcontractor-fit";
+import {automaticMessageSql,AUTOMATIC_SUBJECT_SQL} from "./domain/message-state";
 
 /** Read again during execution and immediately before dispatch. Never infer eligibility on failure. */
 export async function replySendBlock(params: OutreachSendParams, orgId: string,
@@ -25,6 +26,11 @@ export async function replySendBlock(params: OutreachSendParams, orgId: string,
       and os.removed_at is null and coalesce(os.trade,'')=coalesce($4::text,'')`,
     [orgId,params.opportunityId,params.subcontractorId,params.trade ?? null]);
   if (!pair) return "The active request and trade could not be verified.";
+  const intent=params.sendIntentId ? await queryOne<{meta:Record<string,unknown>}>(
+    `select meta from communications where id=$1 and org_id=$2 and opportunity_id=$3
+       and subcontractor_id=$4 and direction='outbound'`,
+    [params.sendIntentId,orgId,params.opportunityId,params.subcontractorId]) : null;
+  if(intent?.meta?.mailbox_reply_cancelled_by)return "This message was cancelled because verified Gmail history already answered the conversation. Review the newer reply before composing another message.";
   if (params.declineAcknowledgment) {
     const reply = await queryOne<{recipient_email:string;meta:Record<string,unknown>;gmail_thread_id:string;rfc822_message_id:string}>(
       `select recipient_email,meta,gmail_thread_id,rfc822_message_id from communications
@@ -47,10 +53,6 @@ export async function replySendBlock(params: OutreachSendParams, orgId: string,
   // Durable intent, not a caller-provided bypass. Explicit operator replies
   // to a saved inbound message can answer questions before fit is established.
   // They still honor closure, opt-outs and uncertain-send holds above.
-  const intent=params.sendIntentId ? await queryOne<{meta:Record<string,unknown>}>(
-    `select meta from communications where id=$1 and org_id=$2 and opportunity_id=$3
-       and subcontractor_id=$4 and direction='outbound'`,
-    [params.sendIntentId,orgId,params.opportunityId,params.subcontractorId]) : null;
   const kind=intent?.meta?.kind ?? params.scheduled?.meta?.kind;
   if(kind === "outreach" && params.attachments?.length) {
     return "Initial invitations do not include solicitation attachments. Rebuild this request with the checked project-document link.";
@@ -70,8 +72,9 @@ export async function replySendBlock(params: OutreachSendParams, orgId: string,
     where c.org_id=$1 and c.opportunity_id=$2 and c.subcontractor_id=$3 and c.direction='outbound'
       and c.meta->>'mailbox_reply'='true' and coalesce(c.meta->>'trade','')=coalesce($4::text,'')
       and c.created_at>=coalesce((select max(i.created_at) from communications i where i.org_id=c.org_id
-        and i.gmail_thread_id=c.gmail_thread_id and i.direction='inbound'),'-infinity'::timestamptz)
-    limit 1`,[orgId,params.opportunityId,params.subcontractorId,params.trade ?? null]);
+        and i.gmail_thread_id=c.gmail_thread_id and i.direction='inbound'
+        and not ${automaticMessageSql("i","$5")}),'-infinity'::timestamptz)
+    limit 1`,[orgId,params.opportunityId,params.subcontractorId,params.trade ?? null,AUTOMATIC_SUBJECT_SQL]);
   if(answered)return "A verified Gmail message already answered this conversation. Its older automatic follow-ups are cancelled; review newer messages before another chase.";
   return fitSendBlock(pair.verification_json,fitContext(pair,params.subcontractorId,params.trade));
 }

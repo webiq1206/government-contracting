@@ -21,6 +21,7 @@ import {subConversations} from "../lib/domain/conversation";
 import {conversationList} from "../lib/conversations";
 import {replySendBlock} from "../lib/outreach-eligibility";
 import {captureReply} from "../lib/reply-capture";
+import {sendScheduledEmail,scheduledRequestKey} from "../lib/scheduled-email";
 import type {GmailMailboxMessage} from "../lib/integrations/gmail";
 const d=process.env.DATABASE_URL?describe:describe.skip;
 const now=new Date("2026-10-23T12:00:00Z"),before=new Date(now.getTime()-7200000).toISOString(),sentAt=new Date(now.getTime()-3600000).toISOString();
@@ -203,5 +204,28 @@ d("observed Gmail replies become accurate, idempotent platform history",()=>{
    strongMatch:true,fromEmail:"supplier@synthetic.test",replyText:"We are not interested.",messageId:s.threads[f.thread][0].messageId,threadId:f.thread}));
   expect(result.decision.needsReview).toBe(true);expect(result.declined).toBe(false);
   expect(s.sent).not.toHaveBeenCalled();expect(s.ai).not.toHaveBeenCalled();
+ });
+ it("cancels a queued unattempted follow-up durably without mistaking it for an uncertain send",async()=>{
+  const f=await fixture(),key="synthetic-old-chase-"+randomUUID();
+  const old=(await queryOne<{id:string}>(`insert into communications(org_id,opportunity_id,subcontractor_id,channel,direction,recipient_email,
+   gmail_thread_id,delivery_state,request_key,created_at,meta) values($1,$2,$3,'email','outbound','supplier@synthetic.test',$4,'queued',$5,$6,'{"trade":"Electrical","kind":"followup"}') returning id`,
+   [f.org,f.opp,f.sub,f.thread,scheduledRequestKey(key),before]))!;
+  const unrelated=(await queryOne<{id:string}>(`insert into communications(org_id,opportunity_id,subcontractor_id,channel,direction,recipient_email,
+   gmail_thread_id,delivery_state,created_at,follow_up_at,meta) values($1,$2,$3,'email','outbound','supplier@synthetic.test',$4,'queued',$5,now(),'{"trade":"Electrical","kind":"compliance-chase"}') returning id`,
+   [f.org,f.opp,f.sub,f.thread,before]))!;
+  expect(await runWithOrg(f.org,()=>importMailboxSent(f.org,f.generation,"quotes@synthetic.test",f.message,now))).toBe("imported");
+  const stopped=(await queryOne<{delivery_state:string;meta:Record<string,unknown>}>("select delivery_state,meta from communications where id=$1",[old.id]))!;
+  expect(stopped.delivery_state).toBe("held");expect(stopped.meta.mailbox_reply_cancelled_by).toBe(f.message.messageId);
+  expect((await queryOne<{delivery_state:string;follow_up_at:string|null}>("select delivery_state,follow_up_at from communications where id=$1",[unrelated.id]))).toMatchObject({delivery_state:"queued",follow_up_at:expect.anything()});
+  // A later machine response cannot make the older chase relevant again.
+  await query(`insert into communications(org_id,opportunity_id,subcontractor_id,channel,direction,gmail_thread_id,created_at,subject,meta)
+   values($1,$2,$3,'email','inbound',$4,$5,'Automatic reply','{"auto":true}')`,[f.org,f.opp,f.sub,f.thread,new Date(now.getTime()-5000).toISOString()]);
+  const params={orgId:f.org,opportunityId:f.opp,subcontractorId:f.sub,trade:"Electrical",to:"supplier@synthetic.test",threadId:f.thread,subject:"Synthetic old chase",html:"<p>Synthetic only</p>"};
+  expect(await runWithOrg(f.org,()=>replySendBlock(params,f.org))).toMatch(/already answered/i);
+  expect(await runWithOrg(f.org,()=>replySendBlock({...params,sendIntentId:old.id},f.org))).toMatch(/already answered|cancelled/i);
+  const provider=vi.fn(async()=>{throw Error("A cancelled chase must never dispatch");});
+  const retry=await runWithOrg(f.org,()=>sendScheduledEmail({...params,scheduled:{key,meta:{kind:"followup"}}},provider));
+  expect(retry.blocked).toBe(true);expect(provider).not.toHaveBeenCalled();
+  expect((await queryOne<{delivery_state:string}>("select delivery_state from communications where id=$1",[old.id]))!.delivery_state).toBe("held");
  });
 });

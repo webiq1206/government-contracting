@@ -16,7 +16,7 @@ export function scheduledRequestKey(key: string): string {
 }
 
 type Claim = { id: string; delivery_state: string; gmail_message_id: string | null;
-  gmail_thread_id: string | null; rfc822_message_id: string | null };
+  gmail_thread_id: string | null; rfc822_message_id: string | null;meta?:Record<string,unknown> };
 const review = "This scheduled message already has an unfinished or uncertain send. Review its communication and Gmail Sent; it will not be sent again automatically.";
 
 /** One durable communication per business intent. No expiring provider lease. */
@@ -50,6 +50,8 @@ export async function sendScheduledEmail(params: OutreachSendParams,
         JSON.stringify({...schedule.meta, scheduled_key: schedule.key, trade: params.trade ?? null})]);
     if (!claim) {
       const existing = await queryOne<Claim>(`select * from communications where org_id=$1 and request_key=$2`, [params.orgId,key]);
+      if(existing?.meta?.mailbox_reply_cancelled_by)return {provider:null,communicationId:existing.id,
+        blocked:true,retryable:false,outcome:"not_attempted",error:"Verified Gmail history already answered this conversation. This older scheduled message remains cancelled."};
       if (existing && ["sent","delivered","bounced","deferred"].includes(existing.delivery_state) && existing.gmail_message_id)
         return { provider: "gmail", outcome: "accepted", communicationId: existing.id, replayed: true,
           messageId: existing.gmail_message_id, threadId: existing.gmail_thread_id, rfc822MessageId: existing.rfc822_message_id };
@@ -61,7 +63,8 @@ export async function sendScheduledEmail(params: OutreachSendParams,
         tracking_id=$8,gmail_thread_id=$9
         where org_id=$1 and request_key=$2 and delivery_state in ('held','failed')
            and coalesce(meta->>'reconciled','') <> 'gmail_not_found'
-           and meta->>'reply_terminal' is null and meta->>'reply_contact_hold' is null returning *`,
+           and meta->>'reply_terminal' is null and meta->>'reply_contact_hold' is null
+           and meta->>'mailbox_reply_cancelled_by' is null returning *`,
         [params.orgId,key,owner,params.subject,params.text ?? params.html,params.to,
           JSON.stringify({...schedule.meta,scheduled_key:schedule.key,trade:params.trade ?? null}),
           params.trackingId ?? null,params.threadId ?? null]);

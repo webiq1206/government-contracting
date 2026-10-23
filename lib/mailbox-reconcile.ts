@@ -105,7 +105,8 @@ export async function importMailboxSent(orgId:string,generation:string,expectedS
     // Do not manufacture a second row beside a pending/uncertain intent.
     if(!existing.length) {
       const uncertain=(await tx.query(`select id from communications where org_id=$1 and direction='outbound'
-        and lower(recipient_email)=$2 and (delivery_state in ('queued','attempting','unknown')
+        and lower(recipient_email)=$2 and (delivery_state in ('attempting','unknown')
+          or (delivery_state='queued' and provider_attempted_at is not null)
           or (delivery_state='held' and meta->>'reconciled'='gmail_not_found')) limit 1`,[orgId,recipient])).rows;
       if(uncertain.length)return "held";
     }
@@ -126,8 +127,19 @@ export async function importMailboxSent(orgId:string,generation:string,expectedS
       await tx.query(`update communications set meta=coalesce(meta,'{}'::jsonb)||'{"mailbox_reply":true}'::jsonb
         where id=$1 and org_id=$2`,[id,orgId]);
       await tx.query(`update communications set follow_up_at=null where org_id=$1 and gmail_thread_id=$2
-        and opportunity_id=$3 and subcontractor_id=$4 and direction='outbound' and created_at<=$5::timestamptz`,
+        and opportunity_id=$3 and subcontractor_id=$4 and direction='outbound' and created_at<=$5::timestamptz
+        and coalesce(meta->>'kind','')<>'compliance-chase'`,
         [orgId,message.threadId,bound.opportunity_id,bound.subcontractor_id,at]);
+      // A queued, provably unattempted chase is not an uncertain provider
+      // receipt. Keep its text/evidence, but make its cancellation durable.
+      await tx.query(`update communications set delivery_state='held',follow_up_at=null,
+        meta=coalesce(meta,'{}'::jsonb)||jsonb_build_object('mailbox_reply_cancelled_by',$6::text)
+        where org_id=$1 and gmail_thread_id=$2 and opportunity_id=$3 and subcontractor_id=$4
+          and direction='outbound' and created_at<=$5::timestamptz and provider_attempted_at is null
+          and delivery_state in ('draft','queued','held','failed')
+          and coalesce(meta->>'reconciled','')<>'gmail_not_found'
+          and meta->>'kind' in ('outreach','followup','final_nudge','clarification','manual','decline_thank_you')`,
+        [orgId,message.threadId,bound.opportunity_id,bound.subcontractor_id,at,message.messageId]);
     }
     return existing.length ? "duplicate":"imported";
   });
