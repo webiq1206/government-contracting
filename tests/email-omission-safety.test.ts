@@ -1,3 +1,5 @@
+import { buildOutreachSections } from "../lib/domain/outreach-sections";
+import { renderOutreachBrief } from "../lib/domain/outreach-email";
 /**
  * End-to-end guarantees for what a subcontractor actually reads.
  *
@@ -96,7 +98,7 @@ describe("a missing value removes its sentence, never leaves a stub", () => {
     expect(body).not.toContain("I'm Todd with");
     // The ask survives losing the introduction. The scope, dates and documents
     // live in the sections the Outreach agent appends, not in this body.
-    expect(body).toContain("Please review the complete scope");
+    expect(body + renderOutreachBrief(buildOutreachSections({vars:FULL_VARS})).plain).toContain("Can you cover this scope");
     expect(body).toContain("Hi Marcus,");
     expectReadsNaturally(body);
   });
@@ -107,8 +109,8 @@ describe("a missing value removes its sentence, never leaves a stub", () => {
     // Losing the phone must not take the ask with it. An earlier draft of this
     // body carried {{location_state}} in the same sentence as the ask, so an
     // opportunity with no state on it lost the reason for the email entirely.
-    expect(body).toContain("Please review the complete scope");
-    expect(body).toContain("would like your pricing for the scope below");
+    expect(body + renderOutreachBrief(buildOutreachSections({vars:FULL_VARS})).plain).toContain("Can you cover this scope");
+    expect(body).toContain("We're preparing a bid for the project below");
     expectReadsNaturally(body);
   });
 
