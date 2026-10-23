@@ -81,7 +81,7 @@ d("observed Gmail replies become accurate, idempotent platform history",()=>{
   expect((await reconcileMailboxForOrg(f.org,now)).ok).toBe(false);expect(s.reads).not.toHaveBeenCalled();
   s.mailbox="owner@synthetic.test";s.aliasAllowed=false;expect((await reconcileMailboxForOrg(f.org,now)).ok).toBe(false);expect(s.reads).not.toHaveBeenCalled();
   s.aliasAllowed=true;s.pages=[{messages:[f.message]}];s.beforeFetch=async()=>{await query("update integration_tokens set connection_generation=$2 where org_id=$1",[f.org,randomUUID()]);};
-  expect((await reconcileMailboxForOrg(f.org,now)).ok).toBe(false);
+  await expect(reconcileMailboxForOrg(f.org,now)).rejects.toThrow(/connection changed/i);
   expect(await query("select id from communications where org_id=$1 and gmail_message_id=$2",[f.org,f.message.messageId])).toHaveLength(0);
  });
  it("checkpoints pagination and overlap only after receipts commit, and deduplicates replayed pages",async()=>{
