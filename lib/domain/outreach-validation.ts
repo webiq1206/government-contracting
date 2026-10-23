@@ -309,7 +309,7 @@ export function validateOutboundEmail(input: {
   }
 
   if (input.attachedNames.length === 0 &&
-      /\b(?:(?:the|these|our|an?) attached (?:pdf|document|file|plan|drawing|solicitation)|(?:see|review|find|check) (?:the )?attach(?:ed|ment)|(?:i|we)(?:'ve| have)? attached)\b/i.test(input.body)) {
+      /\b(?:attached (?:bid )?(?:pdfs?|documents?|files?|plans?|drawings?|solicitations?)|(?:see|review|find|check) (?:the )?attach(?:ed|ments?)|(?:i|we)(?:'ve| have)? attached)\b/i.test(input.body.replace(/\b(?:no|not|without) attached (?:bid )?(?:pdfs?|documents?|files?|plans?|drawings?|solicitations?)\b/gi,""))) {
     problems.push({kind:"false_attachment_claim",message:"The email claims files are attached, but none are attached. Update the introduction to refer to the checked document link."});
   }
   if (

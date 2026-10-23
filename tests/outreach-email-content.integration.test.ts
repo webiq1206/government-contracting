@@ -259,10 +259,11 @@ d("the assembled outreach email (integration)", () => {
       recipient_email: string;
       sender_email: string;
       attachments: string;
+      document_links: string;
     }>(
       `select gmail_thread_id, rfc822_message_id, recipient_email,
               meta->>'sender_email' as sender_email,
-              meta->>'attachments' as attachments
+              meta->>'attachments' as attachments, meta->>'document_links' as document_links
          from communications where opportunity_id=$1 and direction='outbound'`,
       [opp.id]
     );
@@ -271,7 +272,8 @@ d("the assembled outreach email (integration)", () => {
     expect(row?.recipient_email).toBe("marcus@rivera.invalid");
     expect(row?.sender_email).toBe("pat@prime.invalid");
     // The manifest, so a fallback into a new thread sends the same package.
-    expect(row?.attachments).toContain("Statement of Work.pdf");
+    expect(row?.attachments).toBe("[]");
+    expect(row?.document_links).toContain("https://example.invalid/d/synthetic-package");
   });
   it("holds a queued invitation with legacy prime qualifications before the mail provider", async () => {
     const held = await queryOne<{ id: string }>(
@@ -287,6 +289,7 @@ d("the assembled outreach email (integration)", () => {
     );
     await query(`insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state, verified)
       values ($1,$2,$3,'pending',true)`, [held!.id, sub.id, trade]);
+    await seedSyntheticFit(org.id,held!.id,sub.id,trade);
     const sentBefore = sendSpy.mock.calls.length;
     const result = await outreach.handler({ runId: randomUUID(), trigger: "queue",
       payload: { opportunityId: held!.id, subcontractorId: sub.id, trade } });

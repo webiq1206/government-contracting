@@ -3,8 +3,15 @@ import {buildOutreachSections} from "../lib/domain/outreach-sections";
 import {renderOutreachBrief} from "../lib/domain/outreach-email";
 import {classifyReplyNotice} from "../lib/domain/reply-notice";
 import {validateOutboundEmail} from "../lib/domain/outreach-validation";
+import {currentInitialOutreachBody,INITIAL_OUTREACH_BODY,LEGACY_INITIAL_OUTREACH_BODY} from "../lib/domain/initial-outreach-template";
 
 describe("concise initial invitation without invented facts",()=>{
+  it("adapts only the exact shipped legacy default, preserving every custom introduction",()=>{
+    expect(currentInitialOutreachBody(LEGACY_INITIAL_OUTREACH_BODY)).toBe(INITIAL_OUTREACH_BODY);
+    expect(INITIAL_OUTREACH_BODY).not.toContain("attached");
+    const custom=LEGACY_INITIAL_OUTREACH_BODY+"\nA custom project instruction.";
+    expect(currentInitialOutreachBody(custom)).toBe(custom);
+  });
   const vars={opportunity_title:"Synthetic alarm replacement",solicitation_number:"FIXTURE-2026",
     trade:"Alarm installation",location_city_state:"Synthetic Site, SD",quote_due_date:"Nov 1, 2026 at 3:00 PM MST",
     deadline:"Nov 5, 2026 at 3:00 PM MST",trade_scope_requirements:"- Replace 4 alarm panels.\n- Test the replaced panels.",
@@ -34,6 +41,7 @@ describe("concise initial invitation without invented facts",()=>{
     const input={subject:"Synthetic project",body:"Please review the attached PDF.",vars:{},missingRequired:[],
       attachedNames:[],linkNames:["Scoped documents"],documentsExpected:true,quoteDueAt:null,deadlineAt:null};
     expect(validateOutboundEmail(input)).toContainEqual(expect.objectContaining({kind:"false_attachment_claim"}));
+    expect(validateOutboundEmail({...input,body:"Review the complete scope, requirements, and attached bid documents."})).toContainEqual(expect.objectContaining({kind:"false_attachment_claim"}));
     expect(validateOutboundEmail({...input,body:"Review the project documents at the link. No PDF is attached."}).some(p=>p.kind==="false_attachment_claim")).toBe(false);
   });
 });

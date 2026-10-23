@@ -1,3 +1,4 @@
+import { currentInitialOutreachBody } from "./domain/initial-outreach-template";
 import { getProfileJson } from "./ai/companyProfile";
 import { gatherTradeAttachments } from "./opportunity-attachments";
 import { assessAttachmentPackage, describePackageProblems } from "./domain/attachment-package";
@@ -37,7 +38,7 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
       pricingScheduleRequired: resolved.requirements.subRequirements.some(r => /pricing schedule|quote format/i.test(r.text)) });
     const detail = renderOutreachBrief(sections);
     problems = validateOutboundEmail({ subject: renderTemplate(template.subject, vars),
-      body: scrubInternalFailureCopy(renderTemplate(template.body, vars)) + detail.plain,
+      body: scrubInternalFailureCopy(renderTemplate(currentInitialOutreachBody(template.body), vars)) + detail.plain,
       vars, missingRequired: resolved.missingRequired,
       attachedNames: attachments.map(f => f.filename), linkNames: gathered.links.map(l => l.name),
       documentsExpected: gathered.expected, quoteDueAt: resolved.quote.at, deadlineAt: opp.deadline,
@@ -50,7 +51,7 @@ export async function buildOutreachTest(orgId: string, template: { subject: stri
   const note = pair
     ? "Controlled delivery test: this is a copy of a real bid pricing request. It was sent only to the test recipient. No quote or commitment is requested."
     : "Controlled delivery test: the project information below is sample data, with no bid documents attached. No quote or commitment is requested.";
-  const testBody = pair ? template.body : sampleOutreachCopy(template.body);
+  const testBody = pair ? currentInitialOutreachBody(template.body) : sampleOutreachCopy(currentInitialOutreachBody(template.body));
   const plain = `${note}\n\n${scrubInternalFailureCopy(renderTemplate(testBody, vars))}`;
   const details = renderOutreachBrief(sections);
   return { subject: `[TEST] ${renderTemplate(template.subject, vars)}`,

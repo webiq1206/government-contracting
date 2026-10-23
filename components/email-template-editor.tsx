@@ -1,5 +1,7 @@
 "use client";
 
+import { currentInitialOutreachBody } from "@/lib/domain/initial-outreach-template";
+
 import { storedTimestamp } from "@/lib/domain/stored-timestamp";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
@@ -911,7 +913,7 @@ export function EmailTemplateEditor({
   const previewSubject = renderTemplate(subject || "(no subject)", previewVars);
   const previewDetails = renderOutreachBrief(previewSections);
   const previewBodyHtml =
-    plainToHtml(renderTemplate(body, previewVars)) + previewDetails.html;
+    plainToHtml(renderTemplate(template.slug === "template_1_outreach" ? currentInitialOutreachBody(body) : body, previewVars)) + previewDetails.html;
 
   return (
     <div className="card space-y-5">
@@ -919,6 +921,7 @@ export function EmailTemplateEditor({
         when={dirty}
         message="This email template has unsaved changes. Leave without saving?"
       />
+      {template.slug === "template_1_outreach" && currentInitialOutreachBody(body) !== body && <p role="status" className="text-sm text-muted-foreground">This saved legacy default uses the shorter standard invitation shown in the preview. Custom edits are kept and checked before sending.</p>}
       {/* Header */}
       <div className="border-b border-border pb-4">
         <p className="font-medium text-foreground">{humanSlug(template.slug)}</p>

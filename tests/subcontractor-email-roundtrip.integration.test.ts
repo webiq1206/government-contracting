@@ -141,7 +141,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
     return op!.id;
   }
 
-  async function makeSub(orgId: string, oppId: string, company: string, email: string) {
+  async function makeSub(orgId: string, oppId: string, company: string, email: string, reviewFit=true) {
     const s = await queryOne<{ id: string }>(
       `insert into subcontractors (org_id, company_name, trade_categories, state, email, email_verified, owner_name)
        values ($1,$2,$3,'VA',$4,true,'Marcus Rivera') returning id`,
@@ -152,7 +152,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
        values ($1,$2,$3,'pending',true)`,
       [oppId, s!.id, trade]
     );
-    await seedSyntheticFit(orgId,oppId,s!.id,trade);
+    if(reviewFit) await seedSyntheticFit(orgId,oppId,s!.id,trade);
     return s!.id;
   }
 
@@ -432,7 +432,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
        values ($1,'test','','sub_research','open','VA', now() + interval '30 days') returning id`,
       [orgA.id]
     );
-    const thinSub = await makeSub(orgA.id, thinOpp!.id, "Thin Co", "thin@thin.invalid");
+    const thinSub = await makeSub(orgA.id, thinOpp!.id, "Thin Co", "thin@thin.invalid",false);
     sent.length = 0;
     const res = await outreach.handler({
       runId: randomUUID(),

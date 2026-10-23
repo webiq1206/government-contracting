@@ -1,3 +1,4 @@
+import { currentInitialOutreachBody } from "../domain/initial-outreach-template";
 /**
  * OUTREACH, triggered when a sub clears verification.
  * Renders the active outreach template (Template 1) with the opportunity, sub,
@@ -653,7 +654,7 @@ export const outreach: AgentDefinition = {
     // Every value was scrubbed on its way into `vars` above. The assembled
     // email is never scrubbed again, for the reason given there.
     const subject = renderTemplate(tmpl.subject ?? "Partnership opportunity", vars);
-    const plainBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
+    const plainBody = scrubInternalFailureCopy(renderTemplate(currentInitialOutreachBody(tmpl.body), vars));
 
     await logAgent({
       agent: "outreach",

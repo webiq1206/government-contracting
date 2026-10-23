@@ -194,6 +194,7 @@ d("outreach idempotency (integration)", () => {
       `insert into subcontractors (org_id, company_name, trade_categories, state, email, email_verified, owner_name)
        values ($1,'Elec Two',$2,'CA','elec2@x.invalid',true,'Sam') returning id`, [o2!.id, [trade]]);
     await query(`insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state, verified) values ($1,$2,$3,'send_failed',true)`, [op2!.id, s2!.id, trade]);
+    await seedSyntheticFit(o2!.id,op2!.id,s2!.id,trade);
     // The failed send left a communications row with provider = null.
     await query(
       `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, provider, meta)

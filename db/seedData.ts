@@ -1,3 +1,4 @@
+import { INITIAL_OUTREACH_BODY } from "../lib/domain/initial-outreach-template";
 /**
  * Seed data for a fresh BROSTCO install, transcribed from the official
  * "BROSTCO, Company Profile" persistent-memory document (v1.2). This is the
@@ -167,7 +168,7 @@ export const DEFAULT_TEMPLATES: SeedTemplate[] = [
     slug: "template_1_outreach",
     subject: "Pricing request: {{trade}} | {{location_city_state}}",
     description:
-      "Template 1, initial subcontractor outreach. The project, scope, requirements, questions, quote checklist and document list are appended automatically beneath this body.",
+      "Template 1, initial subcontractor outreach. The project, scoped requirements, checked document link and one coverage question are appended beneath this short introduction.",
     // Intentionally short. Everything factual, the project, the scope, the
     // dates, what to send back and the document list, is appended by the
     // Outreach agent as structured sections. Repeating any of it here is how
@@ -177,20 +178,7 @@ export const DEFAULT_TEMPLATES: SeedTemplate[] = [
     // Note {{quote_due_date}}, not {{deadline}}: the second is when OUR bid is
     // due to the agency, and giving it to a subcontractor as their own date is
     // how a quote arrives with no time left to price the job around it.
-    body: [
-      "Hi {{owner_name}},",
-      "",
-      "I'm {{sender_name}} with {{company_name}}. We're preparing a bid for {{trade}} work in {{location_city_state}} and would like your pricing for the scope below.",
-      "",
-      "Please review the complete scope, requirements, and attached bid documents. If your team can perform the complete trade scope, reply by {{quote_due_date}} with your price, availability, payment terms, and exclusions.",
-      "",
-      'If you can perform only part of the scope, please explain exactly what you can and cannot provide. If you\'re not interested, a quick "pass" is helpful. If someone else handles estimates, please point me in the right direction.',
-      "",
-      "Thanks,",
-      "{{sender_name}}",
-      "{{company_name}}",
-      "{{phone}}",
-    ].join("\n"),
+    body: INITIAL_OUTREACH_BODY,
   },
   {
     slug: "template_2_followup",
