@@ -62,7 +62,7 @@ export interface AutomationState {
 }
 
 export const AUTOMATION_PAUSED_ERROR =
-  "Automation is fully paused. Nothing will run, send, or enqueue until you resume the master switch.";
+  "Automation is paused. Sending and pipeline work will not run until resumed.";
 
 const AUTOMATION_KEY = "automation";
 const AUTOMATION_DEFAULT: AutomationState = { paused: false, changed_at: null, changed_by: null };

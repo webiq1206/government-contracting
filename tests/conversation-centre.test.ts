@@ -502,3 +502,21 @@ describe("preview", () => {
     expect(out.endsWith("…")).toBe(true);
   });
 });
+
+describe("substantive review after an acknowledgment",()=>{
+  it("keeps a bid or commercial review visible after a sent reply and a resolved flag",()=>{
+    const t=thread({pendingReviewCount:1,resolvedAt:at(0),messages:[
+      msg({id:"terms",direction:"inbound",created_at:at(-2)}),
+      msg({id:"ack",direction:"outbound",created_at:at(-1),delivery_state:"sent"}),
+    ]});
+    const result=summarize(t,NOW);expect(result.state).toBe("needs_review");
+    expect(matchesFilter(result,"needs_review")).toBe(true);
+  });
+  it("returns to normal conversation meaning only after the review is actually completed",()=>{
+    const t=thread({pendingReviewCount:0,resolvedAt:at(0),messages:[
+      msg({id:"terms",direction:"inbound",created_at:at(-2)}),
+      msg({id:"ack",direction:"outbound",created_at:at(-1),delivery_state:"sent"}),
+    ]});
+    expect(summarize(t,NOW).state).toBe("resolved");
+  });
+});

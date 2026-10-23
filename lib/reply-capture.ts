@@ -461,7 +461,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // re-scans a sliding window. If this provider message id was already
   // captured, skip all side effects (the unique index from migration 022
   // also guards the insert against races).
-  type SavedCapture = { id: string; subcontractor_id: string | null; meta?: {capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} };
+  type SavedCapture = { id: string; subcontractor_id: string | null; meta?: {unreadable_body?:boolean;mailbox_source_at?:string;capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} };
   let resume: SavedCapture | null = null;
   if (input.messageId) {
     const existing = await queryOne<SavedCapture>(
@@ -515,7 +515,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       input.rfc822MessageId ?? null,
       input.fromAddress ?? fromEmail,
       orgId,
-      JSON.stringify({ capture_version: 1, reply_processing_complete: false,
+      JSON.stringify({ capture_version: 1, reply_processing_complete: false,mailbox_source_at:input.mailboxReceivedAt ?? null,
         capture_stage: "received", envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
         cc: input.ccAddresses ?? null, sentAt: input.sentAt ?? null, subject: input.subject ?? null,
         attachments: input.attachmentNames ?? [], autoSubmitted: input.autoSubmitted ?? null} }),
@@ -550,7 +550,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames,requestedTrade:osRow?.trade});
   const noticeSenderVerified = senderMatchesSub(fromEmail, comm.sub_email);
   if (!["human", "decline"].includes(notice.kind)) {
-    const trusted = strongMatch && noticeSenderVerified;
+    const trusted = strongMatch && noticeSenderVerified && !resume?.meta?.unreadable_body;
     const hold = trusted && ["departed", "opt_out"].includes(notice.kind);
     const extracted: ExtractedReply = {...emptyExtracted(), method:"deterministic",
       deterministicKind:notice.kind, notes:notice.reason, confidence:1};
@@ -584,7 +584,9 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       quoteSaved:false,quoteSkippedExisting:false,senderVerified:noticeSenderVerified,trade:osRow?.trade ?? null,
       duplicate:false,declined:hold && notice.kind === "opt_out",thankYouSent:false,noticeKind:notice.kind,contactHeld:hold};
   }
-  const extractOnce = () => notice.kind === "decline"
+  const extractOnce = () => resume?.meta?.unreadable_body
+    ? Promise.resolve<ExtractedReply>({...emptyExtracted(),notes:"Only a mailbox snippet was readable; review the original message before applying an outcome."})
+    : notice.kind === "decline"
     ? Promise.resolve<ExtractedReply>({...emptyExtracted(),intent:"decline",canPerform:false,
         notes:notice.reason,confidence:1,method:"deterministic",deterministicKind:"decline"})
     : extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
@@ -716,7 +718,16 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       : reason,
   });
   let decision = readingDecision;
-  if (!linkedPair) {
+  const sourceAt=input.mailboxReceivedAt ?? resume?.meta?.mailbox_source_at;
+  const laterReply=sourceAt && Number.isFinite(Date.parse(sourceAt)) && input.threadId
+    ? await queryOne<{id:string}>(`select id from communications where org_id=$1 and gmail_thread_id=$2
+        and direction='inbound' and id<>$3 and created_at>$4::timestamptz
+        and coalesce(meta->>'auto','false')<>'true' limit 1`,[orgId,input.threadId,inbound.id,sourceAt]):null;
+  if(resume?.meta?.unreadable_body) {
+    decision=holdForReview("The original message body could not be read. A provider snippet cannot establish a supplier decision.");
+  } else if(laterReply) {
+    decision=holdForReview("A newer supplier reply is already recorded in this conversation. Review this delayed message in context before applying an older outcome.");
+  } else if (!linkedPair) {
     decision = holdForReview(
       pairTrades.length > 1
         ? "This subcontractor covers multiple trades here. Confirm which trade this reply answers before applying it."

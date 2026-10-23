@@ -20,9 +20,13 @@ describe("read-only Gmail receipt surfaces",()=>{
  });
  it("fetches only one bounded selected-alias Sent page and preserves actual provider labels/dates/body",async()=>{
   const page=await gmail.fetchSentMailbox(123,org,"quotes@example.test");
-  expect(s.list).toHaveBeenCalledWith(expect.objectContaining({q:"in:sent -in:trash from:quotes@example.test after:123",maxResults:25}));
+  expect(s.list).toHaveBeenCalledWith(expect.objectContaining({q:'in:sent -in:trash from:"quotes@example.test" after:123',maxResults:25}));
   expect(page.messages[0]).toMatchObject({messageId:"a",labels:["SENT"],internalDate:"1792713600000",body:"Synthetic reply only."});
   expect(page.nextPageToken).toBe("provider-next");
+ });
+ it("includes every verified alias in the same bounded Sent query",async()=>{
+  await gmail.fetchSentMailbox(123,org,["quotes@example.test","owner@example.test"]);
+  expect(s.list).toHaveBeenCalledWith(expect.objectContaining({q:'in:sent -in:trash {from:"quotes@example.test" from:"owner@example.test"} after:123',maxResults:25}));
  });
  it("resumes a partially read page without losing its unprocessed message or relisting",async()=>{
   s.quota=20;const first=await gmail.fetchSentMailbox(123,org,"quotes@example.test");
