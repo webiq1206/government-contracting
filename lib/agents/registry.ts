@@ -49,6 +49,7 @@ import { serviceSync } from "./service-sync";
 import { noticeDescriptionSweep } from "./notice-description-sweep";
 import { providerRecoveryProbe } from "./provider-recovery-probe";
 import { pursuitContinuationSweep } from "./pursuit-continuation-sweep";
+import {mailboxSync} from "./mailbox-sync";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -75,6 +76,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   outreachRecoverySweep,
   reviewExpirySweep,
   replyPoll,
+  mailboxSync,
   stalledPipelineSweep,
   deadlineMonitor,
   scoringRecoverySweep,
@@ -123,6 +125,7 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     // another job. The sweep itself refuses work it already finished.
     { agent: pursuitContinuationSweep, cron: "*/10 * * * *" },
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
+    { agent: mailboxSync, cron: "*/15 * * * *" }, // observe only, including while account sending is paused
     { agent: stalledPipelineSweep, cron: "0 */2 * * *" }, // every 2h (matches the tightest STALL_HOURS window)
     { agent: deadlineMonitor, cron: "0 */6 * * *" }, // every 6 hours
     { agent: scoringRecoverySweep, cron: "*/15 * * * *" }, // every 15 min

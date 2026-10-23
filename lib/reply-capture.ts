@@ -63,6 +63,10 @@ export interface MatchedComm {
 }
 
 export interface CaptureReplyInput {
+  /** Provider-attested Gmail internal date, used only by the receipt monitor. */
+  mailboxReceivedAt?: string;
+  /** Monitoring while sending is paused must never generate an acknowledgment. */
+  acknowledgeDecline?: boolean;
   /** Poller acknowledges its downstream effects separately before moving the cursor. */
   deferProcessingComplete?: boolean;
   /** The organization that owns the conversation this reply belongs to. */
@@ -490,8 +494,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
 
   // Durable envelope first: interpretation/provider failure must not lose the incoming message.
   const inbound = resume ?? await queryOne<{ id: string }>(
-    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
-     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
+    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta,created_at)
+     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb,coalesce($11::timestamptz,now()))
      on conflict (org_id, gmail_message_id)
        where direction = 'inbound' and gmail_message_id is not null and org_id is not null
      do nothing
@@ -515,6 +519,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
         capture_stage: "received", envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
         cc: input.ccAddresses ?? null, sentAt: input.sentAt ?? null, subject: input.subject ?? null,
         attachments: input.attachmentNames ?? [], autoSubmitted: input.autoSubmitted ?? null} }),
+      input.mailboxReceivedAt ?? null,
     ]
   );
   if (!inbound) throw new Error("Reply capture is already in progress; retry this mailbox page after it completes.");
@@ -804,7 +809,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       trade: osRow?.trade ?? null,
       source: "email_reply",
       capabilityNotes: capabilityNotes || null,
-      sendThankYou: notice.kind === "decline" && Boolean(input.messageId && input.rfc822MessageId && input.threadId),
+      sendThankYou: input.acknowledgeDecline !== false && notice.kind === "decline" && Boolean(input.messageId && input.rfc822MessageId && input.threadId),
       inboundMessageId: input.messageId ?? null,
       recipientEmail: fromEmail,
       threadId: input.rfc822MessageId ? input.threadId ?? null : null,

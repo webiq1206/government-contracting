@@ -66,6 +66,13 @@ export async function replySendBlock(params: OutreachSendParams, orgId: string,
   }
   const unresolved = await incomingReplyReviewBlock(orgId,params.opportunityId,params.subcontractorId,params.trade);
   if(unresolved)return unresolved;
+  const answered=await queryOne<{id:string}>(`select c.id from communications c
+    where c.org_id=$1 and c.opportunity_id=$2 and c.subcontractor_id=$3 and c.direction='outbound'
+      and c.meta->>'mailbox_reply'='true' and coalesce(c.meta->>'trade','')=coalesce($4::text,'')
+      and c.created_at>=coalesce((select max(i.created_at) from communications i where i.org_id=c.org_id
+        and i.gmail_thread_id=c.gmail_thread_id and i.direction='inbound'),'-infinity'::timestamptz)
+    limit 1`,[orgId,params.opportunityId,params.subcontractorId,params.trade ?? null]);
+  if(answered)return "A verified Gmail message already answered this conversation. Its older automatic follow-ups are cancelled; review newer messages before another chase.";
   return fitSendBlock(pair.verification_json,fitContext(pair,params.subcontractorId,params.trade));
 }
 

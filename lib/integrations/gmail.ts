@@ -191,7 +191,7 @@ async function resolveOrg(orgId?: string): Promise<string | null> {
   return orgId ?? (await tryResolveTenantOrgId());
 }
 
-async function getRefreshGrant(orgId: string): Promise<{refresh: string; generation: string | null; mailboxEmail: string | null} | null> {
+async function getRefreshGrant(orgId: string, storedOnly = false): Promise<{refresh: string; generation: string | null; mailboxEmail: string | null} | null> {
   const row = await queryOne<{ data: { refresh_token?: string }; connection_generation?: string; email?: string | null }>(
     `select data, connection_generation, email from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
@@ -200,7 +200,7 @@ async function getRefreshGrant(orgId: string): Promise<{refresh: string; generat
   if (stored) return {refresh:stored,generation:row?.connection_generation ?? null,mailboxEmail:row?.email ?? null};
   // Headless escape hatch, founding tenant only. Handing this env token to any
   // other org would let them send from the platform's own mailbox.
-  if (orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
+  if (!storedOnly && orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
     return {refresh:config.gmail.refreshToken,generation:null,mailboxEmail:null};
   }
   return null;
@@ -282,11 +282,11 @@ export interface MailboxSendEvidence { mailboxEmail: string | null; connectionGe
 const clientIdentities = new WeakMap<object,MailboxSendEvidence>();
 
 /** Authorized Gmail client for one organization, or null if not connected. */
-async function gmailClient(orgId?: string) {
+async function gmailClient(orgId?: string, storedOnly = false) {
   if (!config.gmail.configured) return null;
   const org = await resolveOrg(orgId);
   if (!org) return null;
-  const grant = await getRefreshGrant(org);
+  const grant = await getRefreshGrant(org,storedOnly);
   if (!grant) return null;
   const client = oauthClient();
   client.setCredentials({ refresh_token: grant.refresh });
@@ -541,6 +541,24 @@ export interface GmailInboundMessage {
   attachments: GmailAttachmentRef[];
 }
 
+/** Observed mailbox evidence; SENT establishes acceptance, never delivery/read. */
+export interface GmailMailboxMessage extends GmailInboundMessage {
+  internalDate: string | null;
+  labels: string[];
+}
+
+function mailboxMessage(msg: {id?:string|null;threadId?:string|null;internalDate?:string|null;
+  labelIds?:string[]|null;snippet?:string|null;payload?:GmailPart|null}):GmailMailboxMessage {
+  const header=(name:string)=>inboundText(msg.payload?.headers?.find(h=>h.name?.toLowerCase()===name)?.value ?? "");
+  return {messageId:msg.id ?? "",threadId:msg.threadId ?? "",internalDate:msg.internalDate ?? null,
+    labels:msg.labelIds ?? [],from:header("from"),to:header("to"),cc:header("cc"),date:header("date"),
+    subject:header("subject"),contentType:header("content-type"),autoSubmitted:header("auto-submitted") || null,
+    rfc822MessageId:header("message-id") || null,inReplyTo:header("in-reply-to") || null,
+    references:header("references").split(/\s+/).filter(Boolean),snippet:inboundText(msg.snippet ?? ""),
+    body:extractBodyText(msg.payload) || inboundText(msg.snippet ?? ""),
+    deliveryReport:extractDeliveryReportText(msg.payload),attachments:collectAttachments(msg.payload)};
+}
+
 /** An attachment reference found on a message, before its bytes are fetched. */
 export interface GmailAttachmentRef {
   filename: string;
@@ -642,6 +660,63 @@ function stripHtml(html: string): string {
 export const gmail = {
   configured: () => config.gmail.configured,
 
+  /** Read-only identity attestation through the existing grant. No alternate grant/fallback. */
+  async mailboxIdentity(orgId:string):Promise<{ok:true;email:string}|{ok:false;error:string}> {
+    const client=await gmailClient(orgId,true);
+    if(!client)return {ok:false,error:"No mailbox is connected."};
+    try {
+      await reserveGmailQuota(orgId,1);
+      const profile=await client.users.getProfile({userId:"me"});
+      const email=singleMailbox(profile.data.emailAddress ?? "");
+      return email?{ok:true,email}:{ok:false,error:"Google did not identify the connected mailbox."};
+    }catch{return {ok:false,error:"The existing mailbox identity could not be read. No history was imported."};}
+  },
+
+  /** One bounded Sent page. A failed/partial read never silently advances its cursor. */
+  async fetchSentMailbox(since:number,orgId:string,sender:string,pageToken?:string|null):Promise<{
+    messages:GmailMailboxMessage[];nextPageToken?:string;error?:string;
+  }> {
+    const client=await gmailClient(orgId,true);
+    if(!client)return {messages:[],error:"No mailbox is connected."};
+    const address=singleMailbox(sender);
+    if(!address)return {messages:[],error:"The sending identity is invalid."};
+    try {
+      const remainder=decodeGmailRemainder(pageToken ?? undefined);
+      let ids:string[],next:string|undefined;
+      if(remainder){ids=remainder.ids;next=remainder.next;}
+      else {
+        await reserveGmailQuota(orgId,5);
+        const list=await client.users.messages.list({userId:"me",q:`in:sent -in:trash from:${address} after:${Math.max(1,Math.floor(since))}`,
+          maxResults:25,...(pageToken?{pageToken}:{})});
+        ids=(list.data.messages ?? []).flatMap(m=>m.id?[m.id]:[]);next=list.data.nextPageToken ?? undefined;
+      }
+      const messages:GmailMailboxMessage[]=[];
+      const count=ids.length ? (await reserveGmailQuota(orgId,ids.length*20,20))/20 : 0;
+      for(let i=0;i<count;i++) {
+        try {messages.push(mailboxMessage((await client.users.messages.get({userId:"me",id:ids[i],format:"full"})).data));}
+        catch(e) {
+          if((e as {code?:number}).code===404)continue;
+          return {messages,error:"A Sent message could not be read; the scan was not completed.",nextPageToken:encodeGmailRemainder({ids:ids.slice(i),next})};
+        }
+      }
+      if(count<ids.length)next=encodeGmailRemainder({ids:ids.slice(count),next});
+      return {messages,...(next?{nextPageToken:next}:{})};
+    }catch{return {messages:[],error:"Sent history could not be read through the existing connection or allowance. Its cursor was preserved."};}
+  },
+
+  /** Full messages only from an already-owned thread; no attachments are downloaded. */
+  async readMailboxThread(threadId:string,orgId:string):Promise<{messages:GmailMailboxMessage[];error?:string}> {
+    const client=await gmailClient(orgId,true);
+    if(!client)return {messages:[],error:"No mailbox is connected."};
+    try {
+      await reserveGmailQuota(orgId,20);
+      const thread=await client.users.threads.get({userId:"me",id:threadId,format:"full"});
+      const messages=thread.data.messages ?? [];
+      if(messages.length>500)return {messages:[],error:"This thread exceeds the bounded history read. Review it explicitly; no messages were silently omitted."};
+      return {messages:messages.map(mailboxMessage)};
+    }catch{return {messages:[],error:"The existing mailbox thread could not be read. No alternate connection was used."};}
+  },
+
   async isConnected(orgId?: string): Promise<boolean> {
     return (await gmailClient(orgId)) != null;
   },
@@ -731,7 +806,7 @@ export const gmail = {
    */
   async sendAsAddresses(
     orgId?: string,
-    opts?: { refresh?: boolean }
+    opts?: { refresh?: boolean; storedOnly?: boolean }
   ): Promise<GmailSendAsList> {
     const org = await resolveOrg(orgId);
     if (!org) return { ok: false, error: "No organization in context." };
@@ -739,7 +814,7 @@ export const gmail = {
     const cached = sendAsCache.get(org);
     if (cached && Date.now() - cached.at < SEND_AS_TTL_MS) return cached.list;
 
-    const client = await gmailClient(org);
+    const client = await gmailClient(org,opts?.storedOnly);
     if (!client) {
       return { ok: false, error: "No inbox is connected, so there is nothing to send as yet." };
     }

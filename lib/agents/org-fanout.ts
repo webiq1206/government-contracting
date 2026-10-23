@@ -25,6 +25,7 @@ import { listActiveOrganizations, type Organization } from "../organizations";
 import { currentOrgId, LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { isAutomationPaused } from "../app-settings";
 import { logAgent } from "../logger";
+import {monitorsWhileAccountPaused} from "./mailbox-policy";
 
 export interface OrgFanout {
   /** The accounts to iterate. Empty only when the lookup failed. */
@@ -55,7 +56,7 @@ export async function orgsToSweep(agent: string): Promise<OrgFanout> {
   // in one account must never trigger work for every other customer.
   const scopedOrg = currentOrgId();
   if (scopedOrg) {
-    const paused = await isAutomationPaused();
+    const paused = !monitorsWhileAccountPaused(agent) && await isAutomationPaused();
     return {
       orgs: paused ? [] : ([{ id: scopedOrg }] as Organization[]),
       error: null,
@@ -96,7 +97,7 @@ export async function orgsToSweep(agent: string): Promise<OrgFanout> {
   const runnable: Organization[] = [];
   let pausedCount = 0;
   for (const org of orgs) {
-    const paused = await runWithOrg(org.id, () => isAutomationPaused());
+    const paused = !monitorsWhileAccountPaused(agent) && await runWithOrg(org.id, () => isAutomationPaused());
     if (paused) pausedCount++;
     else runnable.push(org);
   }
