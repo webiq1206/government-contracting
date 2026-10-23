@@ -63,8 +63,8 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [{ filename: "Statement of Work.pdf", mime: "application/pdf", content: PDF }],
-    links: [],
+    files: [],
+    links: [{name:"Scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
     expected: true,
     undelivered: [],
     omitted: [],
@@ -209,11 +209,11 @@ d("the subcontractor email workflow, end to end (integration)", () => {
     expect(sent).toHaveLength(4);
     for (const msg of sent) {
       expect(msg.html).toMatch(/rooftop units/i);
-      expect(msg.html).toMatch(/Your quote is due:/);
+      expect(msg.html).toMatch(/Quote requested by/);
       // The document rides as an attachment; the body says to review it
       // rather than inventorying filenames the mail client already shows.
-      expect(msg.attachments?.[0]?.filename).toBe("Statement of Work.pdf");
-      expect(msg.html).toMatch(/review it before preparing your quote/i);
+      expect(msg.attachments).toEqual([]);
+      expect(msg.html).toMatch(/Review the project documents/i);
       expect(msg.html).not.toMatch(/Statement of Work\.pdf/);
       expect(msg.html).not.toMatch(/\{\{/);
     }

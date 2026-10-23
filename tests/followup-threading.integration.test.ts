@@ -42,14 +42,8 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [
-      {
-        filename: "Statement of Work.pdf",
-        mime: "application/pdf",
-        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
-      },
-    ],
-    links: [],
+    files: [],
+    links: [{name:"Scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
     expected: true,
     undelivered: [],
     omitted: [],
@@ -232,7 +226,7 @@ d("the 48-hour follow-up (integration)", () => {
       expect(call.html as string).toMatch(/rooftop units/i);
       expect(call.html as string).toMatch(/mechanical contractor license/i);
       expect(call.html as string).toMatch(/Next step/i);
-      expect((call.attachments as unknown[]) ?? []).toHaveLength(1);
+      expect((call.attachments as unknown[]) ?? []).toHaveLength(0);
     });
 
     it("records why the thread could not be used", async () => {
@@ -268,7 +262,7 @@ d("the 48-hour follow-up (integration)", () => {
 
     it("sends the complete fallback and says why", async () => {
       expect(call.html as string).toMatch(/rooftop units/i);
-      expect((call.attachments as unknown[]) ?? []).toHaveLength(1);
+      expect((call.attachments as unknown[]) ?? []).toHaveLength(0);
       const log = await queryOne<{ message: string }>(
         `select message from agent_logs
           where org_id=$1 and action='new-thread' order by created_at desc limit 1`,
