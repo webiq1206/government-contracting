@@ -1,3 +1,4 @@
+import {decodeDocToken} from "../lib/domain/doc-link";
 /**
  * The packet one subcontractor actually receives: selected for their trade,
  * renamed for a human, everything left out accounted for.
@@ -80,7 +81,9 @@ d("gatherTradeAttachments (integration)", () => {
       "HVAC"
     );
 
-    const names = gathered.files.map((f) => f.filename).sort();
+    expect(gathered.files).toEqual([]);
+    const token=gathered.links[0].url.split("/d/")[1];
+    const names=decodeDocToken(token)!.d!.map(d=>d.n).sort();
     expect(names).toEqual(
       [
         "Amendment 1.pdf",
@@ -90,9 +93,9 @@ d("gatherTradeAttachments (integration)", () => {
       ].sort()
     );
     // Nothing the recipient sees looks system-generated.
-    for (const f of gathered.files) {
-      expect(f.filename).not.toMatch(/attachment_|_-_|__/i);
-      expect(f.mime).toBe("application/pdf");
+    for (const name of names) {
+      expect(name).not.toMatch(/attachment_|_-_|__/i);
+      expect(name).toMatch(/\.pdf$/i);
     }
 
     // Both omissions are on the record, each with a reason.
@@ -111,7 +114,9 @@ d("gatherTradeAttachments (integration)", () => {
       { id: opp.id, title: opp.title, solicitation_number: opp.solicitation_number },
       "Electrical"
     );
-    const names = gathered.files.map((f) => f.filename);
+    expect(gathered.files).toEqual([]);
+    const token=gathered.links[0].url.split("/d/")[1];
+    const names=decodeDocToken(token)!.d!.map(d=>d.n);
     expect(names).toContain("Electrical One-Line Drawings.pdf");
     expect(names).not.toContain("HVAC Equipment Schedule.pdf");
     expect(gathered.omitted.map((o) => o.name)).toContain("HVAC_Equipment_Schedule.pdf");

@@ -22,3 +22,8 @@ it("skips a queued pricing call while the captured prior submission or unclear r
  expect(mocks.query.mock.calls[0][1]).toEqual(["synthetic-org","synthetic-opportunity","synthetic-supplier"]);
  expect(mocks.query.mock.calls.map(([sql])=>sql).join("\n")).not.toContain("insert into call_cards");
 });
+it("holds a cold outreach call without service-area and trade evidence",async()=>{
+ const r=await callPrep.handler({runId:"synthetic",trigger:"queue",payload:{orgId:"synthetic-org",opportunityId:"synthetic-opportunity",subcontractorId:"synthetic-supplier",source:"outreach"}});
+ expect(r).toMatchObject({ok:true,humanActionRequired:true,summary:expect.stringContaining("No outreach call prepared")});
+ expect(mocks.ai).not.toHaveBeenCalled();expect(mocks.query).not.toHaveBeenCalled();
+});

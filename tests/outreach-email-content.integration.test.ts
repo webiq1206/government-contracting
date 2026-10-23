@@ -1,3 +1,4 @@
+import {seedSyntheticFit} from "./helpers/subcontractor-fit";
 /**
  * What a subcontractor actually receives.
  *
@@ -41,16 +42,8 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    // Real PDF magic bytes: the package assessment checks that a file
-    // contains what its type claims, and "x" is not a PDF.
-    files: [
-      {
-        filename: "Statement of Work.pdf",
-        mime: "application/pdf",
-        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
-      },
-    ],
-    links: [],
+    files: [],
+    links: [{name:"Synthetic scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}],
     expected: true,
     undelivered: [],
     omitted: [],
@@ -157,6 +150,7 @@ d("the assembled outreach email (integration)", () => {
       [opp.id, sub.id, trade]
     );
 
+    await seedSyntheticFit(org.id,opp.id,sub.id,trade);
     const res = await outreach.handler({
       runId: randomUUID(),
       trigger: "queue",
@@ -217,8 +211,8 @@ d("the assembled outreach email (integration)", () => {
     expect(new Date(comm!.quote_due_at).getTime()).toBeLessThan(
       new Date(deadline!.deadline).getTime()
     );
-    expect(body).toMatch(/Your quote is due:/);
-    expect(body).toMatch(/Our bid to the agency is due:/);
+    expect(body).toMatch(/Quote requested by/);
+    expect(body).toMatch(/agency bid due/);
   });
 
   it("names the timezone, because 3:00 PM in two states is two times", () => {
@@ -237,18 +231,19 @@ d("the assembled outreach email (integration)", () => {
     expect(body).toMatch(/valid for 60 days/i);
   });
 
-  it("asks the questions the analyst wrote", () => {
-    expect(body).toMatch(/7:00 AM to 3:30 PM/);
+  it("keeps optional analyst questions out of an initial invitation", () => {
+    expect(body).not.toMatch(/7:00 AM to 3:30 PM/);
+    expect(body.match(/\?/g)).toHaveLength(1);
   });
 
   it("says what to send back", () => {
-    expect(body).toMatch(/What to include with your quote/i);
-    expect(body).toMatch(/firm or an estimate/i);
+    expect(body).toMatch(/Can you cover this scope/);
+    expect(body).not.toMatch(/What to include with your quote/i);
   });
 
-  it("tells them to review the attached document instead of inventorying it", () => {
-    expect(body).toMatch(/attached document has the details you need/i);
-    expect(body).toMatch(/review it before preparing your quote/i);
+  it("offers a checked document link without solicitation PDF attachments", () => {
+    expect(body).toMatch(/Review the project documents/);
+    expect((sendSpy.mock.calls as unknown as [{attachments:unknown[]}[]])[0]?.[0]?.attachments).toEqual([]);
     expect(body).not.toMatch(/Statement of Work\.pdf \(attached\)/);
   });
 

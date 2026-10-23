@@ -231,7 +231,7 @@ d("the 48-hour follow-up (integration)", () => {
       expect(call.subject as string).toMatch(/Follow-up/i);
       expect(call.html as string).toMatch(/rooftop units/i);
       expect(call.html as string).toMatch(/mechanical contractor license/i);
-      expect(call.html as string).toMatch(/What to include with your quote/i);
+      expect(call.html as string).toMatch(/Next step/i);
       expect((call.attachments as unknown[]) ?? []).toHaveLength(1);
     });
 

@@ -1,3 +1,4 @@
+import {seedSyntheticFit} from "./helpers/subcontractor-fit";
 /**
  * Outreach must not email a subcontractor twice for the same work.
  *
@@ -108,6 +109,7 @@ d("outreach idempotency (integration)", () => {
        values ($1,'Elec Co',$2,'CA','elec@x.invalid',true,'Chris') returning id`, [org.id, [trade]]);
     sub.id = s!.id;
     await query(`insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state, verified) values ($1,$2,$3,'pending',true)`, [opp.id, sub.id, trade]);
+    await seedSyntheticFit(org.id,opp.id,sub.id,trade);
   });
 
   afterEach(() => sendSpy.mockReset());

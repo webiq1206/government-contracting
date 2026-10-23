@@ -9,7 +9,7 @@ export async function saveFitReview(orgId: string, opportunityId: string, pairin
   if (!parsed.success) return { ok: false as const, status: 400, error: "Provide a source and statement for both service coverage and trade capability, and confirm that you reviewed them." };
   const row = await queryOne<FitContextInput & { subcontractor_id: string; trade: string | null;
     removed_at: string | null; outreach_state: string | null; updated_at: string }>(
-    `select o.id,o.location_text,o.location_state,o.solicitation_analysis,o.description,o.updated_at,
+    `select o.id,o.location_text,o.location_state,o.solicitation_analysis,o.description,o.updated_at::text as updated_at,
             os.subcontractor_id,os.trade,os.removed_at,os.outreach_state
        from opportunity_subs os join opportunities o on o.id=os.opportunity_id
        join subcontractors s on s.id=os.subcontractor_id and s.org_id=o.org_id

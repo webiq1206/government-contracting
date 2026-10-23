@@ -9,3 +9,13 @@ export function syntheticFit(opp:FitContextInput,sub:string,trade:string) {
     capability:{kind:"confirmed_call",reference:"synthetic-scope-review",statement:`The synthetic supplier confirmed it performs the full ${trade} scope shown in this fixture.`},
   },key,"synthetic-reviewer")};
 }
+
+/** Existing canonical integration fixtures explicitly opt into reviewed fit. */
+export async function seedSyntheticFit(orgId:string,opportunityId:string,subcontractorId:string,trade:string) {
+  const {query,queryOne}=await import("../../lib/db");
+  const opp=await queryOne<FitContextInput>("select * from opportunities where id=$1 and org_id=$2",[opportunityId,orgId]);
+  if(!opp)throw Error("Missing synthetic opportunity");
+  await query(`update opportunity_subs set verification_json=coalesce(verification_json,'{}'::jsonb)||$5::jsonb
+    where org_id=$1 and opportunity_id=$2 and subcontractor_id=$3 and trade=$4`,
+    [orgId,opportunityId,subcontractorId,trade,JSON.stringify(syntheticFit(opp,subcontractorId,trade))]);
+}

@@ -26,7 +26,12 @@ d("source-reviewed fit in the canonical tenant schema",()=>{
     key=fitContext((await queryOne<FitContextInput>("select * from opportunities where id=$1",[opp]))!,sub,trade)!;
   });
   afterAll(async()=>{
-    for(const id of [org,otherOrg]) if(id)await query("delete from organizations where id=$1",[id]);
+    for(const id of [org,otherOrg]) if(id){
+      await query("delete from opportunity_subs where org_id=$1",[id]);
+      await query("delete from opportunities where org_id=$1",[id]);
+      await query("delete from subcontractors where org_id=$1",[id]);
+      await query("delete from organizations where id=$1",[id]);
+    }
   });
   it("holds a nearby, verified mailbox and a search-derived trade label without real fit evidence",async()=>{
     expect(await replySendBlock(send(),org)).toMatch(/evidence has not been reviewed/);

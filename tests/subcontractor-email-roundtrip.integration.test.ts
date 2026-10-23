@@ -1,3 +1,4 @@
+import {seedSyntheticFit} from "./helpers/subcontractor-fit";
 import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 /**
  * The whole subcontractor email workflow, once, against a real database.
@@ -151,6 +152,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
        values ($1,$2,$3,'pending',true)`,
       [oppId, s!.id, trade]
     );
+    await seedSyntheticFit(orgId,oppId,s!.id,trade);
     return s!.id;
   }
 
