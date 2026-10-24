@@ -1,3 +1,4 @@
+import { currentInitialOutreachBody } from "../domain/initial-outreach-template";
 /**
  * OUTREACH, triggered when a sub clears verification.
  * Renders the active outreach template (Template 1) with the opportunity, sub,
@@ -266,7 +267,7 @@ export const outreach: AgentDefinition = {
     const {replySendBlock} = await import("../outreach-eligibility");
     try {
       const block = await replySendBlock({orgId,opportunityId,subcontractorId,trade,
-        to:sub.email ?? "",subject:"",html:""},orgId);
+        to:sub.email ?? "",subject:"",html:""},orgId,{receiptRecoveryOnly:true});
       if (block) return {ok:true,summary:`Outreach held: ${block}`,data:{sent:false}};
     } catch {
       return {ok:false,retryable:false,summary:"Current contact and reply eligibility could not be verified. Nothing was sent."};
@@ -332,6 +333,14 @@ export const outreach: AgentDefinition = {
         enqueued:callsEnabled ? [{agent:"call-prep",payload:{opportunityId,subcontractorId,trade,source:"outreach"},
           opts:{singletonKey:`callprep:${opportunityId}:${subcontractorId}`,singletonSeconds:3600}}] : []};
     }
+
+    // Receipt recovery above does not infer permission for a new message.
+    // New email/call preparation still requires current fit and reply review.
+    try {
+      const block=await replySendBlock({orgId,opportunityId,subcontractorId,trade,
+        to:sub.email ?? "",subject:"",html:""},orgId);
+      if(block)return {ok:true,humanActionRequired:true,summary:`Outreach held: ${block}`,data:{sent:false}};
+    }catch{return {ok:false,retryable:false,summary:"Current fit and reply review could not be read. Nothing was sent."};}
 
     // Do not create dead-end draft emails for unreachable subs. Phone-only
     // firms go straight to Call Prep (or are left out entirely when calling is
@@ -645,7 +654,7 @@ export const outreach: AgentDefinition = {
     // Every value was scrubbed on its way into `vars` above. The assembled
     // email is never scrubbed again, for the reason given there.
     const subject = renderTemplate(tmpl.subject ?? "Partnership opportunity", vars);
-    const plainBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
+    const plainBody = scrubInternalFailureCopy(renderTemplate(currentInitialOutreachBody(tmpl.body), vars));
 
     await logAgent({
       agent: "outreach",
@@ -694,6 +703,7 @@ export const outreach: AgentDefinition = {
       // project's; until now that answer only reached a gap note.
       trade: trade || null,
       tradeSpecific: resolved.requirements.tradeSpecific,
+      requirementReviewRequired: resolved.requirements.reviewRequired,
     });
     if (sendProblems.length) {
       const why = describeProblems(sendProblems);

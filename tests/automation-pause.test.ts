@@ -82,6 +82,17 @@ describe("master automation pause", () => {
     const id = await enqueue("outreach", { trigger: "test" });
     expect(id).toBe("job-1");
   });
+  it("allows only the mailbox observer to enqueue during account pause",async()=>{
+    accountPaused.mockResolvedValue(true);
+    const {runWithOrg}=await import("../lib/tenant-context");
+    const org="11111111-1111-4111-8111-111111111111";
+    expect(await runWithOrg(org,()=>enqueue("mailbox-sync",{trigger:"test"}))).toBe("job-1");
+    expect(await runWithOrg(org,()=>enqueue("reply-poll",{trigger:"test"}))).toBeNull();
+  });
+  it("keeps mailbox observation stopped by the platform pause",async()=>{
+    accountPaused.mockResolvedValue(true);platformPaused.mockResolvedValue(true);
+    expect(await enqueue("mailbox-sync",{trigger:"test"})).toBeNull();
+  });
 
   it("the platform scheduler never reads one tenant's pause switch", () => {
     const source = readFileSync("worker/scheduler.ts", "utf8");

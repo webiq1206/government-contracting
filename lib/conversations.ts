@@ -33,6 +33,7 @@ import {
 
 
 interface ThreadRow {
+  pending_review_count?: string|number;
   thread_key: string;
   subcontractor_id: string | null;
   company_name: string | null;
@@ -112,6 +113,8 @@ export async function conversationList(opts: { q?: string; threadKey?: string } 
                 where m.direction = 'inbound' and not ${automaticMessageSql("m", "$3")}
               ) as last_genuine_inbound_at,
               max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at,
+              count(*) filter (where m.direction='inbound' and m.meta->>'capture_version'='1'
+                and m.meta->>'reply_processing_complete'='false') as pending_capture_count,
               min(m.follow_up_at) filter (
                 where m.direction = 'outbound' and m.replied_at is null
               ) as follow_up_at,
@@ -173,6 +176,8 @@ export async function conversationList(opts: { q?: string; threadKey?: string } 
             no2.replied_at::text as last_outbound_replied_at,
             a.follow_up_at::text as follow_up_at,
             cf.resolved_at::text as resolved_at,
+            (a.pending_capture_count + (select count(*)::int from subcontractor_reply_events e where e.org_id=$1
+               and e.gmail_thread_id=a.thread_key and e.needs_review and e.reviewed_at is null)) as pending_review_count,
             ni.rfc822_message_id as reply_to_message_id
        from agg a
        join newest nw on nw.thread_key = a.thread_key
@@ -216,6 +221,7 @@ export async function conversationList(opts: { q?: string; threadKey?: string } 
       lastOutboundState,
       followUpAt: isoOrNull(r.follow_up_at),
       resolvedAt: isoOrNull(r.resolved_at),
+      pendingReviewCount:n(r.pending_review_count),
     };
     const v = verdict(facts);
 

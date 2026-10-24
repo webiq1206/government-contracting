@@ -147,6 +147,16 @@ describe("choosing the accounts to sweep", () => {
 
     expect(r.orgs.map((org) => org.id)).toEqual(["manual-org"]);
   });
+  it("includes paused accounts only for the mailbox observer",async()=>{
+    listBehaviour=async()=>[{id:"org-1"},{id:"org-2"}];paused.add("org-1");paused.add("org-2");
+    expect((await orgsToSweep("mailbox-sync")).orgs.map(o=>o.id)).toEqual(["org-1","org-2"]);
+    expect((await orgsToSweep("reply-poll")).orgs).toEqual([]);
+  });
+  it("keeps a paused contextual observer scoped to its requesting account",async()=>{
+    currentOrg="org-1";paused.add("org-1");
+    expect((await orgsToSweep("mailbox-sync")).orgs.map(o=>o.id)).toEqual(["org-1"]);
+    expect((await orgsToSweep("outreach")).orgs).toEqual([]);
+  });
 });
 
 describe("nowhere still swallows the account lookup", () => {

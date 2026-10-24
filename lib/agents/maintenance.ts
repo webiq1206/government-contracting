@@ -344,7 +344,7 @@ export async function lastCallForOrg(
  * failure (full mailbox, greylisting) never suppresses -- it would lose a
  * live subcontractor over one bad afternoon.
  */
-export async function recordBounce(input: {
+type BounceInput = {
   orgId: string;
   threadId: string;
   messageId: string;
@@ -352,7 +352,12 @@ export async function recordBounce(input: {
   body?: string;
   subject?: string;
   sentAt?: string;
-}): Promise<boolean> {
+  mailboxReceivedAt?: string;
+};
+export async function recordBounce(input:BounceInput):Promise<boolean> {
+  return withReplyProcessingLock(input.orgId,input.messageId,()=>recordBounceInOrg(input));
+}
+async function recordBounceInOrg(input:BounceInput): Promise<boolean> {
   const { orgId, threadId, report } = input;
   const recorded = await queryOne<{id:string}>(`select id from communications
     where org_id=$1 and direction='inbound' and gmail_message_id=$2
@@ -399,13 +404,13 @@ export async function recordBounce(input: {
   // A DSN is an incoming message too. Store it under the same tenant/message uniqueness,
   // without making it a substantive supplier reply or positive delivery evidence.
   await query(`insert into communications(org_id,subcontractor_id,opportunity_id,channel,direction,
-      subject,body,gmail_thread_id,gmail_message_id,recipient_email,meta)
-    values($1,$2,$3,'email','inbound',$4,$5,$6,$7,$8,$9::jsonb)
+      subject,body,gmail_thread_id,gmail_message_id,recipient_email,meta,created_at)
+    values($1,$2,$3,'email','inbound',$4,$5,$6,$7,$8,$9::jsonb,coalesce($10::timestamptz,now()))
     on conflict (org_id,gmail_message_id) where direction='inbound' and gmail_message_id is not null and org_id is not null
     do nothing`,[orgId,updated[0]?.subcontractor_id,updated[0]?.opportunity_id,
       input.subject ?? "Delivery status notice",(input.body ?? JSON.stringify(report)).slice(0,20000),
       threadId,input.messageId,report.recipient,JSON.stringify({auto:true,delivery_report:report,
-        original_communication_id:updated[0]?.id,envelope:{sentAt:input.sentAt ?? null},delivery_report_complete:false})]);
+        original_communication_id:updated[0]?.id,envelope:{sentAt:input.sentAt ?? null},delivery_report_complete:false}),input.mailboxReceivedAt ?? null]);
 
   if (updated.length === 0) {
     // Saving an unmatched notice is completed inbox work needing human review.
@@ -839,6 +844,22 @@ async function followUpForOrg(
       trade: row.trade,
       description: row.description,
     });
+
+    if (resolved.requirements.reviewRequired.length) {
+      held++;
+      await query(`update communications set follow_up_at = now() + interval '6 hours'
+        where id=$1 and org_id=$2`, [row.id, orgId]);
+      await query(`update opportunities set human_action_required=true,
+        risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete'])))
+        where id=$1 and org_id=$2`, [row.opportunity_id, orgId]);
+      await logAgent({ agent: "outreach-followup", action: "requirement-applicability-held",
+        level: "warn", status: "skipped", opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: "The follow-up is held until requirement applicability is resolved. Nothing was sent.",
+        reasoning: resolved.requirements.reviewRequired.map(r => `${r.text}: ${r.reason}`).join(" "),
+      });
+      continue;
+    }
 
     const vars: Record<string, string> = Object.fromEntries(
       Object.entries(resolved.vars).map(([k, v]) => [
@@ -3242,7 +3263,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
           message:extracted.notes ?? "Automatic notice saved.",
           input:{messageId:r.messageId,noticeKind:result.noticeKind,contactHeld:result.contactHeld}});
         if (decision.needsReview || result.contactHeld) notifyLines.push({
-          title:companyName ?? fromEmail,tag:result.contactHeld ? "Contact held" : "Review contact",
+          title:companyName ?? fromEmail,tag:result.contactHeld ? "Contact held" : result.noticeKind === "prior_submission" ? "Review prior submission" : "Review contact",
           detail:decision.reviewReason ?? extracted.notes ?? "The notice was saved.",
           snippet:r.snippet.slice(0,200),tone:decision.needsReview?"critical":undefined});
         continue;

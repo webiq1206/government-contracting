@@ -35,6 +35,8 @@ export interface SectionInput {
   links?: { name: string; url: string }[];
   /** True when the solicitation set a pricing schedule or quote format. */
   pricingScheduleRequired?: boolean;
+  /** The longer quote checklist belongs after interest, not on a cold invitation. */
+  stage?: "initial" | "quote";
 }
 
 function lines(value: string | undefined): string[] {
@@ -77,6 +79,33 @@ export function quoteChecklist(input: { pricingScheduleRequired?: boolean }): st
 
 export function buildOutreachSections(input: SectionInput): BriefSection[] {
   const v = input.vars;
+  if (input.stage !== "quote") {
+    const unique = (items:string[]) => [...new Set(items.map(s=>s.trim()).filter(Boolean))];
+    const project = unique([
+      [v.opportunity_title,v.solicitation_number ? `(${v.solicitation_number})` : ""].filter(Boolean).join(" "),
+      [v.trade,v.location_city_state].filter(Boolean).join(" · "),
+      [has(v.quote_due_date) ? `Quote requested by ${v.quote_due_date}` : "",
+        has(v.deadline) ? `agency bid due ${v.deadline}` : ""].filter(Boolean).join("; "),
+      [has(v.estimated_start_date) ? `Estimated start: ${v.estimated_start_date}` : "",
+        has(v.project_duration) ? `Performance: ${v.project_duration}` : ""].filter(Boolean).join("; "),
+    ]);
+    const scope=unique(lines(v.trade_scope_requirements).length
+      ? lines(v.trade_scope_requirements) : has(v.scope_summary) ? [v.scope_summary] : []);
+    const requirements=unique(lines(v.subcontractor_requirements));
+    const sections:BriefSection[]=[];
+    if(project.length)sections.push({heading:"Project",items:project});
+    if(scope.length)sections.push({heading:"Scope",items:scope});
+    // All sourced applicable requirements survive. No word/line cap can hide
+    // a real obligation merely to make a message look shorter.
+    if(requirements.length)sections.push({heading:"Requirements for this scope",items:requirements});
+    const documents=documentItems(input.attachedNames?.length ?? 0,input.links ?? []);
+    if(documents.length)sections.push({heading:"Project documents",items:documents});
+    sections.push({heading:"Next step",items:[
+      "Can you cover this scope at this location and provide a quote by the requested date?",
+      "If it is not a fit, a brief reply is enough; we will close this request.",
+    ]});
+    return sections;
+  }
   const sections: BriefSection[] = [];
 
   // --- Project -------------------------------------------------------------
@@ -160,8 +189,8 @@ export function documentItems(
   items.push(
     ...links.map((l) =>
       attachedCount > 0
-        ? `Additional documents, too large to attach, are here: ${l.url}`
-        : `The documents you need to price this scope are at this link; please review them before preparing your quote: ${l.url}`
+        ? `Project documents: ${l.url}`
+        : `Review the project documents: ${l.url}`
     )
   );
   return items;

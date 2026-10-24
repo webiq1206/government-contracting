@@ -1,3 +1,4 @@
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 /**
  * Where the 48-hour follow-up lands, and what it says when it lands badly.
  *
@@ -41,15 +42,10 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [
-      {
-        filename: "Statement of Work.pdf",
-        mime: "application/pdf",
-        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
-      },
-    ],
+    files: [],
+    // This positive fixture has a self-contained synthetic scope and no source documents.
     links: [],
-    expected: true,
+    expected: false,
     undelivered: [],
     omitted: [],
   }),
@@ -133,7 +129,8 @@ d("the 48-hour follow-up (integration)", () => {
           trade_scopes: [
             { trade: "HVAC", work: "Remove and replace 12 rooftop units in Buildings 3 and 4." },
           ],
-          qualifications: { licenses: ["State mechanical contractor license"] },
+          qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor license."] },
+          requirement_applicability: [scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor license.", "qualifications", { allTrades: false })],
         }),
       ]
     );
@@ -229,8 +226,8 @@ d("the 48-hour follow-up (integration)", () => {
       expect(call.subject as string).toMatch(/Follow-up/i);
       expect(call.html as string).toMatch(/rooftop units/i);
       expect(call.html as string).toMatch(/mechanical contractor license/i);
-      expect(call.html as string).toMatch(/What to include with your quote/i);
-      expect((call.attachments as unknown[]) ?? []).toHaveLength(1);
+      expect(call.html as string).toMatch(/Next step/i);
+      expect((call.attachments as unknown[]) ?? []).toHaveLength(0);
     });
 
     it("records why the thread could not be used", async () => {
@@ -266,7 +263,7 @@ d("the 48-hour follow-up (integration)", () => {
 
     it("sends the complete fallback and says why", async () => {
       expect(call.html as string).toMatch(/rooftop units/i);
-      expect((call.attachments as unknown[]) ?? []).toHaveLength(1);
+      expect((call.attachments as unknown[]) ?? []).toHaveLength(0);
       const log = await queryOne<{ message: string }>(
         `select message from agent_logs
           where org_id=$1 and action='new-thread' order by created_at desc limit 1`,
@@ -275,4 +272,27 @@ d("the 48-hour follow-up (integration)", () => {
       expect(log?.message).toMatch(/no Gmail thread was recorded/i);
     });
   });
+  it.each([
+    { threadId: "thread-1", rfc822: "<orig@mail.gmail.com>" },
+    { threadId: null, rfc822: null },
+  ])("holds both threaded and fallback follow-ups with unresolved applicability: %j", async original => {
+    await withSweepLock(async () => {
+      await query(`update opportunities set solicitation_analysis=jsonb_set(solicitation_analysis,
+        '{qualifications}', $2::jsonb) where id=$1`,
+        [opp.id, JSON.stringify({ certifications: ["Prime offeror must be certified SDVOSB."] })]);
+      await seedOriginal(original);
+      sendSpy.mockClear();
+      await runFollowUp();
+      expect(sendSpy).not.toHaveBeenCalled();
+      const row = await queryOne<{ deferred: boolean }>(
+        `select follow_up_at > now() as deferred from communications
+         where opportunity_id=$1 and direction='outbound'`, [opp.id]);
+      expect(row?.deferred).toBe(true);
+      const log = await queryOne<{ message: string }>(
+        `select message from agent_logs where opportunity_id=$1 and action='requirement-applicability-held'
+         order by created_at desc limit 1`, [opp.id]);
+      expect(log?.message).toContain("Nothing was sent");
+    });
+  });
+
 });

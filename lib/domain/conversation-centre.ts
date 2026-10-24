@@ -20,6 +20,7 @@ import {
 } from "./message-state";
 
 export type ConversationState =
+  | "needs_review"
   | "send_review"
   | "needs_reply"
   | "draft"
@@ -30,6 +31,7 @@ export type ConversationState =
   | "closed";
 
 export const CONVERSATION_STATE_LABEL: Record<ConversationState, string> = {
+  needs_review: "Reply review still pending",
   send_review: "Send outcome needs review",
   needs_reply: "Needs your reply",
   draft: "Draft, not sent",
@@ -46,6 +48,7 @@ export const CONVERSATION_FILTERS = [
   "send_review",
   "unread",
   "needs_reply",
+  "needs_review",
   "draft",
   "delivery_failed",
   "overdue",
@@ -56,6 +59,7 @@ export const CONVERSATION_FILTERS = [
 export type ConversationFilter = (typeof CONVERSATION_FILTERS)[number];
 
 export const CONVERSATION_FILTER_LABEL: Record<ConversationFilter, string> = {
+  needs_review: "Reply review pending",
   send_review: "Send outcome needs review",
   all: "Everything",
   unread: "Unread",
@@ -144,6 +148,7 @@ function iso(v: string | Date | null | undefined): string | null {
 }
 
 export interface ThreadInput {
+  pendingReviewCount?: number;
   threadKey: string;
   subcontractorId: string | null;
   subcontractorName: string | null;
@@ -166,6 +171,7 @@ export interface ThreadInput {
  * "Needs your reply" in one place and "Waiting on them" in the other.
  */
 export interface ConversationFacts {
+  pendingReviewCount?: number;
   lastAt: string;
   messageCount: number;
   unreadCount: number;
@@ -219,6 +225,12 @@ export function verdict(f: ConversationFacts, now = new Date()): ConversationVer
    */
   const resolvedIsCurrent =
     f.resolvedAt != null && new Date(f.resolvedAt).getTime() >= new Date(f.lastAt).getTime();
+
+  if((f.pendingReviewCount ?? 0)>0) {
+    return {state:"needs_review",failedState,
+      reason:awaitingUs ? "Their message still needs a substantive review." : "Your reply is recorded, but the underlying bid or commercial review is still pending.",
+      nextAction:"Review the saved supplier response. Sending an acknowledgment does not resolve it."};
+  }
 
   if (resolvedIsCurrent) {
     return {
@@ -320,6 +332,7 @@ export function factsFrom(t: ThreadInput): ConversationFacts {
     lastOutboundState: lastOutbound?.state ?? null,
     followUpAt: followUps[0] ?? null,
     resolvedAt: iso(t.resolvedAt),
+    pendingReviewCount: t.pendingReviewCount ?? 0,
   };
 }
 
@@ -385,6 +398,8 @@ export function matchesFilter(c: ConversationSummary, f: ConversationFilter): bo
       return c.unreadCount > 0;
     case "needs_reply":
       return c.state === "needs_reply";
+    case "needs_review":
+      return c.state === "needs_review";
     case "draft":
       return c.state === "draft";
     case "delivery_failed":

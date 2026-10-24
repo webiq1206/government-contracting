@@ -3,9 +3,8 @@ import { ActionButton } from "@/components/action-button";
 import { timeAgo } from "@/lib/format";
 
 /**
- * Master kill switch. Pausing stops scheduled runs, queue enqueue, agent
- * execution, and outbound email/SMS. Operator login, password reset, and
- * billing stay available.
+ * Account pause stops sending and pipeline work. Existing connected mailbox
+ * history can still be recorded; the separate platform switch stops that too.
  *
  * This control describes the SWITCH, not the outcome. It used to say
  * "Automation is running -- agents run on schedule, move opportunities
@@ -42,11 +41,11 @@ export function AutomationControl({
         />
         <div>
           <p className="text-sm font-semibold text-slate-900">
-            {paused ? "Everything is paused" : "Automation is switched on"}
+            {paused ? "Sending and pipeline work are paused" : "Automation is switched on"}
           </p>
           <p className="text-xs text-slate-500">
             {paused
-              ? "No agents, scheduled jobs, pipeline moves, outreach email, digests, or SMS will run until you resume."
+              ? "No outreach, paid AI, pipeline work, digests, or SMS will run. Connected mailbox history can still be recorded and clear declines can stop follow-ups."
               : healthy
                 ? "Agents are allowed to run on schedule, move opportunities forward, and send outreach and alerts."
                 : "Agents are allowed to run, but something is stopping them. See the state below."}
@@ -63,10 +62,10 @@ export function AutomationControl({
         confirm={
           paused
             ? undefined
-            : "Pause absolutely everything? No agents, emails, SMS, SAM pulls, or queued jobs will run until you resume."
+            : "Pause sending and pipeline work? No outreach, paid AI, digests, or SMS will run. Connected mailbox history can still be recorded and clear declines can stop follow-ups."
         }
       >
-        {paused ? "Resume everything" : "Pause everything"}
+        {paused ? "Resume automation" : "Pause automation"}
       </ActionButton>}
     </div>
   );
@@ -87,11 +86,11 @@ export function AutomationPausedBanner({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-review/40 bg-review/10 px-4 py-3">
       <p className="text-sm text-foreground">
-        <span className="font-semibold">Everything is paused.</span> No monitoring, pipeline
-        work, outreach email, digests, or SMS will happen until you resume.
+        <span className="font-semibold">Sending and pipeline work are paused.</span> Connected mailbox history can still be recorded.
+        No outreach, paid AI, digests, or SMS will run until you resume.
       </p>
       {editable && <ActionButton endpoint="/api/automation" body={{ paused: false }} className="btn-primary text-xs">
-        Resume everything
+        Resume automation
       </ActionButton>}
     </div>
   );

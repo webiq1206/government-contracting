@@ -15,7 +15,8 @@ it("preserves custom wording rather than broadly rewriting attachment or commitm
 it.each(DEFAULT_TEMPLATES.filter(template => isEditableTemplateSlug(template.slug)))(
   "does not invent attachments or an original thread in the built-in $slug sample", template => {
     const result = sampleOutreachCopy(template.body);
-    expect(result).toContain("sample scope and requirements");
+    if(template.slug === "template_1_outreach") expect(result).toContain("preparing a bid for the project below");
+    else expect(result).toContain("sample scope and requirements");
     expect(result).not.toContain("attached bid documents");
     expect(result).not.toContain("attached to this email");
     expect(result).not.toContain("original message below");

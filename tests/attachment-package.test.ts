@@ -208,7 +208,7 @@ describe("assessAttachmentPackage", () => {
     expect(describePackageProblems(r.problems)).toMatch(/Drawings M-101/);
   });
 
-  it("counts a link as delivery, because it is", () => {
+  it("does not count a source-readable link as recipient delivery while access is deferred", () => {
     const r = assessAttachmentPackage({
       files: [],
       links: [
@@ -216,8 +216,9 @@ describe("assessAttachmentPackage", () => {
       ],
       expected: true,
     });
-    expect(r.ok).toBe(true);
-    expect(r.deliveredNames).toEqual(["Full document package"]);
+    expect(r.ok).toBe(false);
+    expect(r.problems).toContainEqual(expect.objectContaining({kind:"recipient_access_pending",blocking:true}));
+    expect(r.deliveredNames).toEqual([]);
   });
 
   it("blocks when a document-bearing solicitation delivers nothing", () => {
@@ -282,14 +283,14 @@ describe("the package link", () => {
     expect(r.problems[0].kind).toBe("unreachable_link");
   });
 
-  it("accepts a link that was checked and works", () => {
+  it("keeps source-checked document links held pending recipient access review", () => {
     expect(
       assessAttachmentPackage({
         files: [],
         links: [{ name: "All 6 bid documents", url: "https://brostco.test/d/x", reachable: true }],
         expected: true,
       }).ok
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("blocks a link nobody checked", () => {

@@ -432,6 +432,8 @@ export interface SolicitationAnalysis {
   estimated_value: string; // plain text: "$120,000" or "Not specified"
   due_date: string; // plain text incl. time + timezone if given
   qualifications: Qualifications;
+  /** Sourced applicability claims, grounded by the analyst before recipient use. */
+  requirement_applicability?: import("./domain/outreach-applicability").RequirementApplicability[];
   prebid_meeting: MeetingInfo | null;
   site_visit: MeetingInfo | null;
   submission_method: string; // delivery method / portal / email / hand-delivery

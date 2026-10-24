@@ -163,7 +163,8 @@ async function enqueueAdmitted(
   // agents call outside AsyncLocalStorage and identify the owner in opts.
   const { actingOrgId, runWithOrg } = await import("../tenant-context");
   const enqueuingOrgId = opts?.orgId ?? (await actingOrgId());
-  if (enqueuingOrgId && (await runWithOrg(enqueuingOrgId, () => isAutomationPaused()))) {
+  const {monitorsWhileAccountPaused}=await import("../agents/mailbox-policy");
+  if (!monitorsWhileAccountPaused(name) && enqueuingOrgId && (await runWithOrg(enqueuingOrgId, () => isAutomationPaused()))) {
     console.warn(`[queue] enqueue skipped (account automation paused): ${name}`);
     return null;
   }
@@ -324,6 +325,7 @@ export const QUEUE_NAMES = [
   "ai-provider-recovery-probe",
   "pursuit-continuation-sweep",
   "reply-poll",
+  "mailbox-sync",
   "stalled-pipeline-sweep",
   "deadline-monitor",
   "scoring-recovery-sweep",

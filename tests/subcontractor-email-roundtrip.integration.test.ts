@@ -1,3 +1,5 @@
+import {seedSyntheticFit} from "./helpers/subcontractor-fit";
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 /**
  * The whole subcontractor email workflow, once, against a real database.
  *
@@ -61,9 +63,10 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [{ filename: "Statement of Work.pdf", mime: "application/pdf", content: PDF }],
+    files: [],
+    // This positive fixture has a self-contained synthetic scope and no source documents.
     links: [],
-    expected: true,
+    expected: false,
     undelivered: [],
     omitted: [],
   }),
@@ -131,14 +134,15 @@ d("the subcontractor email workflow, end to end (integration)", () => {
           trade_scopes: [
             { trade: "HVAC", work: "Remove and replace 12 rooftop units in Buildings 3 and 4." },
           ],
-          qualifications: { licenses: ["State mechanical contractor license"] },
+          qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor license."] },
+          requirement_applicability: [scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor license.", "qualifications", { allTrades: false })],
         }),
       ]
     );
     return op!.id;
   }
 
-  async function makeSub(orgId: string, oppId: string, company: string, email: string) {
+  async function makeSub(orgId: string, oppId: string, company: string, email: string, reviewFit=true) {
     const s = await queryOne<{ id: string }>(
       `insert into subcontractors (org_id, company_name, trade_categories, state, email, email_verified, owner_name)
        values ($1,$2,$3,'VA',$4,true,'Marcus Rivera') returning id`,
@@ -149,6 +153,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
        values ($1,$2,$3,'pending',true)`,
       [oppId, s!.id, trade]
     );
+    if(reviewFit) await seedSyntheticFit(orgId,oppId,s!.id,trade);
     return s!.id;
   }
 
@@ -205,11 +210,10 @@ d("the subcontractor email workflow, end to end (integration)", () => {
     expect(sent).toHaveLength(4);
     for (const msg of sent) {
       expect(msg.html).toMatch(/rooftop units/i);
-      expect(msg.html).toMatch(/Your quote is due:/);
-      // The document rides as an attachment; the body says to review it
-      // rather than inventorying filenames the mail client already shows.
-      expect(msg.attachments?.[0]?.filename).toBe("Statement of Work.pdf");
-      expect(msg.html).toMatch(/review it before preparing your quote/i);
+      expect(msg.html).toMatch(/Quote requested by/);
+      // The fixture has no documents: no attachment or link delivery is invented.
+      expect(msg.attachments).toEqual([]);
+      expect(msg.html).not.toMatch(/Review the project documents/i);
       expect(msg.html).not.toMatch(/Statement of Work\.pdf/);
       expect(msg.html).not.toMatch(/\{\{/);
     }
@@ -428,7 +432,7 @@ d("the subcontractor email workflow, end to end (integration)", () => {
        values ($1,'test','','sub_research','open','VA', now() + interval '30 days') returning id`,
       [orgA.id]
     );
-    const thinSub = await makeSub(orgA.id, thinOpp!.id, "Thin Co", "thin@thin.invalid");
+    const thinSub = await makeSub(orgA.id, thinOpp!.id, "Thin Co", "thin@thin.invalid",false);
     sent.length = 0;
     const res = await outreach.handler({
       runId: randomUUID(),

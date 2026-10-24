@@ -1,3 +1,5 @@
+import {DOCUMENT_LINK_DELIVERY_HOLD,recipientDocumentLinkPending} from "./document-delivery-readiness";
+
 /**
  * Whether the documents on a quote request are actually usable.
  *
@@ -35,12 +37,14 @@ export interface PackageLink {
    * Whether the link was checked and found to work.
    *
    * Undefined means it was not checked and therefore cannot be promised to a
-   * recipient. Only an explicit true allows the email to be sent.
+   * recipient. Explicit true is necessary, but does not waive the separate
+   * recipient-access delivery hold.
    */
   reachable?: boolean;
 }
 
 export type PackageProblemKind =
+  | "recipient_access_pending"
   | "unreachable_link"
   | "empty_file"
   | "corrupt_file"
@@ -255,7 +259,7 @@ export function assessAttachmentPackage<F extends PackageFile>(input: {
     const key = nameKey(link.name);
     if (seenNames.has(key)) continue;
     seenNames.add(key);
-    deliveredNames.push(link.name);
+    if(link.reachable===true && !recipientDocumentLinkPending(link.url))deliveredNames.push(link.name);
   }
 
   /*
@@ -278,6 +282,9 @@ export function assessAttachmentPackage<F extends PackageFile>(input: {
         blocking: true,
       });
     }
+    if(recipientDocumentLinkPending(link.url))problems.push({
+      kind:"recipient_access_pending",filename:link.name,message:DOCUMENT_LINK_DELIVERY_HOLD,blocking:true,
+    });
   }
 
   for (const missing of input.undelivered ?? []) {

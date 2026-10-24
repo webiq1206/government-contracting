@@ -427,7 +427,8 @@ async function runAdmittedAgent(
    * Nothing below this point reads, writes, enqueues, calls the AI, or
    * contacts anybody, so a paused organization stops here before any of it.
    */
-  if (orgId !== null && (await inOrg(() => isAutomationPaused()))) {
+  const {monitorsWhileAccountPaused}=await import("./mailbox-policy");
+  if (!monitorsWhileAccountPaused(def.name) && orgId !== null && (await inOrg(() => isAutomationPaused()))) {
     return finish({
       ok: true,
       summary: `${def.name} skipped: this account has automation paused`,

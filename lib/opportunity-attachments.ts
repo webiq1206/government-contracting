@@ -26,6 +26,7 @@ import { amendmentNumber, readAmendmentNumber, classifyDocumentName } from "./do
 import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
 import { guardedFetch, GuardedFetchError } from "./integrations/guarded-fetch";
 import { canonicalAttachmentUrl } from "./domain/attachment-identity";
+import { looksCorrupt, looksPasswordProtected } from "./domain/attachment-package";
 
 /**
  * What rides along on a first-contact email.
@@ -179,7 +180,8 @@ type GatherableOpp = {
 async function materializeDocs(
   docs: DocRow[],
   opp: GatherableOpp,
-  trade: string | null | undefined
+  trade: string | null | undefined,
+  delivery: "attach" | "link" = "attach"
 ): Promise<GatheredAttachments> {
   const files: OutreachAttachment[] = [];
   const links: { name: string; url: string; reachable?: boolean }[] = [];
@@ -191,6 +193,7 @@ async function materializeDocs(
   /** Renamed filenames already used, so two sources never share a name. */
   const takenNames = new Set<string>();
   let total = 0;
+  const checkedStored = new Map<string,boolean>();
 
   /*
    * Selection before anything is downloaded. What this subcontractor does not
@@ -245,13 +248,15 @@ async function materializeDocs(
         d.mime,
         position
       );
-      if (total + bytes.length > MAX_TOTAL_BYTES || files.length >= MAX_ATTACHED_FILES) {
+      if (delivery === "link" || total + bytes.length > MAX_TOTAL_BYTES || files.length >= MAX_ATTACHED_FILES) {
         /*
          * Too big to attach. Held for the package link rather than linked on
          * its own: a solicitation with a full drawing set produced a wall of
          * URLs, one per file, in the middle of a quote request.
          */
         overflow.push({ k: "s", v: d.storage_path, n: meta.filename });
+        checkedStored.set(d.storage_path,!looksCorrupt({filename:meta.filename,mime:meta.mime,content:bytes}) &&
+          !looksPasswordProtected({filename:meta.filename,mime:meta.mime,content:bytes}));
         continue;
       }
       total += bytes.length;
@@ -322,12 +327,14 @@ async function materializeDocs(
           continue;
         }
         const meta = presentName(name, {}, bytes, a.mime, position);
-        if (total + bytes.length <= MAX_TOTAL_BYTES && files.length < MAX_ATTACHED_FILES) {
+        if (delivery === "attach" && total + bytes.length <= MAX_TOTAL_BYTES && files.length < MAX_ATTACHED_FILES) {
           total += bytes.length;
           files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
           continue;
         }
         overflow.push({ k: "s", v: a.storage_path, n: meta.filename });
+        checkedStored.set(a.storage_path,!looksCorrupt({filename:meta.filename,mime:meta.mime,content:bytes}) &&
+          !looksPasswordProtected({filename:meta.filename,mime:meta.mime,content:bytes}));
         continue;
       } catch (err) {
         console.error(
@@ -403,9 +410,9 @@ async function materializeDocs(
       );
     }
     for (const entry of stored) {
-      const ok = await storage
+      const ok = checkedStored.has(entry.v) ? checkedStored.get(entry.v) : await storage
         .download(entry.v)
-        .then((b) => b.length > 0)
+        .then((b) => b.length > 0 && !looksCorrupt({filename:entry.n,content:b}) && !looksPasswordProtected({filename:entry.n,content:b}))
         .catch(() => false);
       if (!ok) {
         reachable = false;
@@ -494,9 +501,10 @@ export async function gatherOpportunityAttachments(
 }
 
 /**
- * The document packet for one subcontractor: only this trade's documents,
- * renamed for the recipient, ranked so the most relevant consume the MIME
- * size budget first; the rest become one signed package link.
+ * Initial invitations and automated follow-ups carry no solicitation files.
+ * Keep the complete selected packet behind one scoped, expiring signed link.
+ * A necessary document can be reviewed and supplied separately after interest;
+ * automatic sourcing does not infer that attaching PDFs is necessary.
  */
 export async function gatherTradeAttachments(
   orgId: string,
@@ -504,5 +512,5 @@ export async function gatherTradeAttachments(
   trade: string | null | undefined
 ): Promise<GatheredAttachments> {
   const docs = await loadDocs(orgId, opp.id);
-  return materializeDocs(prioritizeDocsForAttach(docs, trade), opp, trade);
+  return materializeDocs(prioritizeDocsForAttach(docs, trade), opp, trade, "link");
 }

@@ -63,6 +63,10 @@ export interface MatchedComm {
 }
 
 export interface CaptureReplyInput {
+  /** Provider-attested Gmail internal date, used only by the receipt monitor. */
+  mailboxReceivedAt?: string;
+  /** Monitoring while sending is paused must never generate an acknowledgment. */
+  acknowledgeDecline?: boolean;
   /** Poller acknowledges its downstream effects separately before moving the cursor. */
   deferProcessingComplete?: boolean;
   /** The organization that owns the conversation this reply belongs to. */
@@ -457,7 +461,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // re-scans a sliding window. If this provider message id was already
   // captured, skip all side effects (the unique index from migration 022
   // also guards the insert against races).
-  type SavedCapture = { id: string; subcontractor_id: string | null; meta?: {capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} };
+  type SavedCapture = { id: string; subcontractor_id: string | null; meta?: {unreadable_body?:boolean;mailbox_source_at?:string;capture_version?:number;capture_extracted?:ExtractedReply;capture_result?:CaptureReplyResult;reply_processing_complete?:boolean} };
   let resume: SavedCapture | null = null;
   if (input.messageId) {
     const existing = await queryOne<SavedCapture>(
@@ -490,8 +494,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
 
   // Durable envelope first: interpretation/provider failure must not lose the incoming message.
   const inbound = resume ?? await queryOne<{ id: string }>(
-    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
-     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
+    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta,created_at)
+     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb,coalesce($11::timestamptz,now()))
      on conflict (org_id, gmail_message_id)
        where direction = 'inbound' and gmail_message_id is not null and org_id is not null
      do nothing
@@ -511,10 +515,11 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       input.rfc822MessageId ?? null,
       input.fromAddress ?? fromEmail,
       orgId,
-      JSON.stringify({ capture_version: 1, reply_processing_complete: false,
+      JSON.stringify({ capture_version: 1, reply_processing_complete: false,mailbox_source_at:input.mailboxReceivedAt ?? null,
         capture_stage: "received", envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
         cc: input.ccAddresses ?? null, sentAt: input.sentAt ?? null, subject: input.subject ?? null,
         attachments: input.attachmentNames ?? [], autoSubmitted: input.autoSubmitted ?? null} }),
+      input.mailboxReceivedAt ?? null,
     ]
   );
   if (!inbound) throw new Error("Reply capture is already in progress; retry this mailbox page after it completes.");
@@ -542,10 +547,10 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   let linkedPair = comm.subcontractor_id != null && osRow != null;
 
   const notice = classifyReplyNotice({body: replyText, subject: input.subject,
-    autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames});
+    autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames,requestedTrade:osRow?.trade});
   const noticeSenderVerified = senderMatchesSub(fromEmail, comm.sub_email);
   if (!["human", "decline"].includes(notice.kind)) {
-    const trusted = strongMatch && noticeSenderVerified;
+    const trusted = strongMatch && noticeSenderVerified && !resume?.meta?.unreadable_body;
     const hold = trusted && ["departed", "opt_out"].includes(notice.kind);
     const extracted: ExtractedReply = {...emptyExtracted(), method:"deterministic",
       deterministicKind:notice.kind, notes:notice.reason, confidence:1};
@@ -565,20 +570,23 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       await closeOut({orgId,opportunityId:comm.opportunity_id,subcontractorId:comm.subcontractor_id,
         trade:osRow?.trade,source:"email_reply",sendThankYou:false});
     }
-    const needsReview = notice.kind === "departed" ||
+    const needsReview = notice.kind === "departed" || notice.kind === "prior_submission" ||
       ((notice.kind === "opt_out") && !hold) ||
       (notice.kind === "automatic" && notice.needsReview === true);
     const reason = hold ? `${notice.reason} Email to this address is held; any replacement requires review.`
       : trusted ? notice.reason : `${notice.reason} Attribution must be verified before changing contact eligibility.`;
     await query(`update communications set meta=meta || $3::jsonb where id=$1 and org_id=$2`,
       [inbound.id,orgId,JSON.stringify({capture_extracted:extracted,notice_kind:notice.kind,
-        auto:notice.kind !== "opt_out",contact_held:hold,notice_reason:reason})]);
+        auto:!["opt_out","prior_submission"].includes(notice.kind),contact_held:hold,notice_reason:reason,
+        trade:osRow?.trade ?? null,reply_action_allowed:false,reply_sender_verified:noticeSenderVerified,reply_strong_match:strongMatch})]);
     return {inboundId:inbound.id,subId:comm.subcontractor_id,companyName:comm.company_name,
       extracted,decision:{outcome:"none",proposed:null,act:false,needsReview,reviewReason:needsReview?reason:null},
       quoteSaved:false,quoteSkippedExisting:false,senderVerified:noticeSenderVerified,trade:osRow?.trade ?? null,
       duplicate:false,declined:hold && notice.kind === "opt_out",thankYouSent:false,noticeKind:notice.kind,contactHeld:hold};
   }
-  const extractOnce = () => notice.kind === "decline"
+  const extractOnce = () => resume?.meta?.unreadable_body
+    ? Promise.resolve<ExtractedReply>({...emptyExtracted(),notes:"Only a mailbox snippet was readable; review the original message before applying an outcome."})
+    : notice.kind === "decline"
     ? Promise.resolve<ExtractedReply>({...emptyExtracted(),intent:"decline",canPerform:false,
         notes:notice.reason,confidence:1,method:"deterministic",deterministicKind:"decline"})
     : extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
@@ -710,7 +718,16 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       : reason,
   });
   let decision = readingDecision;
-  if (!linkedPair) {
+  const sourceAt=input.mailboxReceivedAt ?? resume?.meta?.mailbox_source_at;
+  const laterReply=sourceAt && Number.isFinite(Date.parse(sourceAt)) && input.threadId
+    ? await queryOne<{id:string}>(`select id from communications where org_id=$1 and gmail_thread_id=$2
+        and direction='inbound' and id<>$3 and created_at>$4::timestamptz
+        and coalesce(meta->>'auto','false')<>'true' limit 1`,[orgId,input.threadId,inbound.id,sourceAt]):null;
+  if(resume?.meta?.unreadable_body) {
+    decision=holdForReview("The original message body could not be read. A provider snippet cannot establish a supplier decision.");
+  } else if(laterReply) {
+    decision=holdForReview("A newer supplier reply is already recorded in this conversation. Review this delayed message in context before applying an older outcome.");
+  } else if (!linkedPair) {
     decision = holdForReview(
       pairTrades.length > 1
         ? "This subcontractor covers multiple trades here. Confirm which trade this reply answers before applying it."
@@ -803,7 +820,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       trade: osRow?.trade ?? null,
       source: "email_reply",
       capabilityNotes: capabilityNotes || null,
-      sendThankYou: notice.kind === "decline" && Boolean(input.messageId && input.rfc822MessageId && input.threadId),
+      sendThankYou: input.acknowledgeDecline !== false && notice.kind === "decline" && Boolean(input.messageId && input.rfc822MessageId && input.threadId),
       inboundMessageId: input.messageId ?? null,
       recipientEmail: fromEmail,
       threadId: input.rfc822MessageId ? input.threadId ?? null : null,

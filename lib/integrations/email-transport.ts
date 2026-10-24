@@ -312,13 +312,6 @@ export async function sendOutreachEmail(
     }
   }
 
-  const { replySendBlock } = await import("../outreach-eligibility");
-  try {
-    const blocked = await replySendBlock(params, suppressionOrg);
-    if (blocked) return {provider:null,blocked:true,outcome:"not_attempted",error:blocked};
-  } catch {
-    return {provider:null,blocked:true,outcome:"not_attempted",error:"Current reply and contact eligibility could not be read. Nothing was sent."};
-  }
 
   /*
    * The operator's own stop, asked at the moment of sending.
@@ -362,6 +355,15 @@ export async function sendOutreachEmail(
       return { provider: null, blocked: true, error: describeSuppression(stopped) };
     }
   }
+
+  const { replySendBlock } = await import("../outreach-eligibility");
+  try {
+    const blocked = await replySendBlock(params, suppressionOrg);
+    if (blocked) return {provider:null,blocked:true,outcome:"not_attempted",error:blocked};
+  } catch {
+    return {provider:null,blocked:true,outcome:"not_attempted",error:"Current reply and contact eligibility could not be read. Nothing was sent."};
+  }
+
 
   // Note: the block on sending real email from a development process lives in
   // the Gmail transport itself, not here, so that system mail and backlink

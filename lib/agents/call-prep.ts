@@ -27,6 +27,7 @@ import { suppressionBlocking } from "../suppressions";
 import { describeSuppression } from "../domain/suppression";
 import { actingOrgId } from "../tenant-context";
 import { isClosedOutreach } from "../domain/decline-closeout";
+import { fitContext,fitSendBlock } from "../domain/subcontractor-fit";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -201,6 +202,24 @@ export const callPrep: AgentDefinition = {
         summary: `No call card for ${sub.company_name}: pairing is ${oppSub?.outreach_state}.`,
         humanActionRequired: false,
       };
+    }
+
+    if(source === "outreach") {
+      const fit=fitSendBlock(oppSub.verification_json,fitContext({id:opp.id,location_state:opp.location_state,
+        location_text:opp.location_text,solicitation_analysis:opp.solicitation_analysis as Record<string,unknown>|null,
+        description:opp.description},subcontractorId,oppSub.trade));
+      if(fit)return {ok:true,humanActionRequired:true,summary:`No outreach call prepared: ${fit}`};
+    }
+    const {incomingReplyReviewBlock}=await import("../outreach-eligibility");
+    let replyReview:string|null;
+    try {replyReview=await incomingReplyReviewBlock(orgId,opportunityId,subcontractorId,oppSub.trade);}
+    catch {return {ok:false,humanActionRequired:true,summary:"Incoming reply review status could not be verified. No call card was prepared."};}
+    if(replyReview) {
+      await query(`update call_cards set status='skipped',
+        response_json=coalesce(response_json,'{}'::jsonb) || '{"skip_reason":"reply_review_required"}'::jsonb
+        where org_id=$1 and opportunity_id=$2 and subcontractor_id=$3 and status='pending'`,[orgId,opportunityId,subcontractorId]);
+      await query(`update opportunities set human_action_required=true where id=$1 and org_id=$2`,[opportunityId,orgId]);
+      return {ok:true,humanActionRequired:true,summary:`No pricing call prepared: ${replyReview}`};
     }
 
     /*

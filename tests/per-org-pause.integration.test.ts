@@ -149,4 +149,14 @@ d("per-organization automation pause", () => {
     await runAgent(probe, "queue", { opportunityId: oppB });
     expect(ran).toBe(false);
   });
+  it("runs the observation-only mailbox task while the owning account is paused",async()=>{
+    await setPaused(`${orgA}:automation`,true);
+    const result=await runAgent({...probe,name:"mailbox-sync"} as typeof probe,"queue",{opportunityId:oppA});
+    expect(ran).toBe(true);expect(result.ok).toBe(true);
+  });
+  it("stops even the mailbox observer when the platform switch is paused",async()=>{
+    await setPaused("platform_automation",true);
+    await runAgent({...probe,name:"mailbox-sync"} as typeof probe,"queue",{opportunityId:oppA});
+    expect(ran).toBe(false);
+  });
 });

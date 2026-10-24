@@ -1,3 +1,4 @@
+import {seedSyntheticFit} from "./helpers/subcontractor-fit";
 /**
  * What a subcontractor actually receives.
  *
@@ -12,9 +13,12 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "crypto";
+import { scopedNoticeRequirement } from "./helpers/requirement-applicability";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
+
+const fixtureDocuments=vi.hoisted(()=>({pending:false}));
 
 const sendSpy = vi.fn(async () => ({
   messageId: "gmail-1",
@@ -40,17 +44,10 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    // Real PDF magic bytes: the package assessment checks that a file
-    // contains what its type claims, and "x" is not a PDF.
-    files: [
-      {
-        filename: "Statement of Work.pdf",
-        mime: "application/pdf",
-        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
-      },
-    ],
-    links: [],
-    expected: true,
+    files: [],
+    // The ordinary positive case has no source documents; the separate pending case does.
+    links: fixtureDocuments.pending?[{name:"Synthetic scoped project documents",url:"https://example.invalid/d/synthetic-package",reachable:true}]:[],
+    expected: fixtureDocuments.pending,
     undelivered: [],
     omitted: [],
   }),
@@ -129,9 +126,13 @@ d("the assembled outreach email (integration)", () => {
             },
             { trade: "Electrical", work: "Pull new feeders to the roof curbs." },
           ],
-          qualifications: { licenses: ["State mechanical contractor licence"] },
+          qualifications: { licenses: ["The HVAC subcontractor must hold a state mechanical contractor licence."] },
+          requirement_applicability: [
+            scopedNoticeRequirement("The HVAC subcontractor must hold a state mechanical contractor licence.", "qualifications", { allTrades: false }),
+            scopedNoticeRequirement("Davis-Bacon prevailing wage rates shall apply to all trades.", "special_requirements"),
+          ],
           site_visit: { required: true, details: "in 10 days, 9:00 AM, Building 3 lobby" },
-          special_requirements: ["Davis-Bacon prevailing wage rates apply to all trades."],
+          special_requirements: ["Davis-Bacon prevailing wage rates shall apply to all trades."],
           questions_for_subs: ["Can your crew work the 7:00 AM to 3:30 PM window?"],
           period_of_performance: "180 calendar days from notice to proceed",
           offer_acceptance_period: "60 days",
@@ -152,6 +153,7 @@ d("the assembled outreach email (integration)", () => {
       [opp.id, sub.id, trade]
     );
 
+    await seedSyntheticFit(org.id,opp.id,sub.id,trade);
     const res = await outreach.handler({
       runId: randomUUID(),
       trigger: "queue",
@@ -212,8 +214,8 @@ d("the assembled outreach email (integration)", () => {
     expect(new Date(comm!.quote_due_at).getTime()).toBeLessThan(
       new Date(deadline!.deadline).getTime()
     );
-    expect(body).toMatch(/Your quote is due:/);
-    expect(body).toMatch(/Our bid to the agency is due:/);
+    expect(body).toMatch(/Quote requested by/);
+    expect(body).toMatch(/agency bid due/);
   });
 
   it("names the timezone, because 3:00 PM in two states is two times", () => {
@@ -232,18 +234,19 @@ d("the assembled outreach email (integration)", () => {
     expect(body).toMatch(/valid for 60 days/i);
   });
 
-  it("asks the questions the analyst wrote", () => {
-    expect(body).toMatch(/7:00 AM to 3:30 PM/);
+  it("keeps optional analyst questions out of an initial invitation", () => {
+    expect(body).not.toMatch(/7:00 AM to 3:30 PM/);
+    expect(body.match(/\?/g)).toHaveLength(1);
   });
 
   it("says what to send back", () => {
-    expect(body).toMatch(/What to include with your quote/i);
-    expect(body).toMatch(/firm or an estimate/i);
+    expect(body).toMatch(/Can you cover this scope/);
+    expect(body).not.toMatch(/What to include with your quote/i);
   });
 
-  it("tells them to review the attached document instead of inventorying it", () => {
-    expect(body).toMatch(/attached document has the details you need/i);
-    expect(body).toMatch(/review it before preparing your quote/i);
+  it("does not invent document delivery for a self-contained scope", () => {
+    expect(body).not.toMatch(/Review the project documents/);
+    expect((sendSpy.mock.calls as unknown as [{attachments:unknown[]}[]])[0]?.[0]?.attachments).toEqual([]);
     expect(body).not.toMatch(/Statement of Work\.pdf \(attached\)/);
   });
 
@@ -259,10 +262,11 @@ d("the assembled outreach email (integration)", () => {
       recipient_email: string;
       sender_email: string;
       attachments: string;
+      document_links: string|null;
     }>(
       `select gmail_thread_id, rfc822_message_id, recipient_email,
               meta->>'sender_email' as sender_email,
-              meta->>'attachments' as attachments
+              meta->>'attachments' as attachments, meta->>'document_links' as document_links
          from communications where opportunity_id=$1 and direction='outbound'`,
       [opp.id]
     );
@@ -271,6 +275,50 @@ d("the assembled outreach email (integration)", () => {
     expect(row?.recipient_email).toBe("marcus@rivera.invalid");
     expect(row?.sender_email).toBe("pat@prime.invalid");
     // The manifest, so a fallback into a new thread sends the same package.
-    expect(row?.attachments).toContain("Statement of Work.pdf");
+    expect(row?.attachments).toBe("[]");
+    expect(row?.document_links).toBeNull();
   });
+  it("holds a queued invitation with legacy prime qualifications before the mail provider", async () => {
+    const held = await queryOne<{ id: string }>(
+      `insert into opportunities (org_id, source, title, stage, status, location_state, location_text,
+         deadline, solicitation_number, agency, solicitation_analysis)
+       values ($1,'test','Synthetic applicability hold','sub_research','open','VA','Richmond, VA',
+         now() + interval '30 days', 'SYNTHETIC-PRIME-HOLD', 'Synthetic agency', $2::jsonb) returning id`,
+      [org.id, JSON.stringify({
+        location: "Richmond, VA",
+        trade_scopes: [{ trade: "HVAC", work: "Replace 2 synthetic test units." }],
+        qualifications: { certifications: ["Prime offeror must be certified SDVOSB."] },
+      })],
+    );
+    await query(`insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state, verified)
+      values ($1,$2,$3,'pending',true)`, [held!.id, sub.id, trade]);
+    await seedSyntheticFit(org.id,held!.id,sub.id,trade);
+    const sentBefore = sendSpy.mock.calls.length;
+    const result = await outreach.handler({ runId: randomUUID(), trigger: "queue",
+      payload: { opportunityId: held!.id, subcontractorId: sub.id, trade } });
+    expect(result.humanActionRequired, result.summary).toBe(true);
+    expect(result.data?.problems).toContain("requirement_applicability");
+    expect(sendSpy.mock.calls.length).toBe(sentBefore);
+    const communications = await queryOne<{ count: string }>(
+      `select count(*)::text as count from communications where opportunity_id=$1`, [held!.id]);
+    expect(communications?.count).toBe("0");
+    await query(`delete from opportunity_subs where opportunity_id=$1`, [held!.id]);
+  });
+
+  it("holds document-dependent outreach even when source files were readable",async()=>{
+    const supplier=(await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,email,email_verified)
+      values($1,'Synthetic document-dependent firm','documents@synthetic.invalid',true) returning id`,[org.id]))!;
+    await query(`insert into opportunity_subs(opportunity_id,subcontractor_id,trade,outreach_state,verified)
+      values($1,$2,$3,'pending',true)`,[opp.id,supplier.id,trade]);
+    await seedSyntheticFit(org.id,opp.id,supplier.id,trade);
+    const prior=sendSpy.mock.calls.length;fixtureDocuments.pending=true;
+    try {
+      const result=await outreach.handler({runId:randomUUID(),trigger:"queue",payload:{opportunityId:opp.id,subcontractorId:supplier.id,trade}});
+      expect(result.humanActionRequired).toBe(true);
+      expect(result.summary).toMatch(/pending review/i);
+      expect(sendSpy.mock.calls).toHaveLength(prior);
+      expect(await query("select id from communications where opportunity_id=$1 and subcontractor_id=$2",[opp.id,supplier.id])).toHaveLength(0);
+    }finally{fixtureDocuments.pending=false;}
+  });
+
 });

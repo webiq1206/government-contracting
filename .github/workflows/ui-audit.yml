@@ -52,8 +52,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
+      - run: node --test .github/scripts/ui-evidence.test.mjs
       - run: npx playwright install --with-deps chromium
       - name: Install mobile WebKit
         if: matrix.device == 'mobile'
@@ -79,38 +79,8 @@ jobs:
           if [ "$AUDIT_DEVICE" = "mobile" ]; then
             timeout 180s node scripts/ui-audit/webkit-public.mjs
           fi
-      - name: Preserve screenshots and results
+      # Complete original evidence is source/run/device-bound and recoverable
+      # from logs. No cache or Actions artifact-storage writes are made.
+      - name: Preserve complete screenshots and results in bounded log frames
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-audit-evidence-${{ matrix.device }}
-          path: |
-            artifacts/ui-audit
-            /tmp/ui-server.log
-          retention-days: 7
-      - name: Preserve compact hero review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: homepage-hero-${{ matrix.device }}
-          path: artifacts/ui-audit/${{ matrix.device }}-hero-scene-*.png
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Preserve site spacing review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: site-spacing-${{ matrix.device }}
-          path: artifacts/ui-audit/${{ matrix.device }}-spacing-*.png
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Preserve homepage feature review
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: homepage-features-${{ matrix.device }}
-          path: |
-            artifacts/ui-audit/${{ matrix.device }}-homepage-feature-*.png
-            artifacts/ui-audit/${{ matrix.device }}-homepage-refined-*.png
-          if-no-files-found: warn
-          retention-days: 7
+        run: node .github/scripts/ui-evidence.mjs emit

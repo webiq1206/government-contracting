@@ -5,6 +5,7 @@ import { enqueue } from "@/lib/queue";
 import { areCallsEnabled, AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
 import { isEmailable } from "@/lib/domain/sub-contactability";
 import { queryOne } from "@/lib/db";
+import { saveFitReview } from "@/lib/subcontractor-fit";
 import {
   correctContact,
   pairing,
@@ -49,6 +50,8 @@ export async function POST(
     reason?: string;
     email?: string | null;
     phone?: string | null;
+    fitReview?: unknown;
+    fitContextKey?: unknown;
   };
   const action = body.action ?? "";
 
@@ -70,6 +73,14 @@ export async function POST(
   if (!row) return NextResponse.json({ error: "No such subcontractor on this bid." }, { status: 404 });
 
   switch (action) {
+    case "review_fit": {
+      const result = await saveFitReview(orgId,params.id,params.pairingId,ctx.user.id,body.fitReview,body.fitContextKey);
+      if (!result.ok) return NextResponse.json({error:result.error},{status:result.status});
+      await logAgent({agent:"operator",action:"sub-fit-reviewed",opportunityId:params.id,
+        subcontractorId:row.subcontractor_id,level:"info",
+        message:`Reviewed service-area and trade-capability sources for ${row.company_name} on ${row.trade ?? "this request"}. No email or research was queued.`});
+      return NextResponse.json({ok:true,message:"Fit evidence saved. No message or research was queued. Other outreach checks still apply."});
+    }
     case "resend":
     case "call": {
       /*

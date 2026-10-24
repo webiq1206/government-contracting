@@ -23,6 +23,7 @@ import { currentOrgId } from "../tenant-context";
 import { backfillPublicContact } from "../public-contact-backfill";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
+import { fitContext, fitSendBlock, type FitContextInput } from "../domain/subcontractor-fit";
 
 /** Pull a bare domain out of a website URL. */
 function domainOf(website: string | null): string | null {
@@ -82,8 +83,9 @@ export const subVerify: AgentDefinition = {
       };
     }
 
-    const owner = await queryOne<{ org_id: string | null; location_state: string | null; work_mode?: string | null }>(
-      `select org_id, location_state, work_mode from opportunities where id=$1 and org_id=$2`,
+    const owner = await queryOne<FitContextInput & { org_id: string | null; work_mode?: string | null }>(
+      `select id,org_id,location_state,location_text,solicitation_analysis,description,work_mode
+         from opportunities where id=$1 and org_id=$2`,
       [opportunityId, orgId]
     );
     const sub = await queryOne<Subcontractor & { service_area_states?: string[] | null }>(
@@ -116,6 +118,34 @@ export const subVerify: AgentDefinition = {
 
     if (ctx.payload.publicContactOnly === true) return backfillPublicContact(orgId, opportunityId, sub, trade);
 
+    // A search category, nearby address or working mailbox cannot establish
+    // actual capability/coverage. Require saved source review before enrichment
+    // spends or any handoff to Outreach. Older candidates remain reviewable.
+    const fit = await queryOne<{ verification_json: unknown; outreach_state: string | null }>(
+      `select verification_json,outreach_state from opportunity_subs
+        where opportunity_id=$1 and subcontractor_id=$2 and org_id=$3
+          and coalesce(trade,'')=coalesce($4::text,'') and removed_at is null`,
+      [opportunityId,subcontractorId,orgId,trade ?? null]);
+    if (!fit) return {ok:true,summary:"The active request was not found. Verification did not queue outreach."};
+    const { isClosedOutreach } = await import("../domain/decline-closeout");
+    if (fit && isClosedOutreach(fit.outreach_state)) {
+      return {ok:true,summary:"This request is closed. Verification did not reopen it or queue outreach."};
+    }
+    const fitBlock = fitSendBlock(fit?.verification_json,fitContext(owner,subcontractorId,trade));
+    if (fitBlock) {
+      await query(`update opportunity_subs set verified=false,
+          outreach_state=case when outreach_state in ('pending','draft','email_unverified','send_failed')
+            then 'held' else outreach_state end,
+          verification_json=coalesce(verification_json,'{}'::jsonb) || jsonb_build_object('fit_hold',$5::text)
+        where opportunity_id=$1 and subcontractor_id=$2 and org_id=$3
+          and coalesce(trade,'')=coalesce($4::text,'')`,
+        [opportunityId,subcontractorId,orgId,trade ?? null,fitBlock]);
+      await query(`update opportunities set human_action_required=true where id=$1 and org_id=$2`,[opportunityId,orgId]);
+      await logAgent({agent:"sub-verify",action:"fit-review-required",level:"warn",status:"skipped",
+        opportunityId,subcontractorId,message:fitBlock});
+      return {ok:true,humanActionRequired:true,summary:fitBlock,data:{passes:false,route:"held (fit review required)"}};
+    }
+
     const profile = await getProfileJson();
     const std = profile?.sub_standards;
 
@@ -123,43 +153,10 @@ export const subVerify: AgentDefinition = {
     const verification: Record<string, unknown> = {};
     const unresolvedFailures: string[] = [];
 
-    // --- Geography gate, before any enrichment spends an API call ---
-    // Preserve Sub Finder's explicit service-area evidence: a firm based in
-    // another state can have recorded that it works here. An out-of-state
-    // address alone still does not establish coverage. Unknown sub state
-    // passes through as before: absence of data is not evidence of distance.
-    const workState = (owner.location_state ?? "").trim().toUpperCase();
-    const subState = (sub.state ?? "").trim().toUpperCase();
-    const servesWorkState = Array.isArray(sub.service_area_states) &&
-      sub.service_area_states.some(state => typeof state === "string" && state.trim().toUpperCase() === workState);
-    if (workState && subState && workState !== subState && !servesWorkState) {
-      await query(
-        `update opportunity_subs
-            set verified = false,
-                outreach_state = 'not_a_fit',
-                verification_json = coalesce(verification_json, '{}'::jsonb)
-                  || jsonb_build_object('geography', $3::text)
-          where opportunity_id = $1 and subcontractor_id = $2 and org_id = $4`,
-        [
-          opportunityId,
-          subcontractorId,
-          `Firm is in ${subState}; the work is in ${workState}.`,
-          orgId,
-        ]
-      );
-      await logAgent({
-        agent: "sub-verify",
-        action: "geography-mismatch",
-        level: "warn",
-        opportunityId,
-        subcontractorId,
-        message: `${sub.company_name} is in ${subState} but this work is in ${workState}, so they were ruled out for this solicitation. They stay on the roster for work in their own area.`,
-      });
-      return {
-        ok: true,
-        summary: `${sub.company_name} ruled out: located in ${subState}, work is in ${workState}.`,
-      };
-    }
+    // The source-reviewed fit above supersedes address proximity. A supplier
+    // may work across state lines; neither a nearby nor a distant office can
+    // override its reviewed project-specific service coverage.
+    verification.fit_hold = null;
 
     // --- Website + phone enrichment via Google Place Details ---
     // Nearly all subs arrive from Places text search with a place_id but no
@@ -483,7 +480,7 @@ export const subVerify: AgentDefinition = {
 
     await query(
       `update opportunity_subs
-         set verified=$6, verification_json=$3
+         set verified=$6, verification_json=coalesce(verification_json,'{}'::jsonb) || $3::jsonb
        where opportunity_id=$1 and subcontractor_id=$2
          and coalesce(trade,'') = coalesce($4,'') and org_id=$5`,
       [

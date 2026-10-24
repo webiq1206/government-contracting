@@ -1,3 +1,4 @@
+import { syntheticFit } from "./helpers/subcontractor-fit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -71,6 +72,7 @@ vi.mock("../lib/tenant-context", () => ({
 import { subVerify } from "../lib/agents/sub-verify";
 import { backlinkScout } from "../lib/agents/backlink-scout";
 
+const fitOpp={id:"opp-1",org_id:"org-a",location_state:"TX",solicitation_analysis:{trade_scopes:[{trade:"roofing",work:"Install and inspect the synthetic roof scope."}]}};
 const context = {
   runId: "run-1",
   trigger: "queue" as const,
@@ -81,6 +83,7 @@ describe("verification agent failure truth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.query.mockResolvedValue([]);
+    mocks.queryOne.mockImplementation(async(sql:string)=>sql.includes("select verification_json,outreach_state")?{verification_json:syntheticFit(fitOpp,"sub-1","roofing")}:null);
     mocks.logAgent.mockResolvedValue(undefined);
     mocks.getProfileJson.mockResolvedValue(null);
     mocks.placeDetails.mockResolvedValue(null);
@@ -96,7 +99,7 @@ describe("verification agent failure truth", () => {
 
   it("stops before every provider when opportunity and subcontractor tenants differ", async () => {
     mocks.queryOne
-      .mockResolvedValueOnce({ org_id: "org-a", location_state: "TX" })
+      .mockResolvedValueOnce(fitOpp)
       .mockResolvedValueOnce(null);
 
     const result = await subVerify.handler(context);
@@ -111,7 +114,7 @@ describe("verification agent failure truth", () => {
 
   it("holds downstream work and exposes provider failures while scoping every write", async () => {
     mocks.queryOne
-      .mockResolvedValueOnce({ org_id: "org-a", location_state: "TX" })
+      .mockResolvedValueOnce(fitOpp)
       .mockResolvedValueOnce({
         id: "sub-1",
         org_id: "org-a",
@@ -151,7 +154,7 @@ describe("verification agent failure truth", () => {
 
   it("treats a null website search as inconclusive instead of proving no website exists", async () => {
     mocks.queryOne
-      .mockResolvedValueOnce({ org_id: "org-a", location_state: "TX" })
+      .mockResolvedValueOnce(fitOpp)
       .mockResolvedValueOnce({
         id: "sub-1",
         org_id: "org-a",

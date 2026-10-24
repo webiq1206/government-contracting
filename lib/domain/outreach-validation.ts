@@ -147,7 +147,9 @@ export interface SendProblem {
     | "sample_data"
     | "deadline_order"
     | "no_attachments"
-    | "trade_scope_not_ready";
+    | "false_attachment_claim"
+    | "trade_scope_not_ready"
+    | "requirement_applicability";
   message: string;
 }
 
@@ -187,8 +189,16 @@ export function validateOutboundEmail(input: {
    * it used. Every one of those describes the WHOLE project.
    */
   tradeSpecific?: boolean;
+  /** Unresolved obligations must not become requirements or be silently waived. */
+  requirementReviewRequired?: readonly { text: string; reason: string }[];
 }): SendProblem[] {
   const problems: SendProblem[] = [];
+  if (input.requirementReviewRequired?.length) {
+    problems.push({
+      kind: "requirement_applicability",
+      message: `Review requirement applicability before sending: ${input.requirementReviewRequired.map(r => `${r.text}: ${r.reason}`).join(" ")}`,
+    });
+  }
   const whole = `${input.subject}\n${input.body}`;
 
   // A token that survived substitution is about to be read by a person.
@@ -298,6 +308,10 @@ export function validateOutboundEmail(input: {
     });
   }
 
+  if (input.attachedNames.length === 0 &&
+      /\b(?:attached (?:bid )?(?:pdfs?|documents?|files?|plans?|drawings?|solicitations?)|(?:see|review|find|check) (?:the )?attach(?:ed|ments?)|(?:i|we)(?:'ve| have)? attached)\b/i.test(input.body.replace(/\b(?:no|not|without) attached (?:bid )?(?:pdfs?|documents?|files?|plans?|drawings?|solicitations?)\b/gi,""))) {
+    problems.push({kind:"false_attachment_claim",message:"The email claims files are attached, but none are attached. Update the introduction to refer to the checked document link."});
+  }
   if (
     input.documentsExpected &&
     input.attachedNames.length === 0 &&
