@@ -92,6 +92,16 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/security", label: "Security and data", summary: "Understand organization access, integration credentials, AI data flow, and responsibility for final review.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
   { path: "/about", label: "About BrostCo", summary: "Learn about the product direction, the company operating BrostCo, and how to contact the team.", changeFrequency: "monthly", priority: 0.8, group: "Company" },
   {
+    path: "/contact",
+    label: "Contact",
+    summary:
+      "Send a message to the BrostCo team about the product, an account, privacy, or security. No account is required.",
+    changeFrequency: "yearly",
+    priority: 0.6,
+    group: "Company",
+    lastModified: "2026-10-24",
+  },
+  {
     path: "/",
     label: "Home",
     summary:

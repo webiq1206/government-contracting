@@ -148,6 +148,7 @@ const SIGNED_OUT_ROUTES = [
   "/get-started",
   "/security",
   "/about",
+  "/contact",
   "/",
   "/login",
   "/signup",
