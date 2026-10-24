@@ -55,6 +55,9 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/billing",
   "/api/health",
+  // Public contact form. Visitors have no session. The route rate-limits and
+  // emails the platform inbox.
+  "/api/contact",
   "/api/track",
   // The opaque token authorizes only an outreach opt-out for one recipient.
   "/api/email/unsubscribe",

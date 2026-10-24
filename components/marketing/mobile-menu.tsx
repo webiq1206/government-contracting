@@ -109,6 +109,7 @@ export function MarketingMobileMenu({
                   { href: "/compare", label: "Compare approaches" },
                   { href: "/security", label: "Security & data" },
                   { href: "/get-started", label: "Getting started" },
+                  { href: "/contact", label: "Contact" },
                   { href: "/about", label: "About BrostCo" },
                 ].map(({ href, label }) => (
                   <a

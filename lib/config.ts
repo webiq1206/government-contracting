@@ -405,6 +405,11 @@ export const config = {
     get from() { return str("SYSTEM_MAIL_FROM"); },
     /** Where operator digests and alerts go. */
     get digestTo() { return str("DIGEST_EMAIL_TO"); },
+    /**
+     * Public contact form inbox. Blank falls through to digestTo, then
+     * hello@brostco.com. See lib/domain/public-contact.ts.
+     */
+    get contactInbox() { return str("CONTACT_INBOX_EMAIL"); },
   },
 
   stripe: {

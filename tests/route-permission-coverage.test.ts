@@ -49,6 +49,7 @@ const EXEMPT: Record<string, string> = {
   "admin/opportunity-preview/route.ts": "Platform-wide dispatch hold and preview execution, guarded by requirePlatformAdmin and disabled rollout activation gate.",
   "analytics/route.ts": "Records a product-analytics event for the signed-in user's own session.",
   "track/marketing/route.ts": "Anonymous public events only: same-origin, bounded body, throttled, strict event/path allowlists and no user or tenant identity.",
+  "contact/route.ts": "Public contact form. No account exists yet. Throttled, and it only emails the platform inbox.",
   /*
    * Every role may say the product is wrong, including the read-only ones. A
    * viewer looking at a number that does not add up is exactly the person who

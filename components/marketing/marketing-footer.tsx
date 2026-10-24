@@ -34,6 +34,7 @@ export function MarketingFooter({
     {
       title: "Company",
       links: [
+        ["/contact", "Contact"],
         ["/about", "About BrostCo"],
         ["/security", "Security & data"],
         ["/privacy", "Privacy"],
@@ -55,7 +56,10 @@ export function MarketingFooter({
               <br />
               From the right opportunity to a bid ready for your review.
             </p>
-            <a href="mailto:hello@brostco.com">hello@brostco.com</a>
+            <div className="bco-footer-contact">
+              <Link href="/contact">Contact us</Link>
+              <a href="mailto:hello@brostco.com">hello@brostco.com</a>
+            </div>
           </div>
           {columns.map((column) => (
             <nav key={column.title} aria-label={column.title}>

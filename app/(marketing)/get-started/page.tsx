@@ -130,7 +130,9 @@ export default function GetStartedPage() {
           </p>
           <p>
             Need help with setup?{" "}
-            <a href="mailto:hello@brostco.com">Contact hello@brostco.com</a>.
+            <Link href="/contact">Send a message</Link>
+            {" or email "}
+            <a href="mailto:hello@brostco.com">hello@brostco.com</a>.
           </p>
         </div>
       </section>
