@@ -34,6 +34,7 @@ export async function persistReplyQuote(input: {
       `select id from opportunity_subs
         where org_id=$1 and opportunity_id=$2 and subcontractor_id=$3
           and removed_at is null and coalesce(trade, '')=coalesce($4::text, '')
+          and outreach_state not in ('declined','not_a_fit','unavailable')
         for update`,
       [orgId, opportunityId, subcontractorId, proposal.trade],
     );

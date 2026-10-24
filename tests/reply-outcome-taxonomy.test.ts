@@ -185,7 +185,7 @@ describe("partial coverage starts sourcing the remainder", () => {
     const enqueue = vi.fn(async () => "job-1");
     vi.doMock("@/lib/queue", () => ({ enqueue }));
     vi.doMock("@/lib/db", () => ({
-      query: vi.fn(async () => []),
+      query: vi.fn(async (sql:string) => sql.includes("update opportunity_subs") ? [{id:"pair-1"}] : []),
       queryOne: vi.fn(async () => null),
     }));
     vi.resetModules();
@@ -216,7 +216,7 @@ describe("partial coverage starts sourcing the remainder", () => {
     const enqueue = vi.fn(async () => "job-1");
     vi.doMock("@/lib/queue", () => ({ enqueue }));
     vi.doMock("@/lib/db", () => ({
-      query: vi.fn(async () => []),
+      query: vi.fn(async (sql:string) => sql.includes("update opportunity_subs") ? [{id:"pair-1"}] : []),
       queryOne: vi.fn(async () => null),
     }));
     vi.resetModules();

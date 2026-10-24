@@ -103,7 +103,8 @@ export interface ExtractedReply {
   /** 0 to 1. Low confidence routes to a human instead of acting. */
   confidence: number;
   /** "ai" when Claude parsed it; "regex" fallback (treat as a hint). */
-  method: "ai" | "regex";
+  method: "ai" | "regex" | "deterministic";
+  deterministicKind?: import("../domain/reply-notice").ReplyNoticeKind;
 }
 
 /** @deprecated Prefer ExtractedReply; kept for callers that still import ExtractedQuote. */

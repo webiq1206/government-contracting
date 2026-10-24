@@ -75,6 +75,16 @@ d("automatic reply quote transaction", () => {
     expect(await queryOne(`select stage from opportunities where id=$1`, [opp])).toEqual({ stage: "quote_entry" });
   });
 
+  it("refuses pricing writes after the exact trade has declined", async () => {
+    await query(`update opportunity_subs set outreach_state='declined' where opportunity_id=$1`,[opp]);
+    try {
+      expect(await persist({...input,proposal:{...proposal,baseQuote:99_000}})).toBe("not_editable");
+      expect(await query(`select base_quote from trade_pricing_rows where opportunity_id=$1`,[opp])).toEqual([{base_quote:42_000}]);
+    } finally {
+      await query(`update opportunity_subs set outreach_state='sent' where opportunity_id=$1`,[opp]);
+    }
+  });
+
   it("does not accept an automatic price after the pursuit has paused", async () => {
     await query(`update opportunities set pursuit_state='paused' where id=$1`, [opp]);
     expect(await persist({ ...input, proposal: { ...proposal, baseQuote: 99_000 } })).toBe("not_editable");

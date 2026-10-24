@@ -1,3 +1,4 @@
+vi.mock("../lib/db", () => ({queryOne:vi.fn(async()=>null),query:vi.fn(async()=>[])}));
 /**
  * Unit tests for sendOutreachEmail. From and Reply-To must come from the exact
  * tenant's verified Gmail identity. A missing tenant or identity must hold the

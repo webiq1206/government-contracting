@@ -307,6 +307,7 @@ type GmailSendResult = {
 };
 
 export interface SendEmailParams {
+  dispatchIntentId?: string;
   beforeProviderSend?: (from: string, identity?: MailboxSendEvidence) => Promise<void>;
   to: string;
   subject: string;
@@ -434,6 +435,7 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
     inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
     references ? `References: ${references}` : "",
     `Subject: ${safeSubject}`,
+    params.dispatchIntentId ? `X-Brostco-Intent-ID: ${safeHeaderValue(params.dispatchIntentId)}` : "",
     `Date: ${new Date().toUTCString()}`,
     ...unsubscribeHeaders,
     "MIME-Version: 1.0",
@@ -526,6 +528,7 @@ export interface GmailInboundMessage {
   date: string;
   subject: string;
   contentType: string;
+  autoSubmitted?: string | null;
   rfc822MessageId: string | null;
   inReplyTo: string | null;
   references: string[];
@@ -990,7 +993,7 @@ export const gmail = {
    */
   async findSentMessage(
     orgId: string,
-    match: { to: string; subject: string; afterEpochSec: number }
+    match: { to: string; subject: string; afterEpochSec: number; intentId?: string }
   ): Promise<
     | { status: "found"; messageId: string; threadId: string | null; rfc822MessageId: string | null }
     | { status: "not_found" }
@@ -1016,13 +1019,14 @@ export const gmail = {
           userId: "me",
           id,
           format: "metadata",
-          metadataHeaders: ["To", "Subject", "Message-ID"],
+          metadataHeaders: ["To", "Subject", "Message-ID", "X-Brostco-Intent-ID"],
         });
         const header = (name: string) =>
           meta.data.payload?.headers?.find((h) => (h.name ?? "").toLowerCase() === name)?.value ?? "";
         const toHeader = header("to").toLowerCase();
         const subjectHeader = header("subject").trim();
         if (!toHeader.includes(address)) continue;
+        if (match.intentId && header("x-brostco-intent-id") !== match.intentId) continue;
         if (subjectHeader.toLowerCase() !== subject.toLowerCase()) continue;
         return {
           status: "found",
@@ -1037,6 +1041,28 @@ export const gmail = {
       console.warn(`[gmail] could not read Sent for org ${orgId}: ${reason}`);
       return { status: "unavailable", reason };
     }
+  },
+
+  /** Read the actual thread; uncertain/missing state never permits an automatic acknowledgment. */
+  async declineThreadUnchanged(orgId:string, expected:{threadId:string;messageId:string;rfc822MessageId:string;sender:string}):Promise<boolean> {
+    if (!expected.threadId || !expected.messageId || !expected.rfc822MessageId) return false;
+    const client = await gmailClient(orgId);
+    if (!client) return false;
+    try {
+      await reserveGmailQuota(orgId,40);
+      const response = await client.users.threads.get({userId:"me",id:expected.threadId,format:"metadata",
+        metadataHeaders:["Message-ID","From","Auto-Submitted"]});
+      const messages = response.data.messages ?? [];
+      const target = messages.find(m=>m.id === expected.messageId);
+      if (!target || (target.labelIds ?? []).includes("SENT")) return false;
+      const header = (name:string)=>target.payload?.headers?.find(h=>h.name?.toLowerCase()===name)?.value ?? "";
+      const address = (value:string)=>(value.match(/<([^>]+)>/)?.[1] ?? value).trim().toLowerCase();
+      if (header("message-id") !== expected.rfc822MessageId || address(header("from")) !== address(expected.sender) ||
+        (header("auto-submitted") && header("auto-submitted").toLowerCase() !== "no")) return false;
+      const at = Number(target.internalDate);
+      return Number.isFinite(at) && at > 0 && messages.every(m=>m.id===target.id ||
+        (Number.isFinite(Number(m.internalDate)) && Number(m.internalDate)>0 && Number(m.internalDate)<at));
+    } catch { return false; }
   },
 
   async threadMessageId(
@@ -1215,6 +1241,7 @@ export const gmail = {
             // needs the Content-Type report-type and the subject line.
             subject: header("subject"),
             contentType: header("content-type"),
+            autoSubmitted: header("auto-submitted") || null,
             /*
              * The reference chain. This is the only correlation signal that
              * belongs to the MESSAGE rather than to our copy of it: Gmail's

@@ -9,7 +9,7 @@
  */
 export type SentLookup = "found" | "not_found" | "unavailable";
 
-export type MailReconciliation = "record_sent" | "release_for_retry" | "leave";
+export type MailReconciliation = "record_sent" | "leave";
 
 export interface MailReconcileInput {
   deliveryState: string;
@@ -22,11 +22,11 @@ export function reconcileUncertainMail(input: MailReconcileInput): MailReconcili
   if (!["attempting", "unknown"].includes(input.deliveryState)) return "leave";
   if (input.lookup === "found") return "record_sent";
   if (input.lookup === "unavailable") return "leave";
-  return input.kind === "manual" ? "leave" : "release_for_retry";
+  return "leave"; // Absence from a bounded Sent lookup is not proof of non-send.
 }
 
 export const UNCERTAIN_MAIL_RELEASE_DETAIL =
-  "The send was not found in the mailbox's Sent folder after its lease. It is held so the next outreach run can send it.";
+  "The send was not found in the mailbox's Sent folder. Its outcome remains uncertain; verify the original attempt before any replay.";
 
 export const UNCERTAIN_MAIL_CONFIRMED_DETAIL =
   "The send was found in the mailbox's Sent folder after its outcome went unrecorded, and is recorded as sent.";

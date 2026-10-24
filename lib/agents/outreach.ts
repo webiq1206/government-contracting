@@ -262,6 +262,16 @@ export const outreach: AgentDefinition = {
     }
     const activePair = activePairs[0]!;
     if (!trade) trade = activePair.trade ?? "";
+    // A queued job must honor a reply received while it waited, before packet work or phone fallback.
+    const {replySendBlock} = await import("../outreach-eligibility");
+    try {
+      const block = await replySendBlock({orgId,opportunityId,subcontractorId,trade,
+        to:sub.email ?? "",subject:"",html:""},orgId);
+      if (block) return {ok:true,summary:`Outreach held: ${block}`,data:{sent:false}};
+    } catch {
+      return {ok:false,retryable:false,summary:"Current contact and reply eligibility could not be verified. Nothing was sent."};
+    }
+
 
     /*
      * A record put aside, or folded into another, does not get email.

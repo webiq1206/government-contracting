@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), thread:vi.fn() }));
 vi.mock("../lib/config", () => ({ config: { gmail: { configured: true } } }));
 vi.mock("../lib/db", () => ({ query: async () => [], queryOne: async () => ({ data: { refresh_token: "test-refresh" } }) }));
 vi.mock("googleapis", () => ({ google: {
   auth: { OAuth2: class { setCredentials() {} } },
-  gmail: () => ({ users: { messages: { list: mocks.list, get: mocks.get } } }),
+  gmail: () => ({ users: { messages: { list: mocks.list, get: mocks.get }, threads:{get:mocks.thread} } }),
 } }));
 vi.mock("../lib/integrations/gmail-quota", () => ({ reserveGmailQuota: vi.fn(async (_org: string, units: number) => units) }));
 import { gmail } from "../lib/integrations/gmail";
@@ -60,4 +60,28 @@ describe("bounded Gmail reply reads", () => {
     expect(result.replies[0].messageId).toBe("older-mail");
     expect(result.truncated).toBeUndefined();
   });
+});
+
+describe("acknowledgment thread evidence",()=>{
+ const expected={threadId:"thread",messageId:"decline",rfc822MessageId:"<decline@example.test>",sender:"supplier@example.test"};
+ const target=()=>({id:"decline",internalDate:"1000",labelIds:["INBOX"],payload:{headers:[{name:"Message-ID",value:expected.rfc822MessageId},{name:"From",value:"Sam <supplier@example.test>"}]}});
+ beforeEach(()=>{vi.clearAllMocks();mocks.thread.mockResolvedValue({data:{messages:[{id:"request",internalDate:"900",labelIds:["SENT"]},target()]}});});
+ it("allows only the exact latest human decline",async()=>expect(await gmail.declineThreadUnchanged("tenant-a",expected)).toBe(true));
+ it.each(["SENT","INBOX"])("stops when a later %s message exists",async(label)=>{
+  mocks.thread.mockResolvedValue({data:{messages:[target(),{id:"later",internalDate:"1100",labelIds:[label]}]}});
+  expect(await gmail.declineThreadUnchanged("tenant-a",expected)).toBe(false);
+ });
+ it("stops for an autoresponder or unreadable thread",async()=>{
+  const auto=target();auto.payload.headers.push({name:"Auto-Submitted",value:"auto-generated"});
+  mocks.thread.mockResolvedValue({data:{messages:[auto]}});expect(await gmail.declineThreadUnchanged("tenant-a",expected)).toBe(false);
+  mocks.thread.mockRejectedValue(Error("read denied"));expect(await gmail.declineThreadUnchanged("tenant-a",expected)).toBe(false);
+ });
+ it("does not bind an uncertain attempt to a similar subject without the exact intent marker",async()=>{
+  mocks.list.mockResolvedValue({data:{messages:[{id:"sent"}]}});
+  const headers=[{name:"To",value:"supplier@example.test"},{name:"Subject",value:"Quote request"},{name:"Message-ID",value:"<sent@example.test>"}];
+  mocks.get.mockResolvedValue({data:{payload:{headers}}});
+  expect(await gmail.findSentMessage("tenant-a",{to:expected.sender,subject:"Quote request",afterEpochSec:1,intentId:"exact-intent"})).toEqual({status:"not_found"});
+  headers.push({name:"X-Brostco-Intent-ID",value:"exact-intent"});
+  expect(await gmail.findSentMessage("tenant-a",{to:expected.sender,subject:"Quote request",afterEpochSec:1,intentId:"exact-intent"})).toMatchObject({status:"found",messageId:"sent"});
+ });
 });

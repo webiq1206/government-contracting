@@ -117,9 +117,8 @@ async function incidentOpen(orgId: string, cause: string): Promise<boolean> {
 export async function runHoldSweepCycle(): Promise<HoldSweepResult> {
   const result = await reclaimStaleProviderAttempts();
   // Sends whose outcome was never written are settled against the mailbox's
-  // own Sent folder: what left is recorded as sent, what did not is handed
-  // back to the next outreach run. Nothing is sent from here. A mailbox that
-  // cannot be read leaves its rows for the next sweep and the alert below.
+  // own Sent folder: an exact intent receipt records sent; missing or unreadable
+  // evidence remains unresolved for review. Nothing is released for replay.
   if (result.unresolvedScheduledMail > 0) {
     try {
       const reconciled = await reconcileUncertainScheduledMail();

@@ -23,7 +23,7 @@ vi.mock("../lib/db", () => ({
   query: async (sql: string, params: unknown[] = []) => {
     if (/select distinct trade/.test(sql)) return ROWS;
     UPDATES.push({ sql, params });
-    return [];
+    return /update opportunity_subs/.test(sql) ? [{id:"pair-1"}] : [];
   },
 }));
 

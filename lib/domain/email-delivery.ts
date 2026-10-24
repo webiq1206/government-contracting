@@ -19,9 +19,9 @@ export type DeliveryState =
   | "sent"
   /** Positive evidence it arrived: opened, clicked, or replied to. */
   | "delivered"
-  /** Permanently refused (5.x.x). The address is bad; stop mailing it. */
+  /** Delivery refused or unresolved; further sends require review. Not proof the mailbox does not exist. */
   | "bounced"
-  /** Temporarily refused (4.x.x): full mailbox, greylisting, throttling. */
+  /** Explicitly delayed (4.x.x or Action: delayed); preserve the reported cause. */
   | "deferred"
   /** The send itself failed; nothing ever left the building. */
   | "failed"
@@ -45,6 +45,9 @@ export interface BounceReport {
   status: string | null;
   /** Permanent (5.x.x) vs transient (4.x.x). */
   permanent: boolean;
+  disposition?: "failed" | "delayed" | "positive" | "unknown";
+  cause?: "invalid_mailbox" | "access_denied" | "mailbox_full" | "group_restriction" | "unknown";
+  action?: string | null;
   /** A short human-readable reason for the operator. */
   reason: string;
 }
@@ -160,14 +163,16 @@ export function parseBounce(body: string): BounceReport {
     matchFirst(text, /\b([45]\d{2})[ -]\d\.\d\.\d/);
 
   const diagnostic = matchFirst(text, /^\s*Diagnostic-Code\s*:\s*(?:smtp\s*;\s*)?(.+)$/im);
-  const action = matchFirst(text, /^\s*Action\s*:\s*(\w+)/im);
+  const action = matchFirst(text, /^\s*Action\s*:\s*(\w+)/im)?.toLowerCase();
+  const positive = ["delivered","relayed","expanded"].includes(action ?? "") ||
+    (!action && Boolean(status?.startsWith("2")));
 
   // 5.x.x is permanent, 4.x.x is transient. An explicit "Action: delayed"
   // means transient even when the code looks otherwise, and an unreadable
   // code is treated as TRANSIENT so a parsing miss never suppresses a real
   // address on our guess.
   const permanent =
-    action?.toLowerCase() === "delayed"
+    positive || action === "delayed"
       ? false
       : status
         ? status.startsWith("5")
@@ -178,13 +183,24 @@ export function parseBounce(body: string): BounceReport {
   const reason =
     clean(diagnostic) ||
     clean(matchFirst(text, /^\s*(?:550|551|552|553|554|450|451|452)[ -](.+)$/im)) ||
-    (permanent ? "Address rejected the message permanently." : "Delivery was temporarily deferred.");
+    (positive ? `The server reported ${action ?? "successful processing"}; no failure or supplier response is inferred.`
+      : action === "failed" ? "The server ended this delivery attempt unsuccessfully."
+      : permanent ? "The server rejected this attempt permanently." : action === "delayed" || status?.startsWith("4")
+      ? "Delivery was temporarily deferred." : "Delivery failed; the cause and retry status could not be established.");
 
   return {
     recipient: recipient ? clean(recipient).replace(/^<|>$/g, "").toLowerCase() || null : null,
     originalMessageId: originalMessageId ? clean(originalMessageId) : null,
     status: status ?? null,
     permanent,
+    action:action?.toLowerCase() ?? null,
+    disposition:positive ? "positive" : action === "failed" ? "failed"
+      : action === "delayed" || status?.startsWith("4") ? "delayed"
+      : permanent ? "failed" : "unknown",
+    cause:status === "5.1.1" || /does not exist|no such user|user unknown/i.test(text) ? "invalid_mailbox"
+      : /access denied|posting permission|not allowed to post/i.test(text) ? "access_denied"
+      : status === "5.2.2" || /out of storage|inbox (?:is )?full/i.test(text) ? "mailbox_full"
+      : /group.*(?:exist|permission|restrict)|posting to the group/i.test(text) ? "group_restriction" : "unknown",
     reason: reason.slice(0, 300),
   };
 }

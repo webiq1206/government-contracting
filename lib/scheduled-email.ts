@@ -59,14 +59,16 @@ export async function sendScheduledEmail(params: OutreachSendParams,
         subject=$4,body=$5,recipient_email=$6,meta=$7::jsonb,provider_attempted_at=null,
         sender_email=null,delivery_detail=null,delivery_updated_at=now(),
         tracking_id=$8,gmail_thread_id=$9
-        where org_id=$1 and request_key=$2 and delivery_state in ('held','failed') returning *`,
+        where org_id=$1 and request_key=$2 and delivery_state in ('held','failed')
+           and coalesce(meta->>'reconciled','') <> 'gmail_not_found'
+           and meta->>'reply_terminal' is null and meta->>'reply_contact_hold' is null returning *`,
         [params.orgId,key,owner,params.subject,params.text ?? params.html,params.to,
           JSON.stringify({...schedule.meta,scheduled_key:schedule.key,trade:params.trade ?? null}),
           params.trackingId ?? null,params.threadId ?? null]);
       if (!claim) return { provider: null, outcome: "unknown", retryable: false,
         communicationId: existing?.id, error: review };
     }
-    const result = await send({...params,scheduled:undefined,beforeProviderSend:async (from,identity) => {
+    const result = await send({...params,scheduled:undefined,sendIntentId:claim.id,beforeProviderSend:async (from,identity) => {
       await assertReplyProcessingOwnership();
       const stamped = await queryOne<{id:string}>(`update communications set delivery_state='attempting',
         sender_email=$4,provider_attempted_at=now(),delivery_updated_at=now(),

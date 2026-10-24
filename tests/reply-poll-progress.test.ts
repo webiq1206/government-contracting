@@ -25,6 +25,11 @@ describe("reply polling keeps durable progress", () => {
     m.record.mockResolvedValue("saved-reply");
     m.fetch.mockResolvedValue({replies:[notice]});
   });
+  it("passes automatic-message provenance into the unmatched inbox", async()=>{
+    m.fetch.mockResolvedValue({replies:[{...notice,from:"sub@example.test",subject:"Re: Pricing request",body:"We are not interested.",deliveryReport:"",autoSubmitted:"auto-replied"}]});
+    expect((await replyPoll.handler({})).ok).toBe(true);
+    expect(m.record).toHaveBeenCalledWith(expect.objectContaining({autoSubmitted:"auto-replied"}));
+  });
   it("saves an unmatched delivery notice, processes the next email, and advances the page", async()=>{
     m.fetch.mockResolvedValue({replies:[notice,{...notice,messageId:"reply",from:"sub@example.test",subject:"Quote",body:"Our price is $42000",deliveryReport:""}],truncated:true,nextPageToken:"next-page"});
     const result = await replyPoll.handler({});
@@ -34,6 +39,16 @@ describe("reply polling keeps durable progress", () => {
     expect(m.record).toHaveBeenCalledWith(expect.objectContaining({messageId:"reply",body:"Our price is $42000"}));
     expect(m.log).toHaveBeenCalledWith(expect.objectContaining({action:"bounce-unmatched",status:"skipped"}), {requirePersistence:true});
     expect(m.query.mock.calls.some(([sql,params])=>sql.includes("update integration_tokens")&&params.includes("next-page"))).toBe(true);
+  });
+  it("continues to a later automated notice when an earlier interpretation fails, without advancing", async()=>{
+    const human={...notice,messageId:"human",from:"sub@example.test",subject:"Question",body:"Could you clarify?",deliveryReport:""};
+    m.fetch.mockResolvedValue({replies:[human,{...human,messageId:"departure",subject:"Automatic reply",body:"Joe is no longer working here."}]});
+    m.match.mockResolvedValue({comm:{id:"outbound",subcontractor_id:"sub"},strongMatch:true});
+    m.capture.mockRejectedValueOnce(new Error("API_BUDGET: paused")).mockResolvedValueOnce({inboundId:"inbound",subId:"sub",extracted:{notes:"Contact departed"},decision:{act:false,needsReview:true},noticeKind:"departed",contactHeld:true});
+    const result=await replyPoll.handler({});
+    expect(result.ok).toBe(false);expect(m.capture).toHaveBeenCalledTimes(2);
+    expect(m.log).toHaveBeenCalledWith(expect.objectContaining({action:"reply-notice",input:expect.objectContaining({messageId:"departure",contactHeld:true})}));
+    expect(m.query.mock.calls.some(([sql])=>sql.includes("update integration_tokens"))).toBe(false);
   });
   it("retains the cursor if the delivery notice cannot be durably recorded", async()=>{
     m.log.mockImplementation(async(entry)=>{if(entry.action==="bounce-unmatched") throw new Error("database write failed");});

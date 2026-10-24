@@ -12,6 +12,7 @@
  * other's to honour nor the other's to read.
  */
 import { query, queryOne } from "../db";
+import { explicitOptOut } from "./reply-notice";
 
 export type SuppressionSource = "reply" | "operator" | "bounce" | "unsubscribe";
 
@@ -72,17 +73,5 @@ export async function unsuppressEmail(orgId: string, email: string): Promise<voi
  * still hear about the next.
  */
 export function readsAsOptOut(text: string): boolean {
-  const t = (text ?? "").toLowerCase().replace(/\s+/g, " ");
-  if (!t) return false;
-  return [
-    /\b(un)?subscribe me\b/,
-    /\bunsubscribe\b/,
-    /\bremove me from\b/,
-    /\btake me off\b/,
-    /\bstop (emailing|contacting|sending)\b/,
-    /\bdo not (email|contact) me\b/,
-    /\bdon'?t (email|contact) me (again|any ?more)\b/,
-    /\bno longer wish to (receive|be contacted)\b/,
-    /\bopt me out\b/,
-  ].some((re) => re.test(t));
+  return explicitOptOut(text ?? "");
 }

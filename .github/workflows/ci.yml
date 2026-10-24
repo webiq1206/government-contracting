@@ -2,18 +2,11 @@ name: CI
 
 # Pull requests only.
 #
-# Every change reaches main by squash-merging a pull request that has already
-# run exactly these three steps against exactly this tree, so a second run on
-# the merge commit re-proves a green result and nothing else. It was not free:
-# across the last thirty runs, the push-to-main trigger accounted for thirteen
-# runs and 30 of 68 minutes -- 44% of the bill for a duplicate -- on a private
-# repository where minutes are metered.
-#
-# What this gives up, stated plainly: a commit pushed straight to main without
-# a pull request is not checked, and a pull request approved against a slightly
-# older main is not re-verified after the merge. The first is a process the
-# project does not use; the second is caught by the next pull request, which
-# branches from the merged main.
+# Validate the reviewed pull-request tree once. The repository is public and
+# standard GitHub-hosted runners are free. Do not write Actions caches or
+# artifacts: complete database evidence is preserved in bounded log frames
+# and a source/run/attempt/hash summary instead.
+# A direct main push is not validated by this workflow and is not the release path.
 on:
   pull_request:
 
@@ -37,7 +30,6 @@ jobs:
         with:
           # package.json engines: node >= 22.
           node-version: 22
-          cache: npm
 
       # Installs from the lockfile exactly, optional dependencies included:
       # they are optional at runtime (bullmq and ioredis back the queue only
@@ -55,8 +47,13 @@ jobs:
 
       # Unit tests run without database or provider credentials. The separate
       # database job applies this exact branch's migrations to a fresh service.
+      - name: Test CI evidence transport
+        run: node --test .github/scripts/database-report-evidence.test.mjs
+
       - name: Test
         run: npm test
+        env:
+          BROSTCO_TEST_OFFLINE: "1"
 
       # Catches what tsc cannot: a client component importing server-only code,
       # a bad route export, a build-time failure in a page module.
@@ -101,7 +98,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - name: Install
         run: npm ci
       - name: Apply and verify exact migration files
@@ -117,10 +113,6 @@ jobs:
           --outputFile=database-test-results.json
       - name: Reject a skipped or empty database gate
         run: node scripts/verify-database-test-report.mjs database-test-results.json
-      - name: Preserve database test evidence
+      - name: Preserve complete database evidence in bounded log frames
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: database-test-results
-          path: database-test-results.json
-          if-no-files-found: warn
+        run: node .github/scripts/database-report-evidence.mjs emit database-test-results.json

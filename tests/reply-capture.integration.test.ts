@@ -317,7 +317,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
     await query(`delete from subcontractors where email='someone-else@another-company.test'`);
   });
 
-  it("soft-closes on cant_fulfill, skips quote save, and records thank-you outbound", async () => {
+  it("soft-closes on cant_fulfill without an automatic acknowledgment for an unverified email thread", async () => {
     // A decline needs the exact conversation, not just a matching sender.
     const declineTracking = randomUUID();
     const outbound = await queryOne<{ id: string }>(
@@ -371,7 +371,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
     expect(result.declined).toBe(true);
     expect(result.quoteSaved).toBe(false);
-    expect(result.thankYouSent).toBe(true);
+    expect(result.thankYouSent).toBe(false);
     expect(closeOutCalls).toHaveLength(1);
 
     const os = await queryOne<{ outreach_state: string }>(
@@ -394,8 +394,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
         order by created_at desc limit 1`,
       [ids.opp, ids.sub]
     );
-    expect(thankYou?.meta?.kind).toBe("decline_thank_you");
-    expect(thankYou?.subject).toMatch(/Thank you/i);
+    expect(thankYou).toBeNull();
 
     const notes = await queryOne<{ notes: string | null }>(
       `select notes from subcontractors where id=$1`,
@@ -403,4 +402,22 @@ d("reply capture pipeline (Resend inbound path)", () => {
     );
     expect(notes?.notes ?? "").toMatch(/cannot fulfill|electrical|plumbing/i);
   });
+  it("does not persist a price when the trade declines during extraction", async () => {
+    await query(`delete from trade_pricing_rows where opportunity_id=$1`,[ids.opp]);
+    await query(`delete from quotes where opportunity_id=$1`,[ids.opp]);
+    await query(`update opportunity_subs set outreach_state='sent' where opportunity_id=$1`,[ids.opp]);
+    await query(`update opportunities set stage='outreach',status='open',pursuit_state='active' where id=$1`,[ids.opp]);
+    const {comm,strongMatch}=await cap.matchInboundReply({orgId:ids.org,trackingToken:ids.tracking,fromEmail:ids.subEmail});
+    const result=await cap.captureReply({orgId:ids.org,comm:comm!,strongMatch,fromEmail:ids.subEmail,
+      replyText:"Our price is $98,765 net 30.",messageId:"synthetic-concurrent-decline",
+      extract:async()=>{
+        await query(`update opportunity_subs set outreach_state='declined' where opportunity_id=$1`,[ids.opp]);
+        return fakeExtract();
+      }});
+    expect(result).toMatchObject({quoteSaved:false,decision:{act:false,needsReview:true}});
+    expect(await query(`select id from quotes where opportunity_id=$1`,[ids.opp])).toHaveLength(0);
+    expect(await query(`select id from trade_pricing_rows where opportunity_id=$1`,[ids.opp])).toHaveLength(0);
+    expect(await queryOne(`select outreach_state from opportunity_subs where opportunity_id=$1`,[ids.opp])).toEqual({outreach_state:"declined"});
+  });
+
 });
