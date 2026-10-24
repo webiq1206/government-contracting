@@ -1,0 +1,31 @@
+ phase |          updated_at           |       age       
+-------+-------------------------------+-----------------
+ ready | 2026-10-20 18:55:12.846598+00 | 00:00:08.001476
+(1 row)
+
+ key | updated_at 
+-----+------------
+(0 rows)
+
+           agent            | status | count 
+----------------------------+--------+-------
+ ai-provider-recovery-probe | ok     |     2
+ backlink-outreach-sweep    | ok     |     1
+ daily-recap                | ok     |     1
+ outreach-followup          | ok     |     1
+ pursuit-continuation-sweep | ok     |     2
+ reply-poll                 | ok     |     1
+ review-expiry-sweep        | ok     |     2
+ scoring-recovery-sweep     | ok     |     1
+ service-sync               | ok     |     1
+(9 rows)
+
+ sent_today 
+------------
+         25
+(1 row)
+
+ cause | state | created_at 
+-------+-------+------------
+(0 rows)
+
