@@ -70,7 +70,7 @@ export function SignupForm({
   }
 
   return (
-    <form data-clarity-mask="true" onSubmit={onSubmit} onFocus={() => { if (!started.current) { started.current = true; marketingEvent("signup_started", { location: "form" }); } }} className="space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} onFocus={() => { if (!started.current) { started.current = true; marketingEvent("signup_started", { location: "form" }); } }} className="space-y-5">
       <div>
         <label className="label" htmlFor="name">
           Your name
@@ -79,7 +79,7 @@ export function SignupForm({
           id="name"
           name="name"
           required
-          className="input mt-1"
+          className="input mt-1.5"
           autoComplete="name"
         />
       </div>
@@ -91,7 +91,7 @@ export function SignupForm({
           id="companyName"
           name="companyName"
           required
-          className="input mt-1"
+          className="input mt-1.5"
           autoComplete="organization"
         />
       </div>
@@ -104,25 +104,27 @@ export function SignupForm({
           name="email"
           type="email"
           required
-          className="input mt-1"
+          className="input mt-1.5"
           autoComplete="email"
         />
       </div>
       <div>
-        <label className="label" htmlFor="password">
-          Password
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label className="label" htmlFor="password">
+            Password
+          </label>
+          <button type="button" className="inline-flex coarse:min-h-11 items-center text-xs font-semibold text-accent-strong hover:underline" aria-controls="password" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Hide password" : "Show password"}</button>
+        </div>
         <input
           id="password"
           name="password"
           type={showPassword ? "text" : "password"}
           required
           minLength={10}
-          className="input mt-1"
+          className="input mt-1.5"
           autoComplete="new-password"
         />
-        <p className="mt-1 text-xs text-muted-foreground">At least 10 characters.</p>
-        <button type="button" className="mt-1 inline-flex min-h-11 items-center text-sm text-accent underline" aria-controls="password" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Hide password" : "Show password"}</button>
+        <p className="mt-1.5 text-xs text-muted-foreground">At least 10 characters.</p>
       </div>
       <input type="hidden" name="plan" value={plan} />
       {error && <p role="alert" className="text-sm text-risk">{error}</p>}
@@ -135,7 +137,7 @@ export function SignupForm({
       </button>
       <p className="text-center text-xs text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="text-accent hover:underline">
+        <Link href="/login" className="inline-flex coarse:min-h-11 items-center font-medium text-accent-strong hover:underline">
           Log in
         </Link>
       </p>
