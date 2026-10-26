@@ -39,6 +39,7 @@ import { isEmailable } from "../domain/sub-contactability";
 import { getAutomationRules } from "../app-settings";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import { outreachWindowRefusal } from "../domain/outreach-send-window";
+import { accountOutreachTimeZone } from "../domain/account-timezone";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -204,10 +205,6 @@ export const subOnboarding: AgentDefinition = {
     "When a bid is won, checks that every subcontractor going on the job has a signed W-9 and current insurance. Emails a paperwork link to the subs named on the contract, and reports anyone who quoted but has not been designated yet so no work starts behind missing coverage.",
   worksWithoutClaude: true,
   async handler(ctx): Promise<AgentResult> {
-    // The sweep runs every half hour on the host clock. A 6:35 UTC run is
-    // overnight in America/Boise. Leave the chase for the next open window.
-    const held = outreachWindowRefusal(new Date());
-    if (held) return { ok: true, summary: held.error };
     const opportunityId = ctx.payload.opportunityId as string | undefined;
     // Tenant scoping. With an opportunityId the runner has already set the
     // owning org's context; the daily cron has no payload, so without an
@@ -262,6 +259,7 @@ export const subOnboarding: AgentDefinition = {
     let chased = 0;
     let alreadyClear = 0;
     let pausedSends = 0;
+    let windowHeld = 0;
     const undesignated: string[] = [];
     const unreachable: string[] = [];
     const blocked: string[] = [];
@@ -287,10 +285,27 @@ export const subOnboarding: AgentDefinition = {
         unreachable.push(row.companyName);
         continue;
       }
-      if (await chasedRecently(row.subcontractorId)) continue;
-
       const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
         row.orgId ? runWithOrg(row.orgId, fn) : fn();
+      const zone = await accountOutreachTimeZone(row.orgId);
+      const held = outreachWindowRefusal(new Date(), zone);
+      if (held) {
+        windowHeld++;
+        await inRowOrg(() =>
+          logAgent({
+            agent: "sub-onboarding",
+            action: "send-window",
+            level: "info",
+            status: "skipped",
+            subcontractorId: row.subcontractorId,
+            opportunityId: row.opportunityId,
+            message: held.error,
+          })
+        );
+        continue;
+      }
+      if (await chasedRecently(row.subcontractorId)) continue;
+
       const rules = await inRowOrg(() => getAutomationRules());
       if (rules.rfq_outbound_enabled === false) {
         pausedSends++;
@@ -350,6 +365,9 @@ export const subOnboarding: AgentDefinition = {
       `${chased} chased`,
       pausedSends
         ? `${pausedSends} paperwork request${pausedSends === 1 ? "" : "s"} skipped because outbound quote requests are paused`
+        : null,
+      windowHeld
+        ? `${windowHeld} paperwork request${windowHeld === 1 ? "" : "s"} held for the account's weekday business hours`
         : null,
       undesignated.length ? `${undesignated.length} awaiting designation` : null,
       unreachable.length ? `${unreachable.length} could not be emailed` : null,

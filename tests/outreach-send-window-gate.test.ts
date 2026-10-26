@@ -8,7 +8,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), send: vi.fn(), get: vi.fn(), paused: false }));
+const mocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  send: vi.fn(),
+  get: vi.fn(),
+  paused: false,
+  zone: null as string | null,
+}));
 vi.mock("../lib/config", () => ({
   config: {
     gmail: { configured: true, clientId: "test", clientSecret: "test", sender: null },
@@ -19,7 +25,11 @@ vi.mock("../lib/config", () => ({
 }));
 vi.mock("../lib/db", () => ({
   query: vi.fn(async () => []),
-  queryOne: vi.fn(async () => ({ data: { refresh_token: "test-only" } })),
+  queryOne: vi.fn(async (sql: string) =>
+    String(sql).includes("from organizations")
+      ? { timezone: mocks.zone }
+      : { data: { refresh_token: "test-only" } }
+  ),
   transaction: async (fn: (client: { query: () => Promise<{ rows: [] }> }) => unknown) =>
     fn({ query: async () => ({ rows: [] }) }),
 }));
@@ -66,6 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   __resetSendAsCache();
   mocks.paused = false;
+  mocks.zone = null;
   mocks.list.mockResolvedValue({
     data: {
       sendAs: [
@@ -108,6 +119,34 @@ describe("gmail.send refuses outreach outside America/Boise weekday hours", () =
       expect(mocks.list).not.toHaveBeenCalled();
       expect(stamp).not.toHaveBeenCalled();
     }
+  });
+
+  it("opens New York and holds Los Angeles at the same UTC instant", async () => {
+    vi.setSystemTime(new Date("2026-10-26T14:30:00.000Z"));
+    mocks.zone = "America/New_York";
+    expect(await gmail.send(params)).toMatchObject({ outcome: "accepted", messageId: "gmail-id" });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    __resetSendAsCache();
+    mocks.zone = "America/Los_Angeles";
+    const held = await gmail.send(params);
+    expect(held).toMatchObject({ ...HOLD, error: expect.stringContaining("America/Los_Angeles") });
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("holds New York and opens Los Angeles later the same Monday", async () => {
+    vi.setSystemTime(new Date("2026-10-26T21:30:00.000Z"));
+    mocks.zone = "America/New_York";
+    expect(await gmail.send(params)).toMatchObject({
+      ...HOLD,
+      error: expect.stringContaining("America/New_York"),
+    });
+    expect(mocks.send).not.toHaveBeenCalled();
+
+    mocks.zone = "America/Los_Angeles";
+    expect(await gmail.send(params)).toMatchObject({ outcome: "accepted", messageId: "gmail-id" });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 
   it("sends a password reset on Saturday because system mail is transactional", async () => {

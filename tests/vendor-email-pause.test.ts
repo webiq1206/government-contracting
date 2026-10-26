@@ -14,6 +14,9 @@ const rules = vi.hoisted(() => ({ rfq_outbound_enabled: false }));
 const query = vi.hoisted(() => vi.fn(async () => []));
 const queryOne = vi.hoisted(() => vi.fn(async () => ({ n: 0 })));
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+}));
 vi.mock("../lib/domain/outreach-send-window", () => ({
   outreachWindowRefusal: () => null,
   isOutreachWindowHold: () => false,

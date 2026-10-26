@@ -15,6 +15,9 @@ const db = vi.hoisted(() => ({
   queryOne: vi.fn(async () => null as unknown),
 }));
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+}));
 vi.mock("../lib/domain/outreach-send-window", () => ({
   outreachWindowRefusal: () => null,
   isOutreachWindowHold: () => false,

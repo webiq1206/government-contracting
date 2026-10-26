@@ -27,6 +27,9 @@ const sendSpy = vi.fn(async () => ({
   provider: "gmail",
 }));
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+}));
 vi.mock("../lib/domain/outreach-send-window", () => ({
   outreachWindowRefusal: () => null,
   isOutreachWindowHold: () => false,

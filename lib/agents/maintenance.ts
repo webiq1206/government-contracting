@@ -65,6 +65,7 @@ import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { areCallsEnabled, getAutomationRules, isAutomationPaused, getWorkExecution } from "../app-settings";
 import { isOutreachWindowHold, outreachWindowRefusal } from "../domain/outreach-send-window";
+import { accountOutreachTimeZone } from "../domain/account-timezone";
 import { publicContactCandidates } from "../public-contact-backfill";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
@@ -98,16 +99,6 @@ export const outreachFollowup: AgentDefinition = {
   description: "Sends the automated 48-hour follow-up to non-responsive subcontractors.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Crons fire all night on the host clock. Do not claim due follow-ups
-    // outside America/Boise weekday hours; the next in-window run sends them.
-    const held = outreachWindowRefusal(new Date());
-    if (held) {
-      return {
-        ok: true,
-        summary: held.error,
-        data: { sent: 0, due: 0, lastCalls: 0, held: 0, failures: 0, deferredUntilWindow: true },
-      };
-    }
     /**
      * One sweep per organization.
      *
@@ -137,7 +128,27 @@ export const outreachFollowup: AgentDefinition = {
     let lastCalls = 0;
     let failedTotal = 0;
     let heldTotal = 0;
+    let deferredAccounts = 0;
+    let deferredReason: string | null = null;
     for (const org of fanout.orgs) {
+      // Each account keeps its own weekday. A New York morning must not wait
+      // for Los Angeles, and a closed account must not have its follow-ups claimed.
+      const zone = await accountOutreachTimeZone(org.id);
+      const held = outreachWindowRefusal(new Date(), zone);
+      if (held) {
+        deferredAccounts++;
+        deferredReason = held.error;
+        await runWithOrg(org.id, () =>
+          logAgent({
+            agent: "outreach-followup",
+            action: "send-window",
+            level: "info",
+            status: "skipped",
+            message: held.error,
+          })
+        );
+        continue;
+      }
       const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
       sentTotal += res.sent;
       dueTotal += res.due;
@@ -167,6 +178,18 @@ export const outreachFollowup: AgentDefinition = {
         failedTotal += lastCall.failures;
       }
     }
+    if (fanout.orgs.length > 0 && deferredAccounts === fanout.orgs.length) {
+      return {
+        ok: true,
+        summary:
+          deferredReason ??
+          "Held until each account's weekday business hours. Unset zones use America/Boise. Nothing was sent.",
+        data: { sent: 0, due: 0, lastCalls: 0, held: 0, failures: 0, deferredUntilWindow: true },
+      };
+    }
+    const deferredNote = deferredAccounts
+      ? ` ${deferredAccounts} account${deferredAccounts === 1 ? "" : "s"} outside their own weekday business hours had their queues left unchanged.`
+      : "";
     const paused = fanout.pausedCount
       ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their schedules were left unchanged.`
       : "";
@@ -176,7 +199,7 @@ export const outreachFollowup: AgentDefinition = {
         lastCalls > 0 ? `, plus ${lastCalls} last-call nudge(s) before bid deadlines` : ""
       }.${heldTotal > 0 ? ` ${heldTotal} follow-up(s) were held with their schedules preserved.` : ""}${
         failedTotal > 0 ? ` ${failedTotal} follow-up action(s) failed and need attention.` : ""
-      }${paused}`,
+      }${deferredNote}${paused}`,
       data: { sent: sentTotal, due: dueTotal, lastCalls, held: heldTotal, failures: failedTotal },
       humanActionRequired: failedTotal > 0 || heldTotal > 0,
     };
@@ -1393,12 +1416,6 @@ export const outreachRecoverySweep: AgentDefinition = {
     "Rechecks unsent drafts, failed sends and verified document holds through the normal outreach checks when the inbox is connected.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Re-queueing the backlog at night is what dumps mail when a pause lifts.
-    // Leave stuck drafts where they are until America/Boise business hours.
-    const held = outreachWindowRefusal(new Date());
-    if (held) {
-      return { ok: true, summary: held.error, enqueued: [] };
-    }
     const fanout = await orgsToSweep("outreach-recovery-sweep");
     if (fanout.error) {
       return {
@@ -1409,8 +1426,20 @@ export const outreachRecoverySweep: AgentDefinition = {
     const enqueued: AgentResult["enqueued"] = [];
     let recovered = 0;
     let waiting = 0;
+    let deferredAccounts = 0;
+    let deferredReason: string | null = null;
 
     for (const org of fanout.orgs) {
+      // Re-queueing a closed account is what dumps mail when a pause lifts.
+      // Leave that account's drafts where they are. An open account in
+      // another zone is re-queued on this same run.
+      const zone = await accountOutreachTimeZone(org.id);
+      const held = outreachWindowRefusal(new Date(), zone);
+      if (held) {
+        deferredAccounts++;
+        deferredReason = held.error;
+        continue;
+      }
       await runWithOrg(org.id, async () => {
         const orgRules = await getAutomationRules();
         const stuck = await query<{
@@ -1472,6 +1501,18 @@ export const outreachRecoverySweep: AgentDefinition = {
       });
     }
 
+    if (fanout.orgs.length > 0 && deferredAccounts === fanout.orgs.length) {
+      return {
+        ok: true,
+        summary:
+          deferredReason ??
+          "Held until each account's weekday business hours. Unset zones use America/Boise. Nothing was re-queued.",
+        enqueued: [],
+      };
+    }
+    const deferredNote = deferredAccounts
+      ? ` ${deferredAccounts} account${deferredAccounts === 1 ? "" : "s"} outside their own weekday business hours were left unchanged.`
+      : "";
     const paused = fanout.pausedCount
       ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their recovery work was left unchanged.`
       : "";
@@ -1479,10 +1520,10 @@ export const outreachRecoverySweep: AgentDefinition = {
       ok: waiting === 0,
       summary:
         recovered > 0
-          ? `Re-queued ${recovered} stuck outreach email(s) now that sending works again.${paused}`
+          ? `Re-queued ${recovered} stuck outreach email(s) now that sending works again.${deferredNote}${paused}`
           : waiting > 0
-            ? `${waiting} outreach email(s) still waiting for an inbox connection.${paused}`
-            : `No stuck outreach emails.${paused}`,
+            ? `${waiting} outreach email(s) still waiting for an inbox connection.${deferredNote}${paused}`
+            : `No stuck outreach emails.${deferredNote}${paused}`,
       enqueued,
       humanActionRequired: waiting > 0,
     };
@@ -2806,7 +2847,8 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
   errors: number;
   repliesMatched: number;
 }> {
-  const held = outreachWindowRefusal(new Date());
+  const zone = await accountOutreachTimeZone(orgId);
+  const held = outreachWindowRefusal(new Date(), zone);
   const send = held ? { sent: 0, skipped: 0, errors: 0 } : await sendPendingApproved(orgId, 25);
   const followUp = held ? { sent: 0, errors: 0 } : await sendFollowUps(orgId, 25);
 

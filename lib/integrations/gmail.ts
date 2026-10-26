@@ -974,10 +974,14 @@ export const gmail = {
     // Same choke point as the pause, and independent of it. A night or
     // weekend run whose pause switch is OFF still must not reach Gmail.
     // transactional is only platform system mail (password resets, digests,
-    // alerts). The zone is America/Boise inside the helper, not this process.
+    // alerts). The zone is this account's organizations.timezone, read
+    // through Intl. Unset or unusable zones use America/Boise, not the
+    // process clock and not America/Denver.
     if (!params.transactional) {
       const { outreachWindowRefusal } = await import("../domain/outreach-send-window");
-      const held = outreachWindowRefusal(new Date());
+      const { accountOutreachTimeZone } = await import("../domain/account-timezone");
+      const zone = await accountOutreachTimeZone(org);
+      const held = outreachWindowRefusal(new Date(), zone);
       if (held) return held;
     }
     const client = await gmailClient(org ?? undefined);
