@@ -7,6 +7,7 @@ import { requestSignIn } from "@/lib/client/sign-in";
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const submitting = useRef(false);
@@ -30,7 +31,7 @@ export function LoginForm() {
   }
 
   return (
-    <form data-clarity-mask="true" onSubmit={onSubmit} className="card space-y-4">
+    <form data-clarity-mask="true" onSubmit={onSubmit} className="space-y-5">
       <div>
         {/*
           * htmlFor, not just visible text. Both of these labels rendered on
@@ -46,7 +47,7 @@ export function LoginForm() {
         <input
           id="login-email"
           type="email"
-          className="input mt-1"
+          className="input mt-1.5"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
@@ -65,19 +66,31 @@ export function LoginForm() {
             Forgot password?
           </Link>
         </div>
-        <input
-          id="login-password"
-          type="password"
-          className="input mt-1"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          required
-        />
+        <div className="relative mt-1.5">
+          <input
+            id="login-password"
+            type={showPassword ? "text" : "password"}
+            className="input pr-20"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+          <button
+            type="button"
+            className="absolute inset-y-0 right-0 inline-flex min-w-11 items-center justify-center px-3 text-xs font-semibold text-accent-strong hover:underline"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            aria-controls="login-password"
+            onClick={() => setShowPassword((visible) => !visible)}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
       </div>
       {error && <p role="alert" className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={loading} aria-busy={loading}>
-        {loading ? "Signing in..." : "Sign in"}
+        {loading ? "Signing in..." : <>Sign in <span aria-hidden="true">→</span></>}
       </button>
       <p className="text-center text-xs text-muted-foreground">
         New here?{" "}

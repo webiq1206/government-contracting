@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import { currentUser, hasAnyOperator } from "@/lib/auth";
 import { LoginForm } from "@/components/login-form";
-import { ThemeWordmark } from "@/components/theme-wordmark";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionLoadFailure } from "@/components/session-load-failure";
+import { AuthSplit } from "@/components/auth-split";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Log in", robots: { index: false, follow: false } };
@@ -23,24 +22,34 @@ export default async function LoginPage() {
   // rather than a login form that can't succeed.
   if (!(await hasAnyOperator())) redirect("/setup");
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center bg-background p-6 text-foreground">
-      <div className="mb-4 flex w-full max-w-md justify-end">
-        <ThemeToggle compact />
-      </div>
-      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8">
-        <div className="mb-10 text-center">
-          <p className="mb-4 text-sm text-muted-foreground">Your government contracting workspace</p>
-          <h1 className="flex justify-center">
-            <ThemeWordmark className="h-12" />
-          </h1>
-          <h2 className="mt-6 text-2xl font-semibold tracking-tight">Welcome back</h2>
-        </div>
+    <AuthSplit
+      kicker="Government contracting"
+      headline={
+        <>
+          A clear brief
+          <br />
+          before the bid.
+        </>
+      }
+      support="Opportunities scored and ready to review. The final call stays with your team."
+      footer="Built for government contractors."
+    >
+      <p className="auth-kicker">Your BrostCo workspace</p>
+      <h1 className="auth-title">Welcome back.</h1>
+      <p className="auth-lede">
+        Federal opportunities, scored and briefed automatically. Sign in to review
+        today&apos;s pipeline.
+      </p>
+      <div className="auth-form">
         <LoginForm />
-        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-          Federal opportunities, scored and briefed automatically. Sign in to review
-          today&rsquo;s pipeline.
-        </p>
       </div>
-    </main>
+      <p className="auth-secure">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <rect x="5" y="11" width="14" height="9" rx="1.5" />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+        </svg>
+        A private session on this device.
+      </p>
+    </AuthSplit>
   );
 }
