@@ -1,4 +1,6 @@
 import { DEFAULT_ACCOUNT_BUDGET, DEFAULT_PLATFORM_REQUESTS } from "./defaults";
+import { accountDailyRequestBlock, admissionBusyMessage, platformRequestCapMessage } from "../domain/spending-notice";
+import { ACCOUNT_DAY_REQUEST_COUNT_SQL, PLATFORM_DAY_REQUEST_COUNT_SQL, requestCapBlockMessage } from "./request-cap";
 import { isBoundedGpt6, gpt6ReservationCovered } from "../ai/model-contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { query, queryOne, transaction } from "../db";
@@ -65,6 +67,11 @@ export class ApiUsageBlockedError extends Error {
   }
 }
 
+/** PostgreSQL lock_not_available. lock_timeout fired before the lock was granted. */
+function isLockNotAvailable(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "55P03";
+}
+
 /**
  * A request whose cost is still unknown AND which should have had one.
  *
@@ -97,12 +104,31 @@ export async function beginUsage(
   const requirePrice = options.requirePrice || candidate;
   feature = ctx.feature ?? feature;
   const id = randomUUID();
+  // Already-spent request caps refuse here, before the admission lock.
+  // Dollar limits and the same caps are still enforced inside the transaction.
+  const cap = await requestCapBlockMessage({
+    orgId: identity.orgId,
+    source: identity.source,
+    provider,
+    feature,
+  });
+  if (cap) throw new ApiUsageBlockedError(cap);
   await transaction(async (client) => {
     // Serialize admissions with limit edits. Pending/unpriced requests block limited scopes,
     // rather than inventing a safe dollar reservation for an unknown provider charge.
-    await client.query(
-      "select pg_advisory_xact_lock(hashtext('api-usage-admission'))",
-    );
+    // A waiter must not hold its pool connection for the statement timeout.
+    // Three seconds is enough to join a quiet ledger and short enough that a
+    // stampede releases the connection instead of wedging the process.
+    await client.query("select set_config('lock_timeout', '3000', true)");
+    try {
+      await client.query(
+        "select pg_advisory_xact_lock(hashtext('api-usage-admission'))",
+      );
+    } catch (error) {
+      if (isLockNotAvailable(error)) throw new ApiUsageBlockedError(admissionBusyMessage());
+      throw error;
+    }
+    await client.query("select set_config('lock_timeout', '0', true)");
     const price = await client.query(
       "select max_request_cost::text,rates from api_usage_rates where provider=$1 and service=$2",
       [provider, service],
@@ -131,10 +157,9 @@ export async function beginUsage(
       if (options.complex && !account.allow_complex)
         throw blocked("Complex AI work is paused in your cost controls.");
       if (account.daily_requests != null) {
-        const count = await client.query(`select count(*)::int as calls from api_usage_events
-          where org_id=$1 and not (credential_source='unknown' and provider_cost=0 and billing_status='not_billable') and started_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC'`, [identity.orgId]);
+        const count = await client.query(ACCOUNT_DAY_REQUEST_COUNT_SQL, [identity.orgId]);
         if (count.rows[0].calls >= account.daily_requests)
-          throw blocked(`You reached today's request limit of ${account.daily_requests}. It resets at midnight UTC.`);
+          throw new ApiUsageBlockedError(accountDailyRequestBlock(Number(account.daily_requests)));
       }
       for (const period of ["day", "month"] as const) {
         const cap = period === "day" ? account.daily_limit : account.monthly_limit;
@@ -184,13 +209,10 @@ export async function beginUsage(
     }
     for (const limit of limits.rows) {
       if (limit.daily_requests != null && identity.source !== "tenant") {
-        const count = await client.query(`select count(*)::int as calls from api_usage_events
-          where started_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC'
-          and credential_source <> 'tenant' and not (credential_source='unknown' and provider_cost=0 and billing_status='not_billable') and ($1::uuid is null or org_id=$1)
-          and ($2='*' or provider=$2) and ($3='*' or feature=$3)`,
+        const count = await client.query(PLATFORM_DAY_REQUEST_COUNT_SQL,
           [limit.org_id,limit.provider,limit.feature]);
         if (count.rows[0].calls >= limit.daily_requests)
-          throw new ApiUsageBlockedError("API_BUDGET: The platform's daily request allowance has been reached. New paid work is on hold. Ask the platform administrator to review API Usage limits, or wait until midnight UTC.");
+          throw new ApiUsageBlockedError(platformRequestCapMessage());
       }
       if (limit.paused)
         throw new ApiUsageBlockedError(

@@ -8,6 +8,11 @@ import { PipelinePulse } from "@/components/pipeline-pulse";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
+import { DEFAULT_RULES } from "@/lib/domain/intake";
+import { isMissingTenantContext } from "@/lib/tenant";
+import { bindRequestOrg } from "@/lib/tenant-context";
+import { spendingHoldCopy } from "@/lib/domain/spending-notice";
+import { TodayAccountUnknown } from "@/components/today-account-unknown";
 import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
@@ -17,6 +22,7 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { accountSetup } from "@/lib/setup-facts";
+import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
 import { ledgerHeadline } from "@/lib/domain/work-ledger";
 import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
@@ -487,6 +493,43 @@ function PipelineHealthRail({
   );
 }
 
+const EMPTY_DIGEST = {
+  found: 0,
+  autoPursued: 0,
+  replies: 0,
+  bidsPriced: 0,
+  expiredArchived: 0,
+  callsLogged: 0,
+};
+
+const EMPTY_ACTION_CENTER = {
+  triage: [],
+  calls: { count: 0, soonest_deadline: null, rows: [] },
+  bidWork: [],
+  awaitingOutcome: [],
+  urgent: [],
+  flagged: [],
+  subFollowUps: [],
+  quoteReviews: [],
+  complianceAlerts: [],
+  awardCompliance: [],
+  proposedWeights: [],
+  replyReviews: [],
+  backlinkApprovals: 0,
+  snoozedCount: 0,
+  stageCounts: [],
+  totals: {
+    triage: 0,
+    bidWork: 0,
+    urgent: 0,
+    flagged: 0,
+    subFollowUps: 0,
+    quoteReviews: 0,
+    replyReviews: 0,
+    compliance: 0,
+  },
+};
+
 export default async function TodayPage(
   props: {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -494,11 +537,22 @@ export default async function TodayPage(
 ) {
   const searchParams = await props.searchParams;
   const now = new Date();
-  const [rules, viewer] = await Promise.all([
-    getAutomationRules(),
-    currentUser(),
-  ]);
   const loadWarnings: string[] = [];
+  let rules = DEFAULT_RULES;
+  let viewer: Awaited<ReturnType<typeof currentUser>> = null;
+  try {
+    viewer = await currentUser();
+    if (!viewer?.organizationId) return <TodayAccountUnknown />;
+    bindRequestOrg(viewer.organizationId);
+    rules = await getAutomationRules();
+  } catch (error) {
+    if (isMissingTenantContext(error) || !viewer?.organizationId) return <TodayAccountUnknown />;
+    console.error("[today] session or automation rules failed:", error);
+    loadWarnings.push(
+      "Automation rules could not be read. Deadline windows below use the account default until you reload."
+    );
+  }
+  if (!viewer?.organizationId) return <TodayAccountUnknown />;
   let timezone = DEFAULT_TIMEZONE;
   if (viewer) {
     try {
@@ -510,11 +564,45 @@ export default async function TodayPage(
       );
     }
   }
-  const [data, profile, automation, digest, queueItems, pulse, health, done, inbox, samConfigured] = await Promise.all([
-    actionCenter({ urgentDays: rules.urgent_days }),
-    getActiveProfile(),
-    getAutomationState(),
-    dailyDigest(),
+  const guard = <T,>(warning: string, fallback: T, run: () => Promise<T>): Promise<T> =>
+    run().catch((error: unknown) => {
+      if (isMissingTenantContext(error)) throw error;
+      console.error("[today]", warning, error);
+      loadWarnings.push(warning);
+      return fallback;
+    });
+  let data: Awaited<ReturnType<typeof actionCenter>>;
+  let profile: Awaited<ReturnType<typeof getActiveProfile>>;
+  let automation: Awaited<ReturnType<typeof getAutomationState>>;
+  let digest: Awaited<ReturnType<typeof dailyDigest>>;
+  let queueItems: Awaited<ReturnType<typeof workQueue>>;
+  let pulse: Awaited<ReturnType<typeof readPipelinePulse>>;
+  let health: Awaited<ReturnType<typeof automationHealth>> | null;
+  let done: Awaited<ReturnType<typeof completedToday>>;
+  let inbox: Awaited<ReturnType<typeof gmail.connection>>;
+  let samConfigured: boolean;
+  try {
+  [data, profile, automation, digest, queueItems, pulse, health, done, inbox, samConfigured] = await Promise.all([
+    guard(
+      "Today's action lists could not be read. Counts below may be incomplete. Reload this page.",
+      EMPTY_ACTION_CENTER,
+      () => actionCenter({ urgentDays: rules.urgent_days }),
+    ),
+    guard(
+      "The company profile could not be read. Setup status below may be incomplete.",
+      null,
+      () => getActiveProfile(),
+    ),
+    guard(
+      "The pause switch could not be read. Do not assume automation is running.",
+      { paused: false, changed_at: null, changed_by: null },
+      () => getAutomationState(),
+    ),
+    guard(
+      "The 24-hour digest could not be read.",
+      EMPTY_DIGEST,
+      () => dailyDigest(),
+    ),
     /*
      * Still tolerant, but no longer silent. This exact catch hid a query
      * referencing a column that has never existed (`cc.trade`), so the work
@@ -523,6 +611,7 @@ export default async function TodayPage(
      * anywhere saying why.
      */
     workQueue().catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       console.error("[today] work queue failed to load:", e);
       loadWarnings.push(
         "Your work queue could not be read, so task counts and the clear state may be incomplete. Reload this page; if it continues, open Automation Health."
@@ -530,13 +619,15 @@ export default async function TodayPage(
       return [];
     }),
     readPipelinePulse().catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       console.error("[today] pipeline pulse failed to load:", e);
       loadWarnings.push(
         "Pipeline alerts could not be checked. Reload this page before relying on the status shown below."
       );
       return [];
     }),
-    automationHealth().catch(() => {
+    automationHealth().catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       loadWarnings.push(
         "Automation health could not be verified. Open Automation Health before relying on scheduled work."
       );
@@ -548,6 +639,7 @@ export default async function TodayPage(
      * which is a real state, so it is logged and the page still renders.
      */
     completedToday({ timezone, now }).catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       console.error("[today] completed-today count failed:", e);
       loadWarnings.push(
         "Completed-today totals could not be read. Your work is still saved, but the displayed totals are temporarily incomplete."
@@ -564,13 +656,15 @@ export default async function TodayPage(
       };
     }),
     gmail.connection().catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       console.error("[today] inbox status failed to load:", e);
       loadWarnings.push(
         "Inbox status could not be checked. Do not reconnect it based on this screen; reload or open Integrations first."
       );
-      return { connected: false, email: null, status: "none", lastError: null };
+      return { connected: false, email: null, status: "none", lastError: null, sendAs: null };
     }),
     orgHasKey("SAM_API_KEY").catch((e) => {
+      if (isMissingTenantContext(e)) throw e;
       console.error("[today] SAM key status failed to load:", e);
       loadWarnings.push(
         "SAM.gov connection status could not be checked. Reload or verify it under Integrations before changing setup."
@@ -578,6 +672,11 @@ export default async function TodayPage(
       return false;
     }),
   ]);
+  } catch (error) {
+    if (isMissingTenantContext(error)) return <TodayAccountUnknown />;
+    console.error("[today] failed to load:", error);
+    return <TodayAccountUnknown variant="load" />;
+  }
 
   /*
    * The filters, read from the URL. Counts are always over the whole queue,
@@ -789,7 +888,23 @@ export default async function TodayPage(
   // accountSetup holds the per-organization and trial reasoning that used to
   // live here, so the Guide Me panel and its badge answer this the same way
   // rather than from the deployment's own environment.
-  const setup = await accountSetup(profile?.profile_json ?? null, viewer);
+  let setup: Awaited<ReturnType<typeof accountSetup>>;
+  try {
+    setup = await accountSetup(profile?.profile_json ?? null, viewer);
+  } catch (error) {
+    if (isMissingTenantContext(error)) return <TodayAccountUnknown />;
+    console.error("[today] setup status failed:", error);
+    loadWarnings.push("Setup status could not be checked. Do not assume automation is running.");
+    setup = {
+      ...computeSetupChecklist({
+        orgName: null,
+        profile: null,
+        integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+        gmailOffered: false,
+      }),
+      warnings: [],
+    };
+  }
   loadWarnings.push(...setup.warnings);
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));
@@ -1031,10 +1146,19 @@ export default async function TodayPage(
                 <Section
                   id="reply-reviews"
                   eyebrow="Needs your read"
-                  title="Replies the system wasn't sure about"
-                  count={data.replyReviews.length}
+                  title={
+                    data.replyReviews.every((row) => spendingHoldCopy(row.review_reason))
+                      ? "Replies waiting because paid AI is at its limit"
+                      : "Replies the system wasn't sure about"
+                  }
+                  count={data.totals.replyReviews}
                   defaultOpen={firstOpen === "reply-reviews"}
                 >
+                  {data.replyReviews.length < data.totals.replyReviews && (
+                    <p className="mb-2 text-sm text-foreground/60">
+                      Showing the {data.replyReviews.length} most recent of {data.totals.replyReviews} replies waiting for a read.
+                    </p>
+                  )}
                   <ReplyReviewList rows={data.replyReviews} />
                 </Section>
               )}

@@ -15,6 +15,7 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { PaymentFailedBanner } from "@/components/payment-failed-banner";
 import { TrialExpiredModal } from "@/components/trial-expired-modal";
 import { SessionLoadFailure } from "@/components/session-load-failure";
+import { bindRequestOrg } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,9 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   const user = auth.user;
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
+  // The page can render beside this layout, so Today also binds its own org.
+  // This covers loaders that continue on the dashboard request after the session is known.
+  bindRequestOrg(user.organizationId);
 
   const access = accessLevel(entitlementOf(user));
 

@@ -1,4 +1,6 @@
 import { DEFAULT_ACCOUNT_BUDGET } from "./defaults";
+import { clearRequestCapMemo } from "./request-cap";
+import { clearAiAdmissionMemo } from "../queue/ai-admission";
 import { z } from "zod";
 import { queryOne, transaction } from "../db";
 import { validateCost } from "./money";
@@ -29,6 +31,8 @@ export async function saveBudget(orgId: string, actor: string, input: unknown) {
     await client.query("insert into api_usage_audit(org_id,actor,action,details) values($1,$2,'account_budget',$3)",
       [orgId,actor,JSON.stringify(b)]);
   });
+  clearRequestCapMemo(orgId);
+  clearAiAdmissionMemo();
 }
 
 /** Spending includes pending reservations. Platform usage uses customer-facing amounts. */

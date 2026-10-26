@@ -208,7 +208,8 @@ describe("reply review source transaction boundary", () => {
     expect(boundary).not.toMatch(/\bawait logAgent\s*\(/);
 
     const postCommit = source.slice(end);
-    expect(postCommit).toMatch(/await enqueue\s*\(/);
+    expect(postCommit).toMatch(/await withinFollowUp\(enqueue\(/);
+    expect(postCommit).not.toMatch(/await enqueue\s*\(/);
     expect(postCommit).toMatch(/await logAgent\s*\(/);
   });
 

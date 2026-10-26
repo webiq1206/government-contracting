@@ -355,6 +355,12 @@ export async function POST(req: Request) {
         [orgId, auth.email, body.action, JSON.stringify(body)],
       );
     });
+    if (body.action === "limit") {
+      const { clearRequestCapMemo } = await import("@/lib/api-usage/request-cap");
+      const { clearAiAdmissionMemo } = await import("@/lib/queue/ai-admission");
+      clearRequestCapMemo();
+      clearAiAdmissionMemo();
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

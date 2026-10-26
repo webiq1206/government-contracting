@@ -11,6 +11,7 @@ import { EstimatedValue } from "@/components/estimated-value";
 import { briefFor, briefSubtitle } from "@/lib/review-brief";
 import { flagLabel } from "@/lib/flag-labels";
 import { PANE_INTENT, PANE_TITLE, paneFor } from "@/lib/domain/workbench";
+import { spendingHoldCopy } from "@/lib/domain/spending-notice";
 import { quoteSubOptions, recordedQuotes, tradeState } from "@/lib/workbench";
 import type { WorkbenchDetail } from "@/lib/workbench";
 import type { WorkItem } from "@/lib/domain/work-queue";
@@ -148,14 +149,16 @@ export function WorkbenchPanel({
           {r.reviewReason && (
             <section className="rounded-md border border-review/40 bg-review/5 p-3">
               <h3 className="label mb-1 text-review">Why the reader stopped</h3>
-              <p className="text-sm text-foreground">{r.reviewReason}</p>
-              {r.intent && (
+              <p className="text-sm text-foreground">{spendingHoldCopy(r.reviewReason) ?? r.reviewReason}</p>
+              {spendingHoldCopy(r.reviewReason) ? (
+                <p className="mt-1 text-xs text-muted-foreground">No guess was applied.</p>
+              ) : r.intent ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Its best guess was &ldquo;{r.intent}&rdquo;
                   {r.confidence ? `, at ${r.confidence} confidence` : ""}. Nothing was
                   recorded from it.
                 </p>
-              )}
+              ) : null}
             </section>
           )}
 
