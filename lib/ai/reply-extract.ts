@@ -111,7 +111,7 @@ export interface ExtractedReply {
    * Absent on older stored readings. `unreadable_body` is a missing message
    * body, which is not the same as a failed or unconfigured assistant.
    */
-  aiExtractStatus?: "ok" | "not_configured" | "failed" | "unreadable_body";
+  aiExtractStatus?: "ok" | "not_configured" | "failed" | "unreadable_body" | "budget_blocked";
   /** Operator-safe failure text. Null when the assistant was not asked or succeeded. */
   aiExtractError?: string | null;
   /** True when a later attempt could succeed (provider outage, timeout). */
@@ -228,6 +228,9 @@ function describeExtractError(err: unknown): { name: string; message: string; re
   const e = err as { name?: string; message?: string; reason?: string; retryable?: boolean };
   const name = e?.name || "Error";
   const message = String(e?.reason || e?.message || "Reply extraction failed").replace(/\s+/g, " ").trim().slice(0, 400);
+  if (name === "ApiUsageBlockedError" || /^API_BUDGET:/i.test(message)) {
+    return { name, message, retryable: false };
+  }
   // Auth, billing, and schema failures will not succeed on an immediate retry.
   if (/rejected the API key|credit balance|usage limits|rate limit|could not be parsed|completeJson failed|not complete|no JSON found/i.test(message)) {
     return { name, message, retryable: false };
@@ -459,9 +462,11 @@ export async function extractReplyFromReply(
       if (!(lastFailure.retryable && attempt === 0)) break;
     }
   }
+  const budgetBlocked =
+    lastFailure?.name === "ApiUsageBlockedError" && /^API_BUDGET:/i.test(lastFailure.message);
   return {
     ...emptyRegexResult(regexPrice(text)),
-    aiExtractStatus: "failed",
+    aiExtractStatus: budgetBlocked ? "budget_blocked" : "failed",
     aiExtractError: lastFailure?.message ?? "Reply extraction failed.",
     aiExtractErrorRetryable: lastFailure?.retryable === true,
     bodyPresent,

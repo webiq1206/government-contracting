@@ -11,6 +11,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useToast } from "@/components/toaster";
+import { spendingHoldCopy } from "@/lib/domain/spending-notice";
 
 export interface ReplyReviewRow {
   id: string;
@@ -93,8 +95,13 @@ function tradeOptions(value: unknown): Array<string | null> {
   return valid.filter((trade, index) => valid.indexOf(trade) === index);
 }
 
+function saveTimedOut(error: unknown): boolean {
+  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+}
+
 export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
   const router = useRouter();
+  const { push } = useToast();
   const inFlight = useRef(new Set<string>());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
@@ -123,6 +130,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(20_000),
       });
       const data = (await res.json().catch(() => ({}))) as ReviewResponse;
       if (!res.ok) {
@@ -148,15 +156,19 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
         return;
       }
 
+      const saved = data.message ?? "Review saved. No email was sent.";
       setSuccesses((current) => ({
         ...current,
-        [row.id]: data.message ?? "Review saved. No email was sent.",
+        [row.id]: saved,
       }));
+      push({ message: saved });
       router.refresh();
-    } catch {
+    } catch (error) {
       setErrors((current) => ({
         ...current,
-        [row.id]: "Could not reach the server. Check your connection and try again.",
+        [row.id]: saveTimedOut(error)
+          ? "The save took too long. Refresh before trying again so you do not record it twice."
+          : "Could not reach the server. Check your connection and try again.",
       }));
     } finally {
       inFlight.current.delete(row.id);
@@ -217,7 +229,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
             </div>
 
             {row.review_reason && (
-              <p className="mt-2 text-sm text-review">{row.review_reason}</p>
+              <p className="mt-2 text-sm text-review">{spendingHoldCopy(row.review_reason) ?? row.review_reason}</p>
             )}
 
             {row.original_message && (

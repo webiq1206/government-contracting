@@ -206,6 +206,26 @@ describe("assistant extract telemetry", () => {
     expect(decision.reviewReason).not.toContain("Could not be read by the assistant");
   });
 
+  it("does not retry a daily request limit, and does not call it a pattern match", async () => {
+    h.completeJson.mockRejectedValue(Object.assign(
+      new Error("API_BUDGET: You reached today's request limit of 1000. It resets at midnight UTC. New paid work has stopped to protect your budget. Open Settings, API Usage to review limits or resume work."),
+      { name: "ApiUsageBlockedError" },
+    ));
+    const extracted = await extractReplyFromReply("We can price the kitchen next week.", {
+      orgId: "org-9",
+      messageId: "m-budget",
+    });
+    expect(h.completeJson).toHaveBeenCalledTimes(1);
+    expect(extracted.aiExtractStatus).toBe("budget_blocked");
+    expect(extracted.method).toBe("regex");
+    const decision = decideReply(extracted);
+    expect(decision.act).toBe(false);
+    expect(decision.reviewReason).toContain("daily request limit");
+    expect(decision.reviewReason).toContain("1000 of 1000");
+    expect(decision.reviewReason).toContain("Settings, API Usage");
+    expect(decision.reviewReason).not.toContain("pattern-matched");
+  });
+
   it("retries once when the provider failure is retryable, then keeps the reading", async () => {
     h.completeJson
       .mockRejectedValueOnce(Object.assign(new Error("temporary outage"), {

@@ -15,22 +15,25 @@ export function ApiSpendingControls({ budget: b, save, busy, editable = true }: 
   const atDaily = b.daily_limit !== null && Number(b.day_spend)>=Number(b.daily_limit);
   const atMonthly = b.monthly_limit !== null && Number(b.month_spend)>=Number(b.monthly_limit);
   const atRequests = b.daily_requests !== null && b.day_requests>=b.daily_requests;
+  const requestRemaining = b.daily_requests === null ? null : Math.max(0, b.daily_requests - b.day_requests);
+  const monthRemaining = b.monthly_limit === null ? null : Math.max(0, Number(b.monthly_limit) - Number(b.month_spend));
+  const dayDollarRemaining = b.daily_limit === null ? null : Math.max(0, Number(b.daily_limit) - Number(b.day_spend));
   const hold=b.paused||atDaily||atMonthly||atRequests||b.unknown_costs>0;
   const current={dailyLimit:b.daily_limit,monthlyLimit:b.monthly_limit,dailyRequests:b.daily_requests,paused:b.paused,allowComplex:b.allow_complex};
   return <section className="card space-y-3" aria-label="Account spending controls">
     <h2 className="font-semibold">Your spending protection</h2>
-    <p role="status" className="font-medium">{b.paused?"API work is paused":atMonthly?"Monthly budget reached":atDaily?"Daily dollar limit reached":atRequests?"Daily request limit reached":b.unknown_costs>0?"Some costs need review":"Spending protection is on"}</p>
+    <p role="status" className="font-medium">{b.paused?"API work is paused":atRequests?"Daily request limit reached":atDaily?"Daily dollar limit reached":atMonthly?"Monthly budget reached":b.unknown_costs>0?"Some costs need review":"Spending protection is on"}</p>
     <div className="grid gap-3 sm:grid-cols-3 text-sm">
       <p>Monthly budget<br/><strong>{money(b.monthly_limit)}</strong></p>
       <p>Used or held this month<br/><strong>{b.unknown_costs>0?"Not fully known":money(b.month_spend)}</strong></p>
-      <p>Paid requests today<br/><strong>{b.day_requests}{b.daily_requests!==null?` of ${b.daily_requests}`:""}</strong></p>
+      <p>Paid requests today<br/><strong>{b.day_requests}{b.daily_requests!==null?` of ${b.daily_requests}`:""}{requestRemaining!==null?` (${requestRemaining} remaining, ceiling ${b.daily_requests})`:""}</strong></p>
     </div>
     <p className="text-sm">We choose the AI model automatically and stop new paid requests before their allowance runs out. More powerful AI is reserved for complex work.</p>
-    {hold && <p role="alert" className="text-sm text-review">{b.paused?"New paid work is waiting. Resume it when you’re ready.":b.unknown_costs>0?"Unresolved costs can hold new work. The platform administrator must review these charges before a dollar budget can cover more requests.":atMonthly?"Your monthly budget is reached. Paid work waits until the first day of next month or an approved budget change.":atRequests&&!atDaily?`Today’s ${b.daily_requests}-request limit is reached. It resets at midnight UTC. Raising the monthly budget will not clear this daily limit. Review the daily request limit below if you want more work to run today.`:"Your daily dollar limit is reached. It resets at midnight UTC. Review the daily dollar limit below before allowing more spending."}</p>}
+    {hold && <p role="alert" className="text-sm text-review">{b.paused?"API use is paused. This is not the daily request limit and not the monthly budget. Resume it in Settings, API Usage when you want paid work to run.":atRequests?`Daily request limit: ${b.day_requests} of ${b.daily_requests} used (${requestRemaining} remaining, ceiling ${b.daily_requests}). It resets at midnight UTC. Raising the monthly budget will not clear this daily request limit.${b.monthly_limit!==null?` Monthly budget is ${money(b.month_spend)} of ${money(b.monthly_limit)}${monthRemaining!==null?` (${money(String(monthRemaining))} remaining)`:""} and is a separate stop.`:""}`:atDaily?`Daily dollar limit: ${money(b.day_spend)} of ${money(b.daily_limit)} used${dayDollarRemaining!==null?` (${money(String(dayDollarRemaining))} remaining, ceiling ${money(b.daily_limit)})`:""}. It resets at midnight UTC. This is not the daily request count.`:atMonthly?`Monthly budget: ${money(b.month_spend)} of ${money(b.monthly_limit)} used${monthRemaining!==null?` (${money(String(monthRemaining))} remaining, ceiling ${money(b.monthly_limit)})`:""}. It resets at midnight UTC on the first day of next month. Changing the daily request limit does not raise the monthly budget.`:"Unresolved costs can hold new work. The platform administrator must review these charges before a dollar budget can cover more requests."}</p>}
     {!b.allow_complex && <p className="text-sm text-review">Complex tasks are paused by your saved preference. Enable them in advanced controls to continue bid analysis.</p>}
     {(b.held_requests??0)>0 && <p className="text-xs text-muted-foreground">Includes allowances held for {b.held_requests} unfinished or unconfirmed requests. These are not final charges.</p>}
     <div className="flex flex-wrap gap-3">
-      {editable && <button type="button" className="btn-secondary" disabled={busy} onClick={()=>setEditing(!editing)}>{editing?"Close controls":atRequests||atDaily?"Review daily limits":"Change budget"}</button>}
+      {editable && <button type="button" className="btn-secondary" disabled={busy} onClick={()=>setEditing(!editing)}>{editing?"Close controls":atRequests?"Review daily request limit":atDaily?"Review daily dollar limit":atMonthly?"Review monthly budget":"Change budget"}</button>}
       {editable && <button type="button" className="text-sm underline" disabled={busy} onClick={()=>void save({action:"budget",budget:{...current,paused:!b.paused}})}>{b.paused?"Resume API work":"Pause API work"}</button>}
       {b.unknown_costs>0 && <Link href="/automation" className="text-sm underline">Review automation status</Link>}
     </div>
