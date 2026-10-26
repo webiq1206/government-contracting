@@ -145,7 +145,10 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: concessionSweep, cron: "40 9 * * *" }, // daily at 09:40
     // Just after the sweep, so it acts on statuses the sweep has just brought
     // up to date rather than yesterday's.
-    { agent: subOnboarding, cron: "35 6 * * *" }, // daily at 06:35
+    // Every half hour, not 06:35 on the host clock. 06:35 UTC is the middle
+    // of the night in America/Boise. The handler returns before any chase
+    // outside weekday 9:00–17:00 there, and the next open run sends.
+    { agent: subOnboarding, cron: "*/30 * * * *" },
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
     { agent: backlinkOutreachSweep, cron: "*/20 * * * *" }, // every 20 min
     { agent: contactRecheckSweep, cron: "5 * * * *" }, // hourly at :05, small batch per run

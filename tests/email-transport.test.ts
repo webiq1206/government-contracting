@@ -172,6 +172,26 @@ describe("sendOutreachEmail — Gmail path", () => {
     const result = await sendOutreachEmail(BASE_PARAMS);
     expect(result.provider).toBeNull();
     expect(result.disabled).toBe(true);
+    expect(result.retryable).toBeUndefined();
+  });
+
+  it("keeps an America/Boise hold retryable so the next in-window run can send", async () => {
+    mockGmailSend.mockResolvedValue({
+      disabled: true,
+      retryable: true,
+      outcome: "not_attempted",
+      heldForSendWindow: true,
+      error: "Held for America/Boise weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local). Nothing was sent. The next in-window run will send it.",
+    });
+    const result = await sendOutreachEmail(BASE_PARAMS);
+    expect(result).toMatchObject({
+      provider: null,
+      disabled: true,
+      retryable: true,
+      outcome: "not_attempted",
+      heldForSendWindow: true,
+    });
+    expect(result.error).toContain("America/Boise");
   });
 
   it("does not report a send as successful without a provider receipt", async () => {

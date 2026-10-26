@@ -96,6 +96,11 @@ export interface OutreachSendResult {
   /** False when retrying this pursuit later would still be invalid. */
   retryable?: boolean;
   /**
+   * True when the America/Boise business-hours gate held the message.
+   * Nothing was attempted. The next in-window run may send it.
+   */
+  heldForSendWindow?: boolean;
+  /**
    * True when the email was refused by the pre-send safety check because the
    * rendered copy would have looked broken to the recipient. Distinct from
    * `disabled` (no transport) and from a provider `error` (delivery failed):
@@ -519,6 +524,12 @@ export async function sendOutreachEmail(
     return {
       provider: null,
       disabled: true,
+      // A business-hours hold is retryable. Dropping that flag made the
+      // follow-up worker treat the night as a cancelled send.
+      ...(res.heldForSendWindow
+        ? { heldForSendWindow: true as const, retryable: true as const, outcome: "not_attempted" as const }
+        : {}),
+      ...(res.retryable === true && !res.heldForSendWindow ? { retryable: true as const } : {}),
       error: res.error ?? "Gmail became unavailable.",
     };
   }

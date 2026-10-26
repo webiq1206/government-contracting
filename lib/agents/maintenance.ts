@@ -64,6 +64,7 @@ import { readReplyAttachments, combineReplyText } from "../domain/reply-attachme
 import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { areCallsEnabled, getAutomationRules, isAutomationPaused, getWorkExecution } from "../app-settings";
+import { isOutreachWindowHold, outreachWindowRefusal } from "../domain/outreach-send-window";
 import { publicContactCandidates } from "../public-contact-backfill";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
@@ -97,6 +98,16 @@ export const outreachFollowup: AgentDefinition = {
   description: "Sends the automated 48-hour follow-up to non-responsive subcontractors.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    // Crons fire all night on the host clock. Do not claim due follow-ups
+    // outside America/Boise weekday hours; the next in-window run sends them.
+    const held = outreachWindowRefusal(new Date());
+    if (held) {
+      return {
+        ok: true,
+        summary: held.error,
+        data: { sent: 0, due: 0, lastCalls: 0, held: 0, failures: 0, deferredUntilWindow: true },
+      };
+    }
     /**
      * One sweep per organization.
      *
@@ -276,6 +287,18 @@ export async function lastCallForOrg(
       subcontractorId: row.subcontractor_id ?? undefined,
       trade: row.trade ?? null,
     });
+    if (isOutreachWindowHold(res)) {
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send-window",
+        level: "info",
+        status: "skipped",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: res.error ?? "The last-call nudge was held for America/Boise weekday business hours. Nothing was sent.",
+      });
+      continue;
+    }
     if (res.disabled || res.blocked || res.error) {
       failures++;
       // This is the one chance to get a price before the deadline; a silent
@@ -1133,6 +1156,23 @@ async function followUpForOrg(
       subcontractorId: row.subcontractor_id ?? undefined,
       trade: row.trade ?? null,
     });
+    if (isOutreachWindowHold(res)) {
+      // The claim above already moved follow_up_at fifteen minutes ahead.
+      // Leave that lease. Counting this as held would flag a person, and
+      // pushing the schedule an hour would only delay the next open run.
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send-window",
+        level: "info",
+        status: "skipped",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message:
+          res.error ??
+          "The follow-up was held for America/Boise weekday business hours. Nothing was sent. The next in-window run will send it.",
+      });
+      continue;
+    }
     if (!res.disabled && !res.error) {
       if (!res.communicationId) await query(
         // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
@@ -1353,6 +1393,12 @@ export const outreachRecoverySweep: AgentDefinition = {
     "Rechecks unsent drafts, failed sends and verified document holds through the normal outreach checks when the inbox is connected.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    // Re-queueing the backlog at night is what dumps mail when a pause lifts.
+    // Leave stuck drafts where they are until America/Boise business hours.
+    const held = outreachWindowRefusal(new Date());
+    if (held) {
+      return { ok: true, summary: held.error, enqueued: [] };
+    }
     const fanout = await orgsToSweep("outreach-recovery-sweep");
     if (fanout.error) {
       return {
@@ -2760,8 +2806,9 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
   errors: number;
   repliesMatched: number;
 }> {
-  const send = await sendPendingApproved(orgId, 25);
-  const followUp = await sendFollowUps(orgId, 25);
+  const held = outreachWindowRefusal(new Date());
+  const send = held ? { sent: 0, skipped: 0, errors: 0 } : await sendPendingApproved(orgId, 25);
+  const followUp = held ? { sent: 0, errors: 0 } : await sendFollowUps(orgId, 25);
 
   // Reply detection for backlink outreach threads.
   let repliesMatched = 0;
@@ -3429,7 +3476,8 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         } else if (
           clarify.reason &&
           clarify.reason !== "already asked" &&
-          clarify.reason !== "rfq-paused"
+          clarify.reason !== "rfq-paused" &&
+          clarify.reason !== "send-window"
         ) {
           await logAgent({
             agent: "reply-poll",

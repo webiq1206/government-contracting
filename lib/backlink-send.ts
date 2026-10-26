@@ -15,6 +15,7 @@ import { isSuppressed } from "./domain/email-suppression";
 import { marketingMessage } from "./domain/marketing-opt-out";
 import { plainToHtml } from "./domain/template-render";
 import { wrapLetter } from "./domain/outreach-letter";
+import { isOutreachWindowHold } from "./domain/outreach-send-window";
 
 /**
  * The From / Reply-To pair for this organization, or nothing.
@@ -226,6 +227,9 @@ export async function sendApprovedOutreach(
     return { status: "error", reason };
   }
 
+  if (isOutreachWindowHold(res)) {
+    return { status: "skipped", reason: res.error ?? "Held for America/Boise weekday business hours. Nothing was sent." };
+  }
   if (res.disabled) {
     const reason =
       res.error ??
@@ -401,6 +405,7 @@ export async function sendFollowUps(
       });
       continue;
     }
+    if (isOutreachWindowHold(res)) continue;
     if (!res.error && !res.disabled) {
       sent++;
       await query(

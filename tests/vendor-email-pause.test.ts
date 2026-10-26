@@ -14,6 +14,10 @@ const rules = vi.hoisted(() => ({ rfq_outbound_enabled: false }));
 const query = vi.hoisted(() => vi.fn(async () => []));
 const queryOne = vi.hoisted(() => vi.fn(async () => ({ n: 0 })));
 
+vi.mock("../lib/domain/outreach-send-window", () => ({
+  outreachWindowRefusal: () => null,
+  isOutreachWindowHold: () => false,
+}));
 vi.mock("../lib/integrations/email-transport", () => ({ sendOutreachEmail }));
 vi.mock("../lib/logger", () => ({ logAgent }));
 vi.mock("../lib/app-settings", () => ({ getAutomationRules: async () => rules }));

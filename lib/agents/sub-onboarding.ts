@@ -38,6 +38,7 @@ import {
 import { isEmailable } from "../domain/sub-contactability";
 import { getAutomationRules } from "../app-settings";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
+import { outreachWindowRefusal } from "../domain/outreach-send-window";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -203,6 +204,10 @@ export const subOnboarding: AgentDefinition = {
     "When a bid is won, checks that every subcontractor going on the job has a signed W-9 and current insurance. Emails a paperwork link to the subs named on the contract, and reports anyone who quoted but has not been designated yet so no work starts behind missing coverage.",
   worksWithoutClaude: true,
   async handler(ctx): Promise<AgentResult> {
+    // The sweep runs every half hour on the host clock. A 6:35 UTC run is
+    // overnight in America/Boise. Leave the chase for the next open window.
+    const held = outreachWindowRefusal(new Date());
+    if (held) return { ok: true, summary: held.error };
     const opportunityId = ctx.payload.opportunityId as string | undefined;
     // Tenant scoping. With an opportunityId the runner has already set the
     // owning org's context; the daily cron has no payload, so without an

@@ -7,6 +7,10 @@ vi.mock("../lib/db", () => ({
   queryOne: async (s: string, p: unknown[] = []) => (await state.db!.query(s, p)).rows[0] ?? null,
   transaction: async (fn: (tx: unknown) => unknown) => state.db!.transaction(fn),
 }));
+vi.mock("../lib/domain/outreach-send-window", () => ({
+  outreachWindowRefusal: () => null,
+  isOutreachWindowHold: () => false,
+}));
 vi.mock("../lib/integrations/gmail", () => ({ gmail: { isConnected: async () => true } }));
 vi.mock("../lib/agents/org-fanout", () => ({
   orgsToSweep: async () => ({orgs: state.orgs, pausedCount: 0}), fanoutNote: () => null,

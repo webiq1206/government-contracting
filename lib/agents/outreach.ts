@@ -22,6 +22,7 @@ import { logAgent } from "../logger";
 import { areCallsEnabled, getWorkExecution } from "../app-settings";
 import { advancePastCallStep } from "../domain/advance-stage";
 import { sendOutreachEmail } from "../integrations/email-transport";
+import { isOutreachWindowHold } from "../domain/outreach-send-window";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import { gatherTradeAttachments } from "../opportunity-attachments";
 import {
@@ -753,6 +754,7 @@ export const outreach: AgentDefinition = {
     let humanAction = false;
     let sent = false;
     let heldByRule = false;
+    let windowHeld = false;
     let communicationId: string | undefined;
     let replayed = false;
     let claimId: string | null = null;
@@ -794,7 +796,21 @@ export const outreach: AgentDefinition = {
       });
       communicationId = res.communicationId;
       replayed = !!res.replayed;
-      if (res.disabled) {
+      if (isOutreachWindowHold(res)) {
+        // Draft, not a failure and not a person. Recovery re-queues it on the
+        // next America/Boise weekday run and leaves it alone overnight.
+        windowHeld = true;
+        outreachState = "draft";
+        await logAgent({
+          agent: "outreach",
+          action: "send-window",
+          level: "info",
+          status: "skipped",
+          opportunityId,
+          subcontractorId,
+          message: `Outreach to ${sub.company_name} was held for America/Boise weekday business hours. Nothing was sent. The next in-window run will send it.`,
+        });
+      } else if (res.disabled) {
         humanAction = true;
         outreachState = "draft";
         await logAgent({
@@ -973,7 +989,7 @@ export const outreach: AgentDefinition = {
           where id=$1 and org_id=$2`,
         [opportunityId, orgId]
       );
-    } else {
+    } else if (!windowHeld) {
       await query(
         `update opportunities
            set human_action_required=true,
@@ -1012,7 +1028,9 @@ export const outreach: AgentDefinition = {
       });
     }
 
-    const summary = replayed ? `Recovered the recorded Gmail receipt for ${sub.company_name}; no new email sent.` : sent
+    const summary = windowHeld
+      ? `Held outreach to ${sub.company_name} until America/Boise weekday business hours (Monday–Friday 9:00 AM–5:00 PM). Nothing was sent.`
+      : replayed ? `Recovered the recorded Gmail receipt for ${sub.company_name}; no new email sent.` : sent
       ? `Sent outreach to ${sub.company_name} <${sub.email}>; ${followUpAt ? `follow-up in ${rules.followup_hours}h` : "no follow-up (chasing is off)"}, ${
           callsEnabled ? "call card queued" : "calling is off so no call card was created"
         }.`
@@ -1026,6 +1044,7 @@ export const outreach: AgentDefinition = {
       } vars; tracking_id=${trackingId}; follow_up_at=${followUpAt}.`,
       data: { sent: sent && !replayed, replayed, outreachState, trackingId, messageId },
       humanActionRequired: humanAction,
+      ...(windowHeld ? { retryable: true } : {}),
       enqueued,
     };
     });
