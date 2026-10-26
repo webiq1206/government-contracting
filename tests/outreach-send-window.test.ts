@@ -17,7 +17,11 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock("../lib/db", () => ({ query: db.query, queryOne: db.queryOne }));
 
-import { accountOutreachTimeZone, setAccountTimeZone } from "../lib/domain/account-timezone";
+import { accountOutreachTimeZone, outreachSendZoneFor, setAccountTimeZone } from "../lib/domain/account-timezone";
+import {
+  recipientTimeZoneFromLocation,
+  resolveHybridOutreachZone,
+} from "../lib/domain/recipient-timezone";
 import {
   OUTREACH_SEND_FALLBACK_TIME_ZONE,
   evaluateOutreachSendWindow,
@@ -182,14 +186,18 @@ describe("the zone is written down, not inherited", () => {
   it("checks the window inside gmail.send, before the provider, and exempts only transactional mail", () => {
     const gmail = readFileSync("lib/integrations/gmail.ts", "utf8");
     const send = gmail.slice(gmail.indexOf("async send("));
-    const zoneRead = send.indexOf("await accountOutreachTimeZone");
+    const zoneRead = send.indexOf("await outreachSendZoneFor");
     const gate = send.indexOf("outreachWindowRefusal(new Date()");
     const client = send.indexOf("gmailClient(");
     expect(send).toContain("if (!params.transactional)");
+    expect(send).toContain("subcontractorId: params.subcontractorId");
     expect(zoneRead).toBeGreaterThan(-1);
     expect(zoneRead).toBeLessThan(gate);
     expect(gate).toBeLessThan(client);
     expect(send.indexOf("beforeProviderSend")).toBeGreaterThan(gate);
+    const transport = readFileSync("lib/integrations/email-transport.ts", "utf8");
+    const transportSend = transport.slice(transport.indexOf("res = await gmail.send"));
+    expect(transportSend).toContain("subcontractorId: params.subcontractorId");
   });
 
   it("lets only platform system mail set the transactional exemption", () => {
@@ -199,36 +207,165 @@ describe("the zone is written down, not inherited", () => {
     expect(hits).toEqual(["lib/integrations/system-mail.ts"]);
   });
 
-  it("returns the night sweeps before they claim or re-queue work", () => {
+  it("resolves each recipient before a follow-up is claimed or a draft is re-queued", () => {
     const maintenance = readFileSync("lib/agents/maintenance.ts", "utf8");
-    const followup = maintenance.slice(
-      maintenance.indexOf("export const outreachFollowup"),
-      maintenance.indexOf("export async function lastCallForOrg")
+    const followUp = maintenance.slice(
+      maintenance.indexOf("async function followUpForOrg"),
+      maintenance.indexOf("export const outreachRecoverySweep")
     );
-    expect(followup.indexOf("orgsToSweep")).toBeLessThan(followup.indexOf("accountOutreachTimeZone"));
-    expect(followup.indexOf("outreachWindowRefusal")).toBeGreaterThan(-1);
-    expect(followup.indexOf("outreachWindowRefusal")).toBeLessThan(followup.indexOf("followUpForOrg"));
+    const followGate = followUp.indexOf("outreachWindowRefusal");
+    const claim = followUp.indexOf("set follow_up_at = now() + interval '15 minutes'");
+    expect(followUp).toContain("outreachSendZoneFor");
+    expect(followUp).toContain("state: row.sub_state");
+    expect(followUp).toContain("city: row.sub_city");
+    expect(followUp).toContain("s.state as sub_state");
+    expect(followGate).toBeGreaterThan(-1);
+    expect(followGate).toBeLessThan(claim);
+
+    const lastCall = maintenance.slice(
+      maintenance.indexOf("export async function lastCallForOrg"),
+      maintenance.indexOf("async function followUpForOrg")
+    );
+    expect(lastCall.indexOf("outreachSendZoneFor")).toBeLessThan(lastCall.indexOf("sendOutreachEmail"));
+    expect(lastCall.indexOf("outreachWindowRefusal")).toBeLessThan(lastCall.indexOf("sendOutreachEmail"));
 
     const recovery = maintenance.slice(
       maintenance.indexOf("export const outreachRecoverySweep"),
       maintenance.indexOf("export const reviewExpirySweep")
     );
-    expect(recovery.indexOf('orgsToSweep("outreach-recovery-sweep")')).toBeLessThan(recovery.indexOf("outreachWindowRefusal"));
-    expect(recovery.indexOf("outreachWindowRefusal")).toBeLessThan(recovery.indexOf("outreach_state in"));
+    expect(recovery.indexOf("outreach_state in")).toBeLessThan(recovery.indexOf("outreachSendZoneFor"));
+    expect(recovery.indexOf("outreachWindowRefusal")).toBeLessThan(recovery.indexOf("singletonKey"));
+    expect(recovery).toContain("their recovery work was left unchanged");
 
     const backlink = maintenance.slice(maintenance.indexOf("async function backlinkSweepForOrg"));
-    expect(backlink.indexOf("accountOutreachTimeZone")).toBeLessThan(backlink.indexOf("outreachWindowRefusal"));
+    expect(backlink.indexOf("outreachSendZoneFor")).toBeLessThan(backlink.indexOf("outreachWindowRefusal"));
     expect(backlink.indexOf("outreachWindowRefusal")).toBeLessThan(backlink.indexOf("sendPendingApproved"));
 
     const onboarding = readFileSync("lib/agents/sub-onboarding.ts", "utf8");
     const handler = onboarding.slice(onboarding.indexOf("export const subOnboarding"));
-    expect(handler.indexOf("accountOutreachTimeZone")).toBeGreaterThan(-1);
+    expect(handler.indexOf("outreachSendZoneFor")).toBeGreaterThan(-1);
     expect(handler.indexOf("outreachWindowRefusal")).toBeGreaterThan(-1);
     expect(handler.indexOf("outreachWindowRefusal")).toBeLessThan(handler.indexOf("chase(row"));
 
     const registry = readFileSync("lib/agents/registry.ts", "utf8");
     expect(registry).not.toContain("35 6 * * *");
     expect(registry).toContain('{ agent: subOnboarding, cron: "*/30 * * * *" }');
+
+    const map = readFileSync("lib/domain/recipient-timezone.ts", "utf8");
+    expect(map).not.toContain("location_text");
+    expect(map).not.toContain("quote-deadline");
+    expect(map).not.toContain("safeTimeZone");
+    expect(map).not.toContain("website");
+  });
+});
+
+describe("recipient location, then account, then America/Boise", () => {
+  const morning = new Date("2026-10-26T14:30:00.000Z");
+
+  it("maps a single-zone state and an exact split-state city, and does not guess the rest", () => {
+    expect(recipientTimeZoneFromLocation({ state: "NY" })).toBe("America/New_York");
+    expect(recipientTimeZoneFromLocation({ state: "New York", city: "Buffalo" })).toBe("America/New_York");
+    expect(recipientTimeZoneFromLocation({ state: "CA" })).toBe("America/Los_Angeles");
+    expect(recipientTimeZoneFromLocation({ state: "tx" })).toBeNull();
+    expect(recipientTimeZoneFromLocation({ state: "TX", city: "Houston" })).toBe("America/Chicago");
+    expect(recipientTimeZoneFromLocation({ state: "TX", city: "El Paso" })).toBe("America/Denver");
+    expect(recipientTimeZoneFromLocation({ state: "TX", city: "near Houston" })).toBeNull();
+    expect(recipientTimeZoneFromLocation({ state: "FL", city: "Miami" })).toBe("America/New_York");
+    expect(recipientTimeZoneFromLocation({ state: "FL", city: "Pensacola" })).toBe("America/Chicago");
+    expect(recipientTimeZoneFromLocation({ state: "FL" })).toBeNull();
+    expect(recipientTimeZoneFromLocation({ state: "ID", city: "Boise" })).toBe("America/Boise");
+    expect(recipientTimeZoneFromLocation({ state: "ID", city: "Coeur d'Alene" })).toBe("America/Los_Angeles");
+    expect(recipientTimeZoneFromLocation({ state: "ID" })).toBeNull();
+    expect(recipientTimeZoneFromLocation({ state: "based in New York" })).toBeNull();
+    expect(recipientTimeZoneFromLocation({ state: null, city: "Houston" })).toBeNull();
+    expect(recipientTimeZoneFromLocation(null)).toBeNull();
+  });
+
+  it("opens a New York recipient and holds a Los Angeles recipient at one UTC instant", () => {
+    const east = resolveHybridOutreachZone({
+      recipientZone: recipientTimeZoneFromLocation({ state: "NY" }),
+      accountZone: "America/Los_Angeles",
+    });
+    const west = resolveHybridOutreachZone({
+      recipientZone: recipientTimeZoneFromLocation({ state: "CA" }),
+      accountZone: "America/New_York",
+    });
+    expect(east).toBe("America/New_York");
+    expect(west).toBe("America/Los_Angeles");
+    expect(evaluateOutreachSendWindow(morning, east).open).toBe(true);
+    expect(evaluateOutreachSendWindow(morning, east).hour).toBe(10);
+    expect(evaluateOutreachSendWindow(morning, west).open).toBe(false);
+    expect(evaluateOutreachSendWindow(morning, west).hour).toBe(7);
+    expect(outreachWindowRefusal(morning, east)).toBeNull();
+    expect(outreachWindowRefusal(morning, west)?.heldForSendWindow).toBe(true);
+  });
+
+  it("uses the account zone when the recipient is unknown, and America/Boise when that is unset", () => {
+    expect(recipientTimeZoneFromLocation({ state: null, city: null })).toBeNull();
+    const chicago = resolveHybridOutreachZone({ recipientZone: null, accountZone: "America/Chicago" });
+    const fallback = resolveHybridOutreachZone({ recipientZone: null, accountZone: null });
+    const invalid = resolveHybridOutreachZone({ recipientZone: null, accountZone: "Not/AZone" });
+    expect(chicago).toBe("America/Chicago");
+    expect(fallback).toBe("America/Boise");
+    expect(invalid).toBe("America/Boise");
+    expect(evaluateOutreachSendWindow(morning, chicago).open).toBe(true);
+    expect(evaluateOutreachSendWindow(morning, chicago).hour).toBe(9);
+    expect(evaluateOutreachSendWindow(morning, fallback).open).toBe(false);
+    expect(evaluateOutreachSendWindow(morning, fallback).hour).toBe(8);
+  });
+
+  it("keeps the recipient zone across the fall-back instead of a fixed offset", () => {
+    const boise = recipientTimeZoneFromLocation({ state: "ID", city: "Boise" });
+    const zone = resolveHybridOutreachZone({
+      recipientZone: boise,
+      accountZone: "America/New_York",
+    });
+    expect(zone).toBe("America/Boise");
+    const beforeOpen = evaluateOutreachSendWindow(new Date("2026-11-03T15:00:00.000Z"), zone);
+    const atOpen = evaluateOutreachSendWindow(new Date("2026-11-03T16:00:00.000Z"), zone);
+    expect(beforeOpen.open).toBe(false);
+    expect(beforeOpen.hour).toBe(8);
+    expect(atOpen.open).toBe(true);
+    expect(atOpen.hour).toBe(9);
+    const newYork = evaluateOutreachSendWindow(
+      new Date("2026-11-03T14:00:00.000Z"),
+      recipientTimeZoneFromLocation({ state: "NY" })
+    );
+    expect(newYork.open).toBe(true);
+    expect(newYork.hour).toBe(9);
+    expect(evaluateOutreachSendWindow(new Date("2026-11-03T13:00:00.000Z"), "America/New_York").open).toBe(false);
+  });
+
+  it("loads stored state and city for the org, then the account zone", async () => {
+    db.queryOne.mockImplementation(async (sql: string) => {
+      const text = String(sql);
+      if (text.includes("from subcontractors")) return { state: "NY", city: "Albany" };
+      if (text.includes("from organizations")) return { timezone: "America/Los_Angeles" };
+      return null;
+    });
+    expect(await outreachSendZoneFor({ orgId: "org-1", subcontractorId: "sub-1" })).toBe("America/New_York");
+    expect(String(db.queryOne.mock.calls[0][0])).toContain("state, city");
+    expect(db.queryOne.mock.calls[0][1]).toEqual(["sub-1", "org-1"]);
+    expect(db.queryOne.mock.calls.some((call) => String(call[0]).includes("from organizations"))).toBe(false);
+
+    db.queryOne.mockImplementation(async (sql: string) => {
+      const text = String(sql);
+      if (text.includes("from subcontractors")) return { state: "TX", city: null };
+      if (text.includes("from organizations")) return { timezone: "America/Chicago" };
+      return null;
+    });
+    expect(await outreachSendZoneFor({ orgId: "org-1", subcontractorId: "sub-2" })).toBe("America/Chicago");
+
+    db.queryOne.mockResolvedValue(null);
+    expect(await outreachSendZoneFor({ orgId: "org-1" })).toBe("America/Boise");
+    expect(
+      await outreachSendZoneFor({
+        orgId: "org-1",
+        state: "CA",
+        city: null,
+        locationLoaded: true,
+      })
+    ).toBe("America/Los_Angeles");
   });
 });
 

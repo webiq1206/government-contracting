@@ -65,7 +65,7 @@ import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { areCallsEnabled, getAutomationRules, isAutomationPaused, getWorkExecution } from "../app-settings";
 import { isOutreachWindowHold, outreachWindowRefusal } from "../domain/outreach-send-window";
-import { accountOutreachTimeZone } from "../domain/account-timezone";
+import { outreachSendZoneFor } from "../domain/account-timezone";
 import { publicContactCandidates } from "../public-contact-backfill";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
@@ -128,32 +128,19 @@ export const outreachFollowup: AgentDefinition = {
     let lastCalls = 0;
     let failedTotal = 0;
     let heldTotal = 0;
-    let deferredAccounts = 0;
+    let deferredRows = 0;
     let deferredReason: string | null = null;
     for (const org of fanout.orgs) {
-      // Each account keeps its own weekday. A New York morning must not wait
-      // for Los Angeles, and a closed account must not have its follow-ups claimed.
-      const zone = await accountOutreachTimeZone(org.id);
-      const held = outreachWindowRefusal(new Date(), zone);
-      if (held) {
-        deferredAccounts++;
-        deferredReason = held.error;
-        await runWithOrg(org.id, () =>
-          logAgent({
-            agent: "outreach-followup",
-            action: "send-window",
-            level: "info",
-            status: "skipped",
-            message: held.error,
-          })
-        );
-        continue;
-      }
+      // One account can have a New York subcontractor and a Los Angeles one.
+      // followUpForOrg resolves each row before the claim. Skipping the whole
+      // account would hold an open recipient behind a closed one.
       const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
       sentTotal += res.sent;
       dueTotal += res.due;
       failedTotal += res.failures;
       heldTotal += res.held;
+      deferredRows += res.deferred;
+      if (res.deferredReason) deferredReason = res.deferredReason;
       /*
        * The third message is gated twice, and both gates were missing.
        *
@@ -178,17 +165,24 @@ export const outreachFollowup: AgentDefinition = {
         failedTotal += lastCall.failures;
       }
     }
-    if (fanout.orgs.length > 0 && deferredAccounts === fanout.orgs.length) {
+    if (
+      dueTotal > 0 &&
+      deferredRows === dueTotal &&
+      sentTotal === 0 &&
+      failedTotal === 0 &&
+      heldTotal === 0 &&
+      lastCalls === 0
+    ) {
       return {
         ok: true,
         summary:
           deferredReason ??
-          "Held until each account's weekday business hours. Unset zones use America/Boise. Nothing was sent.",
-        data: { sent: 0, due: 0, lastCalls: 0, held: 0, failures: 0, deferredUntilWindow: true },
+          "Held for weekday business hours. Nothing was sent. The next in-window run will send it.",
+        data: { sent: 0, due: dueTotal, lastCalls: 0, held: 0, failures: 0, deferredUntilWindow: true },
       };
     }
-    const deferredNote = deferredAccounts
-      ? ` ${deferredAccounts} account${deferredAccounts === 1 ? "" : "s"} outside their own weekday business hours had their queues left unchanged.`
+    const deferredNote = deferredRows
+      ? ` ${deferredRows} follow-up${deferredRows === 1 ? "" : "s"} outside weekday business hours had their schedules left unchanged.`
       : "";
     const paused = fanout.pausedCount
       ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their schedules were left unchanged.`
@@ -231,10 +225,12 @@ export async function lastCallForOrg(
     trade: string | null;
     email: string | null;
     owner_name: string | null;
+    sub_state: string | null;
+    sub_city: string | null;
     deadline: string | null;
   }>(
     `select os.opportunity_id, os.subcontractor_id, os.trade,
-            s.email, s.owner_name, o.deadline
+            s.email, s.owner_name, s.state as sub_state, s.city as sub_city, o.deadline
        from opportunity_subs os
        join opportunities o on o.id = os.opportunity_id
        join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
@@ -278,6 +274,26 @@ export async function lastCallForOrg(
   let failures = 0;
 
   for (const row of due) {
+    const zone = await outreachSendZoneFor({
+      orgId,
+      subcontractorId: row.subcontractor_id,
+      state: row.sub_state,
+      city: row.sub_city,
+      locationLoaded: true,
+    });
+    const windowHold = outreachWindowRefusal(new Date(), zone);
+    if (windowHold) {
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send-window",
+        level: "info",
+        status: "skipped",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: windowHold.error,
+      });
+      continue;
+    }
     const first = (row.owner_name ?? "").trim().split(/\s+/)[0] || "there";
     const tradeClean = scrubGovtContacts(row.trade ?? "").sanitised.trim();
     const when = formatDeadlineLabel(row.deadline);
@@ -550,7 +566,14 @@ async function recordBounceInOrg(input:BounceInput): Promise<boolean> {
 
 async function followUpForOrg(
   orgId: string
-): Promise<{ sent: number; due: number; failures: number; held: number }> {
+): Promise<{
+  sent: number;
+  due: number;
+  failures: number;
+  held: number;
+  deferred: number;
+  deferredReason: string | null;
+}> {
   // Template resolution is org-aware (own copy, else platform default) so a
   // follow-up never goes out with another tenant's wording.
   const { activeTemplate } = await import("../domain/template-store");
@@ -564,7 +587,9 @@ async function followUpForOrg(
   // Chasing switched off entirely. Markers already on file are left alone
   // rather than cleared: turning the rule back on should resume the queue it
   // was paused with, not start from an empty one.
-  if (rules.followup_max <= 0) return { sent: 0, due: 0, failures: 0, held: 0 };
+  if (rules.followup_max <= 0) {
+    return { sent: 0, due: 0, failures: 0, held: 0, deferred: 0, deferredReason: null };
+  }
   // Pausing outbound quote requests stops the chase as well as the first email.
   // The due timestamps stay, so turning outreach back on resumes the same queue.
   if (rules.rfq_outbound_enabled === false) {
@@ -575,7 +600,7 @@ async function followUpForOrg(
       status: "skipped",
       message: "Outbound quote requests are paused, so follow-ups were not sent. Their schedules were left unchanged.",
     });
-    return { sent: 0, due: 0, failures: 0, held: 0 };
+    return { sent: 0, due: 0, failures: 0, held: 0, deferred: 0, deferredReason: null };
   }
 
   const due = await query<{
@@ -586,6 +611,8 @@ async function followUpForOrg(
     email: string | null;
     email_verified: boolean;
     sub_owner_name: string | null;
+    sub_state: string | null;
+    sub_city: string | null;
     // trade comes from opportunity_subs (not opportunities); LATERAL picks the
     // most-recently-added trade for this sub/opp pair when multiple exist.
     trade: string | null;
@@ -609,6 +636,7 @@ async function followUpForOrg(
   }>(
     `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
             s.email, s.email_verified, s.owner_name as sub_owner_name,
+            s.state as sub_state, s.city as sub_city,
             os.trade, o.location_state, o.deadline,
             c.subject as orig_subject, c.gmail_thread_id, c.rfc822_message_id,
             o.title as opp_title, o.agency, o.solicitation_number,
@@ -682,7 +710,34 @@ async function followUpForOrg(
   let sent = 0;
   let failures = 0;
   let held = 0;
+  let deferred = 0;
+  let deferredReason: string | null = null;
   for (const row of due) {
+    // Resolve this recipient before the lease. A closed row stays due.
+    // Claiming it would push the schedule fifteen minutes and could miss
+    // the next open run for a sibling in another zone.
+    const zone = await outreachSendZoneFor({
+      orgId,
+      subcontractorId: row.subcontractor_id,
+      state: row.sub_state,
+      city: row.sub_city,
+      locationLoaded: true,
+    });
+    const windowHold = outreachWindowRefusal(new Date(), zone);
+    if (windowHold) {
+      deferred++;
+      deferredReason = windowHold.error;
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send-window",
+        level: "info",
+        status: "skipped",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: windowHold.error,
+      });
+      continue;
+    }
     // Claim with a short lease instead of deleting the schedule. Only one
     // worker can move a due timestamp, and an interrupted worker naturally
     // makes the item eligible again after the lease expires.
@@ -1384,7 +1439,7 @@ async function followUpForOrg(
       });
     }
   }
-  return { sent, due: due.length, failures, held };
+  return { sent, due: due.length, failures, held, deferred, deferredReason };
 }
 
 /**
@@ -1426,20 +1481,10 @@ export const outreachRecoverySweep: AgentDefinition = {
     const enqueued: AgentResult["enqueued"] = [];
     let recovered = 0;
     let waiting = 0;
-    let deferredAccounts = 0;
+    let deferredRows = 0;
     let deferredReason: string | null = null;
 
     for (const org of fanout.orgs) {
-      // Re-queueing a closed account is what dumps mail when a pause lifts.
-      // Leave that account's drafts where they are. An open account in
-      // another zone is re-queued on this same run.
-      const zone = await accountOutreachTimeZone(org.id);
-      const held = outreachWindowRefusal(new Date(), zone);
-      if (held) {
-        deferredAccounts++;
-        deferredReason = held.error;
-        continue;
-      }
       await runWithOrg(org.id, async () => {
         const orgRules = await getAutomationRules();
         const stuck = await query<{
@@ -1447,10 +1492,14 @@ export const outreachRecoverySweep: AgentDefinition = {
           subcontractor_id: string;
           trade: string | null;
           outreach_state: string;
+          sub_state: string | null;
+          sub_city: string | null;
         }>(
-          `select os.opportunity_id, os.subcontractor_id, os.trade, os.outreach_state
+          `select os.opportunity_id, os.subcontractor_id, os.trade, os.outreach_state,
+                  s.state as sub_state, s.city as sub_city
              from opportunity_subs os
              join opportunities o on o.id = os.opportunity_id
+             join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
             where o.org_id = $1 and o.status = 'open'
               and os.org_id = o.org_id
               and o.is_sources_sought is not true
@@ -1470,14 +1519,35 @@ export const outreachRecoverySweep: AgentDefinition = {
         );
         if (stuck.length === 0) return;
 
+        // A closed recipient must not take the six-hour recovery singleton.
+        // An open recipient in the same account still re-queues on this run.
+        const ready: typeof stuck = [];
+        for (const row of stuck) {
+          const zone = await outreachSendZoneFor({
+            orgId: org.id,
+            subcontractorId: row.subcontractor_id,
+            state: row.sub_state,
+            city: row.sub_city,
+            locationLoaded: true,
+          });
+          const held = outreachWindowRefusal(new Date(), zone);
+          if (held) {
+            deferredRows++;
+            deferredReason = held.error;
+            continue;
+          }
+          ready.push(row);
+        }
+        if (ready.length === 0) return;
+
         // Only retry when a send can actually succeed now. Retrying into a
         // still-broken transport would mint one more draft row per sweep.
         if (!(await gmail.isConnected(org.id))) {
-          waiting += stuck.length;
+          waiting += ready.length;
           return;
         }
 
-        for (const row of stuck) {
+        for (const row of ready) {
           recovered++;
           enqueued.push({
             agent: "outreach",
@@ -1496,22 +1566,22 @@ export const outreachRecoverySweep: AgentDefinition = {
           agent: "outreach-recovery-sweep",
           action: "recover",
           level: "info",
-          message: `The inbox is connected. Rechecking ${stuck.length} unsent outreach item(s), including verified document holds, through the normal outreach checks.`,
+          message: `The inbox is connected. Rechecking ${ready.length} unsent outreach item(s), including verified document holds, through the normal outreach checks.`,
         });
       });
     }
 
-    if (fanout.orgs.length > 0 && deferredAccounts === fanout.orgs.length) {
+    if (deferredRows > 0 && recovered === 0 && waiting === 0) {
       return {
         ok: true,
         summary:
           deferredReason ??
-          "Held until each account's weekday business hours. Unset zones use America/Boise. Nothing was re-queued.",
+          "Held for weekday business hours. Nothing was re-queued.",
         enqueued: [],
       };
     }
-    const deferredNote = deferredAccounts
-      ? ` ${deferredAccounts} account${deferredAccounts === 1 ? "" : "s"} outside their own weekday business hours were left unchanged.`
+    const deferredNote = deferredRows
+      ? ` ${deferredRows} unsent item${deferredRows === 1 ? "" : "s"} outside weekday business hours were left unqueued.`
       : "";
     const paused = fanout.pausedCount
       ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their recovery work was left unchanged.`
@@ -2847,7 +2917,9 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
   errors: number;
   repliesMatched: number;
 }> {
-  const zone = await accountOutreachTimeZone(orgId);
+  // Backlink contacts have no stored state or city. The same resolver then
+  // uses this account's zone, and America/Boise when that zone is unset.
+  const zone = await outreachSendZoneFor({ orgId });
   const held = outreachWindowRefusal(new Date(), zone);
   const send = held ? { sent: 0, skipped: 0, errors: 0 } : await sendPendingApproved(orgId, 25);
   const followUp = held ? { sent: 0, errors: 0 } : await sendFollowUps(orgId, 25);

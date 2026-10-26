@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   paused: false,
   zone: null as string | null,
+  recipient: null as { state: string | null; city: string | null } | null,
 }));
 vi.mock("../lib/config", () => ({
   config: {
@@ -25,11 +26,12 @@ vi.mock("../lib/config", () => ({
 }));
 vi.mock("../lib/db", () => ({
   query: vi.fn(async () => []),
-  queryOne: vi.fn(async (sql: string) =>
-    String(sql).includes("from organizations")
-      ? { timezone: mocks.zone }
-      : { data: { refresh_token: "test-only" } }
-  ),
+  queryOne: vi.fn(async (sql: string) => {
+    const text = String(sql);
+    if (text.includes("from subcontractors")) return mocks.recipient;
+    if (text.includes("from organizations")) return { timezone: mocks.zone };
+    return { data: { refresh_token: "test-only" } };
+  }),
   transaction: async (fn: (client: { query: () => Promise<{ rows: [] }> }) => unknown) =>
     fn({ query: async () => ({ rows: [] }) }),
 }));
@@ -77,6 +79,7 @@ beforeEach(() => {
   __resetSendAsCache();
   mocks.paused = false;
   mocks.zone = null;
+  mocks.recipient = null;
   mocks.list.mockResolvedValue({
     data: {
       sendAs: [
@@ -152,6 +155,59 @@ describe("gmail.send refuses outreach outside America/Boise weekday hours", () =
   it("sends a password reset on Saturday because system mail is transactional", async () => {
     vi.setSystemTime(new Date("2026-10-24T16:00:00.000Z"));
     expect(await gmail.send({ ...params, transactional: true })).toMatchObject({
+      outcome: "accepted",
+      messageId: "gmail-id",
+    });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a New York recipient and holds a Los Angeles recipient at the same instant", async () => {
+    vi.setSystemTime(new Date("2026-10-26T14:30:00.000Z"));
+    mocks.zone = "America/Los_Angeles";
+    mocks.recipient = { state: "NY", city: "Albany" };
+    expect(await gmail.send({ ...params, subcontractorId: "sub-ny" })).toMatchObject({
+      outcome: "accepted",
+      messageId: "gmail-id",
+    });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    __resetSendAsCache();
+    mocks.zone = "America/New_York";
+    mocks.recipient = { state: "CA", city: "Oakland" };
+    const held = await gmail.send({ ...params, subcontractorId: "sub-ca" });
+    expect(held).toMatchObject({ ...HOLD, error: expect.stringContaining("America/Los_Angeles") });
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("uses Chicago for an unknown recipient and Boise when the account zone is unset", async () => {
+    vi.setSystemTime(new Date("2026-10-26T14:30:00.000Z"));
+    mocks.zone = "America/Chicago";
+    mocks.recipient = { state: "TX", city: null };
+    expect(await gmail.send({ ...params, subcontractorId: "sub-tx" })).toMatchObject({
+      outcome: "accepted",
+      messageId: "gmail-id",
+    });
+
+    vi.clearAllMocks();
+    __resetSendAsCache();
+    mocks.zone = null;
+    mocks.recipient = { state: null, city: "Houston" };
+    const held = await gmail.send({ ...params, subcontractorId: "sub-unknown" });
+    expect(held).toMatchObject({ ...HOLD, error: expect.stringContaining("America/Boise") });
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("holds a Boise recipient after the fall-back even when the account is on Eastern time", async () => {
+    vi.setSystemTime(new Date("2026-11-03T15:00:00.000Z"));
+    mocks.zone = "America/New_York";
+    mocks.recipient = { state: "ID", city: "Boise" };
+    const held = await gmail.send({ ...params, subcontractorId: "sub-boise" });
+    expect(held).toMatchObject({ ...HOLD, error: expect.stringContaining("America/Boise") });
+    expect(mocks.send).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-11-03T16:00:00.000Z"));
+    expect(await gmail.send({ ...params, subcontractorId: "sub-boise" })).toMatchObject({
       outcome: "accepted",
       messageId: "gmail-id",
     });

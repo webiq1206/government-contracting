@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendOutreachEmail = vi.hoisted(() => vi.fn(async () => ({ provider: "gmail", messageId: "m1" })));
+const isConnected = vi.hoisted(() => vi.fn(async () => false));
 const orgsToSweep = vi.hoisted(() =>
   vi.fn(async () => ({ orgs: [] as { id: string; name: string }[], error: null, soloFallback: false, pausedCount: 0 }))
 );
@@ -23,7 +24,7 @@ vi.mock("../lib/integrations/email-transport", () => ({
 }));
 vi.mock("../lib/integrations/gmail", () => ({
   gmail: {
-    isConnected: async () => false,
+    isConnected,
     threadMessageId: async () => ({ rfc822MessageId: "<orig@mail.gmail.com>", references: [] }),
   },
 }));
@@ -67,15 +68,6 @@ const OPEN = new Date("2026-10-26T15:30:00.000Z");
 const SPLIT = new Date("2026-10-26T14:30:00.000Z");
 const ctx = { runId: "run-window", trigger: "cron" as const, payload: { opportunityId: "opp-1" } };
 const oneAccount = { orgs: [{ id: "org-1", name: "Fixture" }], error: null, soloFallback: false, pausedCount: 0 };
-const twoAccounts = {
-  orgs: [
-    { id: "org-ny", name: "East" },
-    { id: "org-la", name: "West" },
-  ],
-  error: null,
-  soloFallback: false,
-  pausedCount: 0,
-};
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -87,9 +79,12 @@ beforeEach(() => {
   loadAwardCompliance.mockResolvedValue([]);
   needsAttentionOnWonWork.mockReset();
   needsAttentionOnWonWork.mockReturnValue(false);
-  query.mockClear();
+  query.mockReset();
+  query.mockResolvedValue([]);
   queryOne.mockReset();
   queryOne.mockResolvedValue(null);
+  isConnected.mockReset();
+  isConnected.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -116,57 +111,124 @@ const chaseable = {
   },
 };
 
-describe("outreach workers use each account's zone", () => {
-  it("does not claim follow-ups when the unset zone falls back to a closed Boise morning", async () => {
+function dueRow(id: string, subcontractorId: string, state: string | null, city: string | null = null) {
+  return {
+    id,
+    subcontractor_id: subcontractorId,
+    opportunity_id: "opp-1",
+    email: `${subcontractorId}@example.test`,
+    email_verified: true,
+    sub_state: state,
+    sub_city: city,
+  };
+}
+
+function stuckRow(subcontractorId: string, state: string | null, city: string | null = null) {
+  return {
+    opportunity_id: "opp-1",
+    subcontractor_id: subcontractorId,
+    trade: "electrical",
+    outreach_state: "draft",
+    sub_state: state,
+    sub_city: city,
+  };
+}
+
+describe("outreach workers use the recipient zone before they claim", () => {
+  it("does not claim a follow-up when an unknown recipient falls back to a closed Boise morning", async () => {
     orgsToSweep.mockResolvedValue(oneAccount);
+    query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("c.follow_up_at <= now()")) return [dueRow("comm-1", "sub-1", null)];
+      return [];
+    });
     const result = await outreachFollowup.handler(ctx);
     expect(result.ok).toBe(true);
     expect(result.summary).toContain("Held for America/Boise weekday business hours");
     expect(result.data).toMatchObject({
       sent: 0,
-      due: 0,
+      due: 1,
       lastCalls: 0,
       held: 0,
       failures: 0,
       deferredUntilWindow: true,
     });
     expect(orgsToSweep).toHaveBeenCalledWith("outreach-followup");
-    expect(query).not.toHaveBeenCalled();
+    expect(query.mock.calls.some((call) => String(call[0]).includes("returning id"))).toBe(false);
     expect(sendOutreachEmail).not.toHaveBeenCalled();
   });
 
-  it("does not re-queue recovery while that account is closed", async () => {
+  it("does not re-queue recovery for an unknown recipient while Boise is closed", async () => {
     orgsToSweep.mockResolvedValue(oneAccount);
+    query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("outreach_state in")) return [stuckRow("sub-1", null)];
+      return [];
+    });
     const result = await outreachRecoverySweep.handler(ctx);
     expect(result.ok).toBe(true);
     expect(result.summary).toContain("America/Boise");
     expect(result.enqueued).toEqual([]);
-    expect(query).not.toHaveBeenCalled();
+    expect(isConnected).not.toHaveBeenCalled();
   });
 
-  it("works the open account and leaves the closed account unclaimed at one instant", async () => {
+  it("claims the New York recipient and leaves the Los Angeles recipient due at one instant", async () => {
     vi.setSystemTime(SPLIT);
-    orgsToSweep.mockResolvedValue(twoAccounts);
-    queryOne.mockImplementation(async (sql: string, params?: unknown[]) => {
-      if (String(sql).includes("timezone")) {
-        const id = String(params?.[0] ?? "");
-        if (id === "org-ny") return { timezone: "America/New_York" };
-        if (id === "org-la") return { timezone: "America/Los_Angeles" };
+    orgsToSweep.mockResolvedValue(oneAccount);
+    queryOne.mockImplementation(async (sql: string) =>
+      String(sql).includes("from organizations") ? { timezone: "America/Los_Angeles" } : null
+    );
+    query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      const text = String(sql);
+      if (text.includes("c.follow_up_at <= now()")) {
+        return [dueRow("comm-ny", "sub-ny", "NY"), dueRow("comm-ca", "sub-ca", "CA")];
       }
-      return null;
+      if (text.includes("returning id")) return [{ id: params?.[0] }];
+      return [];
     });
     await outreachFollowup.handler(ctx);
-    const queried = query.mock.calls.map((call) => String(call[1]?.[0] ?? ""));
-    expect(queried).toContain("org-ny");
-    expect(queried).not.toContain("org-la");
+    const claims = query.mock.calls
+      .filter((call) => String(call[0]).includes("returning id"))
+      .map((call) => String(call[1]?.[0]));
+    expect(claims).toEqual(["comm-ny"]);
     expect(sendOutreachEmail).not.toHaveBeenCalled();
+  });
+
+  it("uses Chicago for an unknown recipient and Boise when the account zone is unset", async () => {
+    vi.setSystemTime(SPLIT);
+    orgsToSweep.mockResolvedValue({
+      orgs: [
+        { id: "org-chi", name: "Central" },
+        { id: "org-boise", name: "Unset" },
+      ],
+      error: null,
+      soloFallback: false,
+      pausedCount: 0,
+    });
+    queryOne.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (!String(sql).includes("from organizations")) return null;
+      return { timezone: String(params?.[0]) === "org-chi" ? "America/Chicago" : null };
+    });
+    query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      const text = String(sql);
+      if (text.includes("c.follow_up_at <= now()")) return [dueRow("comm-1", "sub-1", null)];
+      if (text.includes("returning id")) return [{ id: params?.[0] }];
+      return [];
+    });
+    await outreachFollowup.handler(ctx);
+    const claims = query.mock.calls
+      .filter((call) => String(call[0]).includes("returning id"))
+      .map((call) => String(call[1]?.[1]));
+    expect(claims).toEqual(["org-chi"]);
 
     query.mockClear();
+    isConnected.mockResolvedValue(true);
+    query.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("outreach_state in")) return [stuckRow("sub-1", null)];
+      return [];
+    });
     const recovery = await outreachRecoverySweep.handler(ctx);
-    const recovered = query.mock.calls.map((call) => String(call[1]?.[0] ?? ""));
-    expect(recovered).toContain("org-ny");
-    expect(recovered).not.toContain("org-la");
-    expect(recovery.enqueued).toEqual([]);
+    expect(recovery.enqueued?.map((item) => item.payload.subcontractorId)).toEqual(["sub-1"]);
+    expect(recovery.enqueued).toHaveLength(1);
+    expect(recovery.summary).toContain("left unqueued");
   });
 
   it("does not chase paperwork on a weekend morning", async () => {

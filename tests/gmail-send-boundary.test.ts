@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), send: vi.fn(), get: vi.fn(), paused: false, windowOpen: true }));
 vi.mock('../lib/domain/account-timezone', () => ({
   accountOutreachTimeZone: async () => 'America/Boise',
+  outreachSendZoneFor: async () => 'America/Boise',
 }));
 vi.mock('../lib/domain/outreach-send-window', () => ({
   OUTREACH_SEND_TIME_ZONE: 'America/Boise',

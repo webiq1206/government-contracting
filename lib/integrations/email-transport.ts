@@ -507,6 +507,7 @@ export async function sendOutreachEmail(
       inReplyTo: params.inReplyTo,
       references: params.references,
       orgId,
+      subcontractorId: params.subcontractorId,
     });
   } catch (err) {
     if (finalBlock) return {provider:null,blocked:true,outcome:"not_attempted",error:finalBlock};

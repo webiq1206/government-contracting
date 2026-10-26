@@ -39,7 +39,7 @@ import { isEmailable } from "../domain/sub-contactability";
 import { getAutomationRules } from "../app-settings";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
 import { outreachWindowRefusal } from "../domain/outreach-send-window";
-import { accountOutreachTimeZone } from "../domain/account-timezone";
+import { outreachSendZoneFor } from "../domain/account-timezone";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -287,7 +287,10 @@ export const subOnboarding: AgentDefinition = {
       }
       const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
         row.orgId ? runWithOrg(row.orgId, fn) : fn();
-      const zone = await accountOutreachTimeZone(row.orgId);
+      const zone = await outreachSendZoneFor({
+        orgId: row.orgId,
+        subcontractorId: row.subcontractorId,
+      });
       const held = outreachWindowRefusal(new Date(), zone);
       if (held) {
         windowHeld++;
@@ -367,7 +370,7 @@ export const subOnboarding: AgentDefinition = {
         ? `${pausedSends} paperwork request${pausedSends === 1 ? "" : "s"} skipped because outbound quote requests are paused`
         : null,
       windowHeld
-        ? `${windowHeld} paperwork request${windowHeld === 1 ? "" : "s"} held for the account's weekday business hours`
+        ? `${windowHeld} paperwork request${windowHeld === 1 ? "" : "s"} held for weekday business hours`
         : null,
       undesignated.length ? `${undesignated.length} awaiting designation` : null,
       unreachable.length ? `${unreachable.length} could not be emailed` : null,

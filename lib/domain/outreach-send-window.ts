@@ -1,15 +1,17 @@
 /**
- * Outreach send window, in the account's own IANA zone.
+ * Outreach send window for one already-resolved IANA zone.
  *
+ * The zone is chosen before this module runs: a solid recipient state/city,
+ * else the sending account's organizations.timezone, else America/Boise.
  * The worker, the scheduler, and Node's process timezone are the wrong clock.
  * A cron that fires all night uses the host zone. Reading the host's local
  * hour would open the gate on that clock. Quote requests, follow-ups,
  * sources-sought sends, and backlink outreach may leave only during weekday
- * business hours where that account works.
+ * business hours in the zone that resolution produced.
  *
  * The zone is passed into Intl as `timeZone`. It is not read from
  * Date#getHours, Date#getDay, the process TZ, or the recap default
- * America/Denver. An account with no usable zone falls back to America/Boise.
+ * America/Denver. An omitted or unusable zone falls back to America/Boise.
  * Mountain Time still changes: after the fall-back, 15:00 UTC is 8:00 in
  * Boise, not 9:00. Intl applies that shift. A fixed offset would not.
  *
@@ -17,7 +19,7 @@
  * Weekends are closed.
  */
 
-/** Used when organizations.timezone is null, blank, or not a real IANA name. */
+/** Used when neither the recipient nor organizations.timezone names a real IANA zone. */
 export const OUTREACH_SEND_FALLBACK_TIME_ZONE = "America/Boise" as const;
 /** 9:00 AM inclusive. */
 export const OUTREACH_SEND_OPEN_HOUR = 9;

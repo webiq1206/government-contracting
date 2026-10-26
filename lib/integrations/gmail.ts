@@ -301,7 +301,7 @@ type GmailSendResult = {
   disabled?: boolean;
   /** True when a later in-window attempt may send. Never a permanent failure. */
   retryable?: boolean;
-  /** Set when the America/Boise business-hours gate held the message. */
+  /** Set when the resolved weekday business-hours gate held the message. */
   heldForSendWindow?: boolean;
   messageId?: string;
   threadId?: string;
@@ -314,9 +314,14 @@ export interface SendEmailParams {
   /**
    * Platform system mail only: password resets, digests, and operator alerts.
    * Outreach, RFQ, sources-sought, and backlink must leave this unset. The
-   * America/Boise business-hours gate then refuses the provider call.
+   * weekday business-hours gate then refuses the provider call.
    */
   transactional?: boolean;
+  /**
+   * Subcontractor this message is for, when there is one. The send window
+   * reads that row's stored state and city. Backlink and system mail omit it.
+   */
+  subcontractorId?: string;
   dispatchIntentId?: string;
   beforeProviderSend?: (from: string, identity?: MailboxSendEvidence) => Promise<void>;
   to: string;
@@ -974,13 +979,17 @@ export const gmail = {
     // Same choke point as the pause, and independent of it. A night or
     // weekend run whose pause switch is OFF still must not reach Gmail.
     // transactional is only platform system mail (password resets, digests,
-    // alerts). The zone is this account's organizations.timezone, read
-    // through Intl. Unset or unusable zones use America/Boise, not the
-    // process clock and not America/Denver.
+    // alerts). The zone is the recipient's stored state/city when that is
+    // one solid US zone, else this account's organizations.timezone, else
+    // America/Boise. Intl reads that zone. Not the process clock, and not
+    // America/Denver.
     if (!params.transactional) {
       const { outreachWindowRefusal } = await import("../domain/outreach-send-window");
-      const { accountOutreachTimeZone } = await import("../domain/account-timezone");
-      const zone = await accountOutreachTimeZone(org);
+      const { outreachSendZoneFor } = await import("../domain/account-timezone");
+      const zone = await outreachSendZoneFor({
+        orgId: org,
+        subcontractorId: params.subcontractorId,
+      });
       const held = outreachWindowRefusal(new Date(), zone);
       if (held) return held;
     }
