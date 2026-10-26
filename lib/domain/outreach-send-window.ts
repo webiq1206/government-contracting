@@ -144,7 +144,7 @@ export function outreachLocalParts(at: Date, stored?: string | null): OutreachLo
 }
 
 export function outreachWindowReason(timeZone: string): string {
-  return `Held for ${timeZone} weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local). Nothing was sent. The next in-window run will send it.`;
+  return `Held for ${timeZone} weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local). Nothing was sent. The next in-window run will send it.`;
 }
 
 /**

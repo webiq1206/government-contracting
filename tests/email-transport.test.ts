@@ -88,7 +88,7 @@ describe("legacy platform identity constants", () => {
 
 // ─── Gmail path ─────────────────────────────────────────────────────────────
 
-describe("sendOutreachEmail — Gmail path", () => {
+describe("sendOutreachEmail - Gmail path", () => {
   beforeEach(() => {
     mockGmailConnected.mockResolvedValue(true);
     mockGmailSend.mockResolvedValue({ messageId: "gmail-msg-1", threadId: "thread-1" });
@@ -181,7 +181,7 @@ describe("sendOutreachEmail — Gmail path", () => {
       retryable: true,
       outcome: "not_attempted",
       heldForSendWindow: true,
-      error: "Held for America/Boise weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local). Nothing was sent. The next in-window run will send it.",
+      error: "Held for America/Boise weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local). Nothing was sent. The next in-window run will send it.",
     });
     const result = await sendOutreachEmail(BASE_PARAMS);
     expect(result).toMatchObject({

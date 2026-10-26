@@ -8,7 +8,7 @@ vi.mock('../lib/domain/outreach-send-window', () => ({
   OUTREACH_SEND_TIME_ZONE: 'America/Boise',
   outreachWindowRefusal: () => mocks.windowOpen ? null : {
     disabled: true, retryable: true, outcome: 'not_attempted', heldForSendWindow: true,
-    error: 'Held for America/Boise weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local). Nothing was sent. The next in-window run will send it.',
+    error: 'Held for America/Boise weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local). Nothing was sent. The next in-window run will send it.',
   },
   isOutreachWindowHold: (result: { heldForSendWindow?: boolean; error?: string | null } | null | undefined) =>
     result?.heldForSendWindow === true || (typeof result?.error === 'string' && result.error.startsWith('Held for America/Boise weekday business hours')),

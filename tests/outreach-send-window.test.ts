@@ -78,10 +78,10 @@ describe("America/Boise weekday business hours", () => {
   it("recognizes a hold from the flag or the reason prefix", () => {
     expect(isOutreachWindowHold({ heldForSendWindow: true })).toBe(true);
     expect(
-      isOutreachWindowHold({ error: "Held for America/Boise weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local)." })
+      isOutreachWindowHold({ error: "Held for America/Boise weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local)." })
     ).toBe(true);
     expect(
-      isOutreachWindowHold({ error: "Held for America/New_York weekday business hours (Monday–Friday, 9:00 AM–5:00 PM local)." })
+      isOutreachWindowHold({ error: "Held for America/New_York weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local)." })
     ).toBe(true);
     expect(isOutreachWindowHold({ error: "Gmail is paused.", disabled: true })).toBe(false);
     expect(isOutreachWindowHold(null)).toBe(false);

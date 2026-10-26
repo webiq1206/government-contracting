@@ -1029,7 +1029,7 @@ export const outreach: AgentDefinition = {
     }
 
     const summary = windowHeld
-      ? `Held outreach to ${sub.company_name} until America/Boise weekday business hours (Monday–Friday 9:00 AM–5:00 PM). Nothing was sent.`
+      ? `Held outreach to ${sub.company_name} until America/Boise weekday business hours (Monday-Friday 9:00 AM-5:00 PM). Nothing was sent.`
       : replayed ? `Recovered the recorded Gmail receipt for ${sub.company_name}; no new email sent.` : sent
       ? `Sent outreach to ${sub.company_name} <${sub.email}>; ${followUpAt ? `follow-up in ${rules.followup_hours}h` : "no follow-up (chasing is off)"}, ${
           callsEnabled ? "call card queued" : "calling is off so no call card was created"
