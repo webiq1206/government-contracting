@@ -5,12 +5,15 @@
  * counts. Once a daily cap is already spent, every refusal still serializes
  * on that lock while holding a pool connection. Under Today traffic that
  * queue pins the database until the web process stops answering. This asks
- * the same count first, with no lock. A failure here returns null so the
- * locked check still enforces the cap. It never raises a default.
+ * the same count first, with no lock. A spent cap is remembered in this
+ * process so the next refusal does not take another connection. A connection
+ * the pool cannot hand out is remembered briefly and refused the same way.
+ * Any other precheck failure returns null so the locked check still enforces
+ * the cap. It never raises a default.
  */
 import { query, queryOne } from "../db";
 import { DEFAULT_ACCOUNT_BUDGET, DEFAULT_PLATFORM_REQUESTS } from "./defaults";
-import { accountDailyRequestBlock, platformRequestCapMessage } from "../domain/spending-notice";
+import { accountDailyRequestBlock, admissionBusyMessage, platformRequestCapMessage } from "../domain/spending-notice";
 
 export const ACCOUNT_DAY_REQUEST_COUNT_SQL = `select count(*)::int as calls from api_usage_events
   where org_id=$1 and not (credential_source='unknown' and provider_cost=0 and billing_status='not_billable')
@@ -37,12 +40,70 @@ type LimitRow = {
 };
 
 const inflight = new Map<string, Promise<string | null>>();
+const BLOCK_TTL_MS = 30_000;
+const BUSY_TTL_MS = 5_000;
+const remembered = new Map<string, { until: number; message: string }>();
+
+/** Drop a cached refusal. A budget save must take effect without waiting out the memo. */
+export function clearRequestCapMemo(orgId?: string): void {
+  if (!orgId) {
+    remembered.clear();
+    return;
+  }
+  for (const key of remembered.keys()) {
+    if (key === `account:${orgId}` || key.startsWith(`${orgId}:`)) remembered.delete(key);
+  }
+}
+
+function readMemo(key: string): string | null {
+  const hit = remembered.get(key);
+  if (!hit) return null;
+  if (hit.until <= Date.now()) {
+    remembered.delete(key);
+    return null;
+  }
+  return hit.message;
+}
+
+function remember(key: string, message: string, ttl: number): void {
+  remembered.set(key, { until: Date.now() + ttl, message });
+}
+
+function isAccountDailyBlock(message: string): boolean {
+  return message.startsWith("API_BUDGET: You reached today's request limit of ");
+}
+
+/** A connection the pool could not hand out. Retrying through the admission lock would make the stall worse. */
+function isPoolStarved(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  if (code === "53300" || code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "ECONNRESET") return true;
+  return /timeout exceeded when trying to connect|remaining connection slots|sorry, too many clients/i.test(error.message);
+}
 
 export async function requestCapBlockMessage(input: CapInput): Promise<string | null> {
+  const pooled = readMemo("pool");
+  if (pooled) return pooled;
+  const account = readMemo(`account:${input.orgId}`);
+  if (account) return account;
   const key = `${input.orgId}:${input.source}:${input.provider}:${input.feature}`;
+  const feature = readMemo(key);
+  if (feature) return feature;
   const existing = inflight.get(key);
   if (existing) return existing;
-  const run = computeCap(input).finally(() => {
+  const run = computeCap(input).then((message) => {
+    if (!message) return null;
+    if (message.includes("usage ledger is busy")) {
+      remember("pool", message, BUSY_TTL_MS);
+      return message;
+    }
+    if (isAccountDailyBlock(message)) {
+      remember(`account:${input.orgId}`, message, BLOCK_TTL_MS);
+      return message;
+    }
+    remember(key, message, BLOCK_TTL_MS);
+    return message;
+  }).finally(() => {
     if (inflight.get(key) === run) inflight.delete(key);
   });
   inflight.set(key, run);
@@ -57,6 +118,7 @@ async function computeCap(input: CapInput): Promise<string | null> {
     return await platformCapMessage(input.orgId, input.provider, input.feature);
   } catch (error) {
     console.error("[api-usage] request cap precheck failed", error);
+    if (isPoolStarved(error)) return admissionBusyMessage();
     return null;
   }
 }

@@ -151,6 +151,17 @@ describe("hang and ceiling guardrails", () => {
     expect(today).toContain("isMissingTenantContext");
     expect(today).toContain("TodayAccountUnknown");
     expect(today).toContain("bindRequestOrg(viewer.organizationId)");
+    const layout = readFileSync("app/(dash)/layout.tsx", "utf8");
+    expect(layout).toContain("bindRequestOrg(user.organizationId)");
+    const todayError = readFileSync("app/(dash)/today/error.tsx", "utf8");
+    expect(todayError).toContain('backHref="/agents"');
+    expect(todayError).not.toContain('backHref="/today"');
+    const login = readFileSync("app/login/page.tsx", "utf8");
+    const loginApi = readFileSync("app/api/auth/login/route.ts", "utf8");
+    expect(login).not.toContain("beginUsage");
+    expect(loginApi).not.toContain("beginUsage");
+    expect(login).not.toContain("checkAiSpending");
+    expect(loginApi).not.toContain("checkAiSpending");
   });
 
   it("returns a saved-nothing response when a reply review has no tenant", () => {
