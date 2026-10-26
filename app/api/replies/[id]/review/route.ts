@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireCapability } from "@/lib/api-auth";
-import { resolveTenantOrgId } from "@/lib/tenant";
+import { isMissingTenantContext, resolveTenantOrgId } from "@/lib/tenant";
+import { bindRequestOrg } from "@/lib/tenant-context";
 import { query, queryOne, transaction } from "@/lib/db";
 import {
   applyOutcomeToSolicitation,
@@ -118,7 +119,19 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const params = await props.params;
   const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
-  const orgId = await resolveTenantOrgId();
+  let orgId: string;
+  try {
+    orgId = await resolveTenantOrgId();
+  } catch (error) {
+    if (isMissingTenantContext(error)) {
+      return NextResponse.json(
+        { error: "Sign in again before saving this review. Nothing was changed." },
+        { status: 401 },
+      );
+    }
+    throw error;
+  }
+  bindRequestOrg(orgId);
 
   const body = (await req.json().catch(() => ({}))) as {
     outcome?: unknown;

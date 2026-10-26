@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   accountDailyRequestBlock,
+  admissionBusyMessage,
   blockMessageForFacts,
   noticeForBudgetMessage,
   noticeForFacts,
@@ -149,6 +150,35 @@ describe("hang and ceiling guardrails", () => {
     const today = readFileSync("app/(dash)/today/page.tsx", "utf8");
     expect(today).toContain("isMissingTenantContext");
     expect(today).toContain("TodayAccountUnknown");
+    expect(today).toContain("bindRequestOrg(viewer.organizationId)");
+  });
+
+  it("returns a saved-nothing response when a reply review has no tenant", () => {
+    const route = readFileSync("app/api/replies/[id]/review/route.ts", "utf8");
+    expect(route).toContain("isMissingTenantContext");
+    expect(route).toContain("bindRequestOrg(orgId)");
+    expect(route).toContain("status: 401");
+    expect(route).toContain("Nothing was changed.");
+  });
+
+  it("releases a busy admission lock instead of holding a pool connection", () => {
+    const ledger = readFileSync("lib/api-usage/ledger.ts", "utf8");
+    const timeout = ledger.indexOf("set_config('lock_timeout', '3000', true)");
+    const lock = ledger.indexOf("pg_advisory_xact_lock(hashtext('api-usage-admission'))");
+    expect(timeout).toBeGreaterThan(-1);
+    expect(lock).toBeGreaterThan(timeout);
+    expect(ledger).toContain('code === "55P03"');
+    expect(ledger).toContain("admissionBusyMessage()");
+    expect(ledger.indexOf("set_config('lock_timeout', '0', true)")).toBeGreaterThan(lock);
+  });
+
+  it("names a busy ledger without calling it the daily or monthly cap", () => {
+    const notice = noticeForBudgetMessage(admissionBusyMessage());
+    expect(notice?.title).toContain("usage ledger");
+    expect(notice?.detail).toContain("nothing was charged");
+    expect(notice?.detail).toContain("separate from the daily request limit");
+    expect(notice?.detail).toContain("monthly budget");
+    expect(notice?.title).not.toContain("today's request limit");
   });
 
   it("shows the spending block on the shared shell", () => {

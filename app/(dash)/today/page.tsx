@@ -10,6 +10,7 @@ import { AutomationPausedBanner } from "@/components/automation-control";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { DEFAULT_RULES } from "@/lib/domain/intake";
 import { isMissingTenantContext } from "@/lib/tenant";
+import { bindRequestOrg } from "@/lib/tenant-context";
 import { spendingHoldCopy } from "@/lib/domain/spending-notice";
 import { TodayAccountUnknown } from "@/components/today-account-unknown";
 import { automationHealth } from "@/lib/automation-status";
@@ -542,6 +543,7 @@ export default async function TodayPage(
   try {
     viewer = await currentUser();
     if (!viewer?.organizationId) return <TodayAccountUnknown />;
+    bindRequestOrg(viewer.organizationId);
     rules = await getAutomationRules();
   } catch (error) {
     if (isMissingTenantContext(error) || !viewer?.organizationId) return <TodayAccountUnknown />;

@@ -59,6 +59,11 @@ export function pausedApiBlockMessage(): string {
   return "API_BUDGET: You paused API use. New paid work has stopped to protect your budget. Open Settings, API Usage to review limits or resume work.";
 }
 
+/** Admission could not take the ledger lock in time. Nothing was reserved. */
+export function admissionBusyMessage(): string {
+  return "API_BUDGET: The usage ledger is busy, so this paid call was not started. Nothing was charged. Try again in a moment. Open Settings, API Usage if this keeps happening. This wait is separate from the daily request limit and the monthly budget.";
+}
+
 function notice(
   kind: SpendingLimitKind,
   title: string,
@@ -167,6 +172,15 @@ function ceilingNotice(): SpendingNotice {
   );
 }
 
+function admissionBusyNotice(): SpendingNotice {
+  return notice(
+    "generic",
+    "Paid AI is waiting on the usage ledger",
+    "The usage ledger is busy, so this paid call was not started and nothing was charged. Try again in a moment. Open Settings, API Usage if this keeps happening. This wait is separate from the daily request limit and the monthly budget.",
+    "Open API Usage",
+  );
+}
+
 function genericNotice(): SpendingNotice {
   return notice(
     "generic",
@@ -193,6 +207,7 @@ export function noticeForBudgetMessage(message: string | null | undefined): Spen
   const money = /\$([0-9]+(?:\.[0-9]+)?) is spent or reserved against a \$([0-9]+(?:\.[0-9]+)?) limit/i.exec(message);
   const spent = money ? Number(money[1]) : undefined;
   const capAmount = money ? Number(money[2]) : undefined;
+  if (/usage ledger is busy/.test(text)) return admissionBusyNotice();
   if (/platform's daily request allowance/.test(text)) {
     const ceiling = requestCap ? Number(requestCap[1]) : undefined;
     return platformNotice(ceiling, ceiling);

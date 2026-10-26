@@ -1,5 +1,5 @@
 import { DEFAULT_ACCOUNT_BUDGET, DEFAULT_PLATFORM_REQUESTS } from "./defaults";
-import { accountDailyRequestBlock, platformRequestCapMessage } from "../domain/spending-notice";
+import { accountDailyRequestBlock, admissionBusyMessage, platformRequestCapMessage } from "../domain/spending-notice";
 import { ACCOUNT_DAY_REQUEST_COUNT_SQL, PLATFORM_DAY_REQUEST_COUNT_SQL, requestCapBlockMessage } from "./request-cap";
 import { isBoundedGpt6, gpt6ReservationCovered } from "../ai/model-contracts";
 import { createHash, randomUUID } from "node:crypto";
@@ -67,6 +67,11 @@ export class ApiUsageBlockedError extends Error {
   }
 }
 
+/** PostgreSQL lock_not_available. lock_timeout fired before the lock was granted. */
+function isLockNotAvailable(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "55P03";
+}
+
 /**
  * A request whose cost is still unknown AND which should have had one.
  *
@@ -111,9 +116,19 @@ export async function beginUsage(
   await transaction(async (client) => {
     // Serialize admissions with limit edits. Pending/unpriced requests block limited scopes,
     // rather than inventing a safe dollar reservation for an unknown provider charge.
-    await client.query(
-      "select pg_advisory_xact_lock(hashtext('api-usage-admission'))",
-    );
+    // A waiter must not hold its pool connection for the statement timeout.
+    // Three seconds is enough to join a quiet ledger and short enough that a
+    // stampede releases the connection instead of wedging the process.
+    await client.query("select set_config('lock_timeout', '3000', true)");
+    try {
+      await client.query(
+        "select pg_advisory_xact_lock(hashtext('api-usage-admission'))",
+      );
+    } catch (error) {
+      if (isLockNotAvailable(error)) throw new ApiUsageBlockedError(admissionBusyMessage());
+      throw error;
+    }
+    await client.query("select set_config('lock_timeout', '0', true)");
     const price = await client.query(
       "select max_request_cost::text,rates from api_usage_rates where provider=$1 and service=$2",
       [provider, service],
