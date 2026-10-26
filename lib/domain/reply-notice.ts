@@ -7,6 +7,33 @@ export function authoredReplyText(body: string): string {
     .replace(/\uFEFF/g, "").trim();
 }
 
+const BARE_DECLINE = /^(?:pass|no|decline(?:d)?|not interested|no thanks|no thank you)[.!]?$/i;
+const SIGN_OFF = /^(?:thanks|thank you|best|regards|sincerely|cheers|respectfully|kind regards|warm regards|best regards)[,.!]?$/i;
+
+/** A short signature line: a name, title, company, phone, or email. Not a second sentence. */
+function isSignatureLine(line: string): boolean {
+  if (!line || line.length > 80 || /[?]/.test(line)) return false;
+  if (/\b(?:will|won't|cannot|can't|could|would|quote|bid|price|pricing|interested|attached|attachment|please|however|unless|if|but|pass)\b/i.test(line)) return false;
+  if (SIGN_OFF.test(line)) return true;
+  if (/@/.test(line) || /\b(?:llc|l\.l\.c|inc|ltd|corp|company|manager|director|estimator|president|owner|office|phone|cell|mobile|tel|fax)\b/i.test(line)) return true;
+  if (/\+?\d[\d\s().-]{6,}\d/.test(line)) return true;
+  return /^[A-Z][A-Za-z0-9.'’&,/-]+(?:[ \t]+[A-Z0-9][A-Za-z0-9.'’&,/-]*){0,8}$/.test(line);
+}
+
+/**
+ * The authored message is only a refusal word, optionally followed by a sign-off
+ * and signature. Anything between the word and the sign-off is a different answer.
+ */
+function bareAuthoredDecline(authored: string): boolean {
+  const lines = authored.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length || !BARE_DECLINE.test(lines[0]!)) return false;
+  if (lines.length === 1) return true;
+  const signOffAt = lines.findIndex((line, index) => index > 0 && SIGN_OFF.test(line));
+  if (signOffAt === -1) return lines.slice(1).every(isSignatureLine);
+  if (signOffAt > 1) return false;
+  return lines.slice(signOffAt).every((line) => SIGN_OFF.test(line) || isSignatureLine(line));
+}
+
 /** Matches the sender's instruction, never an unsubscribe footer in quoted mail. */
 export function explicitOptOut(text: string): boolean {
   const authored = authoredReplyText(text);
@@ -48,6 +75,9 @@ export function classifyReplyNotice(input: {
   // Bare courtesy words can reject an offer of help while retaining the bid.
   // Only the entire minimal response is an unambiguous "No thanks" decline.
   const courtesyDecline = /^no (?:thank you|thanks)[.!]?$/i.test(text);
+  // A one-word refusal plus a signature is still the whole authored answer.
+  // "Pass this to estimating" is not, and neither is a second sentence.
+  const bareDecline = bareAuthoredDecline(text);
   const wholeServiceRefusal = /\b(?:we|i) (?:do not|don't|cannot|can't) (?:provide|perform|offer|handle) (?:(?:this|that|the requested) (?:service|work|scope)|these services)\s*(?=[.!\n]|$)/i.test(text);
   const normalize = (value:string) => value.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
   // An explicit negative capability clause can close the exact requested
@@ -55,7 +85,7 @@ export function classifyReplyNotice(input: {
   const excluded = text.match(/\b(?:we|i) (?:only )?(?:provide|perform|offer|handle|do) [^.!?\n]{1,100}?[,;]?\s+(?:not|rather than) ([^.!?\n]+)/i)?.[1];
   const exactTradeRefusal = Boolean(excluded && input.requestedTrade &&
     normalize(excluded) === normalize(input.requestedTrade));
-  const decline = courtesyDecline || wholeServiceRefusal || exactTradeRefusal || new RegExp(`\\b(?:(?:we(?:'re| are)|i(?:'m| am)) not interested(?: in ${target})?|we (?:will|must|have to) (?:pass|decline)(?: on ${target})?|we (?:are unable to|cannot|can't) (?:bid|quote) ${target})\\s*${end}`,"i").test(text);
+  const decline = courtesyDecline || bareDecline || wholeServiceRefusal || exactTradeRefusal || new RegExp(`\\b(?:(?:we(?:'re| are)|i(?:'m| am)) not interested(?: in ${target})?|we (?:will|must|have to) (?:pass|decline)(?: on ${target})?|we (?:are unable to|cannot|can't) (?:bid|quote) ${target})\\s*${end}`,"i").test(text);
   if (decline && !conflict) return {kind:"decline",authoredText:text,reason:"The person explicitly declined this request."};
   return {kind:"human",authoredText:text,reason:"Requires normal reply interpretation."};
 }

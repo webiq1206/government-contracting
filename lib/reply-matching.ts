@@ -21,6 +21,97 @@ export function senderMatchesSub(
   return a !== "" && a === b;
 }
 
+/**
+ * Consumer mail hosts. Same-domain trust is never applied to these: two
+ * gmail.com addresses are not the same company. Exact mailbox or a stored
+ * alias is still allowed.
+ */
+const FREEMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "yahoo.co.jp",
+  "ymail.com",
+  "rocketmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "hotmail.co.uk",
+  "live.com",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "aim.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "gmx.com",
+  "gmx.net",
+  "mail.com",
+]);
+
+function mailboxOf(email: string | null | undefined): string {
+  const normalized = normalizeEmail(email);
+  const angled = normalized.match(/<([^>]+)>/)?.[1]?.trim();
+  return angled || normalized;
+}
+
+/** Host after @, or null when the address is not a mailbox. */
+export function mailboxDomain(email: string | null | undefined): string | null {
+  const box = mailboxOf(email);
+  const at = box.lastIndexOf("@");
+  if (at <= 0 || at >= box.length - 1) return null;
+  const domain = box.slice(at + 1);
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(domain)) return null;
+  return domain;
+}
+
+/** True for consumer hosts. Company domains such as bulldogrooter.com are false. */
+export function isFreemailAddress(email: string | null | undefined): boolean {
+  const domain = mailboxDomain(email);
+  if (!domain) return false;
+  if (FREEMAIL_DOMAINS.has(domain)) return true;
+  return /^(?:gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|icloud|aol|aim|protonmail|gmx)\.(?:com|net|org|co\.[a-z]{2}|[a-z]{2})$/.test(domain);
+}
+
+export type SenderTrustVia = "exact" | "alias" | "domain";
+
+export interface SenderTrust {
+  verified: boolean;
+  /** How the sender was accepted. Null when verification failed. */
+  via: SenderTrustVia | null;
+}
+
+/**
+ * Who may speak for the firm on a reply that is already tied to one conversation.
+ *
+ * Exact mailbox match always counts. On a strong match only, a stored alias
+ * counts, and so does any other mailbox on the roster contact's own company
+ * domain. Freemail stays exact-only: dispatch@gmail.com is not chris@gmail.com.
+ * A weak match never gains domain or alias trust, because the sender address
+ * is then the only thing tying the message to a solicitation.
+ */
+export function senderTrust(input: {
+  fromEmail: string | null | undefined;
+  subEmail: string | null | undefined;
+  strongMatch: boolean;
+  aliases?: ReadonlyArray<string | null | undefined> | null;
+}): SenderTrust {
+  const from = mailboxOf(input.fromEmail);
+  const sub = mailboxOf(input.subEmail);
+  if (from && sub && from === sub) return { verified: true, via: "exact" };
+  if (!input.strongMatch || !from) return { verified: false, via: null };
+  const aliases = new Set((input.aliases ?? []).map(mailboxOf).filter(Boolean));
+  if (aliases.has(from)) return { verified: true, via: "alias" };
+  const fromDomain = mailboxDomain(from);
+  const subDomain = mailboxDomain(sub);
+  if (!fromDomain || !subDomain || fromDomain !== subDomain) return { verified: false, via: null };
+  if (isFreemailAddress(from) || isFreemailAddress(sub)) return { verified: false, via: null };
+  return { verified: true, via: "domain" };
+}
+
 export interface AutoSaveDecisionInput {
   /** Reply matched the outbound Gmail thread id (reliable correlation). */
   threadMatched: boolean;

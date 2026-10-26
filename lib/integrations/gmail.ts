@@ -554,6 +554,8 @@ export interface GmailInboundMessage {
   /** Machine-readable DSN fields and original headers, separate from reply text. */
   deliveryReport?: string;
   attachments: GmailAttachmentRef[];
+  /** False when only a provider snippet, rather than a readable body, exists. */
+  bodyAvailable?: boolean;
 }
 
 /** Observed mailbox evidence; SENT establishes acceptance, never delivery/read. */
@@ -667,10 +669,27 @@ export function extractDeliveryReportText(payload: GmailPart | null | undefined)
   return text.join("\n");
 }
 
-function stripHtml(html: string): string {
+/**
+ * HTML to text that still has paragraph boundaries.
+ *
+ * Quote stripping and a bare "Pass" both depend on a newline before `From:`
+ * and before the signature. Dropping `<br>` and `</div>` used to glue the
+ * refusal, the signature, and the quoted thread into one line.
+ */
+export function stripHtml(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\b[^>]*>/gi, "\n")
+    .replace(/<\/(?:p|div|tr|li|h[1-6]|blockquote|table|pre)\s*>/gi, "\n")
     .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -1345,6 +1364,7 @@ export const gmail = {
             msg.data.payload?.headers?.find(
               (h) => (h.name ?? "").toLowerCase() === name
             )?.value ?? "");
+          const plainBody = extractBodyText(msg.data.payload);
           replies.push({
             threadId: msg.data.threadId ?? "",
             from: header("from"),
@@ -1370,7 +1390,8 @@ export const gmail = {
               : [],
             snippet: inboundText(msg.data.snippet ?? ""),
             messageId: msg.data.id ?? "",
-            body: extractBodyText(msg.data.payload) || inboundText(msg.data.snippet ?? ""),
+            body: plainBody || inboundText(msg.data.snippet ?? ""),
+            bodyAvailable: Boolean(plainBody.trim()),
             deliveryReport: extractDeliveryReportText(msg.data.payload),
             attachments: collectAttachments(msg.data.payload as GmailPart),
           });

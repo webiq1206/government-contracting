@@ -13,6 +13,14 @@ describe("deterministic reply notices",()=>{
     expect(classifyReplyNotice({body}).kind).toBe("human");
   });
   it("does not close a reply carrying an attachment",()=>expect(classifyReplyNotice({body:"We will pass.",attachmentNames:["alternate.pdf"]}).kind).toBe("human"));
+  it.each(["Pass","No","Decline.","Declined","Not interested","No thank you"])("treats a whole-message bare decline as a decline: %s",body=>{
+    expect(classifyReplyNotice({body}).kind).toBe("decline");
+  });
+  it("treats a bare Pass plus a signature as a decline and keeps a forwarding sentence open",()=>{
+    expect(classifyReplyNotice({body:"Pass\nBest,\nChris Allen\nGeneral Manager\nBulldog Rooter, LLC"}).kind).toBe("decline");
+    expect(classifyReplyNotice({body:"Pass this to estimating."}).kind).toBe("human");
+    expect(classifyReplyNotice({body:"Pass\nWe will bid the plumbing."}).kind).toBe("human");
+  });
   it.each([
     "We will pass your request to our estimating team.",
     "If the schedule slips, we will pass.",
