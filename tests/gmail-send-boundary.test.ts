@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ list: vi.fn(), send: vi.fn(), get: vi.fn(), paused: false }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), send: vi.fn(), get: vi.fn(), paused: false, windowOpen: true }));
+vi.mock('../lib/domain/account-timezone', () => ({
+  accountOutreachTimeZone: async () => 'America/Boise',
+  outreachSendZoneFor: async () => 'America/Boise',
+}));
+vi.mock('../lib/domain/outreach-send-window', () => ({
+  OUTREACH_SEND_TIME_ZONE: 'America/Boise',
+  outreachWindowRefusal: () => mocks.windowOpen ? null : {
+    disabled: true, retryable: true, outcome: 'not_attempted', heldForSendWindow: true,
+    error: 'Held for America/Boise weekday business hours (Monday-Friday, 9:00 AM-5:00 PM local). Nothing was sent. The next in-window run will send it.',
+  },
+  isOutreachWindowHold: (result: { heldForSendWindow?: boolean; error?: string | null } | null | undefined) =>
+    result?.heldForSendWindow === true || (typeof result?.error === 'string' && result.error.startsWith('Held for America/Boise weekday business hours')),
+}));
 vi.mock('../lib/config', () => ({ config: {
   gmail: { configured: true, clientId: 'test', clientSecret: 'test', sender: null },
   database: { isIsolatedDev: false }, email: {}, appUrl: 'https://brostco.com',
@@ -17,7 +30,7 @@ import { query, queryOne } from '../lib/db';
 import { gmail, __resetSendAsCache } from '../lib/integrations/gmail';
 const params = { orgId: 'org-1', to: 'owner@example.com', from: 'BrostCo <hello@brostco.com>', subject: 'Test', html: '<p>Test</p>' };
 beforeEach(() => {
-  vi.clearAllMocks(); __resetSendAsCache(); mocks.paused = false;
+  vi.clearAllMocks(); __resetSendAsCache(); mocks.paused = false; mocks.windowOpen = true;
   mocks.list.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'admin@brostco.com', isPrimary: true }, { sendAsEmail: 'hello@brostco.com', verificationStatus: 'accepted' }] } });
   mocks.send.mockResolvedValue({ data: { id: 'gmail-id', threadId: 'thread-id' } });
   mocks.get.mockResolvedValue({ data: { payload: { headers: [{ name: 'Message-ID', value: '<internet-id@example.com>' }] } } });
@@ -53,6 +66,22 @@ describe('Gmail sender checks at the provider boundary', () => {
     expect(await gmail.send(params)).toMatchObject({ disabled: true, error: 'Paused' });
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.list).not.toHaveBeenCalled();
+  });
+  it('holds outreach outside the America/Boise window before any provider call', async () => {
+    mocks.windowOpen = false;
+    const stamp = vi.fn(async () => {});
+    expect(await gmail.send({ ...params, beforeProviderSend: stamp })).toMatchObject({
+      disabled: true, retryable: true, outcome: 'not_attempted', heldForSendWindow: true,
+      error: expect.stringContaining('America/Boise'),
+    });
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.list).not.toHaveBeenCalled();
+    expect(stamp).not.toHaveBeenCalled();
+  });
+  it('still sends platform system mail when the outreach window is closed', async () => {
+    mocks.windowOpen = false;
+    expect(await gmail.send({ ...params, transactional: true })).toMatchObject({ outcome: 'accepted', messageId: 'gmail-id' });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
   });
   it('commits the attempt only after sender verification and prevents provider IO when that write fails', async () => {
     const stamp = vi.fn(async () => { throw new Error('claim write unavailable'); });

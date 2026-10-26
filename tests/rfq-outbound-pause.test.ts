@@ -35,6 +35,14 @@ const db = vi.hoisted(() => ({
   queryOne: vi.fn(async () => null as unknown),
 }));
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+  outreachSendZoneFor: async () => "America/Boise",
+}));
+vi.mock("../lib/domain/outreach-send-window", () => ({
+  outreachWindowRefusal: () => null,
+  isOutreachWindowHold: () => false,
+}));
 vi.mock("../lib/integrations/email-transport", () => ({
   sendOutreachEmail,
   OUTREACH_SENDER: "Fixture <ops@example.test>",

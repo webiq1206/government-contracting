@@ -13,6 +13,7 @@ import {
   sendOutreachEmail,
   type OutreachSendResult,
 } from "../integrations/email-transport";
+import { isOutreachWindowHold } from "./outreach-send-window";
 
 export type DeclineCloseoutSource = "email_reply" | "call_workspace";
 
@@ -278,6 +279,7 @@ export async function closeOutDeclinedSub(
   let thankYouSent = false;
   let alreadyThanked = false;
   let thankYouPaused = false;
+  let thankYouDeferred = false;
   let thankYouFailure: string | null = null;
 
   if (sendThankYou && source === "email_reply" && input.inboundMessageId) {
@@ -363,7 +365,9 @@ export async function closeOutDeclinedSub(
           inReplyTo: input.inReplyTo ?? undefined,
           references: input.references ?? [],
         });
-        if (res.messageId && !res.error && !res.disabled && !res.blocked) {
+        if (isOutreachWindowHold(res)) {
+          thankYouDeferred = true;
+        } else if (res.messageId && !res.error && !res.disabled && !res.blocked) {
           thankYouSent = !res.replayed;
           alreadyThanked = !!res.replayed;
           if (!res.communicationId) await query(
@@ -407,13 +411,15 @@ export async function closeOutDeclinedSub(
       opportunityId,
       subcontractorId,
       level: thankYouFailure ? "error" : "success",
-      ...(thankYouFailure ? { status: "error" as const } : {}),
+      ...(thankYouFailure ? { status: "error" as const } : thankYouDeferred ? { status: "skipped" as const } : {}),
       message: thankYouSent
         ? `Sub declined / cannot fulfill. Closed out on this solicitation and sent a thank-you email.`
         : alreadyThanked
           ? `Sub declined / cannot fulfill. Closed out on this solicitation (thank-you already sent).`
           : thankYouPaused
             ? `Sub declined / cannot fulfill. Closed out on this solicitation. The thank-you email was not sent because outbound quote requests are paused.`
+            : thankYouDeferred
+              ? `Sub declined / cannot fulfill. Closed out on this solicitation. The thank-you email was held for America/Boise weekday business hours and will send on the next in-window run.`
             : `Sub declined / cannot fulfill. Closed out on this solicitation.${
                 sendThankYou
                   ? ` No acknowledgment was sent (${thankYouFailure ?? "no eligible human email reply with a stable message identifier"}). Verify the conversation and delivery state before any send.`

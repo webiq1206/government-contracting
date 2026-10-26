@@ -27,6 +27,14 @@ const sendSpy = vi.fn(async () => ({
   provider: "gmail",
 }));
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+  outreachSendZoneFor: async () => "America/Boise",
+}));
+vi.mock("../lib/domain/outreach-send-window", () => ({
+  outreachWindowRefusal: () => null,
+  isOutreachWindowHold: () => false,
+}));
 vi.mock("../lib/integrations/email-transport", () => ({
   sendOutreachEmail: (...a: unknown[]) => sendSpy(...(a as [])),
   OUTREACH_SENDER: "BROSTCO <info@brostco.com>",

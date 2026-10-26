@@ -38,6 +38,8 @@ import {
 import { isEmailable } from "../domain/sub-contactability";
 import { getAutomationRules } from "../app-settings";
 import { fanoutNote, orgsToSweep } from "./org-fanout";
+import { outreachWindowRefusal } from "../domain/outreach-send-window";
+import { outreachSendZoneFor } from "../domain/account-timezone";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -257,6 +259,7 @@ export const subOnboarding: AgentDefinition = {
     let chased = 0;
     let alreadyClear = 0;
     let pausedSends = 0;
+    let windowHeld = 0;
     const undesignated: string[] = [];
     const unreachable: string[] = [];
     const blocked: string[] = [];
@@ -282,10 +285,30 @@ export const subOnboarding: AgentDefinition = {
         unreachable.push(row.companyName);
         continue;
       }
-      if (await chasedRecently(row.subcontractorId)) continue;
-
       const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
         row.orgId ? runWithOrg(row.orgId, fn) : fn();
+      const zone = await outreachSendZoneFor({
+        orgId: row.orgId,
+        subcontractorId: row.subcontractorId,
+      });
+      const held = outreachWindowRefusal(new Date(), zone);
+      if (held) {
+        windowHeld++;
+        await inRowOrg(() =>
+          logAgent({
+            agent: "sub-onboarding",
+            action: "send-window",
+            level: "info",
+            status: "skipped",
+            subcontractorId: row.subcontractorId,
+            opportunityId: row.opportunityId,
+            message: held.error,
+          })
+        );
+        continue;
+      }
+      if (await chasedRecently(row.subcontractorId)) continue;
+
       const rules = await inRowOrg(() => getAutomationRules());
       if (rules.rfq_outbound_enabled === false) {
         pausedSends++;
@@ -345,6 +368,9 @@ export const subOnboarding: AgentDefinition = {
       `${chased} chased`,
       pausedSends
         ? `${pausedSends} paperwork request${pausedSends === 1 ? "" : "s"} skipped because outbound quote requests are paused`
+        : null,
+      windowHeld
+        ? `${windowHeld} paperwork request${windowHeld === 1 ? "" : "s"} held for weekday business hours`
         : null,
       undesignated.length ? `${undesignated.length} awaiting designation` : null,
       unreachable.length ? `${unreachable.length} could not be emailed` : null,

@@ -24,6 +24,14 @@ import {sendOutreachEmail, type OutreachSendParams} from "../lib/integrations/em
 import {gmail} from "../lib/integrations/gmail";
 import {runWithPursuitVersion} from "../lib/pursuit-job-context";
 vi.mock("../lib/logger",()=>({logAgent:async()=>undefined}));
+vi.mock("../lib/domain/account-timezone",()=>({
+  accountOutreachTimeZone:async()=>"America/Boise",
+  outreachSendZoneFor:async()=>"America/Boise",
+}));
+vi.mock("../lib/domain/outreach-send-window",()=>({
+  outreachWindowRefusal:()=>null,
+  isOutreachWindowHold:()=>false,
+}));
 vi.mock("../lib/ai/companyProfile",()=>({getProfileJson:async()=>({legal_name:"Prime",owner_name:"Pat"})}));
 import {requestClarification} from "../lib/domain/reply-clarify";
 import {closeOutDeclinedSub} from "../lib/domain/decline-closeout";
@@ -32,7 +40,7 @@ import {scheduledRequestKey} from "../lib/scheduled-email";
 let params:OutreachSendParams;
 beforeAll(async()=>{state.db=new PGlite();await state.db.exec(`
 create table opportunities(id uuid primary key,org_id uuid,stage text,status text,pursuit_state text,pursuit_reason text,pursuit_version integer,title text,deadline timestamptz,human_action_required boolean,is_sources_sought boolean default false);
-create table subcontractors(id uuid primary key,org_id uuid,email text,email_verified boolean,owner_name text,company_name text);
+create table subcontractors(id uuid primary key,org_id uuid,email text,email_verified boolean,owner_name text,company_name text,state text,city text);
 create table contracts(id uuid primary key,opportunity_id uuid,status text,primary_sub_id uuid,backup_sub_id uuid);
 create table opportunity_subs(id uuid default gen_random_uuid(),org_id uuid,opportunity_id uuid,subcontractor_id uuid,trade text,removed_at timestamptz,outreach_state text,responded_at timestamptz);
 create table call_cards(opportunity_id uuid,subcontractor_id uuid,org_id uuid,status text,response_json jsonb);
@@ -51,7 +59,7 @@ afterAll(async()=>{await state.db?.close();});
 beforeEach(async()=>{state.paused=state.suppressed=state.stopped=state.support=false;vi.mocked(gmail.send).mockClear();
  const org=randomUUID(),opp=randomUUID(),sub=randomUUID(),contract=randomUUID();
  await state.db!.query("insert into opportunities(id,org_id,stage,status,pursuit_state,pursuit_reason,pursuit_version,title,deadline,human_action_required,is_sources_sought) values($1,$2,'outreach','open','active',null,1,'Job',now()+interval '2 days',false,false)",[opp,org]);
- await state.db!.query("insert into subcontractors values($1,$2,'sub@example.test',true,'Builder','Sub Co')",[sub,org]);
+ await state.db!.query("insert into subcontractors values($1,$2,'sub@example.test',true,'Builder','Sub Co',null,null)",[sub,org]);
  await state.db!.query("insert into contracts values($1,$2,'active',$3,null)",[contract,opp,sub]);
  await state.db!.query("insert into opportunity_subs(org_id,opportunity_id,subcontractor_id,trade,outreach_state) values($1,$2,$3,'HVAC','followed_up')",[org,opp,sub]);
  const fitOpp={id:opp,location_state:"CO",solicitation_analysis:{trade_scopes:[{trade:"HVAC",work:"Install and test the synthetic HVAC scope."}]}};

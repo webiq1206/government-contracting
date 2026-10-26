@@ -19,6 +19,14 @@ import { randomUUID } from "crypto";
 /** Every send the follow-up sweep attempted, with the org it charged. */
 const sends: { to: string; orgId: string | undefined }[] = [];
 
+vi.mock("../lib/domain/account-timezone", () => ({
+  accountOutreachTimeZone: async () => "America/Boise",
+  outreachSendZoneFor: async () => "America/Boise",
+}));
+vi.mock("../lib/domain/outreach-send-window", () => ({
+  outreachWindowRefusal: () => null,
+  isOutreachWindowHold: () => false,
+}));
 vi.mock("../lib/integrations/email-transport", () => ({
   sendOutreachEmail: async (params: { to: string; orgId?: string }) => {
     sends.push({ to: params.to, orgId: params.orgId });

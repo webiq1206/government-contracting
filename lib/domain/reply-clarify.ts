@@ -15,6 +15,7 @@
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
+import { isOutreachWindowHold } from "./outreach-send-window";
 import { getProfileJson } from "../ai/companyProfile";
 import { runWithOrg } from "../tenant-context";
 import { plainToHtml } from "./template-render";
@@ -164,6 +165,9 @@ export async function requestClarification(input: {
     trade: input.trade ?? null,
   });
 
+  if (isOutreachWindowHold(res)) {
+    return { sent: false, reason: "send-window" };
+  }
   if (res.disabled || res.blocked || res.error) {
     return { sent: false, reason: res.error ?? "send unavailable" };
   }

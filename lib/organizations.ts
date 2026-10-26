@@ -71,6 +71,13 @@ export interface Organization {
   suspended_at: string | null;
   suspended_reason: string | null;
   suspended_by: string | null;
+  /**
+   * IANA zone for this account's outreach business hours.
+   * Used when the recipient has no solid US location. Null means never
+   * chosen; those sends use America/Boise. Personal recap zones live on
+   * users.timezone, not here.
+   */
+  timezone: string | null;
   created_at: string;
 }
 

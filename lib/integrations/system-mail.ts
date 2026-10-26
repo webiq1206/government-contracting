@@ -144,6 +144,9 @@ export const systemMail = {
         // context here would send a password reset from a customer's mailbox.
         orgId: LEGACY_ORG_ID,
         from: from.from,
+        // Password resets, digests, and operator alerts are not outreach.
+        // They stay outside the America/Boise outreach window.
+        transactional: true,
       });
     } catch (err) {
       console.error("[system-mail] Gmail send did not return a result:", err);

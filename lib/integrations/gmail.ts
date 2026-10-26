@@ -299,6 +299,10 @@ async function gmailClient(orgId?: string, storedOnly = false) {
 type GmailSendResult = {
   outcome?: "not_attempted" | "refused" | "unknown" | "accepted";
   disabled?: boolean;
+  /** True when a later in-window attempt may send. Never a permanent failure. */
+  retryable?: boolean;
+  /** Set when the resolved weekday business-hours gate held the message. */
+  heldForSendWindow?: boolean;
   messageId?: string;
   threadId?: string;
   /** The real RFC822 Message-ID header, for In-Reply-To on later sends. */
@@ -307,6 +311,17 @@ type GmailSendResult = {
 };
 
 export interface SendEmailParams {
+  /**
+   * Platform system mail only: password resets, digests, and operator alerts.
+   * Outreach, RFQ, sources-sought, and backlink must leave this unset. The
+   * weekday business-hours gate then refuses the provider call.
+   */
+  transactional?: boolean;
+  /**
+   * Subcontractor this message is for, when there is one. The send window
+   * reads that row's stored state and city. Backlink and system mail omit it.
+   */
+  subcontractorId?: string;
   dispatchIntentId?: string;
   beforeProviderSend?: (from: string, identity?: MailboxSendEvidence) => Promise<void>;
   to: string;
@@ -960,6 +975,23 @@ export const gmail = {
       : await isAutomationStopped();
     if (stopped) {
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
+    }
+    // Same choke point as the pause, and independent of it. A night or
+    // weekend run whose pause switch is OFF still must not reach Gmail.
+    // transactional is only platform system mail (password resets, digests,
+    // alerts). The zone is the recipient's stored state/city when that is
+    // one solid US zone, else this account's organizations.timezone, else
+    // America/Boise. Intl reads that zone. Not the process clock, and not
+    // America/Denver.
+    if (!params.transactional) {
+      const { outreachWindowRefusal } = await import("../domain/outreach-send-window");
+      const { outreachSendZoneFor } = await import("../domain/account-timezone");
+      const zone = await outreachSendZoneFor({
+        orgId: org,
+        subcontractorId: params.subcontractorId,
+      });
+      const held = outreachWindowRefusal(new Date(), zone);
+      if (held) return held;
     }
     const client = await gmailClient(org ?? undefined);
     if (!client) return { disabled: true };
