@@ -3218,6 +3218,7 @@ async function pollRepliesInOrg(orgId: string): Promise<AgentResult> {
         references: [...r.references, ...(r.inReplyTo ? [r.inReplyTo] : [])],
         attachmentNames: (r.attachments ?? []).map((a) => a.filename),
         unreadableAttachments: docs.unreadable,
+        unreadableBody: r.bodyAvailable === false,
       });
       // Capture's own bounce guard caught what the check above missed. It
       // wrote nothing; record the delivery failure here instead, exactly as

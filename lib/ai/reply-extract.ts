@@ -3,12 +3,13 @@ import { groundedMoney, quoteHasRange } from "../domain/source-money";
 /**
  * AI-assisted classification + field extraction from subcontractor reply emails.
  * Detects intent (quote, decline, question, etc.), pulls pricing when present,
- * and captures capability hints. Degrades to regex price spotting when Claude
- * is unavailable (intent stays "other" so we never auto-decline without AI).
+ * and captures capability hints. Degrades to regex price spotting when the
+ * assistant is not configured or the reading fails (intent stays "other" so we
+ * never auto-decline without AI). That failure is logged and stored on the
+ * result; it is not swallowed.
  */
 import { z } from "zod";
 import { completeJson, claudeEnabled } from "./claude";
-import { config } from "../config";
 
 export type ReplyIntent =
   | "quote"
@@ -105,6 +106,18 @@ export interface ExtractedReply {
   /** "ai" when Claude parsed it; "regex" fallback (treat as a hint). */
   method: "ai" | "regex" | "deterministic";
   deterministicKind?: import("../domain/reply-notice").ReplyNoticeKind;
+  /**
+   * Why this reading did not come from the assistant, when that is known.
+   * Absent on older stored readings. `unreadable_body` is a missing message
+   * body, which is not the same as a failed or unconfigured assistant.
+   */
+  aiExtractStatus?: "ok" | "not_configured" | "failed" | "unreadable_body";
+  /** Operator-safe failure text. Null when the assistant was not asked or succeeded. */
+  aiExtractError?: string | null;
+  /** True when a later attempt could succeed (provider outage, timeout). */
+  aiExtractErrorRetryable?: boolean;
+  /** True when the text given to extraction had a non-empty body. */
+  bodyPresent?: boolean;
 }
 
 /** @deprecated Prefer ExtractedReply; kept for callers that still import ExtractedQuote. */
@@ -211,12 +224,86 @@ function emptyRegexResult(price: number | null): ExtractedReply {
   };
 }
 
+function describeExtractError(err: unknown): { name: string; message: string; retryable: boolean } {
+  const e = err as { name?: string; message?: string; reason?: string; retryable?: boolean };
+  const name = e?.name || "Error";
+  const message = String(e?.reason || e?.message || "Reply extraction failed").replace(/\s+/g, " ").trim().slice(0, 400);
+  // Auth, billing, and schema failures will not succeed on an immediate retry.
+  if (/rejected the API key|credit balance|usage limits|rate limit|could not be parsed|completeJson failed|not complete|no JSON found/i.test(message)) {
+    return { name, message, retryable: false };
+  }
+  const retryable = e?.retryable === true || /timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|overloaded|HTTP 5\d\d|network error|fetch failed/i.test(message);
+  return { name, message, retryable };
+}
+
+/** Best-effort ops trail. Extraction must still return a reading if logging fails. */
+async function reportExtractEvent(input: {
+  orgId?: string | null;
+  messageId?: string | null;
+  status: "failed" | "not_configured";
+  errorName: string;
+  message: string;
+  retryable: boolean;
+  attempt: number;
+}): Promise<void> {
+  const action = input.status === "not_configured" ? "reply-extract-not-configured" : "reply-extract-failed";
+  const detail = {
+    orgId: input.orgId ?? null,
+    messageId: input.messageId ?? null,
+    errorName: input.errorName,
+    message: input.message,
+    retryable: input.retryable,
+    attempt: input.attempt,
+  };
+  console.error(`[reply-extract] ${action}`, detail);
+  try {
+    const { logAgent } = await import("../logger");
+    await logAgent({
+      agent: "reply-extract",
+      action,
+      level: input.status === "not_configured" ? "warn" : "error",
+      status: input.status === "not_configured" ? "skipped" : "error",
+      message: input.status === "not_configured"
+        ? "Reply extraction skipped because no AI provider is configured for this account."
+        : `Reply extraction failed (${input.errorName}): ${input.message}`,
+      input: detail,
+    });
+  } catch (err) {
+    console.error("[reply-extract] could not persist extract failure", (err as Error).message);
+  }
+}
+
 export async function extractReplyFromReply(
   replyText: string,
-  context: { opportunityTitle?: string | null; trade?: string | null }
+  context: {
+    opportunityTitle?: string | null;
+    trade?: string | null;
+    orgId?: string | null;
+    messageId?: string | null;
+  }
 ): Promise<ExtractedReply> {
   const text = replyText.slice(0, 8000);
-  if (await claudeEnabled()) {
+  const bodyPresent = text.trim().length > 0;
+  if (!(await claudeEnabled())) {
+    await reportExtractEvent({
+      orgId: context.orgId,
+      messageId: context.messageId,
+      status: "not_configured",
+      errorName: "AiNotConfigured",
+      message: "No AI provider is configured for this account.",
+      retryable: false,
+      attempt: 0,
+    });
+    return {
+      ...emptyRegexResult(regexPrice(text)),
+      aiExtractStatus: "not_configured",
+      aiExtractError: null,
+      aiExtractErrorRetryable: false,
+      bodyPresent,
+    };
+  }
+  let lastFailure: { name: string; message: string; retryable: boolean } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { data } = await completeJson(
         [
@@ -351,12 +438,34 @@ export async function extractReplyFromReply(
           .filter(Boolean)
           .slice(0, 12),
         method: "ai",
+        aiExtractStatus: "ok",
+        aiExtractError: null,
+        aiExtractErrorRetryable: false,
+        bodyPresent,
       };
-    } catch {
-      // Fall through to regex; extraction must never break reply handling.
+    } catch (err) {
+      lastFailure = describeExtractError(err);
+      await reportExtractEvent({
+        orgId: context.orgId,
+        messageId: context.messageId,
+        status: "failed",
+        errorName: lastFailure.name,
+        message: lastFailure.message,
+        retryable: lastFailure.retryable,
+        attempt,
+      });
+      // One extra attempt only when waiting could help. Schema and billing
+      // failures fall through immediately so a bad prompt is not retried blindly.
+      if (!(lastFailure.retryable && attempt === 0)) break;
     }
   }
-  return emptyRegexResult(regexPrice(text));
+  return {
+    ...emptyRegexResult(regexPrice(text)),
+    aiExtractStatus: "failed",
+    aiExtractError: lastFailure?.message ?? "Reply extraction failed.",
+    aiExtractErrorRetryable: lastFailure?.retryable === true,
+    bodyPresent,
+  };
 }
 
 /** Back-compat alias used by older call sites / tests. */

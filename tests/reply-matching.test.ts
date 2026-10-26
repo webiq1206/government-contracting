@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeEmail,
   senderMatchesSub,
+  senderTrust,
   shouldAutoSaveQuote,
   isDeclineIntent,
   shouldAutoDecline,
@@ -22,6 +23,43 @@ describe("senderMatchesSub", () => {
   });
   it("normalizeEmail trims and lowercases", () => {
     expect(normalizeEmail("  A@B.Com ")).toBe("a@b.com");
+  });
+});
+
+describe("senderTrust on a strong match", () => {
+  it("trusts another mailbox on the same company domain", () => {
+    expect(senderTrust({
+      fromEmail: "dispatch@bulldogrooter.com",
+      subEmail: "chris@bulldogrooter.com",
+      strongMatch: true,
+    })).toEqual({ verified: true, via: "domain" });
+  });
+  it("does not domain-trust without a strong conversation match", () => {
+    expect(senderTrust({
+      fromEmail: "dispatch@bulldogrooter.com",
+      subEmail: "chris@bulldogrooter.com",
+      strongMatch: false,
+    }).verified).toBe(false);
+  });
+  it("keeps freemail exact-only", () => {
+    expect(senderTrust({
+      fromEmail: "dispatch@gmail.com",
+      subEmail: "chris@gmail.com",
+      strongMatch: true,
+    }).verified).toBe(false);
+    expect(senderTrust({
+      fromEmail: "Chris@Yahoo.com",
+      subEmail: "chris@yahoo.com",
+      strongMatch: true,
+    })).toEqual({ verified: true, via: "exact" });
+  });
+  it("trusts a stored alias even when the roster mailbox is freemail", () => {
+    expect(senderTrust({
+      fromEmail: "dispatch@bulldogrooter.com",
+      subEmail: "chris@gmail.com",
+      strongMatch: true,
+      aliases: ["Dispatch@BulldogRooter.com"],
+    })).toEqual({ verified: true, via: "alias" });
   });
 });
 

@@ -32,10 +32,11 @@ import {
   type ExtractedReply,
 } from "./ai/reply-extract";
 import {
-  senderMatchesSub,
+  senderTrust,
   shouldAutoSaveQuote,
   shouldAutoDecline,
   normalizeEmail,
+  isFreemailAddress,
 } from "./reply-matching";
 import { closeOutDeclinedSub, isClosedOutreach } from "./domain/decline-closeout";
 import { blockingGaps, decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
@@ -112,6 +113,11 @@ export interface CaptureReplyInput {
    * automatically. Passed in because the caller reads the attachments.
    */
   unreadableAttachments?: string[];
+  /**
+   * True when the mailbox had no readable body, only a provider snippet.
+   * That is a different failure from an assistant miss on a body that was present.
+   */
+  unreadableBody?: boolean;
   /** Injectable for tests; defaults to the Claude extractor. */
   extract?: typeof extractReplyFromReply;
   /** Injectable for tests; defaults to closeOutDeclinedSub. */
@@ -153,6 +159,69 @@ export interface CaptureReplyResult {
   bounce?: boolean;
   noticeKind?: ReplyNoticeKind;
   contactHeld?: boolean;
+}
+
+function missingSchema(err: unknown): boolean {
+  const code = (err as { code?: string }).code;
+  // Undefined column, or a fixture database that has no contacts table yet.
+  if (code === "42703" || code === "42P01") return true;
+  const message = (err as { message?: string }).message ?? "";
+  return /email_aliases|subcontractor_contacts/i.test(message) && /does not exist|undefined/i.test(message);
+}
+
+/** Roster aliases and known contact mailboxes. Missing schema degrades to none. */
+async function knownSenderAliases(orgId: string, subcontractorId: string | null): Promise<string[]> {
+  if (!subcontractorId) return [];
+  const aliases: string[] = [];
+  try {
+    const row = await queryOne<{ email_aliases: string[] | null }>(
+      `select coalesce(email_aliases, '{}'::text[]) as email_aliases
+         from subcontractors
+        where id = $1 and org_id = $2`,
+      [subcontractorId, orgId],
+    );
+    if (row?.email_aliases?.length) aliases.push(...row.email_aliases);
+  } catch (err) {
+    if (!missingSchema(err)) throw err;
+  }
+  try {
+    const contacts = await query<{ contact_email: string | null }>(
+      `select email as contact_email from subcontractor_contacts
+        where subcontractor_id = $1 and org_id = $2 and coalesce(btrim(email), '') <> ''`,
+      [subcontractorId, orgId],
+    );
+    for (const contact of contacts) {
+      if (contact.contact_email) aliases.push(contact.contact_email);
+    }
+  } catch (err) {
+    if (!missingSchema(err)) throw err;
+  }
+  return aliases;
+}
+
+/** Remember a company mailbox that a strong match already trusted. Never a freemail host. */
+async function rememberCompanyAlias(orgId: string, subcontractorId: string, email: string, allowFreemail = false): Promise<void> {
+  const alias = normalizeEmail(email);
+  if (!alias || (!allowFreemail && isFreemailAddress(alias))) return;
+  try {
+    await query(
+      `update subcontractors
+          set email_aliases = (
+            select coalesce(array_agg(distinct a), '{}')
+              from unnest(coalesce(email_aliases, '{}'::text[]) || array[$3::text]) as a
+             where btrim(a) <> ''
+          )
+        where id = $1 and org_id = $2
+          and lower(coalesce(email, '')) is distinct from lower($3)
+          and not exists (
+            select 1 from unnest(coalesce(email_aliases, '{}'::text[])) existing
+             where lower(existing) = lower($3)
+          )`,
+      [subcontractorId, orgId, alias],
+    );
+  } catch (err) {
+    if (!missingSchema(err)) throw err;
+  }
 }
 
 function emptyExtracted(): ExtractedReply {
@@ -516,7 +585,8 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       input.fromAddress ?? fromEmail,
       orgId,
       JSON.stringify({ capture_version: 1, reply_processing_complete: false,mailbox_source_at:input.mailboxReceivedAt ?? null,
-        capture_stage: "received", envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
+        capture_stage: "received", ...(input.unreadableBody ? { unreadable_body: true } : {}),
+        envelope: {from: input.fromAddress ?? fromEmail, to: input.toAddresses ?? null,
         cc: input.ccAddresses ?? null, sentAt: input.sentAt ?? null, subject: input.subject ?? null,
         attachments: input.attachmentNames ?? [], autoSubmitted: input.autoSubmitted ?? null} }),
       input.mailboxReceivedAt ?? null,
@@ -548,9 +618,19 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
 
   const notice = classifyReplyNotice({body: replyText, subject: input.subject,
     autoSubmitted: input.autoSubmitted, attachmentNames: input.attachmentNames,requestedTrade:osRow?.trade});
-  const noticeSenderVerified = senderMatchesSub(fromEmail, comm.sub_email);
+  const unreadableBody = input.unreadableBody !== undefined
+    ? input.unreadableBody === true
+    : resume?.meta?.unreadable_body === true;
+  const senderAliases = await knownSenderAliases(orgId, comm.subcontractor_id);
+  const trust = senderTrust({
+    fromEmail,
+    subEmail: comm.sub_email,
+    strongMatch,
+    aliases: senderAliases,
+  });
+  const noticeSenderVerified = trust.verified;
   if (!["human", "decline"].includes(notice.kind)) {
-    const trusted = strongMatch && noticeSenderVerified && !resume?.meta?.unreadable_body;
+    const trusted = strongMatch && noticeSenderVerified && !unreadableBody;
     const hold = trusted && ["departed", "opt_out"].includes(notice.kind);
     const extracted: ExtractedReply = {...emptyExtracted(), method:"deterministic",
       deterministicKind:notice.kind, notes:notice.reason, confidence:1};
@@ -584,12 +664,14 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
       quoteSaved:false,quoteSkippedExisting:false,senderVerified:noticeSenderVerified,trade:osRow?.trade ?? null,
       duplicate:false,declined:hold && notice.kind === "opt_out",thankYouSent:false,noticeKind:notice.kind,contactHeld:hold};
   }
-  const extractOnce = () => resume?.meta?.unreadable_body
-    ? Promise.resolve<ExtractedReply>({...emptyExtracted(),notes:"Only a mailbox snippet was readable; review the original message before applying an outcome."})
+  const extractOnce = () => unreadableBody
+    ? Promise.resolve<ExtractedReply>({...emptyExtracted(), bodyPresent: false, aiExtractStatus: "unreadable_body",
+        aiExtractError: null, aiExtractErrorRetryable: false,
+        notes:"Only a mailbox snippet was readable; review the original message before applying an outcome."})
     : notice.kind === "decline"
     ? Promise.resolve<ExtractedReply>({...emptyExtracted(),intent:"decline",canPerform:false,
-        notes:notice.reason,confidence:1,method:"deterministic",deterministicKind:"decline"})
-    : extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null });
+        notes:notice.reason,confidence:1,method:"deterministic",deterministicKind:"decline", bodyPresent: true})
+    : extract(replyText, { opportunityTitle: comm.opportunity_title, trade: osRow?.trade ?? null, orgId, messageId: input.messageId ?? null });
   const extracted = resume?.meta?.capture_extracted ?? deepInboundText(await (input.messageId
     ? withApiUsageContext({workKey:`reply-extract:${orgId}:${input.messageId}`,relatedId:input.messageId},extractOnce)
     : extractOnce()));
@@ -637,8 +719,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   // verification by definition.
   let subId = comm.subcontractor_id;
   let companyName = comm.company_name;
-  let senderVerified =
-    input.attributionConfirmed === true || senderMatchesSub(fromEmail, comm.sub_email);
+  let senderVerified = input.attributionConfirmed === true || trust.verified;
   if (!subId) {
     // Scoped to this org: the same firm sits on several customers' rosters, so
     // an unscoped match hands back another customer's subcontractor and pairs
@@ -705,6 +786,12 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     }
   }
 
+  if (subId && fromEmail && trust.via === "domain") {
+    await rememberCompanyAlias(orgId, subId, fromEmail);
+  } else if (subId && fromEmail && input.attributionConfirmed === true && trust.via !== "exact" && trust.via !== "alias") {
+    await rememberCompanyAlias(orgId, subId, fromEmail, true);
+  }
+
   const holdForReview = (reason: string): ReplyDecision => ({
     outcome: "unclear",
     proposed:
@@ -723,9 +810,7 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     ? await queryOne<{id:string}>(`select id from communications where org_id=$1 and gmail_thread_id=$2
         and direction='inbound' and id<>$3 and created_at>$4::timestamptz
         and coalesce(meta->>'auto','false')<>'true' limit 1`,[orgId,input.threadId,inbound.id,sourceAt]):null;
-  if(resume?.meta?.unreadable_body) {
-    decision=holdForReview("The original message body could not be read. A provider snippet cannot establish a supplier decision.");
-  } else if(laterReply) {
+  if(laterReply) {
     decision=holdForReview("A newer supplier reply is already recorded in this conversation. Review this delayed message in context before applying an older outcome.");
   } else if (!linkedPair) {
     decision = holdForReview(
@@ -753,6 +838,14 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     reply_sender_verified:senderVerified,reply_strong_match:strongMatch,reply_action_allowed:decision.act,
     intent: extracted.intent,
     method: extracted.method,
+    ai_extract_error: extracted.aiExtractError ?? null,
+    ai_extract_error_retryable: extracted.aiExtractErrorRetryable === true,
+    ai_extract_status: extracted.aiExtractStatus ?? null,
+    ai_enabled: extracted.aiExtractStatus === "not_configured"
+      ? false
+      : extracted.aiExtractStatus === "ok" || extracted.aiExtractStatus === "failed"
+        ? true
+        : null,
     canPerform: extracted.canPerform,
     capabilityNotes: extracted.capabilityNotes,
     tradesMentioned: extracted.tradesMentioned,

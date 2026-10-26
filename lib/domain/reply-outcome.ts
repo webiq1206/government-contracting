@@ -178,9 +178,60 @@ export function decideReply(
   );
   const unread = opts.unreadableAttachments ?? [];
 
-  if (extracted.method !== "ai" && !(extracted.method === "deterministic" && extracted.deterministicKind === "decline" && extracted.intent === "decline")) {
+  const deterministicDecline =
+    extracted.method === "deterministic" &&
+    extracted.deterministicKind === "decline" &&
+    extracted.intent === "decline";
+  if (extracted.method !== "ai" && !deterministicDecline) {
+    /*
+     * A regex method is not, by itself, proof the message was unreadable.
+     * That sentence is only honest when the body was missing, or when the
+     * assistant was actually unavailable or failed. A present body with no
+     * such failure still cannot be acted on, but the reason has to say so.
+     */
+    const detail = (extracted.aiExtractError ?? "").replace(/\s+/g, " ").trim();
+    if (extracted.aiExtractStatus === "unreadable_body" || extracted.bodyPresent === false) {
+      return {
+        outcome: "unclear",
+        proposed: outcome,
+        act: false,
+        needsReview: true,
+        reviewReason:
+          "The original message body could not be read. A provider snippet cannot establish a supplier decision.",
+      };
+    }
+    if (extracted.aiExtractStatus === "not_configured") {
+      return {
+        outcome: "unclear",
+        proposed: outcome,
+        act: false,
+        needsReview: true,
+        reviewReason:
+          "The assistant is not configured for this account, so this reply was only pattern-matched. Please confirm what they meant.",
+      };
+    }
+    if (extracted.aiExtractStatus === "failed") {
+      return {
+        outcome: "unclear",
+        proposed: outcome,
+        act: false,
+        needsReview: true,
+        reviewReason: detail
+          ? `The assistant failed to read this reply (${detail}), so it was only pattern-matched. Please confirm what they meant.`
+          : "The assistant failed to read this reply, so it was only pattern-matched. Please confirm what they meant.",
+      };
+    }
+    if (extracted.bodyPresent === true) {
+      return {
+        outcome: "unclear",
+        proposed: outcome,
+        act: false,
+        needsReview: true,
+        reviewReason:
+          "This reply included a readable body, but it was only pattern-matched and the assistant did not report a reading. Please confirm what they meant.",
+      };
+    }
     return {
-      // Pattern matching produced a word, not an understanding of the reply.
       outcome: "unclear",
       proposed: outcome,
       act: false,
