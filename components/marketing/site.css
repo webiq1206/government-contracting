@@ -2743,3 +2743,96 @@
     line-height: 1.5;
   }
 }
+
+/* Phone layout: centered hero, capped headings, room between sections, and 44px taps. */
+.bco-hero .bco-lead {
+  display: grid;
+  gap: 8px;
+}
+.bco-hero-centered .bco-lead p {
+  margin: 0;
+  color: inherit;
+}
+@media (max-width: 767px) {
+  .bco-hero-center-content {
+    text-align: center;
+  }
+  .bco-hero-centered .bco-kicker {
+    justify-content: center;
+    margin-inline: auto;
+  }
+  .bco-hero-centered .bco-actions {
+    justify-content: center;
+  }
+  .bco-hero-centered,
+  .bco-hero.bco-hero-centered {
+    padding-bottom: 72px;
+  }
+  .bco-hero-centered h1,
+  .bco-hero h1 {
+    font-size: 32px !important;
+    line-height: 1.15;
+    max-width: 11em;
+    margin-inline: auto;
+  }
+  .bco-site h2 {
+    font-size: clamp(22px, 7vw, 36px);
+  }
+  .bco-chapter-copy h2,
+  .bco-site-landing .bco-evidence-intro h2,
+  .bco-final-cta h2,
+  .bco-industry-header h2 {
+    font-size: clamp(26px, 7vw, 36px);
+  }
+  .bco-site .bco-section,
+  .bco-faq-section,
+  .bco-industries,
+  .bco-coordination-section .bco-section,
+  .bco-product-evidence .bco-section {
+    padding-block: 72px;
+  }
+  .bco-site-landing .bco-final-cta {
+    padding-block: 64px;
+  }
+  .bco-site-landing main > section:nth-of-type(even):not(.bco-product-evidence):not(.bco-coordination-section):not(.bco-hero):not(.bco-final-cta) {
+    background: #fff;
+  }
+  .bco-site-landing main > :is(section, .bco-industry-ribbon) + :is(section, .bco-industry-ribbon) {
+    border-top: 1px solid #d9e2e2;
+  }
+  .bco-product-evidence,
+  .bco-coordination-section,
+  .bco-site-landing .bco-final-cta {
+    border-top-color: transparent;
+  }
+  .bco-login,
+  .bco-footer-bottom a {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bco-industry-ribbon {
+    padding-block: 64px;
+  }
+  .bco-site :is(figcaption a, .bco-demo-footer a, .bco-faq summary) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .bco-faq summary {
+    font-size: 16px;
+    width: 100%;
+  }
+  .bco-faq ul {
+    margin: 0 0 16px;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 8px;
+  }
+  .bco-faq li {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+}

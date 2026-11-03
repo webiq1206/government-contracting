@@ -131,6 +131,14 @@ export function TrialCTA({
     </section>
   );
 }
+/** Split a long answer into its sentences so a phone shows a short list, not a wall of text. */
+function answerSentences(answer: string): string[] | null {
+  const words = answer.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 45) return null;
+  const parts = answer.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((part) => part.trim()).filter(Boolean);
+  if (!parts || parts.length < 2) return null;
+  return parts;
+}
 export function FAQ({
   items,
 }: {
@@ -138,15 +146,26 @@ export function FAQ({
 }) {
   return (
     <div className="bco-faq">
-      {items.map(([question, answer]) => (
-        <details key={question}>
-          <summary>
-            {question}
-            <span aria-hidden="true">+</span>
-          </summary>
-          <p>{answer}</p>
-        </details>
-      ))}
+      {items.map(([question, answer]) => {
+        const sentences = answerSentences(answer);
+        return (
+          <details key={question}>
+            <summary>
+              {question}
+              <span aria-hidden="true">+</span>
+            </summary>
+            {sentences ? (
+              <ul>
+                {sentences.map((sentence) => (
+                  <li key={sentence}>{sentence}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>{answer}</p>
+            )}
+          </details>
+        );
+      })}
     </div>
   );
 }
