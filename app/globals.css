@@ -73,12 +73,12 @@
   --shell-border: 150 150 146;
   --ink: 56 56 55;
   --on-accent: 11 23 32;
-  --accent: 83 186 192;
+  --accent: 90 200 206;
   --accent-soft: 21 56 61;
   --accent-strong: 143 211 212;
   --on-status: 11 23 32;
-  --gold: 83 186 192;
-  --gold-deep: 83 186 192;
+  --gold: 90 200 206;
+  --gold-deep: 90 200 206;
   --gold-text: 143 211 212;
   --action: 14 111 117;
   --action-hover: 11 94 99;
@@ -96,9 +96,9 @@
   --dismiss: 168 186 188;
   --risk: 241 155 146;
   --slate-50: 56 56 55;
-  --slate-100: 16 42 51;
-  --slate-200: 30 57 66;
-  --slate-300: 40 66 74;
+  --slate-100: 40 40 39;
+  --slate-200: 52 52 51;
+  --slate-300: 62 62 61;
   --slate-400: 111 139 143;
   --slate-500: 168 186 188;
   --slate-600: 199 210 212;
@@ -789,7 +789,7 @@ html:has([data-app-shell]) body {
 .app-navigation {
   color-scheme: dark;
   --foreground: 255 255 255;
-  --muted-foreground: 170 184 187;
+  --muted-foreground: 174 188 191;
   --background: 56 56 55;
   --surface: 68 68 66;
   --surface-raised: 72 72 70;
@@ -797,7 +797,7 @@ html:has([data-app-shell]) body {
   --border: 150 150 146;
   --border-strong: 168 168 164;
   --control-border: 154 154 150;
-  --accent: 83 186 192;
+  --accent: 90 200 206;
   --accent-soft: 14 111 117;
   --accent-strong: 255 255 255;
   --gold: 14 111 117;
