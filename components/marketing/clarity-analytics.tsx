@@ -88,11 +88,13 @@ export function ClarityAnalytics() {
   if (!ready) return null;
   if (choice !== null && !settings) return null;
   return (
-    <section aria-label="Optional analytics" className="fixed bottom-3 left-3 right-3 z-50 mx-auto max-w-xl rounded-xl border border-border-strong bg-surface p-4 text-sm text-foreground shadow-lg">
-      <p>Allow Google Analytics to measure website visits and signups? Microsoft Clarity is included on every page, with page text and forms masked. Optional analytics uses cookies. <a className="underline" href="/privacy">Privacy details</a></p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button ref={decline} type="button" className="min-h-11 rounded border border-border-strong bg-surface px-4 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
-        <button type="button" className="min-h-11 rounded bg-accent px-4 py-2 text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("granted")}>Allow analytics</button>
+    <section aria-label="Optional analytics" className="fixed inset-x-0 bottom-0 z-50 max-h-[20dvh] overflow-y-auto border-t border-border-strong bg-surface text-base leading-snug text-foreground shadow-[0_-6px_20px_rgb(0_0_0/0.12)]">
+      <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <p className="min-w-0 flex-1">Allow Google Analytics to measure website visits and signups? Microsoft Clarity is included on every page, with page text and forms masked. Optional analytics uses cookies. <a className="underline" href="/privacy">Privacy details</a></p>
+        <div className="flex shrink-0 gap-2">
+          <button ref={decline} type="button" className="min-h-11 rounded border border-border-strong bg-surface px-3 py-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
+          <button type="button" className="min-h-11 rounded bg-accent px-3 py-2 text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("granted")}>Allow analytics</button>
+        </div>
       </div>
     </section>
   );
