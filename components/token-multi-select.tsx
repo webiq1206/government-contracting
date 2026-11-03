@@ -127,7 +127,7 @@ export function TokenMultiSelect({
       />
 
       {showDropdown && (
-        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-background py-1 text-sm shadow-lg">
+        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface py-1 text-sm shadow-lg">
           {matches.map((o) => (
             <li key={o.value}>
               <button

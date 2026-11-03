@@ -18,7 +18,7 @@
   --control-border: 130 145 143;
   --shell: 255 255 255;
   --shell-border: 216 224 222;
-  --ink: 11 23 32;
+  --ink: 56 56 55;
   --on-accent: 255 255 255;
   --accent: 14 111 117;
   --accent-soft: 233 245 243;
@@ -52,32 +52,33 @@
   --slate-700: 52 67 75;
   --slate-800: 16 42 51;
   --slate-900: 17 26 31;
-  --slate-950: 11 23 32;
+  --slate-950: 56 56 55;
   --warning-strip-bg: 251 241 223;
   --warning-strip-fg: 149 96 27;
   --badge-match-bg: 234 245 239;
 }
 .dark {
   color-scheme: dark;
-  --background: 11 23 32;
+  --background: 56 56 55;
   --foreground: 239 245 244;
-  --surface: 16 42 51;
-  --surface-raised: 23 52 61;
-  --muted: 30 57 66;
+  /* Cards, popovers, and inputs sit a step above the page charcoal. */
+  --surface: 68 68 66;
+  --surface-raised: 72 72 70;
+  --muted: 72 72 70;
   --muted-foreground: 168 186 188;
-  --border: 40 66 74;
-  --border-strong: 85 112 119;
-  --control-border: 111 139 143;
-  --shell: 16 42 51;
-  --shell-border: 40 66 74;
-  --ink: 11 23 32;
+  --border: 150 150 146;
+  --border-strong: 168 168 164;
+  --control-border: 154 154 150;
+  --shell: 68 68 66;
+  --shell-border: 150 150 146;
+  --ink: 56 56 55;
   --on-accent: 11 23 32;
-  --accent: 83 186 192;
+  --accent: 90 200 206;
   --accent-soft: 21 56 61;
   --accent-strong: 143 211 212;
   --on-status: 11 23 32;
-  --gold: 83 186 192;
-  --gold-deep: 83 186 192;
+  --gold: 90 200 206;
+  --gold-deep: 90 200 206;
   --gold-text: 143 211 212;
   --action: 14 111 117;
   --action-hover: 11 94 99;
@@ -94,10 +95,10 @@
   --review: 229 188 120;
   --dismiss: 168 186 188;
   --risk: 241 155 146;
-  --slate-50: 11 23 32;
-  --slate-100: 16 42 51;
-  --slate-200: 30 57 66;
-  --slate-300: 40 66 74;
+  --slate-50: 56 56 55;
+  --slate-100: 40 40 39;
+  --slate-200: 52 52 51;
+  --slate-300: 62 62 61;
   --slate-400: 111 139 143;
   --slate-500: 168 186 188;
   --slate-600: 199 210 212;
@@ -783,20 +784,20 @@ html:has([data-app-shell]) body {
  body:has([data-call-workspace]) nav[aria-label="Quick navigation"] { display: none; }
 }
 
-/* The navigation stays Midnight in both themes. Override the scoped tokens,
+/* The navigation stays brand charcoal in both themes. Override the scoped tokens,
    rather than leaking dark-mode colors into the surrounding work surface. */
 .app-navigation {
   color-scheme: dark;
   --foreground: 255 255 255;
-  --muted-foreground: 170 184 187;
-  --background: 11 23 32;
-  --surface: 16 42 51;
-  --surface-raised: 23 52 61;
-  --shell: 11 23 32;
-  --border: 40 66 74;
-  --border-strong: 85 112 119;
-  --control-border: 111 139 143;
-  --accent: 83 186 192;
+  --muted-foreground: 174 188 191;
+  --background: 56 56 55;
+  --surface: 68 68 66;
+  --surface-raised: 72 72 70;
+  --shell: 68 68 66;
+  --border: 150 150 146;
+  --border-strong: 168 168 164;
+  --control-border: 154 154 150;
+  --accent: 90 200 206;
   --accent-soft: 14 111 117;
   --accent-strong: 255 255 255;
   --gold: 14 111 117;
@@ -851,8 +852,8 @@ html:has([data-app-shell]) body {
 }
 .auth-hero-scrim {
   background:
-    radial-gradient(90% 42% at 0% 0%, rgba(11, 23, 32, 0.72) 0%, rgba(11, 23, 32, 0.18) 42%, transparent 68%),
-    linear-gradient(180deg, rgba(11, 23, 32, 0.18) 0%, rgba(11, 23, 32, 0.02) 28%, rgba(11, 23, 32, 0.08) 48%, rgba(11, 23, 32, 0.72) 72%, rgba(11, 23, 32, 0.94) 100%);
+    radial-gradient(90% 42% at 0% 0%, rgb(var(--ink) / 0.72) 0%, rgb(var(--ink) / 0.18) 42%, transparent 68%),
+    linear-gradient(180deg, rgb(var(--ink) / 0.18) 0%, rgb(var(--ink) / 0.02) 28%, rgb(var(--ink) / 0.08) 48%, rgb(var(--ink) / 0.72) 72%, rgb(var(--ink) / 0.94) 100%);
 }
 .auth-hero-copy {
   position: relative;
@@ -876,7 +877,7 @@ html:has([data-app-shell]) body {
 .auth-brand-mark {
   height: 1.9rem;
   width: auto;
-  filter: drop-shadow(0 1px 12px rgba(11, 23, 32, 0.55));
+  filter: drop-shadow(0 1px 12px rgb(var(--ink) / 0.55));
 }
 .auth-hero-story {
   max-width: 36rem;

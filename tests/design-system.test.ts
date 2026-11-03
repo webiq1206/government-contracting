@@ -80,7 +80,7 @@ describe("the design system holds", () => {
       (h) =>
         !(
           h.startsWith("app/layout.tsx:") &&
-          (h.endsWith("#F4F6F6") || h.endsWith("#0B1720"))
+          (h.endsWith("#F4F6F6") || h.endsWith("#383837"))
         ) &&
         // The boundary of last resort renders with no stylesheet at all (the
         // layout that loads it is what failed), so tokens cannot reach it.

@@ -100,7 +100,7 @@ export function SnoozeButton({
       </button>
       {open && (
         <span
-          className="absolute right-0 top-full z-30 mt-1 flex w-40 flex-col rounded-md border border-border bg-background py-1 shadow-lg"
+          className="absolute right-0 top-full z-30 mt-1 flex w-40 flex-col rounded-md border border-border bg-surface py-1 shadow-lg"
         >
           <button
             type="button"

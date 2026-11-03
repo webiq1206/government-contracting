@@ -20,7 +20,7 @@ export function PipelineViewMenu({ view }: { view: string }) {
     }
   }}>
     <summary className="btn-secondary min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden">View</summary>
-    <div className="absolute right-0 top-12 z-30 grid min-w-40 gap-1 rounded-lg border border-border bg-background p-2 shadow-xl">
+    <div className="absolute right-0 top-12 z-30 grid min-w-40 gap-1 rounded-lg border border-border bg-surface p-2 shadow-xl">
       {[["lanes", "Simple"], ["list", "List"], ["stages", "All stages"], ["table", "Table"]].map(([value, label]) =>
         <Link key={value} href={`/pipeline?view=${value}`} aria-current={view === value ? "page" : undefined}
           onClick={() => { if (details.current) details.current.open = false; }}

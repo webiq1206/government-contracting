@@ -41,10 +41,10 @@ export function LandingPage({
             <br className="bco-hero-desktop-break" />
             <span>and prepares your bids.</span>
           </h1>
-          <p className="bco-lead">
-            From matching opportunities to a prepared bid, AI handles the busywork.
-            You choose the automation and keep the final review.
-          </p>
+          <div className="bco-lead">
+            <p>From matching opportunities to a prepared bid, AI handles the busywork.</p>
+            <p>You choose the automation and keep the final review.</p>
+          </div>
           <div className="bco-actions">
             <Link href={signupHref} className="bco-button">
               Start free trial <span aria-hidden="true">→</span>

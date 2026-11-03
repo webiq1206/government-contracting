@@ -166,7 +166,7 @@ export function PipelineCardMenu({
         <div
           role="menu"
           aria-label="Opportunity actions"
-          className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-t-xl border border-foreground/50 bg-background py-1 text-sm shadow-lg dark:border-white/35 lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-8 lg:w-56 lg:rounded-md"
+          className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-50 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-t-xl border border-foreground/50 bg-surface py-1 text-sm shadow-lg dark:border-white/35 lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-8 lg:w-56 lg:rounded-md"
         >
           {canPursue && (
             <MenuItem disabled={busy} onClick={(e) => run(e, "pursue")}>

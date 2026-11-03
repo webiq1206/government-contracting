@@ -131,6 +131,31 @@ export function TrialCTA({
     </section>
   );
 }
+/**
+ * Split a long answer into its sentences so a phone shows a short list, not a wall of text.
+ * Periods inside SAM.gov, U.S., and decimals stay with the sentence they belong to.
+ */
+export function answerSentences(answer: string): string[] | null {
+  const words = answer.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 45) return null;
+  const stash: string[] = [];
+  const hide = (source: string, pattern: RegExp) =>
+    source.replace(pattern, (match) => {
+      const token = `\u0000${stash.length}\u0000`;
+      stash.push(match);
+      return token;
+    });
+  let masked = answer;
+  masked = hide(masked, /SAM\.gov/g);
+  masked = hide(masked, /U\.S\./g);
+  masked = hide(masked, /\d+\.\d+/g);
+  const parts = masked.match(/[^.!?]+[.!?]+|[^.!?]+$/g);
+  if (!parts || parts.length < 2) return null;
+  const sentences = parts
+    .map((part) => part.trim().replace(/\u0000(\d+)\u0000/g, (_, index) => stash[Number(index)] ?? ""))
+    .filter(Boolean);
+  return sentences.length < 2 ? null : sentences;
+}
 export function FAQ({
   items,
 }: {
@@ -138,15 +163,26 @@ export function FAQ({
 }) {
   return (
     <div className="bco-faq">
-      {items.map(([question, answer]) => (
-        <details key={question}>
-          <summary>
-            {question}
-            <span aria-hidden="true">+</span>
-          </summary>
-          <p>{answer}</p>
-        </details>
-      ))}
+      {items.map(([question, answer]) => {
+        const sentences = answerSentences(answer);
+        return (
+          <details key={question}>
+            <summary>
+              {question}
+              <span aria-hidden="true">+</span>
+            </summary>
+            {sentences ? (
+              <ul>
+                {sentences.map((sentence, index) => (
+                  <li key={index}>{sentence}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>{answer}</p>
+            )}
+          </details>
+        );
+      })}
     </div>
   );
 }
