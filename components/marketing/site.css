@@ -2735,3 +2735,11 @@
 .bco-site .bco-sector-naics .bco-table { max-width: 760px; }
 .bco-site .bco-sector-naics .bco-table th, .bco-site .bco-sector-naics .bco-table td { padding: 12px 16px; min-width: 0; }
 .bco-site .bco-sector-naics code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+
+/* Body paragraphs stay at least 16px on a phone. Kickers and the price figure keep their own sizes. */
+@media (max-width: 767px) {
+  .bco-site p:not(.bco-kicker):not(.bco-overline):not(.bco-price) {
+    font-size: 16px !important;
+    line-height: 1.5;
+  }
+}
