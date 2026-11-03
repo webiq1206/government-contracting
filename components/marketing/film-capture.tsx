@@ -213,7 +213,7 @@ function Btn({
       style={{
         display: "inline-block",
         font: `600 30px/1 ${sans}`,
-        color: solid ? "#12130f" : tone,
+        color: solid ? "#383837" : tone,
         background: solid ? tone : `${tone}1f`,
         border: `1px solid ${tone}`,
         padding: "20px 34px",
@@ -1167,7 +1167,7 @@ function Cursor({ x, y, press }: { x: number; y: number; press: number }) {
         <path
           d="M2 2.2 2 24.4 8.2 18.8 12.4 29.2 16.1 27.7 11.8 17.1 20.6 16.8 2 2.2Z"
           fill="#f6f2eb"
-          stroke="#12130f"
+          stroke="#383837"
           strokeWidth="1.4"
           strokeLinejoin="round"
         />

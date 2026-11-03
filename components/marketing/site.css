@@ -1,6 +1,8 @@
 /* Public site only. The authenticated workspace retains its own theme. */
 .bco-site {
   --bco-charcoal: #383837;
+  --bco-charcoal-surface: #40403e;
+  --bco-charcoal-line: #969692;
   --bco-ink: #111a1f;
   --bco-muted: #4c5d66;
   --bco-teal: #0e6f75;
@@ -1098,7 +1100,7 @@
   width: 100%;
   aspect-ratio: 16/10;
   display: block;
-  background: var(--bco-charcoal);
+  background: var(--bco-charcoal-surface);
   object-fit: contain;
   height: auto;
 }
@@ -1139,7 +1141,7 @@
 .bco-feature-video-panel figure { margin: 0; }
 .bco-feature-film-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; font-size: 11px; font-weight: 600; line-height: 1.5; color: #3a5652; }
 .bco-feature-film-header > span:last-child { flex-shrink: 0; color: #59746c; font-size: 10px; }
-.bco-feature-video-media { padding: 8px; background: var(--bco-charcoal); }
+.bco-feature-video-media { padding: 8px; background: var(--bco-charcoal-surface); border: 1px solid var(--bco-charcoal-line); }
 .bco-feature-video-media .bco-product-video { border-radius: 6px; overflow: hidden; }
 .bco-feature-video-panel figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 18px; font-size: 11px; color: #52696b; }
 .bco-feature-video-panel figcaption a, .bco-quick-preview figcaption a { color: #0e6f75; text-decoration: underline; text-underline-offset: 3px; }
@@ -2247,7 +2249,7 @@
   color: #12332d;
   border-color: #c0ead9;
   border-radius: 999px;
-  box-shadow: 0 6px 22px #061c1a20;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--bco-charcoal) 13%, transparent);
 }
 .bco-nav-dark .bco-button:hover,
 .bco-hero-centered .bco-button:hover {
@@ -2444,8 +2446,9 @@
   overflow: hidden;
   border: 1px solid #73968a66;
   border-radius: 16px;
-  background: var(--bco-charcoal);
-  box-shadow: 0 22px 60px #03191755;
+  background: var(--bco-charcoal-surface);
+  border-color: var(--bco-charcoal-line);
+  box-shadow: 0 22px 60px color-mix(in srgb, var(--bco-charcoal) 33%, transparent);
 }
 .bco-evidence-film-label {
   display: flex;
@@ -2547,7 +2550,7 @@
 .bco-step-paging button { min-height: 44px; }
 .bco-step-paging button:disabled { opacity: .45; cursor: default; text-decoration: none; }
 .bco-detail-dialog { padding: 0; margin: auto; width: min(700px, calc(100% - 40px)); max-height: calc(100dvh - 48px); border: 1px solid #d9e2e2; border-radius: 20px; box-shadow: 0 24px 100px #071e3355; overflow-y: auto; overscroll-behavior: contain; }
-.bco-detail-dialog::backdrop { background: #061e2bd1; backdrop-filter: blur(5px); }
+.bco-detail-dialog::backdrop { background: color-mix(in srgb, var(--bco-charcoal) 82%, transparent); backdrop-filter: blur(5px); }
 .bco-detail-header { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 28px 32px 24px; background: #f4f6f6; border-bottom: 1px solid #d9e2e2; }
 .bco-detail-header .bco-kicker { margin-bottom: 8px; }
 .bco-detail-header h2 { font-size: clamp(24px, 3vw, 32px); }
@@ -2689,7 +2692,7 @@
 }
 @media (max-width: 640px) {
   .bco-site-landing .bco-evidence-film .bco-product-video { max-width: 232px; margin-inline: auto; }
-  .bco-site-landing .bco-evidence-film { background: var(--bco-charcoal); }
+  .bco-site-landing .bco-evidence-film { background: var(--bco-charcoal-surface); border-color: var(--bco-charcoal-line); }
   .bco-site-landing .bco-evidence-grid { gap: 20px; }
   .bco-site-landing .bco-evidence-grid article { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 14px; }
   .bco-site-landing .bco-evidence-grid .bco-icon { grid-column: 1; grid-row: 1 / 4; width: 36px; height: 36px; }
@@ -2816,12 +2819,10 @@
   .bco-industry-ribbon {
     padding-block: 64px;
   }
-  .bco-site :is(figcaption a, .bco-demo-footer a, .bco-faq summary) {
-    display: inline-flex;
+  .bco-faq summary {
+    display: flex;
     align-items: center;
     min-height: 44px;
-  }
-  .bco-faq summary {
     font-size: 16px;
     width: 100%;
   }

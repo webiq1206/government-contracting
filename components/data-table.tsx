@@ -391,7 +391,7 @@ export function DataTable<T extends { id: string }>({
       {/* Bulk bar: sticky at the bottom so a selection made at row 3 is still
           actionable at row 90 without scrolling back. */}
       {selection && selectedIds.length > 0 && (
-        <div className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-t border-gold/40 bg-surface-raised px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+        <div className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-t border-gold/40 bg-surface-raised px-4 py-3 shadow-[0_-2px_8px_rgb(var(--ink)/0.06)]">
           <span className="text-sm font-medium text-foreground">
             {selectedIds.length} selected
           </span>

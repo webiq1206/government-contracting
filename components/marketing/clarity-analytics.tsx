@@ -88,12 +88,15 @@ export function ClarityAnalytics() {
   if (!ready) return null;
   if (choice !== null && !settings) return null;
   return (
-    <section aria-label="Optional analytics" className="fixed inset-x-0 bottom-0 z-50 max-h-[20dvh] overflow-y-auto border-t border-border-strong bg-surface text-base leading-snug text-foreground shadow-[0_-6px_20px_rgb(0_0_0/0.12)]">
-      <div className="mx-auto grid max-w-5xl gap-1 px-3 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
-        <p className="leading-tight">Allow Google Analytics to measure website visits and signups? Microsoft Clarity is included on every page, with page text and forms masked. Optional analytics uses cookies. <a className="relative underline after:absolute after:-inset-x-1 after:-inset-y-2" href="/privacy">Privacy details</a></p>
-        <div className="grid grid-cols-2 gap-2">
-          <button ref={decline} type="button" className="min-h-11 whitespace-nowrap rounded border border-border-strong bg-surface px-3 py-2 text-base text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
-          <button type="button" className="min-h-11 whitespace-nowrap rounded bg-accent px-3 py-2 text-base text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("granted")}>Allow analytics</button>
+    <section aria-label="Optional analytics" className="fixed inset-x-0 bottom-0 z-50 max-h-[20dvh] overflow-y-auto border-t border-border-strong bg-surface text-base text-foreground shadow-[0_-6px_20px_rgb(var(--ink)/0.12)]">
+      <div className="mx-auto grid max-w-5xl gap-1.5 px-3 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+        <div className="grid gap-2">
+          <p className="font-semibold leading-[1.35]">Allow Google Analytics?</p>
+          <p className="leading-[1.35]">It measures visits and signups. Clarity masks text and forms. Cookies stay off until you allow them. <a className="underline" href="/privacy">Privacy details</a></p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button ref={decline} type="button" className="min-h-11 rounded border border-border-strong bg-surface px-3 py-2 text-base text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
+          <button type="button" className="min-h-11 rounded bg-accent px-3 py-2 text-base text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("granted")}>Allow analytics</button>
         </div>
       </div>
     </section>

@@ -1,5 +1,7 @@
 .bco-site {
   --bco-charcoal: #383837;
+  --bco-charcoal-surface: #40403e;
+  --bco-charcoal-line: #969692;
   background: #f4f6f6;
   color: #111a1f;
   overflow-x: clip;
@@ -154,10 +156,10 @@
 .bco-demo-section .bco-kicker { color: #8fd3d4; }
 .bco-demo-frame {
   padding: 12px;
-  border: 1px solid #28424a;
+  border: 1px solid var(--bco-charcoal-line);
   border-radius: 18px;
-  background: var(--bco-charcoal);
-  box-shadow: 0 30px 80px rgba(0,0,0,.24);
+  background: var(--bco-charcoal-surface);
+  box-shadow: 0 30px 80px color-mix(in srgb, var(--bco-charcoal) 24%, transparent);
 }
 .bco-demo-frame video { border: 0; border-radius: 10px; background: #fff; }
 

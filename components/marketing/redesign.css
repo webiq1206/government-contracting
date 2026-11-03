@@ -7,6 +7,7 @@
     sans-serif;
   overflow: clip;
   --ink: 56 56 55;
+  --charcoal-surface: 64 64 62;
   --background: 244 246 246;
   --foreground: 17 26 31;
   --surface: 255 255 255;
@@ -124,7 +125,7 @@
 }
 .bco-hero-product {
   min-width: 0;
-  background: rgb(var(--ink));
+  background: rgb(var(--charcoal-surface));
   border: 1px solid #d8e0de;
   border-radius: 16px;
   padding: 16px;
