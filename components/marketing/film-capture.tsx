@@ -95,8 +95,8 @@ const MUTED = "rgba(246,242,235,.60)";
 const GOLD = "#c3a06b";
 const PURSUE = "#8a9e80";
 const REVIEW = "#d4a868";
-const SURFACE = "#383837";
-const RAISED = "#383837";
+const SURFACE = "#444442";
+const RAISED = "#484846";
 const HAIR = "rgba(255,255,255,.13)";
 
 const mono = '"JetBrains Mono", ui-monospace, monospace';

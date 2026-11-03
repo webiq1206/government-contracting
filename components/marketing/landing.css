@@ -1,10 +1,10 @@
 /* Ported from brostco-landing-page.html inspiration. Scoped to .mkt-lp.
    DM Sans / Didot / JetBrains Mono load from the root layout. */
 .mkt-lp {
-  --ink: #171713;
+  --ink: #383837;
   --night: #383837;
   --night-soft: #383837;
-  --night-surface: #40403e;
+  --night-surface: #484846;
   --night-line: #969692;
   --paper: #f1ece3;
   --white: #fbfaf7;

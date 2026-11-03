@@ -62,14 +62,14 @@
   --background: 56 56 55;
   --foreground: 239 245 244;
   /* Cards, popovers, and inputs sit a step above the page charcoal. */
-  --surface: 64 64 62;
-  --surface-raised: 70 70 68;
-  --muted: 68 68 66;
+  --surface: 68 68 66;
+  --surface-raised: 72 72 70;
+  --muted: 72 72 70;
   --muted-foreground: 168 186 188;
   --border: 150 150 146;
   --border-strong: 168 168 164;
   --control-border: 154 154 150;
-  --shell: 64 64 62;
+  --shell: 68 68 66;
   --shell-border: 150 150 146;
   --ink: 56 56 55;
   --on-accent: 11 23 32;
@@ -791,9 +791,9 @@ html:has([data-app-shell]) body {
   --foreground: 255 255 255;
   --muted-foreground: 170 184 187;
   --background: 56 56 55;
-  --surface: 64 64 62;
-  --surface-raised: 70 70 68;
-  --shell: 64 64 62;
+  --surface: 68 68 66;
+  --surface-raised: 72 72 70;
+  --shell: 68 68 66;
   --border: 150 150 146;
   --border-strong: 168 168 164;
   --control-border: 154 154 150;
