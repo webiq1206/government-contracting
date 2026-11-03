@@ -95,8 +95,8 @@ const MUTED = "rgba(246,242,235,.60)";
 const GOLD = "#c3a06b";
 const PURSUE = "#8a9e80";
 const REVIEW = "#d4a868";
-const SURFACE = "#171813";
-const RAISED = "#1e1f1c";
+const SURFACE = "#383837";
+const RAISED = "#383837";
 const HAIR = "rgba(255,255,255,.13)";
 
 const mono = '"JetBrains Mono", ui-monospace, monospace';
@@ -1050,7 +1050,7 @@ function CaptionBar({ beat, local }: { beat: Beat; local: number }) {
         flexDirection: "column",
         justifyContent: "center",
         gap: 18,
-        background: "linear-gradient(to top, rgba(9,10,9,.98) 62%, rgba(9,10,9,0))",
+        background: "linear-gradient(to top, rgba(56,56,55,.98) 62%, rgba(56,56,55,0))",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 22, opacity: a }}>
@@ -1188,7 +1188,7 @@ function Bumper({ local }: { local: number }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#090a09",
+        background: "#383837",
         opacity: Math.min(a, out),
       }}
     >
@@ -1221,7 +1221,7 @@ function EndCard({ local }: { local: number }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#090a09",
+        background: "#383837",
         opacity: a,
         padding: "0 140px",
         textAlign: "center",
@@ -1267,7 +1267,7 @@ export function FilmCapture() {
     document.documentElement.style.colorScheme = "dark";
     document.body.style.overflow = "hidden";
     document.body.style.margin = "0";
-    document.body.style.background = "#090a09";
+    document.body.style.background = "#383837";
   }, []);
 
   const seek = useCallback((next: number) => {
@@ -1316,7 +1316,7 @@ export function FilmCapture() {
         width: 1920,
         height: 1080,
         overflow: "hidden",
-        background: "#090a09",
+        background: "#383837",
         color: CREAM,
         fontFamily: sans,
       }}

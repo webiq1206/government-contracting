@@ -6,7 +6,7 @@
     system-ui,
     sans-serif;
   overflow: clip;
-  --ink: 11 23 32;
+  --ink: 56 56 55;
   --background: 244 246 246;
   --foreground: 17 26 31;
   --surface: 255 255 255;
@@ -27,7 +27,7 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #0b1720;
+  background: rgb(var(--ink));
   border-bottom: 1px solid #28424a;
   color: #fff;
 }
@@ -124,7 +124,7 @@
 }
 .bco-hero-product {
   min-width: 0;
-  background: #102a33;
+  background: rgb(var(--ink));
   border: 1px solid #d8e0de;
   border-radius: 16px;
   padding: 16px;
@@ -276,7 +276,7 @@
   object-fit: contain;
   border-radius: 8px;
   background: white;
-  box-shadow: 0 4px 18px #0b17200f;
+  box-shadow: 0 4px 18px rgb(var(--ink) / 0.06);
 }
 .bco-gallery-media .bco-caption {
   margin: 12px 0 0;
@@ -345,7 +345,7 @@
   text-underline-offset: 4px;
 }
 .bco-control {
-  background: #0b1720;
+  background: rgb(var(--ink));
   color: white;
 }
 .bco-control-grid {
@@ -400,7 +400,7 @@
   border: 1px solid #d8e0de;
   border-radius: 16px;
   padding: 36px;
-  box-shadow: 0 12px 36px #0b17200f;
+  box-shadow: 0 12px 36px rgb(var(--ink) / 0.06);
 }
 .bco-plan-label {
   font-size: 14px;
@@ -490,7 +490,7 @@
   outline-offset: 4px;
 }
 .bco-site footer {
-  background: #0b1720;
+  background: rgb(var(--ink));
   color: #fff;
 }
 .bco-site footer p {
@@ -710,7 +710,7 @@
   font-family: var(--font-manrope), "Manrope", var(--font-inter), "Inter", system-ui, sans-serif;
   font-weight: 700;
 }
-.bco-hero-band { background: #0b1720; color: #fff; }
+.bco-hero-band { background: rgb(var(--ink)); color: #fff; }
 .bco-hero h1 span { color: #fff; }
 .bco-hero .bco-kicker, .bco-control .bco-kicker { color: #6baeaa; }
 .bco-hero .bco-lead { color: #c7d2d4; }
@@ -722,7 +722,7 @@
 .bco-hero-band :focus-visible, .bco-nav :focus-visible,
 .bco-control :focus-visible, .bco-site footer :focus-visible { outline-color: #8fd3d4; }
 .bco-gallery, .bco-price-card { background: #fff; }
-.bco-price-card { box-shadow: 0 6px 24px rgb(11 23 32 / .06); }
+.bco-price-card { box-shadow: 0 6px 24px rgb(var(--ink) / .06); }
 .bco-site footer p { color: #c7d2d4; }
 .bco-site footer nav { color: #c7d2d4; }
 .bco-site footer .text-gold-text { color: #6baeaa; }
