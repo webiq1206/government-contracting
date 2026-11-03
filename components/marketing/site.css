@@ -2229,7 +2229,7 @@
 /* A single, centered promise above the fold. */
 .bco-nav-dark {
   background: color-mix(in srgb, var(--bco-charcoal) 85%, transparent);
-  border-color: #ffffff14;
+  border-color: var(--bco-charcoal-line);
   color: white;
 }
 .bco-site-landing .bco-nav {
@@ -2636,7 +2636,7 @@
 .bco-site-landing .bco-evidence-grid { gap: 32px; margin-top: 40px; padding-top: 28px; }
 .bco-site-landing .bco-evidence-grid h3 { font-size: 21px; margin-top: 16px; }
 .bco-site-landing .bco-evidence-grid p { font-size: 14px; }
-.bco-site-landing .bco-final-cta { background: radial-gradient(ellipse at 90% 0, #28554b, transparent 65%), var(--bco-charcoal); border-color: #23483e; border-radius: 24px; }
+.bco-site-landing .bco-final-cta { background: radial-gradient(ellipse at 90% 0, #28554b, transparent 65%), var(--bco-charcoal); border-color: var(--bco-charcoal-line); border-radius: 24px; }
 .bco-site-landing .bco-final-cta h2 { color: #f3f8f5; }
 .bco-site-landing .bco-final-cta p { color: #c1d6cd; }
 .bco-site-landing .bco-final-cta .bco-kicker { color: #bce7d2 !important; }

@@ -8,9 +8,9 @@ This document records the current BrostCo product system. It supersedes earlier 
 | --- | --- | --- |
 | Page | #F4F6F6 | #383837 |
 | Text | #111A1F | #EFF5F4 |
-| Surface | #FFFFFF | #383837 |
+| Surface | #FFFFFF | #444442 |
 | Secondary text | #617077 | #A8BABC |
-| Primary action / focus | #0E6F75 | #53BAC0 |
+| Primary action / focus | #0E6F75 | #5AC8CE |
 | Positive status | #2B6F52 | #85C9A3 |
 | Attention | #95601B | #E5BC78 |
 | Risk | #A33A31 | #F19B92 |

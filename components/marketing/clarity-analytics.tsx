@@ -89,10 +89,10 @@ export function ClarityAnalytics() {
   if (choice !== null && !settings) return null;
   return (
     <section aria-label="Optional analytics" className="fixed inset-x-0 bottom-0 z-50 max-h-[20dvh] overflow-y-auto border-t border-border-strong bg-surface text-base text-foreground shadow-[0_-6px_20px_rgb(var(--ink)/0.12)]">
-      <div className="mx-auto grid max-w-5xl gap-1.5 px-3 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto grid max-w-5xl gap-1.5 px-3 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
         <div className="grid gap-2">
           <p className="font-semibold leading-[1.35]">Allow Google Analytics?</p>
-          <p className="leading-[1.35]">It measures visits and signups. Clarity masks text and forms. Cookies stay off until you allow them. <a className="underline" href="/privacy">Privacy details</a></p>
+          <p className="leading-[1.35]">It measures visits and signups. Clarity masks text and forms. Clarity can set a cookie before you choose. <a className="underline" href="/privacy">Privacy details</a></p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button ref={decline} type="button" className="min-h-11 rounded border border-border-strong bg-surface px-3 py-2 text-base text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => choose("denied")}>Decline</button>
