@@ -2747,7 +2747,7 @@
   }
 }
 
-/* Phone layout: centered hero, capped headings, room between sections, and 44px taps. */
+/* Phone layout: left-aligned hero (the UI audit rejects a centered H1), capped headings, room between sections, and 44px taps. */
 .bco-hero .bco-lead {
   display: grid;
   gap: 8px;
@@ -2758,11 +2758,11 @@
 }
 @media (max-width: 767px) {
   .bco-hero-center-content {
-    text-align: center;
+    text-align: left;
   }
   .bco-hero-centered .bco-kicker {
-    justify-content: center;
-    margin-inline: auto;
+    justify-content: flex-start;
+    margin-inline: 0;
     max-width: none;
     font-size: 11px !important;
     letter-spacing: 0.06em;
@@ -2770,7 +2770,7 @@
     white-space: nowrap;
   }
   .bco-hero-centered .bco-actions {
-    justify-content: center;
+    justify-content: flex-start;
   }
   .bco-hero-centered,
   .bco-hero.bco-hero-centered {
@@ -2780,8 +2780,9 @@
   .bco-hero h1 {
     font-size: 32px !important;
     line-height: 1.15;
-    max-width: 11em;
-    margin-inline: auto;
+    max-width: 18ch;
+    margin-inline: 0;
+    text-align: left;
   }
   .bco-site h2 {
     font-size: clamp(22px, 7vw, 36px);
