@@ -16,6 +16,7 @@ import { BID_OPPORTUNITY_SQL, BID_OPPORTUNITY_O_SQL } from "../domain/opportunit
  * with it.
  */
 import { query, queryOne } from "../db";
+import { noticeForBudgetMessage } from "../domain/spending-notice";
 import { currentProviderFacts } from "../ai/provider-facts";
 import type { ProviderStatusFact } from "../domain/provider-status-line";
 import { failedEmailSql, sentEmailSql } from "../domain/email-reporting";
@@ -514,9 +515,11 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     const agents = Array.isArray(spendingHeld?.agents)
       ? (spendingHeld!.agents as unknown[]).filter(Boolean).map(String)
       : [];
-    const reason = spendingHeld?.message
-      ? String(spendingHeld.message).replace(/^API_BUDGET:\s*/, "")
-      : "The allowance in Settings, API Usage was reached.";
+    const raw = spendingHeld?.message ? String(spendingHeld.message).replace(/^API_BUDGET:\s*/, "") : "";
+    const notice = spendingHeld?.message ? noticeForBudgetMessage(String(spendingHeld.message)) : null;
+    const reason = raw
+      ? notice && !raw.includes(notice.detail) ? `${raw} ${notice.detail}` : raw
+      : "Open Settings, API Usage to see which limit stopped paid work, how many requests or dollars remain, and when it resets.";
     problems.push({
       key: "spending-held",
       title: `${heldCount} task${heldCount === 1 ? "" : "s"} waited on your API allowance`,

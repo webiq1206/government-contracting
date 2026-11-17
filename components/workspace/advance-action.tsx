@@ -79,6 +79,7 @@ export function AdvanceAction({
         method,
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(20_000),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -87,17 +88,16 @@ export function AdvanceAction({
       }
       onDone?.();
       if (toast) push(toast);
-      /*
-       * Navigate first, refresh second.
-       *
-       * The other order shows the finished record one more time while the
-       * server re-renders, which on a fast connection is a flicker and on a
-       * slow one is long enough to click the button again.
-       */
+      // Land on the next record. A second refresh of the page just left
+      // restamps the whole day and was part of the request pile-up.
       router.push(nextHref ?? doneHref);
-      router.refresh();
-    } catch {
-      setError("Could not reach the server. Nothing was changed.");
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      setError(
+        name === "TimeoutError" || name === "AbortError"
+          ? "The save took too long. Refresh before trying again so you do not record it twice."
+          : "Could not reach the server. Nothing was changed.",
+      );
     } finally {
       setBusy(false);
     }

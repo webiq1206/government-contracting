@@ -20,6 +20,7 @@ import type { CredentialSource as ProviderCredentialSource } from "./domain/prov
 import type { TemplateCounts } from "./domain/template-health";
 import type { WorkKind } from "./domain/work-queue";
 import { resolveSubWork } from "./domain/sub-work";
+import { spendingHoldCopy } from "./domain/spending-notice";
 import { sortTerm, type SortColumn } from "./domain/table-view";
 import {
   loadAwardCompliance,
@@ -76,6 +77,19 @@ export async function currentOrg(): Promise<string> {
  */
 export const ACTIVE_PURSUIT_SQL = `coalesce(o.pursuit_state, 'active') <> 'aborted'`;
 
+/**
+ * Open reply reviews for one organization.
+ * orgExpr is a SQL uuid expression ($1 or a quoted uuid already validated).
+ * Null-org events stay visible when the solicitation belongs to this org.
+ * A missing subcontractor row must not drop the reply: the read list counted
+ * those and the work queue did not.
+ */
+export function openReplyReviewPredicate(orgExpr: string): string {
+  return `e.needs_review and e.reviewed_at is null
+    and (e.org_id = ${orgExpr} or (e.org_id is null and o.org_id = ${orgExpr}))
+    and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))`;
+}
+
 export const WORKABLE_CALL_CARD_SQL = `
   cc.status = 'pending'
   and ${OWNED_CALL_CARD_SQL}
@@ -129,9 +143,7 @@ export async function queueCounts(): Promise<{
        select e.id::text as fp
          from subcontractor_reply_events e
          left join opportunities o on o.id = e.opportunity_id
-        where e.needs_review and e.reviewed_at is null
-          and (e.org_id = $1 or (e.org_id is null and o.org_id = $1))
-          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
+        where ${openReplyReviewPredicate("$1")}
        union
        select o.id::text
          from opportunities o
@@ -3352,9 +3364,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
            and (e.org_id is null or o.org_id = e.org_id)
          left join subcontractors s on s.id = e.subcontractor_id
            and s.org_id = coalesce(e.org_id, o.org_id)
-        where e.needs_review and e.reviewed_at is null
-          and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
-          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
+        where ${openReplyReviewPredicate(`'${orgId}'`)}
         order by e.created_at desc
         limit 20`
     ),
@@ -3391,9 +3401,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
            where ${BID_OPPORTUNITY_O_SQL} and o.org_id = '${orgId}' and o.status='open' and ${ACTIVE_PURSUIT_SQL} and q.is_out_of_range) as quote_reviews,
          (select count(*)::int from subcontractor_reply_events e
             left join opportunities o on o.id = e.opportunity_id
-           where e.needs_review and e.reviewed_at is null
-             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
-             and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))) as reply_reviews,
+           where ${openReplyReviewPredicate(`'${orgId}'`)}) as reply_reviews,
          (select count(*)::int from compliance_items ci
            where ci.org_id = '${orgId}'
              and coalesce(ci.status_override, ci.status)
@@ -3795,14 +3803,15 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       opp_title: string | null;
       deadline: string | null;
       assigned_to: string | null;
+      review_reason: string | null;
     }>(
       `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline,
-              o.assigned_to
+              o.assigned_to, e.review_reason
          from subcontractor_reply_events e
-         join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
-        where e.org_id=$1 and e.needs_review and e.reviewed_at is null
-          and (o.id is null or (${BID_OPPORTUNITY_O_SQL} and ${ACTIVE_PURSUIT_SQL}))
+         left join subcontractors s on s.id = e.subcontractor_id
+           and s.org_id = coalesce(e.org_id, o.org_id)
+        where ${openReplyReviewPredicate("$1")}
         order by e.created_at desc`,
       [orgId]
     ),
@@ -3904,7 +3913,8 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       record: { kind: "reply" as const, id: r.id },
       opportunityId: r.opp_id,
       assignedTo: r.assigned_to,
-      reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
+      reason: spendingHoldCopy(r.review_reason)
+        ?? "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
     })),
     ...decisions.map((d) => ({
       key: `decide:${d.id}`,

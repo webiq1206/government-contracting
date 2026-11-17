@@ -15,6 +15,7 @@ export function TodayLive() {
   const router = useRouter();
   const [stale, setStale] = useState(false);
   const baseline = useRef<string | null>(null);
+  const lastRefresh = useRef(0);
 
   useEffect(() => {
     let stopped = false;
@@ -41,13 +42,15 @@ export function TodayLive() {
     const timer = setInterval(() => void tick(), 60_000);
 
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        // Fresh eyes deserve fresh data; re-baseline after the refresh.
-        baseline.current = null;
-        setStale(false);
-        router.refresh();
-        void tick();
-      }
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      // Several open tabs each refreshing Today at once pinned the database.
+      if (now - lastRefresh.current < 20_000) return;
+      lastRefresh.current = now;
+      baseline.current = null;
+      setStale(false);
+      router.refresh();
+      void tick();
     };
     document.addEventListener("visibilitychange", onVisible);
 

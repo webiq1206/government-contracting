@@ -128,6 +128,22 @@ describe("assessAutomation", () => {
     expect(h.interrupt).toBe(false);
   });
 
+  it("does not say running normally when the live daily request cap is already spent", () => {
+    const h = assessAutomation({
+      ...BEATING,
+      runs: [],
+      spendingHold: "API_BUDGET: You reached today's request limit of 1000. It resets at midnight UTC. New paid work has stopped to protect your budget. Open Settings, API Usage to review limits or resume work.",
+    });
+    expect(h.state).toBe("blocked");
+    expect(h.interrupt).toBe(true);
+    expect(h.headline).not.toContain("Running normally");
+    expect(h.detail).toContain("daily request limit");
+    expect(h.detail).toContain("1000 of 1000");
+    expect(h.detail).toContain("Raising the monthly budget does not clear a daily request limit");
+    expect(h.incidents[0]?.spec.repairHref).toBe("/settings/api-usage");
+    expect(h.incidents[0]?.failures).toBe(0);
+  });
+
   it("never says 'Running normally' while a blocking cause is live", () => {
     /*
      * The exact contradiction this module was written for. The worker is

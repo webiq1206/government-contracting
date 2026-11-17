@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireCapability } from "@/lib/api-auth";
-import { resolveTenantOrgId } from "@/lib/tenant";
+import { isMissingTenantContext, resolveTenantOrgId } from "@/lib/tenant";
+import { bindRequestOrg } from "@/lib/tenant-context";
 import { query, queryOne, transaction } from "@/lib/db";
 import {
   applyOutcomeToSolicitation,
@@ -18,6 +19,23 @@ import {
   closeIfSubsExhausted,
 } from "@/lib/domain/advance-stage";
 import { enqueue } from "@/lib/queue";
+
+const FOLLOW_UP_MS = 8_000;
+
+/** A saved review must return even if the next queue call is stuck on a budget lock. */
+async function withinFollowUp<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Follow-up timed out")), FOLLOW_UP_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,7 +119,19 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const params = await props.params;
   const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
-  const orgId = await resolveTenantOrgId();
+  let orgId: string;
+  try {
+    orgId = await resolveTenantOrgId();
+  } catch (error) {
+    if (isMissingTenantContext(error)) {
+      return NextResponse.json(
+        { error: "Sign in again before saving this review. Nothing was changed." },
+        { status: 401 },
+      );
+    }
+    throw error;
+  }
+  bindRequestOrg(orgId);
 
   const body = (await req.json().catch(() => ({}))) as {
     outcome?: unknown;
@@ -604,11 +634,11 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
 
   if (outcomeFollowUp) {
     try {
-      const jobId = await enqueue(
+      const jobId = await withinFollowUp(enqueue(
         outcomeFollowUp.agent,
         outcomeFollowUp.payload,
         outcomeFollowUp.opts,
-      );
+      ));
       if (!jobId) {
         await surfaceFollowUpFailure(
           "The partial-scope reply was saved, but replacement subcontractor work was not queued.",
@@ -642,10 +672,10 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     try {
       const advanced = await advanceIfQuotesComplete(row.opportunity_id);
       if (advanced?.enqueue) {
-        const jobId = await enqueue(
+        const jobId = await withinFollowUp(enqueue(
           advanced.enqueue.agent,
           advanced.enqueue.payload,
-        );
+        ));
         if (!jobId) {
           await surfaceFollowUpFailure(
             "All required quotes may be complete, but the next automation was not queued.",
@@ -668,11 +698,11 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     try {
       const exhaustion = await closeIfSubsExhausted(row.opportunity_id);
       if (exhaustion?.enqueue) {
-        const jobId = await enqueue(
+        const jobId = await withinFollowUp(enqueue(
           exhaustion.enqueue.agent,
           exhaustion.enqueue.payload,
           exhaustion.enqueue.opts,
-        );
+        ));
         if (!jobId) {
           await surfaceFollowUpFailure(
             "The reply was saved, but replacement subcontractor work was not queued.",
