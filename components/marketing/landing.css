@@ -1,9 +1,11 @@
 /* Ported from brostco-landing-page.html inspiration. Scoped to .mkt-lp.
    DM Sans / Didot / JetBrains Mono load from the root layout. */
 .mkt-lp {
-  --ink: #171713;
-  --night: #090a09;
-  --night-soft: #171813;
+  --ink: #383837;
+  --night: #383837;
+  --night-soft: #383837;
+  --night-surface: #484846;
+  --night-line: #969692;
   --paper: #f1ece3;
   --white: #fbfaf7;
   --gold: #c3a06b;
@@ -14,7 +16,7 @@
   /* Body/muted text on paper: ~5:1+ vs #f1ece3 */
   --muted: #5c564e;
   --muted-strong: #4a453e;
-  /* Body/muted text on night: ~4.5:1+ vs #090a09 / #171813 */
+  /* Body/muted text on night: ~4.5:1+ vs brand charcoal #383837 */
   --on-dark: rgba(245, 241, 233, 0.86);
   --on-dark-soft: rgba(245, 241, 233, 0.76);
   --on-dark-label: rgba(245, 241, 233, 0.7);
@@ -75,7 +77,7 @@
 .mkt-lp .proof span { font-size: 9px; line-height: 1.4; text-transform: uppercase; letter-spacing: .1em; color: var(--on-dark-label); }
 
 .mkt-lp .hero-product { position: relative; padding: 72px 0 50px; }
-.mkt-lp .app-window { position: relative; z-index: 2; border: 1px solid rgba(255,255,255,.19); background: rgba(21,22,20,.9); box-shadow: 0 45px 110px rgba(0,0,0,.65); backdrop-filter: blur(18px); transform: perspective(1400px) rotateY(-4deg); animation: float 7s ease-in-out infinite; }
+.mkt-lp .app-window { position: relative; z-index: 2; border: 1px solid rgba(255,255,255,.19); background: var(--night-surface); box-shadow: 0 45px 110px color-mix(in srgb, var(--night) 65%, transparent); backdrop-filter: blur(18px); transform: perspective(1400px) rotateY(-4deg); animation: float 7s ease-in-out infinite; }
     @keyframes float { 50% { transform: perspective(1400px) rotateY(-3deg) translateY(-9px); } }
 .mkt-lp .app-bar { height: 62px; padding: 0 22px; border-bottom: 1px solid rgba(255,255,255,.12); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
 .mkt-lp .app-bar b { font-size: 13px; font-weight: 500; }
@@ -95,7 +97,7 @@
 .mkt-lp .task .task-cta { padding: 8px 12px; border: 1px solid rgba(255,255,255,.28); background: none; color: var(--on-dark); font-size: 9px; overflow: visible; white-space: nowrap; }
 .mkt-lp .app-summary { padding-top: 18px; border-top: 1px solid rgba(255,255,255,.1); display: flex; justify-content: space-between; font-size: 9px; color: var(--on-dark-label); }
 .mkt-lp .app-summary b { font-weight: 400; color: var(--gold-on-dark); }
-.mkt-lp .orbit { position: absolute; z-index: 3; min-width: 180px; padding: 13px 15px; border: 1px solid rgba(195,160,107,.4); background: #11120f; box-shadow: 0 20px 35px rgba(0,0,0,.35); font: 8px "JetBrains Mono", monospace; letter-spacing: .1em; color: var(--on-dark-label); }
+.mkt-lp .orbit { position: absolute; z-index: 3; min-width: 180px; padding: 13px 15px; border: 1px solid rgba(195,160,107,.4); background: var(--night); box-shadow: 0 20px 35px color-mix(in srgb, var(--night) 35%, transparent); font: 8px "JetBrains Mono", monospace; letter-spacing: .1em; color: var(--on-dark-label); }
 .mkt-lp .orbit b { display: block; margin-top: 5px; font: 500 11px "DM Sans", sans-serif; letter-spacing: 0; color: var(--gold-on-dark); }
 .mkt-lp .orbit.top { top: 25px; right: -22px; }
 .mkt-lp .orbit.bottom { bottom: 0; left: -30px; }
@@ -170,7 +172,7 @@
 .mkt-lp .red { background: #ead8d5; color: #7a3a34; }
 .mkt-lp .package-ui { margin-top: auto; display: grid; grid-template-columns: .8fr 1.2fr; gap: 38px; align-items: end; }
 .mkt-lp .papers { position: relative; height: 245px; }
-.mkt-lp .papers i { position: absolute; width: 155px; height: 210px; border: 1px solid rgba(255,255,255,.17); background: #1e1f1c; }
+.mkt-lp .papers i { position: absolute; width: 155px; height: 210px; border: 1px solid rgba(255,255,255,.17); background: var(--night-surface); }
 .mkt-lp .papers i:nth-child(1) { left: 28px; transform: rotate(7deg); }
 .mkt-lp .papers i:nth-child(2) { left: 14px; top: 9px; transform: rotate(3deg); }
 .mkt-lp .papers i:nth-child(3) { left: 0; top: 18px; background: #ede7dc; }
@@ -178,7 +180,7 @@
 .mkt-lp .package ul { margin: 0 0 12px; padding: 0; list-style: none; }
 .mkt-lp .package li { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.14); font-size: 10px; color: var(--on-dark); }
 
-.mkt-lp .workflow { position: relative; background: #11120f; color: #f6f2eb; }
+.mkt-lp .workflow { position: relative; background: var(--night); color: #f6f2eb; }
 .mkt-lp .workflow .lines { position: absolute; inset: 0; opacity: .08; background-image: linear-gradient(90deg,rgba(195,160,107,.6) 1px,transparent 1px); background-size: 130px 100%; }
 .mkt-lp .workflow-layout { position: relative; display: grid; grid-template-columns: .85fr 1.15fr; gap: 120px; }
 .mkt-lp .workflow-copy > p:nth-of-type(2) { max-width: 500px; margin: 25px 0 34px; font-size: 14px; line-height: 1.7; color: var(--on-dark); }
@@ -197,10 +199,10 @@
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.16);
-  background: #090a09;
-  box-shadow: 0 40px 90px rgba(0,0,0,.45);
+  background: var(--night);
+  box-shadow: 0 40px 90px color-mix(in srgb, var(--night) 45%, transparent);
 }
-.mkt-lp .film-video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #090a09; cursor: pointer; }
+.mkt-lp .film-video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--night); cursor: pointer; }
 .mkt-lp .film-playbtn {
   position: absolute;
   right: 18px;
@@ -210,7 +212,7 @@
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid rgba(255,255,255,.28);
-  background: rgba(9,10,9,.72);
+  background: color-mix(in srgb, var(--night) 72%, transparent);
   color: #f6f2eb;
   font: 500 11px/1 "JetBrains Mono", monospace;
   letter-spacing: .12em;
@@ -235,7 +237,7 @@
   justify-content: center;
   gap: 18px;
   border: 0;
-  background: rgba(9,10,9,.32);
+  background: color-mix(in srgb, var(--night) 32%, transparent);
   color: #f6f2eb;
   cursor: pointer;
 }
@@ -249,8 +251,8 @@
   padding-left: 4px;
   border: 1px solid rgba(195,160,107,.75);
   border-radius: 50%;
-  background: rgba(9,10,9,.62);
-  box-shadow: 0 24px 60px rgba(0,0,0,.45);
+  background: color-mix(in srgb, var(--night) 62%, transparent);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--night) 45%, transparent);
   color: #f6f2eb;
 }
 .mkt-lp .film-playmark span {
@@ -295,7 +297,7 @@
 .mkt-lp .pricing-layout .deep-links { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 30px 0 0; }
 .mkt-lp .pricing-layout .deep-links a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 12px; color: var(--gold-on-dark); border-bottom: 1px solid transparent; }
 .mkt-lp .pricing-layout .deep-links a:hover { border-bottom-color: var(--gold-on-dark); }
-.mkt-lp .price-card { padding: 40px; border: 1px solid rgba(195,160,107,.55); background: #161714; box-shadow: 0 40px 100px rgba(0,0,0,.4); }
+.mkt-lp .price-card { padding: 40px; border: 1px solid var(--night-line); background: var(--night-surface); box-shadow: 0 40px 100px color-mix(in srgb, var(--night) 40%, transparent); }
 .mkt-lp .price-card header { padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,.18); display: flex; justify-content: space-between; font: 8px "JetBrains Mono", monospace; letter-spacing: .11em; color: var(--on-dark-label); }
 .mkt-lp .price-card header b { font-weight: 400; color: var(--gold-on-dark); }
 .mkt-lp .price-card del { display: block; margin-top: 28px; font: 10px "JetBrains Mono", monospace; color: var(--on-dark-label); }
@@ -322,7 +324,7 @@
 .mkt-lp .faq-list details[open] summary > i { transform: rotate(45deg); }
 .mkt-lp .faq-list details > p { margin: -8px 35px 28px 48px; font-size: 12px; line-height: 1.75; color: var(--muted-strong); }
 
-.mkt-lp .final-cta { position: relative; min-height: 700px; display: grid; place-items: center; background: #10110f; color: #f6f2eb; text-align: center; }
+.mkt-lp .final-cta { position: relative; min-height: 700px; display: grid; place-items: center; background: var(--night); color: #f6f2eb; text-align: center; }
 .mkt-lp .final-cta .grid-bg { opacity: .08; mask-image: radial-gradient(circle,black,transparent 75%); }
 .mkt-lp .final-inner { position: relative; width: min(820px,calc(100% - 48px)); padding: 100px 0; display: flex; flex-direction: column; align-items: center; }
 .mkt-lp .final-inner h2 { font-size: clamp(44px,5vw,72px); color: #f6f2eb; }
@@ -348,7 +350,7 @@
 .mkt-lp .mobile-nav summary { width: 44px; height: 44px; display: flex; flex-direction: column; justify-content: center; gap: 7px; list-style: none; cursor: pointer; position: relative; z-index: 2; }
 .mkt-lp .mobile-nav summary::-webkit-details-marker { display: none; }
 .mkt-lp .mobile-nav summary i { width: 24px; height: 1px; background: #fff; transition: transform .2s ease, opacity .2s ease; transform-origin: center; }
-.mkt-lp .mobile-nav[open] { position: fixed; inset: 0; right: 0; top: 0; z-index: 100; background: #0f100e; }
+.mkt-lp .mobile-nav[open] { position: fixed; inset: 0; right: 0; top: 0; z-index: 100; background: var(--night); }
 .mkt-lp .mobile-nav[open] summary { position: absolute; right: 22px; top: 27px; }
 .mkt-lp .mobile-nav[open] summary i:first-child { transform: translateY(4px) rotate(45deg); }
 .mkt-lp .mobile-nav[open] summary i:last-child { transform: translateY(-4px) rotate(-45deg); }
@@ -362,7 +364,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 28px;
-  background: #0f100e;
+  background: var(--night);
   border: 0;
 }
 .mkt-lp .mobile-nav[open] nav { display: flex; }
@@ -504,11 +506,11 @@
   display: flex;
   justify-content: center;
   padding: 0 clamp(24px,4vw,70px);
-  background: rgba(10,11,9,.82);
+  background: color-mix(in srgb, var(--night) 82%, transparent);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
   border-bottom: 1px solid rgba(195,160,107,.26);
-  box-shadow: 0 18px 44px rgba(0,0,0,.34);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--night) 34%, transparent);
   color: #f7f3eb;
   opacity: 0;
   visibility: hidden;
@@ -544,7 +546,7 @@
     padding: 11px 16px calc(11px + env(safe-area-inset-bottom, 0px));
     border-bottom: 0;
     border-top: 1px solid rgba(195,160,107,.3);
-    box-shadow: 0 -18px 40px rgba(0,0,0,.45);
+    box-shadow: 0 -18px 40px color-mix(in srgb, var(--night) 45%, transparent);
     transform: translateY(101%);
   }
   .mkt-lp .sticky-cta.is-visible { transform: translateY(0); }
