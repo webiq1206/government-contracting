@@ -95,8 +95,8 @@ const MUTED = "rgba(246,242,235,.60)";
 const GOLD = "#c3a06b";
 const PURSUE = "#8a9e80";
 const REVIEW = "#d4a868";
-const SURFACE = "#171813";
-const RAISED = "#1e1f1c";
+const SURFACE = "#444442";
+const RAISED = "#484846";
 const HAIR = "rgba(255,255,255,.13)";
 
 const mono = '"JetBrains Mono", ui-monospace, monospace';
@@ -213,7 +213,7 @@ function Btn({
       style={{
         display: "inline-block",
         font: `600 30px/1 ${sans}`,
-        color: solid ? "#12130f" : tone,
+        color: solid ? "#383837" : tone,
         background: solid ? tone : `${tone}1f`,
         border: `1px solid ${tone}`,
         padding: "20px 34px",
@@ -1050,7 +1050,7 @@ function CaptionBar({ beat, local }: { beat: Beat; local: number }) {
         flexDirection: "column",
         justifyContent: "center",
         gap: 18,
-        background: "linear-gradient(to top, rgba(9,10,9,.98) 62%, rgba(9,10,9,0))",
+        background: "linear-gradient(to top, rgba(56,56,55,.98) 62%, rgba(56,56,55,0))",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 22, opacity: a }}>
@@ -1167,7 +1167,7 @@ function Cursor({ x, y, press }: { x: number; y: number; press: number }) {
         <path
           d="M2 2.2 2 24.4 8.2 18.8 12.4 29.2 16.1 27.7 11.8 17.1 20.6 16.8 2 2.2Z"
           fill="#f6f2eb"
-          stroke="#12130f"
+          stroke="#383837"
           strokeWidth="1.4"
           strokeLinejoin="round"
         />
@@ -1188,7 +1188,7 @@ function Bumper({ local }: { local: number }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#090a09",
+        background: "#383837",
         opacity: Math.min(a, out),
       }}
     >
@@ -1221,7 +1221,7 @@ function EndCard({ local }: { local: number }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#090a09",
+        background: "#383837",
         opacity: a,
         padding: "0 140px",
         textAlign: "center",
@@ -1267,7 +1267,7 @@ export function FilmCapture() {
     document.documentElement.style.colorScheme = "dark";
     document.body.style.overflow = "hidden";
     document.body.style.margin = "0";
-    document.body.style.background = "#090a09";
+    document.body.style.background = "#383837";
   }, []);
 
   const seek = useCallback((next: number) => {
@@ -1316,7 +1316,7 @@ export function FilmCapture() {
         width: 1920,
         height: 1080,
         overflow: "hidden",
-        background: "#090a09",
+        background: "#383837",
         color: CREAM,
         fontFamily: sans,
       }}

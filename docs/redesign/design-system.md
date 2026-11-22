@@ -6,11 +6,11 @@ This document records the current BrostCo product system. It supersedes earlier 
 
 | Role | Light | Dark |
 | --- | --- | --- |
-| Page | #F4F6F6 | #0B1720 |
+| Page | #F4F6F6 | #383837 |
 | Text | #111A1F | #EFF5F4 |
-| Surface | #FFFFFF | #102A33 |
+| Surface | #FFFFFF | #444442 |
 | Secondary text | #617077 | #A8BABC |
-| Primary action / focus | #0E6F75 | #53BAC0 |
+| Primary action / focus | #0E6F75 | #5AC8CE |
 | Positive status | #2B6F52 | #85C9A3 |
 | Attention | #95601B | #E5BC78 |
 | Risk | #A33A31 | #F19B92 |
@@ -62,7 +62,7 @@ Status color always needs a readable label or icon. Focus uses the primary seman
 
 ## Public site and media
 
-The public site uses Midnight navigation and hero surfaces, cool light-gray content, white cards, and Petrol actions. Primary and destructive buttons retain a fixed dark fill and white text in both themes. Aqua identifies automation; Brass identifies attention, neither substitutes for a primary action. The signup CTA is primary; the product demonstration is secondary.
+The public site uses charcoal (#383837) navigation and hero surfaces, cool light-gray content, white cards, and Petrol actions. Primary and destructive buttons retain a fixed dark fill and white text in both themes. Aqua identifies automation; Brass identifies attention, neither substitutes for a primary action. The signup CTA is primary; the product demonstration is secondary.
 
 Videos play deliberately with native controls, inline support, captions, posters, and transcripts. No sound autoplays. Gallery selection unmounts the prior video so two gallery clips cannot keep playing.
 
