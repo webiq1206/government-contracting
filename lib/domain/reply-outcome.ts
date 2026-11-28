@@ -10,6 +10,7 @@
 import type { PoolClient, QueryResultRow } from "pg";
 import { query } from "../db";
 import type { ExtractedReply, ReplyIntent } from "../ai/reply-extract";
+import { spendingHoldCopy } from "./spending-notice";
 
 /**
  * Below this, the platform records what it saw and asks a human. Set where a
@@ -177,6 +178,20 @@ export function decideReply(
     extracted.coversFullScope,
   );
   const unread = opts.unreadableAttachments ?? [];
+  const budgetReason =
+    extracted.aiExtractStatus === "budget_blocked" || spendingHoldCopy(extracted.aiExtractError)
+      ? spendingHoldCopy(extracted.aiExtractError) ??
+        "Paid AI could not read this reply because a usage limit was reached. Open Settings, API Usage to see which limit applies and when it resets. Confirm what this reply meant. Nothing was decided for you."
+      : null;
+  if (budgetReason) {
+    return {
+      outcome: "unclear",
+      proposed: outcome,
+      act: false,
+      needsReview: true,
+      reviewReason: budgetReason,
+    };
+  }
 
   const deterministicDecline =
     extracted.method === "deterministic" &&

@@ -29,6 +29,7 @@ import { currentOrgId, runWithOrg } from "./tenant-context";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { orgHasKey } from "./integration-keys";
 import { assessAutomation, type AutomationHealth, type RunFact, type IncidentCause } from "./domain/automation-health";
+import { readSpendingBlock } from "./api-usage/spending-status";
 import { ROSTER } from "./agents/registry";
 import { providerRouteRefusal } from "./ai/provider-facts";
 
@@ -67,7 +68,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
   return runWithOrg(org, async () => {
 
   const ahrefsExclusion = ahrefsLogExclusion(config.ahrefs.integrationEnabled);
-  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered, providerHolds] = await Promise.all([
+  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered, providerHolds, spendingHold] = await Promise.all([
     getAutomationState().then((s) => s.paused),
     readWorkerHeartbeat(),
     query<{ runs: number; errors: number }>(
@@ -148,6 +149,9 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
       const refusal = await providerRouteRefusal(org, tier, true);
       return refusal ? { provider: refusal.provider, tier, reason: refusal.reason } : null;
     })),
+    // A failed read must fail this assessment with the other facts. Swallowing
+    // it is how a full daily cap still prints "Running normally".
+    readSpendingBlock(org).then((block) => block?.message ?? null),
   ]);
 
   const rows = [...errors, ...latestOk];
@@ -164,6 +168,7 @@ const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
     platformPaused: platform.paused,
     recoveredThrough: Object.fromEntries(recovered.map((r) => [r.cause, r.recovered_at])),
     providerHolds: providerHolds.filter((hold) => hold !== null),
+    spendingHold,
     heartbeatAt: heartbeat?.updatedAt ?? null,
     phase: heartbeat?.phase ?? null,
     runs,

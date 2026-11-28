@@ -18,6 +18,18 @@ export function currentOrgId(): string | null {
   return als.getStore()?.orgId ?? null;
 }
 
+/**
+ * Keep a signed-in organization on this request after the session has been read.
+ *
+ * Later loaders call resolveTenantOrgId(), which reads the session again when
+ * this store is empty. A second cookie read can fail and throw
+ * MissingTenantContextError even though the page already knows the account.
+ * Binding here makes those loaders use the organization already verified.
+ */
+export function bindRequestOrg(orgId: string): void {
+  als.enterWith({ orgId });
+}
+
 export function requireContextOrgId(): string {
   const id = currentOrgId();
   if (!id) throw new Error("Organization context is not set for this operation.");

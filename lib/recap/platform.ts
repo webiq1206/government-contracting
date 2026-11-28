@@ -6,6 +6,7 @@ import {
   undeliveredNote,
 } from "../domain/email-reporting";
 import { clipText } from "../domain/clip";
+import { noticeForBudgetMessage } from "../domain/spending-notice";
 /**
  * The platform administrator's recap.
  *
@@ -345,6 +346,16 @@ function section(
  * summed over all of them, so they are left out rather than filled with an
  * aggregate nobody can act on.
  */
+function holdSentence(sample: string | null | undefined): string {
+  if (!sample) {
+    return "Open Settings, API Usage to see which limit stopped paid work, how many requests or dollars remain, and when it resets.";
+  }
+  const raw = sample.replace(/^API_BUDGET:\s*/, "");
+  const notice = noticeForBudgetMessage(sample);
+  if (!notice || raw.includes(notice.detail)) return raw;
+  return `${raw} ${notice.detail}`;
+}
+
 export function buildPlatformRecap(
   facts: PlatformRecapFacts,
   ctx: { localDate: string; timezone: string; now: Date; partial?: boolean }
@@ -386,9 +397,7 @@ export function buildPlatformRecap(
       key: `platform-spending:${h.orgId ?? "unknown"}`,
       title: `${name} has ${h.held} task${h.held === 1 ? "" : "s"} waiting on its API allowance`,
       detail: clipText(
-        `${agents} stopped before spending anything. ${
-          h.sample ? h.sample.replace(/^API_BUDGET:\s*/, "") : "Raise the allowance or wait for it to reset."
-        }`,
+        `${agents} stopped before spending anything. ${holdSentence(h.sample)}`,
         260
       ),
       href: h.orgId ? `/admin/accounts/${h.orgId}` : "/admin/api-usage",

@@ -28,6 +28,11 @@ export async function resolveTenantOrgId(opts?: {
   throw new MissingTenantContextError();
 }
 
+/** True for a real missing tenant, including across a bundle boundary where instanceof fails. */
+export function isMissingTenantContext(error: unknown): boolean {
+  return error instanceof MissingTenantContextError || (error instanceof Error && error.name === "MissingTenantContextError");
+}
+
 export async function tryResolveTenantOrgId(): Promise<string | null> {
   try {
     // "Try" means return null when there is no authenticated or job-scoped
@@ -36,7 +41,7 @@ export async function tryResolveTenantOrgId(): Promise<string | null> {
     // tightly controlled migration/bootstrap callers.
     return await resolveTenantOrgId();
   } catch (error) {
-    if (error instanceof MissingTenantContextError) return null;
+    if (isMissingTenantContext(error)) return null;
     throw error;
   }
 }

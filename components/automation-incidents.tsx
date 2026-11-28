@@ -241,6 +241,17 @@ export function AutomationIncidents({ health, showDiagnostics = false }: { healt
  * every degradation is a banner people learn to scroll past, and the one time
  * it matters they will.
  */
+function spendingLimitAction(spec: { title: string; effect: string }): string {
+  const text = `${spec.title} ${spec.effect}`.toLowerCase();
+  if (text.includes("pause")) return "Review API pause";
+  if (text.includes("monthly")) return "Review monthly budget";
+  if (text.includes("daily request") || text.includes("request limit") || text.includes("request allowance")) {
+    return "Review daily request limit";
+  }
+  if (text.includes("dollar")) return "Review daily dollar limit";
+  return "Open Settings, API Usage";
+}
+
 export function AutomationBlockerBanner({ health }: { health: AutomationHealth }) {
   if (!health.interrupt) return null;
   const worst = health.incidents.find((i) => i.spec.blocking);
@@ -259,7 +270,7 @@ export function AutomationBlockerBanner({ health }: { health: AutomationHealth }
       <div className="mt-2 flex flex-col items-start gap-3 text-sm sm:flex-row sm:items-center">
         {worst && <p className="min-w-0 w-full text-foreground sm:flex-1">{worst.spec.repair}</p>}
         <Link href={worst?.spec.repairHref ?? "/agents"} className="btn-ghost min-h-11 shrink-0 text-xs">
-          {worst?.cause === "spending_limit" ? "Review spending limits" : worst?.spec.repairHref ? "Resolve this issue" : "Open Automation Health"}
+          {worst?.cause === "spending_limit" ? spendingLimitAction(worst.spec) : worst?.spec.repairHref ? "Resolve this issue" : "Open Automation Health"}
         </Link>
       </div>
     </div>

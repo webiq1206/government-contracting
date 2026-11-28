@@ -35,6 +35,8 @@
  * Pure. The caller gathers the facts; this decides what they add up to.
  */
 
+import { noticeForBudgetMessage } from "./spending-notice";
+
 export type AutomationState = "healthy" | "degraded" | "blocked" | "paused" | "not_configured";
 
 /**
@@ -107,7 +109,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
   spending_limit: {
     title: "API work stopped at a spending control",
     effect: "New paid requests are on hold to protect your account’s budget. Some automated tasks are waiting.",
-    repair: "Review spending limits or resume API work in Settings, API Usage.",
+    repair: "Open Settings, API Usage and read which limit stopped paid work. A daily request limit, a daily dollar limit, and the monthly budget are different stops.",
     repairHref: "/settings/api-usage",
     blocking: true,
   },
@@ -216,6 +218,18 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
 
 export function causeSpec(cause: IncidentCause, errors: readonly string[] = []): IncidentSpec {
   const spec = CAUSES[cause];
+  if (cause === "spending_limit") {
+    const notice = errors.map((error) => noticeForBudgetMessage(error)).find((item) => item != null);
+    if (!notice) return spec;
+    return {
+      ...spec,
+      title: notice.title,
+      effect: notice.detail,
+      repair: `${notice.actionLabel} in Settings, API Usage.`,
+      repairHref: notice.actionHref,
+      blocking: true,
+    };
+  }
   if (cause !== "provider_credit" && cause !== "provider_auth") return spec;
   // A grouped incident may involve several providers. Only deep-link when
   // every failure identifies the same provider; ambiguity goes to the overview.
@@ -298,6 +312,12 @@ export interface HealthInput {
   recoveredThrough?: Partial<Record<IncidentCause, string>>;
   /** Current route admission evidence, independent of the rolling event log. */
   providerHolds?: { provider: string; tier: string; reason: string }[];
+  /**
+   * A live paid-AI block, even when no job has failed yet.
+   * Holds that refuse work before it runs never land in the error log, and
+   * a heartbeat alone must not read as "Running normally" while they last.
+   */
+  spendingHold?: string | null;
   /** The worker's own check-in, when it has written one. */
   heartbeatAt?: string | Date | null;
   /** What the worker says it is doing: "ready", "queue-unreachable", ... */
@@ -475,6 +495,25 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
         cause, spec: { ...causeSpec(cause, [message]), blocking: true }, failures: 0,
         affectedWorkflows: [], heldRoutes: [route], firstSeen: now.toISOString(), lastSeen: now.toISOString(),
         sample: message, currentProviderHold: true,
+      });
+    }
+  }
+
+  if (input.spendingHold && classifyFailure(input.spendingHold) === "spending_limit") {
+    const existing = byCause.get("spending_limit");
+    const spec = causeSpec("spending_limit", [input.spendingHold, existing?.sample ?? ""]);
+    if (existing) {
+      existing.spec = spec;
+      existing.sample = [existing.sample, input.spendingHold].filter(Boolean).join("\n");
+    } else {
+      byCause.set("spending_limit", {
+        cause: "spending_limit",
+        spec,
+        failures: 0,
+        affectedWorkflows: [],
+        firstSeen: now.toISOString(),
+        lastSeen: now.toISOString(),
+        sample: input.spendingHold,
       });
     }
   }

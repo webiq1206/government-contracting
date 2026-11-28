@@ -39,6 +39,7 @@ interface LoadOptions {
   finalize?: boolean;
   lockedPair?: boolean;
   quote?: { id: string } | null;
+  resolveOrg?: () => Promise<string>;
 }
 
 async function load(opts: LoadOptions = {}) {
@@ -136,7 +137,9 @@ async function load(opts: LoadOptions = {}) {
     })),
   }));
   vi.doMock("@/lib/tenant", () => ({
-    resolveTenantOrgId: vi.fn(async () => "org-1"),
+    resolveTenantOrgId: vi.fn(opts.resolveOrg ?? (async () => "org-1")),
+    isMissingTenantContext: (error: unknown) =>
+      error instanceof Error && error.name === "MissingTenantContextError",
   }));
   vi.doMock("@/lib/db", () => ({ query, queryOne, transaction }));
   vi.doMock("@/lib/domain/reply-outcome", async (original) => ({
@@ -200,6 +203,25 @@ afterEach(() => {
 });
 
 describe("manual reply review", () => {
+  it("answers 401 and writes nothing when the account cannot be resolved", async () => {
+    const route = await load({
+      resolveOrg: async () => {
+        const error = new Error("No organization context.");
+        error.name = "MissingTenantContextError";
+        throw error;
+      },
+    });
+
+    const res = await route.POST(request("none"), {
+      params: { id: "event-1" },
+    });
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).error).toMatch(/Nothing was changed/);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("never calls a reply quoted when no usable price can be recorded", async () => {
     const route = await load();
     proposeRow.mockReturnValue({
